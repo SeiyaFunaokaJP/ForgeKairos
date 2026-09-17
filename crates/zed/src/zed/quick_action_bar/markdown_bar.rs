@@ -1,3 +1,4 @@
+use editor::actions::MermaidDiagramKind;
 use editor::{Editor, EditorEvent, EditorSettings, actions as editor_actions};
 use gpui::{
     Action, AnyElement, Entity, EventEmitter, FocusHandle, Focusable, FontWeight, Subscription,
@@ -5,7 +6,9 @@ use gpui::{
 };
 use markdown_preview::markdown_preview_view::MarkdownPreviewView;
 use settings::{Settings, SettingsStore, update_settings_file};
-use ui::{ButtonLike, Divider, Switch, SwitchLabelPosition, Tooltip, prelude::*};
+use ui::{
+    ButtonLike, ContextMenu, Divider, PopoverMenu, Switch, SwitchLabelPosition, Tooltip, prelude::*,
+};
 use workspace::{ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView, Workspace};
 
 /// The name the `languages` settings map uses for Markdown. It is a settings
@@ -128,7 +131,9 @@ impl MarkdownFormatBar {
                             Some(&editor_actions::NewlineInvertHardBreak),
                             "Enter で改行するときに、行末へ半角スペース 2 つ (hard break) を\
                              補うので、改行が保存後もそのまま残ります。\
-                             このキーでは 1 回だけ反対の動きをします。",
+                             このキーでは 1 回だけ反対の動きをします。\
+                             プレビューは既定で改行をそのまま改行として表示するので、\
+                             これは他のツールでも改行にしたいときに使います。",
                             &focus_handle,
                             cx,
                         )
@@ -199,6 +204,39 @@ fn icon_format_button(
             .color(Color::Default)
             .into_any_element(),
     )
+}
+
+/// A button that opens a menu instead of dispatching one action. The menu is
+/// built with the editor's focus handle as its context, so the entries reach
+/// the Markdown file rather than the toolbar.
+fn menu_format_button(
+    id: &'static str,
+    icon: IconName,
+    tooltip: &'static str,
+    focus_handle: &FocusHandle,
+    entries: impl Fn(ContextMenu) -> ContextMenu + 'static,
+) -> impl IntoElement {
+    let focus_handle = focus_handle.clone();
+    PopoverMenu::new(id)
+        .trigger_with_tooltip(
+            ButtonLike::new(id).style(ButtonStyle::Subtle).child(
+                h_flex()
+                    .gap_0p5()
+                    .child(Icon::new(icon).size(IconSize::Small).color(Color::Default))
+                    .child(
+                        Icon::new(IconName::ChevronDown)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    ),
+            ),
+            Tooltip::text(tooltip),
+        )
+        .menu(move |window, cx| {
+            let focus_handle = focus_handle.clone();
+            Some(ContextMenu::build(window, cx, |menu, _, _| {
+                entries(menu.context(focus_handle))
+            }))
+        })
 }
 
 impl Render for MarkdownFormatBar {
@@ -334,6 +372,57 @@ impl Render for MarkdownFormatBar {
                 &focus_handle,
             ));
 
+        let views = h_flex()
+            .gap(DynamicSpacing::Base01.rems(cx))
+            .child(menu_format_button(
+                "markdown-mermaid",
+                IconName::GitBranch,
+                "Mermaid 図を挿入",
+                &focus_handle,
+                |mut menu| {
+                    for diagram in MermaidDiagramKind::ALL {
+                        menu = menu.action(
+                            diagram.label(),
+                            Box::new(editor_actions::InsertMermaidDiagram { diagram }),
+                        );
+                    }
+                    menu.separator().action(
+                        "カーソル位置の図を編集…",
+                        markdown_preview::EditMermaid.boxed_clone(),
+                    )
+                },
+            ))
+            .child(icon_format_button(
+                "markdown-preview",
+                IconName::Eye,
+                "プレビューを横に開く",
+                markdown_preview::OpenPreviewToTheSide.boxed_clone(),
+                &focus_handle,
+            ))
+            .child(menu_format_button(
+                "markdown-fold",
+                IconName::FoldVertical,
+                "見出しで折り畳む",
+                &focus_handle,
+                |menu| {
+                    menu.action(
+                        "見出し 1 で畳む",
+                        Box::new(editor_actions::FoldHeadings { level: 1 }),
+                    )
+                    .action(
+                        "見出し 2 で畳む",
+                        Box::new(editor_actions::FoldHeadings { level: 2 }),
+                    )
+                    .action(
+                        "見出し 3 で畳む",
+                        Box::new(editor_actions::FoldHeadings { level: 3 }),
+                    )
+                    .separator()
+                    .action("すべて畳む", Box::new(editor_actions::FoldAllHeadings))
+                    .action("すべて展開", Box::new(editor_actions::UnfoldAllHeadings))
+                },
+            ));
+
         let separator = || Divider::vertical().inset();
 
         row.w_full()
@@ -346,6 +435,8 @@ impl Render for MarkdownFormatBar {
             .child(blocks)
             .child(separator())
             .child(inserts)
+            .child(separator())
+            .child(views)
             .child(div().flex_1())
             .children(self.render_hard_break_toggle(&editor, &focus_handle, cx))
     }

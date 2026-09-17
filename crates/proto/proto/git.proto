@@ -257,6 +257,9 @@ message GitRunCommand {
   uint64 repository_id = 2;
   repeated string args = 3;
   optional string stdin = 4;
+  // Validated against ALLOWED_GIT_COMMAND_ENV on the host, which accepts only the
+  // GIT_AUTHOR_* variables `commit-tree` reads. Anything else is refused there.
+  map<string, string> env = 5;
 }
 
 message GitRunCommandResponse {
@@ -334,6 +337,7 @@ message GitReset {
   enum ResetMode {
     SOFT = 0;
     MIXED = 1;
+    HARD = 2;
   }
 }
 
@@ -462,6 +466,7 @@ message Push {
   enum PushOptions {
     SET_UPSTREAM = 0;
     FORCE = 1;
+    FORCE_WITHOUT_LEASE = 2;
   }
 }
 

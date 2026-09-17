@@ -178,19 +178,25 @@ impl AgentTool for CreateDirectoryTool {
             } else {
                 match decision {
                     ToolPermissionDecision::Allow => None,
-                    ToolPermissionDecision::Confirm => Some(cx.update(|cx| {
-                        let title =
-                            format!("ディレクトリ {} を作成", MarkdownInlineCode(&input.path));
-                        let context =
-                            crate::ToolPermissionContext::new(Self::NAME, vec![input.path.clone()]);
-                        authorize_with_sensitive_settings(
-                            sensitive_kind,
-                            context,
-                            &title,
-                            &event_stream,
-                            cx,
-                        )
-                    })),
+                    // A judged decision reaches the same authorization call,
+                    // which re-evaluates the settings and runs the judge there.
+                    ToolPermissionDecision::Confirm | ToolPermissionDecision::Judge => {
+                        Some(cx.update(|cx| {
+                            let title =
+                                format!("ディレクトリ {} を作成", MarkdownInlineCode(&input.path));
+                            let context = crate::ToolPermissionContext::new(
+                                Self::NAME,
+                                vec![input.path.clone()],
+                            );
+                            authorize_with_sensitive_settings(
+                                sensitive_kind,
+                                context,
+                                &title,
+                                &event_stream,
+                                cx,
+                            )
+                        }))
+                    }
                     ToolPermissionDecision::Deny(_) => None,
                 }
             };

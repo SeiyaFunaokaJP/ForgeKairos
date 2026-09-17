@@ -164,8 +164,13 @@ impl AgentTool for MovePathTool {
             )
             .await);
 
-            let needs_confirmation = matches!(decision, ToolPermissionDecision::Confirm)
-                || (matches!(decision, ToolPermissionDecision::Allow) && sensitive_kind.is_some());
+            // A judged decision reaches the same authorization call, which
+            // re-evaluates the settings and runs the judge there; treating it
+            // as "no confirmation needed" would run the tool unreviewed.
+            let needs_confirmation = matches!(
+                decision,
+                ToolPermissionDecision::Confirm | ToolPermissionDecision::Judge
+            ) || (matches!(decision, ToolPermissionDecision::Allow) && sensitive_kind.is_some());
 
             let authorize = if !symlink_escapes.is_empty() {
                 // Symlink escape authorization replaces (rather than supplements)

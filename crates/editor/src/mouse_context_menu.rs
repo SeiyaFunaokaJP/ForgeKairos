@@ -16,7 +16,7 @@ use zed_actions::agent::AddSelectionToThread;
 use zed_actions::browser::{AskCopilot, SearchSelection};
 use zed_actions::ide_server::SendSelectionToClaudeCode;
 use zed_actions::preview::{
-    markdown::{EditTable, OpenPreviewToTheSide as OpenMarkdownPreviewToTheSide},
+    markdown::{EditMermaid, EditTable, OpenPreviewToTheSide as OpenMarkdownPreviewToTheSide},
     svg::OpenPreviewToTheSide as OpenSvgPreviewToTheSide,
 };
 
@@ -240,6 +240,10 @@ pub fn deploy_context_menu(
             .and_then(|buffer| buffer.read(cx).language())
             .is_some_and(|language| language.name().as_ref() == "Markdown");
 
+        // Editing a diagram needs a fence to write back into, so the entry is
+        // shown greyed out rather than hidden when the click landed elsewhere.
+        let is_in_mermaid_fence = is_markdown && editor.mermaid_fence_target(cx).is_some();
+
         let is_svg = editor
             .buffer()
             .read(cx)
@@ -317,6 +321,11 @@ pub fn deploy_context_menu(
                             Box::new(OpenMarkdownPreviewToTheSide),
                         )
                         .action("表を編集…", Box::new(EditTable))
+                        .action_disabled_when(
+                            !is_in_mermaid_fence,
+                            "Mermaid 図を編集…",
+                            Box::new(EditMermaid),
+                        )
                         .submenu("Mermaid 図を挿入", |mut menu, _window, _cx| {
                             for diagram in MermaidDiagramKind::ALL {
                                 menu = menu.action(

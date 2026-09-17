@@ -163,7 +163,8 @@ impl LanguageModel for CopilotChatLanguageModel {
             | CompletionIntent::ToolResults
             | CompletionIntent::ThreadSummarization
             | CompletionIntent::CreateFile
-            | CompletionIntent::EditFile => false,
+            | CompletionIntent::EditFile
+            | CompletionIntent::PermissionJudge => false,
         });
 
         if self.model.supports_messages() {
@@ -1035,6 +1036,7 @@ fn intent_to_chat_location(intent: Option<CompletionIntent>) -> ChatLocation {
         Some(CompletionIntent::InlineAssist) => ChatLocation::Editor,
         Some(CompletionIntent::TerminalInlineAssist) => ChatLocation::Terminal,
         Some(CompletionIntent::GenerateGitCommitMessage) => ChatLocation::Other,
+        Some(CompletionIntent::PermissionJudge) => ChatLocation::Other,
         None => ChatLocation::Panel,
     }
 }

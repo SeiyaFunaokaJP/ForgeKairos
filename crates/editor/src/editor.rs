@@ -73,6 +73,7 @@ mod selection;
 
 pub(crate) use actions::*;
 pub use clipboard::ClipboardSelection;
+use clipboard::KillRingYankPopState;
 pub use code_actions::CodeActionProvider;
 use collections::TypeIdHashMap;
 pub use completions::CompletionProvider;
@@ -941,6 +942,7 @@ pub struct Editor {
     add_selections_state: Option<AddSelectionsState>,
     select_next_state: Option<SelectNextState>,
     select_prev_state: Option<SelectNextState>,
+    kill_ring_yank_pop_state: Option<KillRingYankPopState>,
     selection_history: SelectionHistory,
     defer_selection_effects: bool,
     deferred_selection_effects_state: Option<DeferredSelectionEffectsState>,
@@ -2263,6 +2265,7 @@ impl Editor {
             add_selections_state: None,
             select_next_state: None,
             select_prev_state: None,
+            kill_ring_yank_pop_state: None,
             selection_history: SelectionHistory::default(),
             defer_selection_effects: false,
             deferred_selection_effects_state: None,

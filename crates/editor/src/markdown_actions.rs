@@ -1345,6 +1345,196 @@ fn escape_table_cell(cell: &str) -> String {
     escaped
 }
 
+/// Where `markdown::EditMermaid` will write, and the diagram that is there now.
+pub struct MermaidFenceTarget {
+    /// The fence's body: the whole lines between the opening and the closing
+    /// fence, ending just before the closing fence's line. Empty when the fence
+    /// holds nothing yet.
+    range: Range<Anchor>,
+    /// The body with the fence's own indentation removed, as the Mermaid parser
+    /// wants to see it.
+    pub source: String,
+    /// The opening fence's info string, so the caller can tell a Mermaid fence
+    /// from any other fenced block.
+    pub info: String,
+    /// The indentation the fence sits at, re-applied to every line written back
+    /// so that a fence inside a list item stays inside it.
+    indent: String,
+}
+
+impl Editor {
+    /// The Mermaid fence the cursor is inside, for `markdown::EditMermaid`.
+    pub fn mermaid_fence_target(&self, cx: &mut App) -> Option<MermaidFenceTarget> {
+        if !self.is_in_markdown_language(cx) {
+            return None;
+        }
+        let cursor = self
+            .selections
+            .newest::<Point>(&self.display_snapshot(cx))
+            .head();
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        mermaid_fence_target(&snapshot, cursor.row)
+    }
+
+    /// The Mermaid fence covering `offset`, for callers that know where the
+    /// diagram is without moving the cursor there — the preview, which resolves
+    /// the fence from the diagram the user clicked.
+    pub fn mermaid_fence_target_at(
+        &self,
+        offset: usize,
+        cx: &mut App,
+    ) -> Option<MermaidFenceTarget> {
+        if !self.is_in_markdown_language(cx) {
+            return None;
+        }
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        let offset = offset.min(snapshot.len().0);
+        let row = snapshot.offset_to_point(MultiBufferOffset(offset)).row;
+        mermaid_fence_target(&snapshot, row)
+    }
+
+    /// Replaces the body of the fence `target` was resolved against with
+    /// `source`, as a single edit so that undo takes the whole diagram back.
+    pub fn write_mermaid_fence(
+        &mut self,
+        target: &MermaidFenceTarget,
+        source: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.read_only(cx) {
+            return;
+        }
+
+        let mut text = String::new();
+        for line in source.lines() {
+            if !line.is_empty() {
+                text.push_str(&target.indent);
+                text.push_str(line);
+            }
+            text.push('\n');
+        }
+
+        self.apply_markdown_edits(vec![(target.range.clone(), text)], vec![0], window, cx);
+    }
+}
+
+fn mermaid_fence_target(snapshot: &MultiBufferSnapshot, row: u32) -> Option<MermaidFenceTarget> {
+    let max_row = snapshot.max_point().row;
+    let lines = (0..=max_row)
+        .map(|row| line_text(snapshot, row))
+        .collect::<Vec<_>>();
+    let block = fenced_code_block_at(&lines, row)?;
+    if !is_mermaid_fence_info(&block.info) {
+        return None;
+    }
+
+    let start = snapshot.point_to_offset(Point::new(block.body_start, 0));
+    let end = snapshot.point_to_offset(Point::new(block.body_end, 0));
+    let source = lines
+        .get(block.body_start as usize..block.body_end as usize)
+        .unwrap_or_default()
+        .iter()
+        .map(|line| line.strip_prefix(&block.indent).unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Some(MermaidFenceTarget {
+        range: snapshot.anchor_before(start)..snapshot.anchor_after(end),
+        source,
+        info: block.info,
+        indent: block.indent,
+    })
+}
+
+/// Whether `info` opens a fence the Markdown preview draws as a Mermaid
+/// diagram. Mirrors `markdown::parse_mermaid_info`, which `editor` cannot call
+/// because it does not depend on that crate.
+fn is_mermaid_fence_info(info: &str) -> bool {
+    info.split_whitespace().next() == Some("mermaid")
+}
+
+/// A CommonMark fenced code block: the rows between its fences, the info string
+/// on the opening fence, and the indentation both fences sit at.
+struct FencedCodeBlock {
+    info: String,
+    indent: String,
+    body_start: u32,
+    /// The row of the closing fence, i.e. one past the last body row.
+    body_end: u32,
+}
+
+/// The fenced code block that `row` falls in, counting the fence lines
+/// themselves as part of the block. `None` for a row outside every block, and
+/// for a block that is never closed, which has no body to write back into.
+fn fenced_code_block_at(lines: &[String], row: u32) -> Option<FencedCodeBlock> {
+    let mut open: Option<(u32, char, usize, String, String)> = None;
+
+    for (index, line) in lines.iter().enumerate() {
+        let index = index as u32;
+        match &open {
+            Some((start, marker, length, info, indent)) => {
+                if !is_closing_fence(line, *marker, *length) {
+                    continue;
+                }
+                if (*start..=index).contains(&row) {
+                    return Some(FencedCodeBlock {
+                        info: info.clone(),
+                        indent: indent.clone(),
+                        body_start: start + 1,
+                        body_end: index,
+                    });
+                }
+                open = None;
+            }
+            None => {
+                if let Some((marker, length, info, indent)) = parse_opening_fence(line) {
+                    open = Some((index, marker, length, info, indent));
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// The fence character, its run length, the info string and the indentation of
+/// an opening fence, or `None` for an ordinary line.
+fn parse_opening_fence(line: &str) -> Option<(char, usize, String, String)> {
+    let indent_length = line.len() - line.trim_start().len();
+    // More than three spaces of indentation makes the line indented code rather
+    // than a fence.
+    if indent_length > 3 {
+        return None;
+    }
+    let indent = line.get(..indent_length)?.to_string();
+    let rest = line.get(indent_length..)?;
+    let marker = rest.chars().next().filter(|c| *c == '`' || *c == '~')?;
+    let length = rest.chars().take_while(|c| *c == marker).count();
+    if length < 3 {
+        return None;
+    }
+    let info = rest.get(length..)?.trim().to_string();
+    // A backtick fence cannot carry a backtick in its info string, which is what
+    // keeps an inline code span from opening a block.
+    if marker == '`' && info.contains('`') {
+        return None;
+    }
+    Some((marker, length, info, indent))
+}
+
+fn is_closing_fence(line: &str, marker: char, opening_length: usize) -> bool {
+    let trimmed = line.trim_start();
+    if line.len() - trimmed.len() > 3 {
+        return false;
+    }
+    let length = trimmed.chars().take_while(|c| *c == marker).count();
+    length >= opening_length
+        && trimmed
+            .get(length..)
+            .is_some_and(|rest| rest.trim().is_empty())
+}
+
 /// Terminal columns `text` occupies, so that a table of Japanese text lines up
 /// in a fixed-width editor: East Asian wide characters count as two. The table
 /// editor sizes its columns with the same measure, so a column is drawn as wide
@@ -1487,6 +1677,75 @@ mod tests {
         assert_eq!(parse_clipboard_table("a,b"), None);
         assert_eq!(parse_clipboard_table("a\r\n"), None);
         assert_eq!(parse_clipboard_table(""), None);
+    }
+
+    #[test]
+    fn test_fenced_code_block_at() {
+        let lines = [
+            "文章",
+            "```mermaid",
+            "flowchart TD",
+            "  A --> B",
+            "```",
+            "",
+            "~~~mermaid 150",
+            "graph LR",
+            "~~~",
+            "",
+            "```rust",
+            "fn main() {}",
+            "```",
+        ]
+        .map(String::from);
+
+        let block = fenced_code_block_at(&lines, 2).expect("row 2 is inside the first fence");
+        assert_eq!(block.info, "mermaid");
+        assert_eq!((block.body_start, block.body_end), (2, 4));
+        // The fence lines themselves count as inside the block.
+        assert_eq!(
+            fenced_code_block_at(&lines, 1).map(|block| block.body_start),
+            Some(2)
+        );
+        assert_eq!(
+            fenced_code_block_at(&lines, 4).map(|block| block.body_start),
+            Some(2)
+        );
+        assert!(fenced_code_block_at(&lines, 0).is_none());
+        assert!(fenced_code_block_at(&lines, 5).is_none());
+
+        let tilde = fenced_code_block_at(&lines, 7).expect("row 7 is inside the tilde fence");
+        assert_eq!(tilde.info, "mermaid 150");
+        assert_eq!((tilde.body_start, tilde.body_end), (7, 8));
+        assert!(is_mermaid_fence_info(&tilde.info));
+
+        let rust = fenced_code_block_at(&lines, 11).expect("row 11 is inside the Rust fence");
+        assert_eq!(rust.info, "rust");
+        assert!(!is_mermaid_fence_info(&rust.info));
+
+        // A fence closed by a longer run of the same character, and one that is
+        // never closed at all.
+        let long_close = ["````mermaid".to_string(), "x".into(), "`````".into()];
+        assert_eq!(
+            fenced_code_block_at(&long_close, 1).map(|block| block.body_end),
+            Some(2)
+        );
+        let unclosed = ["```mermaid".to_string(), "flowchart TD".into()];
+        assert!(fenced_code_block_at(&unclosed, 1).is_none());
+        // A tilde fence does not close a backtick one.
+        let mismatched = ["```mermaid".to_string(), "x".into(), "~~~".into()];
+        assert!(fenced_code_block_at(&mismatched, 1).is_none());
+    }
+
+    #[test]
+    fn test_fenced_code_block_at_keeps_indentation() {
+        let lines = ["- 項目", "  ```mermaid", "  flowchart TD", "  ```"].map(String::from);
+        let block = fenced_code_block_at(&lines, 2).expect("row 2 is inside the fence");
+        assert_eq!(block.indent, "  ");
+        assert_eq!((block.body_start, block.body_end), (2, 3));
+
+        // Four spaces is indented code, not a fence.
+        let indented = ["    ```mermaid".to_string(), "x".into(), "    ```".into()];
+        assert!(fenced_code_block_at(&indented, 1).is_none());
     }
 
     #[test]

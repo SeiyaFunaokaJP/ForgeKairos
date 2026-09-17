@@ -2,17 +2,20 @@ use std::path::Path;
 
 use anyhow::{Context as _, Result};
 use editor::{Editor, EditorEvent};
-use gpui::{AnyElement, App, AppContext as _, Context, Entity, EntityId, Task, WeakEntity, Window};
+use gpui::{
+    AnyElement, App, AppContext as _, Context, Entity, EntityId, Font, Task, WeakEntity, Window,
+};
 use language::{Buffer, Capability};
 use project::{Project, ProjectEntryId, ProjectPath};
 use settings::Settings as _;
 use ui::{Icon, IconName, Label, LabelCommon as _, SharedString, prelude::*};
 use workspace::{
-    ItemId, ItemNavHistory, ItemSettings, Pane, Workspace, WorkspaceId, delete_unloaded_items,
+    ItemId, ItemNavHistory, ItemSettings, Pane, ToolbarItemLocation, Workspace, WorkspaceId,
+    delete_unloaded_items,
     invalid_item_view::InvalidItemView,
     item::{
-        Item, ItemBufferKind, ItemEvent, ProjectItem, SaveOptions, SerializableItem,
-        TabContentParams,
+        HighlightedText, Item, ItemBufferKind, ItemEvent, ProjectItem, SaveOptions,
+        SerializableItem, TabContentParams,
     },
     searchable::SearchableItemHandle,
 };
@@ -243,6 +246,23 @@ impl Item for TabularDataPreviewPane {
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
         Item::tab_tooltip_text(self.editor().read(cx), cx)
+    }
+
+    /// The grid's toolbar row would otherwise have nothing on its left: the
+    /// breadcrumbs are the workspace toolbar's only left-hand item, and without
+    /// them the buttons on the right sit alone against an empty bar. Delegating
+    /// to the hidden editor gives the same file path a text tab shows.
+    fn breadcrumb_location(&self, cx: &App) -> ToolbarItemLocation {
+        Item::breadcrumb_location(self.editor().read(cx), cx)
+    }
+
+    fn breadcrumbs(&self, cx: &App) -> Option<(Vec<HighlightedText>, Option<Font>)> {
+        Item::breadcrumbs(self.editor().read(cx), cx)
+    }
+
+    fn breadcrumb_prefix(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let editor = self.editor().clone();
+        editor.update(cx, |editor, cx| Item::breadcrumb_prefix(editor, window, cx))
     }
 
     fn for_each_project_item(
@@ -804,6 +824,41 @@ mod tests {
         });
     }
 
+    /// The workspace toolbar's only left hand item is the breadcrumbs, so a grid
+    /// that reports none leaves the buttons on the right standing alone against
+    /// an empty bar.
+    #[gpui::test]
+    async fn the_grid_shows_its_file_path_in_the_breadcrumbs(cx: &mut TestAppContext) {
+        let (workspace, _project, worktree_id, cx) = open_test_workspace(cx).await;
+        let grid = open_file(&workspace, worktree_id, "data.csv", cx)
+            .await
+            .downcast::<TabularDataPreviewPane>()
+            .unwrap();
+        cx.run_until_parked();
+
+        grid.read_with(cx, |grid, cx| {
+            assert_eq!(
+                Item::breadcrumb_location(grid, cx),
+                ToolbarItemLocation::PrimaryLeft,
+                "the grid should fill the left of the toolbar the way a text tab does"
+            );
+            let (segments, font) = Item::breadcrumbs(grid, cx)
+                .expect("a grid on a singleton buffer should have breadcrumbs");
+            assert!(
+                font.is_some(),
+                "the path is drawn in the buffer font, as it is for a text tab"
+            );
+            let path = segments
+                .first()
+                .map(|segment| segment.text.to_string())
+                .unwrap_or_default();
+            assert!(
+                path.contains("data.csv"),
+                "the first segment should be the file's path, got {path:?}"
+            );
+        });
+    }
+
     /// An empty file draws a message instead of a table, and the grid still has
     /// to be able to take what the user types - and show it - without being
     /// clicked first.
@@ -926,6 +981,56 @@ mod tests {
         assert_eq!(
             cx.update(|_, cx| Item::tab_content_text(grid.read(cx), 0, cx)),
             "data.csv"
+        );
+    }
+
+    /// Alt clicking the grid's "テキストを横に開く" button asks for the swap
+    /// rather than for a second pane, and it does so by putting the modifier on
+    /// the action; dispatching the action is the whole of what that click does.
+    #[gpui::test]
+    async fn the_open_as_text_action_can_ask_for_the_same_pane(cx: &mut TestAppContext) {
+        let (workspace, grid, _editor, mut cx) =
+            crate::grid_editing::tests::open_grid_in_workspace(
+                "name,count
+alpha,1
+",
+                cx,
+            )
+            .await;
+        // `crate::init` does this for every workspace the app opens; this
+        // fixture builds one without going through it.
+        workspace.update(&mut cx, |workspace, cx| {
+            TabularDataPreviewPane::register(workspace);
+            cx.notify();
+        });
+        let buffer = cx
+            .update(|_, cx| grid.read(cx).buffer(cx))
+            .expect("the fixture should have opened on a singleton buffer");
+        cx.run_until_parked();
+
+        cx.dispatch_action(crate::OpenAsText { in_same_pane: true });
+        cx.run_until_parked();
+
+        // Opening beside the grid - what the same action does without the
+        // modifier - would have split the workspace instead.
+        assert_eq!(
+            workspace.update(&mut cx, |workspace, _| workspace.panes().len()),
+            1,
+            "the swap should not open a second pane"
+        );
+        let pane = workspace.update(&mut cx, |workspace, _| workspace.active_pane().clone());
+        assert_eq!(
+            pane.update(&mut cx, |pane, _| pane.items_len()),
+            1,
+            "the grid tab should have been replaced, not added to"
+        );
+        let text_tab = pane
+            .update(&mut cx, |pane, _| pane.active_item())
+            .and_then(|item| item.downcast::<Editor>())
+            .expect("the pane should now hold the file's text");
+        assert_eq!(
+            cx.update(|_, cx| text_tab.read(cx).buffer().read(cx).as_singleton()),
+            Some(buffer),
         );
     }
 

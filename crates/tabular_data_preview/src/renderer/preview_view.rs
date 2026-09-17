@@ -3,7 +3,13 @@ use std::time::Instant;
 use gpui::{AnyElement, MouseButton, anchored, deferred, point, size};
 use ui::{SpinnerLabel, div, prelude::*};
 
-use crate::{TabularDataPreviewPane, grid::cell_text_style};
+use crate::{
+    TabularDataPreviewPane,
+    grid::{cell_line_height, cell_text_style},
+    renderer::table_cell::{
+        EDITOR_FRAME_DEBUG_SELECTOR, EDITOR_TEXT_DEBUG_SELECTOR, style_as_cell,
+    },
+};
 
 /// How wide the overlay editor is while it sits idle over the caret's cell: big
 /// enough for an input method's candidate window to be anchored there, small
@@ -18,7 +24,7 @@ const FIRST_CELL_EDITOR_WIDTH: Pixels = px(150.);
 impl Render for TabularDataPreviewPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let editor_background = cx.theme().colors().editor_background;
-        let row_height = window.pixel_snap(window.line_height());
+        let row_height = cell_line_height(cx);
         if row_height != self.row_height {
             self.row_height = row_height;
             // Font size (rem size, buffer font override, ...) changed since the list was last
@@ -118,7 +124,7 @@ impl TabularDataPreviewPane {
     /// Re-applies the buffer font to the overlay editor, so that changing the
     /// font size keeps what is typed the same size as what the cells show.
     fn sync_cell_editor_style(&self, cx: &mut Context<Self>) {
-        let style = cell_text_style(cx);
+        let style = cell_text_style(self.row_height, cx);
         self.grid.cell_editor.update(cx, |editor, _cx| {
             editor.set_text_style_refinement(style);
         });
@@ -196,25 +202,39 @@ impl TabularDataPreviewPane {
         #[cfg(test)]
         self.grid.cell_editor_was_drawn.set(visible);
 
-        div()
-            .absolute()
-            .left(origin.x)
-            .top(origin.y)
-            .map(|this| {
-                if visible {
-                    this.w(cell_size.width.max(MINIMUM_EDITOR_WIDTH))
-                        .min_h(cell_size.height)
-                        .px_1()
-                        .bg(colors.editor_background)
-                        .border_2()
-                        .border_color(colors.border_focused)
-                } else {
-                    this.w(IDLE_EDITOR_SIZE)
-                        .h(IDLE_EDITOR_SIZE)
-                        .overflow_hidden()
-                }
-            })
-            .child(self.grid.cell_editor.clone())
+        let editor = self.grid.cell_editor.clone();
+        let placed = div().absolute().left(origin.x).top(origin.y);
+        if !visible {
+            return placed
+                .w(IDLE_EDITOR_SIZE)
+                .h(IDLE_EDITOR_SIZE)
+                .overflow_hidden()
+                .child(editor)
+                .into_any_element();
+        }
+
+        // The open cell wears the cell's own frame, down to the font, so that
+        // the text the user was looking at does not move the moment the cell is
+        // opened. `active_cell_bounds` measures the cell's outside, borders
+        // included, which is what this rectangle is placed and sized against.
+        placed
+            .child(
+                style_as_cell(div(), self.settings.vertical_alignment, self.row_height, cx)
+                    .w(cell_size.width.max(MINIMUM_EDITOR_WIDTH))
+                    .min_h(cell_size.height)
+                    .bg(colors.editor_background)
+                    .border_color(colors.border_focused)
+                    .debug_selector(|| EDITOR_FRAME_DEBUG_SELECTOR.to_owned())
+                    // The editor asks for the whole width of what holds it, so
+                    // this stand-in for the cell's text element has to take the
+                    // frame's width rather than shrink to its contents.
+                    .child(
+                        div()
+                            .flex_1()
+                            .debug_selector(|| EDITOR_TEXT_DEBUG_SELECTOR.to_owned())
+                            .child(editor),
+                    ),
+            )
             .into_any_element()
     }
 }

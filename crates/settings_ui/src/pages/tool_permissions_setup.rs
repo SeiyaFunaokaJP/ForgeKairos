@@ -177,6 +177,14 @@ pub(crate) fn render_tool_permissions_setup_page(
 
     let settings = AgentSettings::get_global(cx);
     let global_default = settings.tool_permissions.default;
+    // A tool-specific "auto" runs the judge just as the global default does, so
+    // the model row has to be reachable then too.
+    let judge_model_is_used = global_default == ToolPermissionMode::Auto
+        || settings
+            .tool_permissions
+            .tools
+            .values()
+            .any(|rules| rules.default == Some(ToolPermissionMode::Auto));
 
     let scroll_step = px(40.);
 
@@ -216,6 +224,7 @@ pub(crate) fn render_tool_permissions_setup_page(
         .child(
             v_flex()
                 .child(render_global_default_mode_section(global_default))
+                .children(judge_model_is_used.then(|| render_permission_judge_model_section(cx)))
                 .child(Divider::horizontal())
                 .children(tool_items.into_iter().enumerate().flat_map(|(i, item)| {
                     let mut elements: Vec<AnyElement> = vec![item];
@@ -521,8 +530,11 @@ fn render_verification_section(
             let authoritative = decision_to_mode(decision);
             let implied = match implied_mode_from_patterns(&matched_patterns, default_mode) {
                 // Outside the sandbox an allow rule only lets the command be
-                // asked for instead of refused; it never approves it.
-                ToolPermissionMode::Allow if outside_sandbox => ToolPermissionMode::Confirm,
+                // asked for instead of refused; it never approves it, and the
+                // AI judge never gets to either.
+                ToolPermissionMode::Allow | ToolPermissionMode::Auto if outside_sandbox => {
+                    ToolPermissionMode::Confirm
+                }
                 implied => implied,
             };
             let agrees = authoritative == implied;
@@ -716,6 +728,9 @@ fn render_matched_patterns(patterns: &[MatchedPattern], cx: &App) -> AnyElement 
                 ToolPermissionMode::Deny => ("常に拒否", Color::Error),
                 ToolPermissionMode::Confirm => ("常に確認", Color::Warning),
                 ToolPermissionMode::Allow => ("常に許可", Color::Success),
+                // Only the three pattern lists produce matches; "AI が判定" is a
+                // default, never a pattern.
+                ToolPermissionMode::Auto => ("AI が判定", Color::Info),
             };
 
             let type_color = if pattern.is_overridden {
@@ -782,6 +797,7 @@ fn decision_to_mode(decision: &ToolPermissionDecision) -> ToolPermissionMode {
         ToolPermissionDecision::Allow => ToolPermissionMode::Allow,
         ToolPermissionDecision::Deny(_) => ToolPermissionMode::Deny,
         ToolPermissionDecision::Confirm => ToolPermissionMode::Confirm,
+        ToolPermissionDecision::Judge => ToolPermissionMode::Auto,
     }
 }
 
@@ -815,6 +831,7 @@ fn mode_display_label(mode: ToolPermissionMode) -> &'static str {
         ToolPermissionMode::Allow => "許可",
         ToolPermissionMode::Deny => "拒否",
         ToolPermissionMode::Confirm => "確認",
+        ToolPermissionMode::Auto => "AI が判定",
     }
 }
 
@@ -823,6 +840,9 @@ fn verdict_color(mode: ToolPermissionMode) -> Color {
         ToolPermissionMode::Allow => Color::Success,
         ToolPermissionMode::Deny => Color::Error,
         ToolPermissionMode::Confirm => Color::Warning,
+        // The judge still reviews the action, so it is neither an approval nor
+        // a refusal.
+        ToolPermissionMode::Auto => Color::Info,
     }
 }
 
@@ -1111,6 +1131,90 @@ fn render_add_pattern_input(
         .into_any_element()
 }
 
+/// The model that judges tool actions while the default is "AI が判定"
+/// (ADR-F52), with the list of models the user has already authenticated. The
+/// description spells out that the tool input leaves the machine for whatever
+/// provider that model belongs to.
+fn render_permission_judge_model_section(cx: &mut Context<SettingsWindow>) -> AnyElement {
+    let configured = AgentSettings::get_global(cx).permission_judge_model.clone();
+    let model_label: SharedString = match &configured {
+        Some(selection) => format!("{} / {}", selection.provider.0, selection.model).into(),
+        None => "既定 (速いモデル)".into(),
+    };
+    let available_models = language_model::LanguageModelRegistry::read_global(cx)
+        .available_models(cx)
+        .map(|model| {
+            (
+                model.provider_id().0.to_string(),
+                model.id().0.to_string(),
+                format!("{} / {}", model.provider_name().0, model.name().0),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    h_flex()
+        .my_4()
+        .min_w_0()
+        .justify_between()
+        .child(
+            v_flex()
+                .w_full()
+                .min_w_0()
+                .child(Label::new("判定に使うモデル"))
+                .child(
+                    Label::new(
+                        "小さく速いモデルで足ります (例: Ollama の 8B 級)。未設定のときは、速いモデル、次に既定のモデルが使われます。判定のためにツール名・コマンド・パスがそのモデルの提供元へ送られるので、ローカルのモデルをお勧めします。10 秒以内に答えが返らない、モデルが無い、答えを読み取れない場合は確認を表示します。",
+                    )
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+                ),
+        )
+        .child(
+            PopoverMenu::new("permission-judge-model")
+                .trigger(
+                    Button::new("permission-judge-model-trigger", model_label)
+                        .tab_index(0_isize)
+                        .style(ButtonStyle::Outlined)
+                        .size(ButtonSize::Medium)
+                        .end_icon(Icon::new(IconName::ChevronDown).size(IconSize::Small)),
+                )
+                .menu(move |window, cx| {
+                    let available_models = available_models.clone();
+                    Some(ContextMenu::build(window, cx, move |mut menu, _, _| {
+                        menu = menu.entry("既定 (速いモデル)", None, move |_, cx| {
+                            set_permission_judge_model(None, cx);
+                        });
+                        if available_models.is_empty() {
+                            menu = menu.label("認証済みのモデルがありません");
+                        }
+                        for (provider, model, label) in available_models {
+                            menu = menu.entry(label, None, move |_, cx| {
+                                set_permission_judge_model(
+                                    Some((provider.clone(), model.clone())),
+                                    cx,
+                                );
+                            });
+                        }
+                        menu
+                    }))
+                })
+                .anchor(gpui::Anchor::TopRight),
+        )
+        .into_any_element()
+}
+
+fn set_permission_judge_model(selection: Option<(String, String)>, cx: &mut App) {
+    SettingsStore::global(cx).update_settings_file(<dyn fs::Fs>::global(cx), move |settings, _| {
+        let agent = settings.agent.get_or_insert_default();
+        match &selection {
+            Some((provider, model)) => {
+                agent.set_permission_judge_model(provider.clone(), model.clone());
+            }
+            None => agent.permission_judge_model = None,
+        }
+    });
+}
+
 fn render_global_default_mode_section(current_mode: ToolPermissionMode) -> AnyElement {
     let mode_label = mode_display_label(current_mode);
 
@@ -1125,7 +1229,7 @@ fn render_global_default_mode_section(current_mode: ToolPermissionMode) -> AnyEl
                 .child(Label::new("既定の権限"))
                 .child(
                     Label::new(
-                        "すべてのツール操作の既定の動作を設定します。ツールごとのルールやパターンで上書きできます。「許可」はエージェントパネルの「自動承認」と同じ設定で、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認はそのまま残ります。サンドボックスの外で実行されるターミナルコマンド (サンドボックスを無効にしているとき、またはサンドボックスの無いプロジェクト) は、「許可」や「常に許可」に関係なく毎回確認します。",
+                        "すべてのツール操作の既定の動作を設定します。ツールごとのルールやパターンで上書きできます。「許可」はエージェントパネルの「自動承認」と同じ設定です。「AI が判定」は、危険でないと別のモデルが判定した操作だけを自動で実行し、それ以外は確認します。どちらの場合も、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認はそのまま残ります。サンドボックスの外で実行されるターミナルコマンド (サンドボックスを無効にしているとき、またはサンドボックスの無いプロジェクト) は、「許可」「AI が判定」「常に許可」に関係なく毎回確認します。",
                     )
                     .size(LabelSize::Small)
                     .color(Color::Muted),
@@ -1145,6 +1249,9 @@ fn render_global_default_mode_section(current_mode: ToolPermissionMode) -> AnyEl
                         menu.entry("確認", None, move |_, cx| {
                             set_global_default_permission(ToolPermissionMode::Confirm, cx);
                         })
+                        .entry("AI が判定", None, move |_, cx| {
+                            set_global_default_permission(ToolPermissionMode::Auto, cx);
+                        })
                         .entry("許可", None, move |_, cx| {
                             set_global_default_permission(ToolPermissionMode::Allow, cx);
                         })
@@ -1163,11 +1270,7 @@ fn render_default_mode_section(
     current_mode: ToolPermissionMode,
     _cx: &mut Context<SettingsWindow>,
 ) -> AnyElement {
-    let mode_label = match current_mode {
-        ToolPermissionMode::Allow => "許可",
-        ToolPermissionMode::Deny => "拒否",
-        ToolPermissionMode::Confirm => "確認",
-    };
+    let mode_label = mode_display_label(current_mode);
 
     let tool_id_owned = tool_id.to_string();
 
@@ -1198,11 +1301,15 @@ fn render_default_mode_section(
                     let tool_id = tool_id_owned.clone();
                     Some(ContextMenu::build(window, cx, move |menu, _, _| {
                         let tool_id_confirm = tool_id.clone();
+                        let tool_id_auto = tool_id.clone();
                         let tool_id_allow = tool_id.clone();
                         let tool_id_deny = tool_id;
 
                         menu.entry("確認", None, move |_, cx| {
                             set_default_mode(&tool_id_confirm, ToolPermissionMode::Confirm, cx);
+                        })
+                        .entry("AI が判定", None, move |_, cx| {
+                            set_default_mode(&tool_id_auto, ToolPermissionMode::Auto, cx);
                         })
                         .entry("許可", None, move |_, cx| {
                             set_default_mode(&tool_id_allow, ToolPermissionMode::Allow, cx);
@@ -1297,6 +1404,8 @@ fn save_pattern(tool_name: &str, rule_type: ToolPermissionMode, pattern: String,
             ToolPermissionMode::Allow => tool_rules.always_allow.get_or_insert_default(),
             ToolPermissionMode::Deny => tool_rules.always_deny.get_or_insert_default(),
             ToolPermissionMode::Confirm => tool_rules.always_confirm.get_or_insert_default(),
+            // "AI が判定" has no pattern list of its own; no section offers it.
+            ToolPermissionMode::Auto => return,
         };
 
         if !rules_list.0.iter().any(|r| r.pattern == rule.pattern) {
@@ -1318,6 +1427,7 @@ fn update_pattern(
             ToolPermissionMode::Allow => &tool_rules.always_allow,
             ToolPermissionMode::Deny => &tool_rules.always_deny,
             ToolPermissionMode::Confirm => &tool_rules.always_confirm,
+            ToolPermissionMode::Auto => return false,
         };
         if patterns.iter().any(|r| r.pattern == new_pattern) {
             return false;
@@ -1339,6 +1449,7 @@ fn update_pattern(
                 ToolPermissionMode::Allow => &mut tool_rules.always_allow,
                 ToolPermissionMode::Deny => &mut tool_rules.always_deny,
                 ToolPermissionMode::Confirm => &mut tool_rules.always_confirm,
+                ToolPermissionMode::Auto => return,
             };
 
             if let Some(list) = rules_list {
@@ -1371,6 +1482,7 @@ fn delete_pattern(tool_name: &str, rule_type: ToolPermissionMode, pattern: &str,
                 ToolPermissionMode::Allow => &mut tool_rules.always_allow,
                 ToolPermissionMode::Deny => &mut tool_rules.always_deny,
                 ToolPermissionMode::Confirm => &mut tool_rules.always_confirm,
+                ToolPermissionMode::Auto => return,
             };
 
             if let Some(list) = rules_list {
@@ -1438,6 +1550,42 @@ tool_config_page_fn!(render_rename_symbol_tool_config, "rename_symbol");
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ADR-F52: the preview on this page reports the judged default as its own
+    /// verdict rather than pretending the action is allowed or refused.
+    #[test]
+    fn test_judged_decision_is_shown_as_its_own_verdict() {
+        assert_eq!(
+            decision_to_mode(&ToolPermissionDecision::Judge),
+            ToolPermissionMode::Auto
+        );
+        assert_eq!(mode_display_label(ToolPermissionMode::Auto), "AI が判定");
+        // Neither a success nor an error colour: the judge still reviews it.
+        assert_eq!(verdict_color(ToolPermissionMode::Auto), Color::Info);
+    }
+
+    /// A pattern preview never claims a judged default approved the command:
+    /// the three pattern lists are the only rule types a match can have.
+    #[test]
+    fn test_judged_default_is_not_a_pattern_rule_type() {
+        assert_eq!(
+            implied_mode_from_patterns(&[], ToolPermissionMode::Auto),
+            ToolPermissionMode::Auto,
+            "with no matching pattern the default decides"
+        );
+        assert_eq!(
+            implied_mode_from_patterns(
+                &[MatchedPattern {
+                    pattern: "^cargo".to_string(),
+                    rule_type: ToolPermissionMode::Deny,
+                    is_overridden: false,
+                }],
+                ToolPermissionMode::Auto,
+            ),
+            ToolPermissionMode::Deny,
+            "a deny pattern outranks the judge"
+        );
+    }
 
     #[test]
     fn test_all_tools_are_in_tool_info_or_excluded() {

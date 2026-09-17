@@ -2255,7 +2255,7 @@ impl Vim {
                                 false,
                                 window,
                                 cx,
-                            )
+                            );
                         }
                     });
                     self.clear_operator(window, cx);

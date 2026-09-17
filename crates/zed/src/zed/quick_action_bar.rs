@@ -5,10 +5,11 @@ mod repl_menu;
 
 use agent_settings::AgentSettings;
 use editor::actions::{
-    AddSelectionAbove, AddSelectionBelow, CodeActionSource, DuplicateLineDown, GoToDiagnostic,
-    GoToHunk, GoToPreviousDiagnostic, GoToPreviousHunk, MoveLineDown, MoveLineUp, SelectAll,
-    SelectLargerSyntaxNode, SelectNext, SelectSmallerSyntaxNode, ToggleCodeActions,
-    ToggleDiagnostics, ToggleGoToLine, ToggleInlineDiagnostics,
+    AddSelectionAbove, AddSelectionBelow, CodeActionSource, DuplicateLineDown, FoldAll,
+    FoldAtLevel, GoToDiagnostic, GoToHunk, GoToPreviousDiagnostic, GoToPreviousHunk, MoveLineDown,
+    MoveLineUp, SelectAll, SelectLargerSyntaxNode, SelectNext, SelectSmallerSyntaxNode,
+    ToggleCodeActions, ToggleDiagnostics, ToggleFold, ToggleGoToLine, ToggleInlineDiagnostics,
+    UnfoldAll,
 };
 use editor::code_context_menus::{CodeContextMenu, ContextMenuOrigin};
 use editor::{Editor, EditorSettings};
@@ -23,7 +24,6 @@ use project::{
 };
 use search::{BufferSearchBar, buffer_search};
 use settings::{GitDiffBaseSetting, Settings, SettingsStore, update_settings_file};
-use tabular_data_preview::TabularDataPreviewPane;
 use ui::{
     ButtonStyle, ContextMenu, ContextMenuEntry, DocumentationSide, IconButton, IconName, IconSize,
     PopoverMenu, PopoverMenuHandle, Tooltip, prelude::*,
@@ -102,14 +102,10 @@ impl QuickActionBar {
         }
     }
 
-    fn active_tabular_grid(&self) -> Option<Entity<TabularDataPreviewPane>> {
-        self.active_item
-            .as_ref()
-            .and_then(|item| item.downcast::<TabularDataPreviewPane>())
-    }
-
     fn get_toolbar_item_location(&self) -> ToolbarItemLocation {
-        if self.show && (self.active_editor().is_some() || self.active_tabular_grid().is_some()) {
+        // A tabular grid drives its own toolbar row, so this bar has nothing to
+        // offer it and stays out of the way rather than showing an empty strip.
+        if self.show && self.active_editor().is_some() {
             ToolbarItemLocation::PrimaryRight
         } else {
             ToolbarItemLocation::Hidden
@@ -122,8 +118,7 @@ impl Render for QuickActionBar {
         let Some(editor) = self.active_editor() else {
             return h_flex()
                 .id("empty quick action bar")
-                .gap(DynamicSpacing::Base01.rems(cx))
-                .children(self.render_open_as_text_button());
+                .gap(DynamicSpacing::Base01.rems(cx));
         };
 
         let supports_inlay_hints = editor.update(cx, |editor, cx| editor.supports_inlay_hints(cx));
@@ -362,7 +357,7 @@ impl Render for QuickActionBar {
                     let menu = ContextMenu::build(window, cx, {
                         let focus_handle = editor_focus_handle.clone();
                         |mut menu, _, _| {
-                            menu = menu.context(focus_handle);
+                            menu = menu.context(focus_handle.clone());
 
                             if supports_inlay_hints {
                                 menu = menu.toggleable_entry(
@@ -710,6 +705,26 @@ impl Render for QuickActionBar {
                                     }
                                 }
                             );
+
+                            menu = menu.separator();
+                            menu = menu.submenu("折り畳み", move |menu, _window, _cx| {
+                                // A submenu is built with no action context of its
+                                // own, so without this the entries would dispatch
+                                // from the toolbar, where nothing handles an
+                                // `editor::` action.
+                                menu.context(focus_handle.clone())
+                                    .action(
+                                        "カーソル位置の折り畳みを切り替え",
+                                        Box::new(ToggleFold),
+                                    )
+                                    .separator()
+                                    .action("レベル 1 で畳む", Box::new(FoldAtLevel(1)))
+                                    .action("レベル 2 で畳む", Box::new(FoldAtLevel(2)))
+                                    .action("レベル 3 で畳む", Box::new(FoldAtLevel(3)))
+                                    .separator()
+                                    .action("すべて畳む", Box::new(FoldAll))
+                                    .action("すべて展開", Box::new(UnfoldAll))
+                            });
 
                             menu
                         }

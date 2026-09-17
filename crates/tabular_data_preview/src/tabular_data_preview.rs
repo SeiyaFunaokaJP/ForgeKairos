@@ -1,8 +1,10 @@
 use editor::{Editor, EditorEvent};
 use gpui::{
-    AppContext, Entity, EventEmitter, FocusHandle, Focusable, ListAlignment, Subscription, Task,
-    actions,
+    Action, AppContext, Entity, EventEmitter, FocusHandle, Focusable, ListAlignment, Subscription,
+    Task, actions,
 };
+use schemars::JsonSchema;
+use serde::Deserialize;
 use std::{
     collections::HashMap,
     time::{Duration, Instant},
@@ -38,12 +40,22 @@ pub use crate::grid_search::GridMatch;
 pub use crate::grid_styles::{CellColor, ClearCellColors, SetFillColor, SetTextColor};
 pub use crate::workspace_item::TabularBuffer;
 
+/// 同じファイルをテキストとして開きます。既定では隣のペインに開き、
+/// `in_same_pane` を指定するとグリッドのタブをテキストのタブに差し替えます。
+#[derive(PartialEq, Clone, Default, Deserialize, JsonSchema, Action)]
+#[action(namespace = tabular_data)]
+#[serde(deny_unknown_fields)]
+pub struct OpenAsText {
+    /// グリッドのタブをそのままテキストのタブに差し替えます。
+    #[serde(default)]
+    pub in_same_pane: bool,
+}
+
 actions!(
     tabular_data,
     [
         OpenPreview,
         OpenPreviewToTheSide,
-        OpenAsText,
         StartEditing,
         CommitEditing,
         CommitAndMoveDown,
@@ -164,7 +176,7 @@ impl TabularDataPreviewPane {
                     }
                 }),
             )
-            .on_action(cx.listener(|workspace, _: &OpenAsText, window, cx| {
+            .on_action(cx.listener(|workspace, action: &OpenAsText, window, cx| {
                 let Some(grid) = workspace
                     .active_item(cx)
                     .and_then(|item| item.downcast::<TabularDataPreviewPane>())
@@ -172,7 +184,7 @@ impl TabularDataPreviewPane {
                     return;
                 };
                 let pane = workspace.active_pane().clone();
-                Self::open_as_text(workspace, grid, pane, false, window, cx);
+                Self::open_as_text(workspace, grid, pane, action.in_same_pane, window, cx);
             }))
         });
     }
@@ -311,7 +323,9 @@ impl TabularDataPreviewPane {
         let styles = grid_styles::GridStylesModel::for_editor(&editor, cx);
         let styles_subscription = cx.observe(&styles, |_this, _styles, cx| cx.notify());
 
-        let row_height = window.pixel_snap(window.line_height());
+        // The same height the first render will settle on, so that the list is
+        // not seeded with hints from the window's UI text and then re-measured.
+        let row_height = grid::cell_line_height(cx);
         let mut view = TabularDataPreviewPane {
             grid: grid::GridState::new(window, cx),
             styles,

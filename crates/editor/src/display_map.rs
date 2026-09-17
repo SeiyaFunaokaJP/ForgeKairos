@@ -99,7 +99,7 @@ use gpui::{
     WeakEntity,
 };
 use language::{
-    LanguageAwareStyling, Point, Subscription as BufferSubscription,
+    LanguageAwareStyling, Point, Subscription as BufferSubscription, TextObject, TreeSitterOptions,
     language_settings::{AllLanguageSettings, LanguageSettings},
 };
 
@@ -1491,6 +1491,43 @@ impl<'a> HighlightedChunk<'a> {
     }
 }
 
+/// The name `crates/grammars/src/markdown/config.toml` gives the Markdown
+/// language; also what `MarkdownPreviewView::is_markdown_file` matches on.
+const MARKDOWN_LANGUAGE_NAME: &str = "Markdown";
+
+/// How much of a line is read while deciding whether it is a Markdown heading.
+/// The answer is settled by the first few characters, so a single very long
+/// line cannot make the gutter walk it in full.
+const MARKDOWN_HEADING_LINE_LIMIT: usize = 256;
+
+/// The fold a Markdown heading row offers: the heading line stays visible and
+/// its body — nested headings included — is hidden.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MarkdownHeadingFold {
+    /// The `#` count, 1 to 6.
+    pub level: u32,
+    pub range: Range<MultiBufferPoint>,
+}
+
+/// `Some(level)` when `line` is an ATX heading line, following the CommonMark
+/// rule: up to three spaces of indent, one to six `#`, then a space or the end
+/// of the line.
+fn markdown_atx_heading_level(line: &str) -> Option<u32> {
+    let after_indent = line.trim_start_matches(' ');
+    if line.len() - after_indent.len() > 3 {
+        return None;
+    }
+    let hashes = after_indent
+        .chars()
+        .take_while(|character| *character == '#')
+        .count();
+    if !(1..=6).contains(&hashes) {
+        return None;
+    }
+    let rest = after_indent.get(hashes..)?;
+    (rest.is_empty() || rest.starts_with([' ', '\t'])).then_some(hashes as u32)
+}
+
 #[derive(Clone)]
 pub struct DisplaySnapshot {
     pub display_map_id: EntityId,
@@ -2266,6 +2303,135 @@ impl DisplaySnapshot {
             .unwrap_or(false)
     }
 
+    fn markdown_line(&self, row: u32) -> String {
+        self.buffer_snapshot()
+            .chars_at(Point::new(row, 0))
+            .take_while(|character| *character != '\n')
+            .take(MARKDOWN_HEADING_LINE_LIMIT)
+            .collect()
+    }
+
+    /// `Some(level)` when `row` of a Markdown buffer is an ATX heading row.
+    ///
+    /// The language is checked per row rather than once per buffer because a
+    /// fenced code block is an injected layer of its own language, and a
+    /// comment line inside one can read as a heading.
+    fn markdown_heading_level_at(&self, row: u32) -> Option<u32> {
+        let snapshot = self.buffer_snapshot();
+        if snapshot
+            .language_at(MultiBufferPoint::new(row, 0))
+            .is_none_or(|language| language.name() != MARKDOWN_LANGUAGE_NAME)
+        {
+            return None;
+        }
+        markdown_atx_heading_level(&self.markdown_line(row))
+    }
+
+    /// Turns the extent of a `section` text object into the fold its heading
+    /// row offers.
+    fn markdown_heading_fold_extent(
+        &self,
+        heading_row: u32,
+        level: u32,
+        section_end: MultiBufferPoint,
+    ) -> Option<MarkdownHeadingFold> {
+        let snapshot = self.buffer_snapshot();
+
+        // A section ends where the next one begins, and the blank lines before
+        // that read as separating the two rather than as the body's tail, so
+        // neither is folded away.
+        let mut end_row = if section_end.column == 0 {
+            section_end.row.saturating_sub(1)
+        } else {
+            section_end.row
+        }
+        .min(snapshot.max_row().0);
+        while end_row > heading_row && snapshot.is_line_blank(MultiBufferRow(end_row)) {
+            end_row -= 1;
+        }
+        if end_row <= heading_row {
+            return None;
+        }
+
+        Some(MarkdownHeadingFold {
+            level,
+            range: MultiBufferPoint::new(
+                heading_row,
+                snapshot.line_len(MultiBufferRow(heading_row)),
+            )
+                ..MultiBufferPoint::new(end_row, snapshot.line_len(MultiBufferRow(end_row))),
+        })
+    }
+
+    /// The fold an ATX Markdown heading row offers, if any.
+    ///
+    /// Markdown has no fold query in this tree, and `starts_indent` never
+    /// matches a heading whose body is not indented (which is every ordinary
+    /// Markdown document), so the extent is taken from the `section` text
+    /// object instead. The lexical test comes first only to keep the
+    /// tree-sitter query off every non-heading row: the query is what decides,
+    /// which is why a `#` line inside a fenced code block is rejected.
+    ///
+    /// Setext headings (`===` / `---` underlines) are left out: `tree-sitter-md`
+    /// does not open a `section` for them, so there is no extent to fold.
+    pub fn markdown_heading_fold(&self, buffer_row: MultiBufferRow) -> Option<MarkdownHeadingFold> {
+        let level = self.markdown_heading_level_at(buffer_row.0)?;
+
+        let snapshot = self.buffer_snapshot();
+        let row_start_offset = MultiBufferPoint::new(buffer_row.0, 0).to_offset(snapshot);
+        let row_end_offset =
+            MultiBufferPoint::new(buffer_row.0, snapshot.line_len(buffer_row)).to_offset(snapshot);
+        let section_end = snapshot
+            .text_object_ranges(
+                row_start_offset..row_end_offset,
+                TreeSitterOptions::default(),
+            )
+            .find_map(|(range, text_object)| {
+                (text_object == TextObject::AroundClass && range.start == row_start_offset)
+                    .then_some(range.end)
+            })?
+            .to_point(snapshot);
+
+        self.markdown_heading_fold_extent(buffer_row.0, level, section_end)
+    }
+
+    /// Every ATX Markdown heading fold in the buffer, in document order.
+    ///
+    /// Folding a whole file needs every heading at once, and asking
+    /// [`Self::markdown_heading_fold`] row by row would set up one tree-sitter
+    /// query per heading; this walks the tree once instead, so a document with
+    /// thousands of headings stays a single pass.
+    pub fn markdown_heading_folds(&self) -> Vec<MarkdownHeadingFold> {
+        let snapshot = self.buffer_snapshot();
+        let mut folds = snapshot
+            .text_object_ranges(
+                MultiBufferOffset(0)..snapshot.len(),
+                TreeSitterOptions::default(),
+            )
+            .filter(|(_, text_object)| *text_object == TextObject::AroundClass)
+            .filter_map(|(range, _)| {
+                let section_start = range.start.to_point(snapshot);
+                // Sections of an injected language inside a fenced code block
+                // reach this too; a heading always starts its own line, and
+                // the level test below rejects the rest.
+                if section_start.column != 0 {
+                    return None;
+                }
+                let level = self.markdown_heading_level_at(section_start.row)?;
+                self.markdown_heading_fold_extent(
+                    section_start.row,
+                    level,
+                    range.end.to_point(snapshot),
+                )
+            })
+            .collect::<Vec<_>>();
+        // A nested section's match completes before the section enclosing it,
+        // so the query hands these back child-first rather than in the order
+        // the headings appear.
+        folds.sort_by_key(|heading| heading.range.start);
+        folds
+    }
+
     /// Returns the indent length of `row` if it starts with a closing bracket.
     fn closing_bracket_indent_len(&self, row: u32) -> Option<u32> {
         let snapshot = self.buffer_snapshot();
@@ -2327,6 +2493,16 @@ impl DisplaySnapshot {
                     render_toggle: render_toggle.clone(),
                 }),
             }
+        } else if !self.is_line_folded(MultiBufferRow(start.row))
+            && let Some(heading) = self.markdown_heading_fold(buffer_row)
+        {
+            Some(Crease::Inline {
+                range: heading.range,
+                placeholder: self.fold_placeholder.clone(),
+                render_toggle: None,
+                render_trailer: None,
+                metadata: None,
+            })
         } else if !self.use_lsp_folding_ranges
             && self.starts_indent(MultiBufferRow(start.row))
             && !self.is_line_folded(MultiBufferRow(start.row))

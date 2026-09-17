@@ -63,6 +63,7 @@
 //! 3. `postprocess::inject_css` injects CSS rules for the classes applied by
 //!    `accent_colors`
 
+pub mod flowchart_model;
 mod postprocess;
 mod render;
 
@@ -174,12 +175,71 @@ pub(crate) fn css_color(color: Hsla) -> String {
 
 pub use postprocess::util::text_color_for_background;
 
+/// Where a flowchart's nodes and edge labels ended up in the rendered SVG.
+///
+/// All rectangles are `[x, y, width, height]` in the SVG's `viewBox`
+/// coordinate system, with every enclosing `transform` already folded in, so a
+/// consumer only has to map from displayed pixels into `viewBox` units to
+/// hit-test the diagram. Only flowcharts are mapped; every other diagram kind
+/// yields an empty geometry.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DiagramGeometry {
+    /// The SVG's `viewBox`: `[min-x, min-y, width, height]`.
+    pub view_box: [f32; 4],
+    pub nodes: Vec<NodeGeometry>,
+    pub edges: Vec<EdgeGeometry>,
+}
+
+impl DiagramGeometry {
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty() && self.edges.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodeGeometry {
+    /// The node's id as written in the mermaid source, with the
+    /// `{diagram id}-flowchart-` prefix and the `-{n}` suffix that merman adds
+    /// in the SVG stripped off.
+    pub node_id: String,
+    /// The label as rendered, with each line of a multi-line label on its own
+    /// line. Empty when the node has no label of its own.
+    pub label: String,
+    /// The node's shape, in `viewBox` coordinates.
+    pub rect: [f32; 4],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EdgeGeometry {
+    /// merman's own edge id, `L_{from}_{to}_{n}`.
+    pub edge_id: String,
+    pub from: String,
+    pub to: String,
+    /// Which edge this is among those sharing the same `from` and `to`, in
+    /// source order.
+    pub occurrence: usize,
+    /// The label as rendered, or `None` for an unlabelled edge.
+    pub label: Option<String>,
+    /// The label's background box, in `viewBox` coordinates.
+    pub label_rect: Option<[f32; 4]>,
+}
+
 /// See the [module-level docs][crate] for more info.
 #[ztracing::instrument(skip_all)]
 pub fn render_to_svg(source: &str, theme: &MermaidTheme) -> Result<String> {
+    render_to_svg_with_geometry(source, theme).map(|(svg, _)| svg)
+}
+
+/// Renders like [`render_to_svg`], additionally reporting where the diagram's
+/// nodes and edge labels ended up, so a caller can map a click on the raster
+/// back to the mermaid source.
+#[ztracing::instrument(skip_all)]
+pub fn render_to_svg_with_geometry(
+    source: &str,
+    theme: &MermaidTheme,
+) -> Result<(String, DiagramGeometry)> {
     let svg = render::render_mermaid(source, theme)?;
-    let svg = postprocess::postprocess(&svg, theme)?;
-    Ok(svg)
+    postprocess::postprocess(&svg, theme)
 }
 
 #[cfg(test)]
@@ -234,5 +294,268 @@ mod tests {
                 "expected a cycle-related error, got: {message}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod geometry_tests {
+    use super::*;
+
+    fn geometry_of(source: &str) -> DiagramGeometry {
+        let (_, geometry) = render_to_svg_with_geometry(source, &MermaidTheme::default())
+            .expect("mermaid diagram should render to SVG");
+        geometry
+    }
+
+    fn contains(outer: [f32; 4], inner: [f32; 4]) -> bool {
+        inner[0] >= outer[0] - 0.5
+            && inner[1] >= outer[1] - 0.5
+            && inner[0] + inner[2] <= outer[0] + outer[2] + 0.5
+            && inner[1] + inner[3] <= outer[1] + outer[3] + 0.5
+    }
+
+    fn overlaps(a: [f32; 4], b: [f32; 4]) -> bool {
+        a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]
+    }
+
+    fn node<'a>(geometry: &'a DiagramGeometry, node_id: &str) -> &'a NodeGeometry {
+        geometry
+            .nodes
+            .iter()
+            .find(|node| node.node_id == node_id)
+            .unwrap_or_else(|| panic!("node {node_id} should be mapped in {:?}", geometry.nodes))
+    }
+
+    /// The node boxes must be absolute `viewBox` coordinates: in a
+    /// left-to-right flowchart each node sits strictly to the right of its
+    /// predecessor, which only holds if every enclosing `transform` was folded
+    /// in. Forgetting the outer translate would pile every node onto the same
+    /// local origin instead.
+    #[test]
+    fn node_boxes_are_absolute_view_box_coordinates() {
+        let geometry = geometry_of("flowchart LR\n  A[one] --> B[two] --> C[three]");
+        assert_eq!(
+            geometry
+                .nodes
+                .iter()
+                .map(|node| node.node_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A", "B", "C"]
+        );
+        let [a, b, c] = ["A", "B", "C"].map(|id| node(&geometry, id).rect);
+        assert!(a[0] + a[2] <= b[0], "{a:?} should end before {b:?}");
+        assert!(b[0] + b[2] <= c[0], "{b:?} should end before {c:?}");
+        for rect in [a, b, c] {
+            assert!(
+                rect[2] > 0.0 && rect[3] > 0.0,
+                "{rect:?} should have a size"
+            );
+            assert!(
+                contains(geometry.view_box, rect),
+                "{rect:?} should be inside {:?}",
+                geometry.view_box
+            );
+        }
+
+        let vertical = geometry_of("flowchart TD\n  A[one] --> B[two]");
+        let top = node(&vertical, "A").rect;
+        let bottom = node(&vertical, "B").rect;
+        assert!(
+            top[1] + top[3] <= bottom[1],
+            "{top:?} should end above {bottom:?}"
+        );
+    }
+
+    /// Labels, subgraphs and edge labels of a realistic Japanese diagram.
+    #[test]
+    fn geometry_maps_labels_subgraphs_and_edge_labels() {
+        let geometry = geometry_of(
+            "flowchart TD\n  A[開始] --> B{判定}\n  B -->|はい| C[処理]\n  B -- いいえ --> D((終了))\n  subgraph S[グループ]\n    C\n  end",
+        );
+
+        assert_eq!(node(&geometry, "A").label, "\u{958b}\u{59cb}");
+        assert_eq!(node(&geometry, "B").label, "\u{5224}\u{5b9a}");
+        assert_eq!(node(&geometry, "C").label, "\u{51e6}\u{7406}");
+        assert_eq!(node(&geometry, "D").label, "\u{7d42}\u{4e86}");
+        // The subgraph is a cluster, not a node, and must not be mapped.
+        assert!(geometry.nodes.iter().all(|node| node.node_id != "S"));
+
+        for (index, first) in geometry.nodes.iter().enumerate() {
+            for second in &geometry.nodes[index + 1..] {
+                assert!(
+                    !overlaps(first.rect, second.rect),
+                    "{} {:?} overlaps {} {:?}",
+                    first.node_id,
+                    first.rect,
+                    second.node_id,
+                    second.rect
+                );
+            }
+        }
+
+        let edges: Vec<_> = geometry
+            .edges
+            .iter()
+            .map(|edge| (edge.from.as_str(), edge.to.as_str(), edge.label.as_deref()))
+            .collect();
+        assert_eq!(
+            edges,
+            vec![
+                ("A", "B", None),
+                ("B", "C", Some("\u{306f}\u{3044}")),
+                ("B", "D", Some("\u{3044}\u{3044}\u{3048}")),
+            ]
+        );
+
+        for edge in &geometry.edges {
+            match (&edge.label, edge.label_rect) {
+                (Some(_), Some(rect)) => {
+                    assert!(
+                        rect[2] > 0.0 && rect[3] > 0.0,
+                        "{rect:?} should have a size"
+                    );
+                    assert!(
+                        contains(geometry.view_box, rect),
+                        "{rect:?} should be inside {:?}",
+                        geometry.view_box
+                    );
+                    // `center_edge_labels` exists so labels do not end up under
+                    // a node; a label box that does is a rendered diagram whose
+                    // text the user cannot see, let alone click.
+                    for node in &geometry.nodes {
+                        assert!(
+                            !overlaps(rect, node.rect),
+                            "edge label {rect:?} overlaps node {} {:?}",
+                            node.node_id,
+                            node.rect
+                        );
+                    }
+                }
+                (None, None) => {}
+                other => panic!("label and label_rect should agree, got {other:?}"),
+            }
+        }
+    }
+
+    /// Every flowchart node shape merman can draw has to yield a usable box,
+    /// including the ones it emits as `<path>` rather than a plain rectangle.
+    #[test]
+    fn every_node_shape_yields_a_box() {
+        let geometry = geometry_of(
+            "flowchart LR\n  A[rect] --> B(round)\n  B --> C([stadium])\n  C --> D[[subroutine]]\n  D --> E[(cylinder)]\n  E --> F((circle))\n  F --> G>asym]\n  G --> H{rhombus}\n  H --> I{{hexagon}}\n  I --> J[/para/]\n  J --> K[\\para2\\]\n  K --> L(((double)))\n  L -->|lbl| M@{ shape: rect, label: \"meta\" }",
+        );
+        let expected = [
+            ("A", "rect"),
+            ("B", "round"),
+            ("C", "stadium"),
+            ("D", "subroutine"),
+            ("E", "cylinder"),
+            ("F", "circle"),
+            ("G", "asym"),
+            ("H", "rhombus"),
+            ("I", "hexagon"),
+            ("J", "para"),
+            ("K", "para2"),
+            ("L", "double"),
+            ("M", "meta"),
+        ];
+        for (node_id, label) in expected {
+            let node = node(&geometry, node_id);
+            assert_eq!(node.label, label);
+            assert!(
+                node.rect[2] > 1.0 && node.rect[3] > 1.0,
+                "{node_id} {:?} should have a size",
+                node.rect
+            );
+            assert!(
+                contains(geometry.view_box, node.rect),
+                "{node_id} {:?} should be inside {:?}",
+                node.rect,
+                geometry.view_box
+            );
+        }
+        assert_eq!(geometry.nodes.len(), expected.len());
+    }
+
+    /// The ids the geometry is keyed by have to survive the passes that run
+    /// after it is collected, so that a merman release that renames or drops
+    /// them turns this test red rather than silently breaking hit testing.
+    #[test]
+    fn collected_ids_survive_the_remaining_passes() {
+        let (svg, geometry) = render_to_svg_with_geometry(
+            "flowchart TD\n  A[one] -->|yes| B[two]",
+            &MermaidTheme::default(),
+        )
+        .expect("mermaid diagram should render to SVG");
+
+        assert!(!geometry.nodes.is_empty());
+        for node in &geometry.nodes {
+            assert!(
+                svg.contains(&format!("-flowchart-{}-", node.node_id)),
+                "node id {} should still be in the rendered SVG",
+                node.node_id
+            );
+        }
+        for edge in &geometry.edges {
+            assert!(
+                svg.contains(&format!("data-id=\"{}\"", edge.edge_id)),
+                "edge id {} should still be in the rendered SVG",
+                edge.edge_id
+            );
+        }
+    }
+
+    /// Edge ids embed the node ids, which may themselves contain underscores.
+    #[test]
+    fn edge_endpoints_survive_underscores_in_node_ids() {
+        let geometry = geometry_of("flowchart TD\n  step_one[one] --> step_two[two]");
+        let edge = geometry.edges.first().expect("one edge");
+        assert_eq!(edge.from, "step_one");
+        assert_eq!(edge.to, "step_two");
+        assert_eq!(edge.occurrence, 0);
+    }
+
+    /// Parallel edges between the same pair are told apart by their position in
+    /// document order, which is the order they were written in. merman's own id
+    /// suffix is not that position: it counts every edge in the diagram, so the
+    /// second `A --> B` of two comes out as `L_A_B_2`.
+    #[test]
+    fn parallel_edges_are_numbered() {
+        let geometry = geometry_of("flowchart TD\n  A -->|first| B\n  A -->|second| B");
+        let occurrences: Vec<_> = geometry
+            .edges
+            .iter()
+            .map(|edge| (edge.occurrence, edge.label.as_deref()))
+            .collect();
+        assert_eq!(occurrences, vec![(0, Some("first")), (1, Some("second"))]);
+    }
+
+    /// Only flowcharts are mapped. Other diagram kinds still render, they just
+    /// come back without geometry rather than with boxes keyed by ids whose
+    /// source syntax the editing UI cannot rewrite.
+    #[test]
+    fn other_diagram_kinds_have_no_geometry() {
+        let mut rendered = 0;
+        for source in [
+            "sequenceDiagram\n  Alice->>Bob: Hi",
+            "classDiagram\n  Animal <|-- Duck",
+            "stateDiagram-v2\n  [*] --> Still",
+            "pie title Pets\n  \"Dogs\" : 386",
+            "mindmap\n  root\n    child",
+        ] {
+            // A diagram kind merman cannot render at all is not this test's
+            // concern, but enough of them have to actually render for the
+            // assertion below to mean anything.
+            let Ok((_, geometry)) = render_to_svg_with_geometry(source, &MermaidTheme::default())
+            else {
+                continue;
+            };
+            rendered += 1;
+            assert!(
+                geometry.is_empty(),
+                "{source} should have no geometry, got {geometry:?}"
+            );
+        }
+        assert!(rendered >= 3, "only {rendered} of the diagrams rendered");
     }
 }

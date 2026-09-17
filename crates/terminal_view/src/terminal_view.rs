@@ -269,6 +269,12 @@ fn macro_progress_label(name: &str, progress: MacroProgress) -> String {
             nested.kind_label
         );
     }
+    // Appended as a clause rather than another arrow: which way a 分岐 went is
+    // an annotation on the position above, and a branch may sit either side of
+    // a 繰り返し in the nesting.
+    if let Some(branch) = progress.branch {
+        detail = format!("{detail}、分岐: {}", branch.label());
+    }
     format!("マクロ「{name}」実行中 ({detail})")
 }
 
@@ -1018,6 +1024,7 @@ impl TerminalView {
                 iteration: 1,
                 iteration_count,
                 nested: None,
+                branch: None,
             },
             _task: task,
         });
@@ -3068,6 +3075,7 @@ mod tests {
             iteration: 2,
             iteration_count: Some(5),
             nested: None,
+            branch: None,
         };
         assert_eq!(
             macro_progress_label("再起動", progress),
@@ -3103,6 +3111,49 @@ mod tests {
         assert_eq!(
             macro_progress_label("巡回", endless_nested),
             "マクロ「巡回」実行中 (2/3 → 繰り返し 7 回目のステップ 2/2「画面を消去」)"
+        );
+    }
+
+    #[test]
+    fn the_progress_label_names_the_branch_a_macro_took() {
+        let progress = MacroProgress {
+            step_index: 1,
+            step_count: 3,
+            iteration: 1,
+            iteration_count: Some(1),
+            nested: None,
+            branch: Some(terminal::terminal_macro::MacroBranch::Then),
+        };
+        assert_eq!(
+            macro_progress_label("復旧", progress),
+            "マクロ「復旧」実行中 (2/3、分岐: 一致 → そのとき)"
+        );
+
+        let missed = MacroProgress {
+            branch: Some(terminal::terminal_macro::MacroBranch::Else),
+            ..progress
+        };
+        assert_eq!(
+            macro_progress_label("復旧", missed),
+            "マクロ「復旧」実行中 (2/3、分岐: 不一致 → それ以外)"
+        );
+
+        // A 分岐 inside a 繰り返し keeps both, so the strip says where the run
+        // is and which way it went.
+        let inside_a_repeat = MacroProgress {
+            nested: Some(terminal::terminal_macro::NestedProgress {
+                iteration: 2,
+                iteration_count: Some(4),
+                step_index: 0,
+                step_count: 2,
+                kind_label: "分岐",
+            }),
+            branch: Some(terminal::terminal_macro::MacroBranch::Timeout),
+            ..progress
+        };
+        assert_eq!(
+            macro_progress_label("復旧", inside_a_repeat),
+            "マクロ「復旧」実行中 (2/3 → 繰り返し 2/4 のステップ 1/2「分岐」、分岐: タイムアウト → 続行)"
         );
     }
 

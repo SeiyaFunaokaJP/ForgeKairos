@@ -5,20 +5,23 @@ use crate::{
     commit_view::CommitView,
     git_status_icon,
 };
-use collections::{BTreeMap, HashMap, IndexSet};
+use collections::{BTreeMap, BTreeSet, HashMap, HashSet, IndexSet};
 use editor::Editor;
 use file_icons::FileIcons;
 use git::{
     BuildCommitPermalinkParams, GitHostingProviderRegistry, GitRemote, Oid, ParsedGitRemote,
     parse_git_remote_url,
-    repository::{InitialGraphCommitData, LogOrder, LogSource, RepoPath, SearchCommitArgs},
+    repository::{
+        Branch, InitialGraphCommitData, LogOrder, LogSource, RepoPath, ResetMode, SearchCommitArgs,
+        TagDistance, TagInfo, Worktree as GitWorktree,
+    },
     status::{FileStatus, StatusCode, TrackedStatus},
 };
 use gpui::{
     Action, Anchor, AnyElement, App, Bounds, ClickEvent, ClipboardItem, DefiniteLength,
     DismissEvent, DragMoveEvent, ElementId, Empty, Entity, EventEmitter, FocusHandle, Focusable,
-    Hsla, MouseButton, MouseDownEvent, PathBuilder, Pixels, Point, ScrollHandle, ScrollStrategy,
-    ScrollWheelEvent, SharedString, Subscription, Task, TextStyleRefinement,
+    Hsla, Modifiers, MouseButton, MouseDownEvent, PathBuilder, Pixels, Point, ScrollHandle,
+    ScrollStrategy, ScrollWheelEvent, SharedString, Subscription, Task, TextStyleRefinement,
     UniformListScrollHandle, WeakEntity, Window, actions, anchored, deferred, point, prelude::*,
     px, uniform_list,
 };
@@ -46,12 +49,13 @@ use zed_actions::{
     search::{SelectNextMatch, SelectPreviousMatch, ToggleCaseSensitive},
 };
 
+use notifications::status_toast::StatusToast;
 use theme::AccentColors;
 use time::{OffsetDateTime, UtcOffset, format_description::BorrowedFormatItem};
 use ui::{
-    Chip, ColumnWidthConfig, CommonAnimationExt as _, ContextMenu, DiffStat, Divider,
-    HeaderResizeInfo, HighlightedLabel, IndentGuideColors, ListItem, ListItemSpacing,
-    RedistributableColumnsState, ScrollableHandle, Table, TableInteractionState,
+    Chip, ColumnWidthConfig, CommonAnimationExt as _, ContextMenu, ContextMenuEntry, DiffStat,
+    Divider, HeaderResizeInfo, HighlightedLabel, IndentGuideColors, ListItem, ListItemSpacing,
+    PopoverMenu, RedistributableColumnsState, ScrollableHandle, Table, TableInteractionState,
     TableRenderContext, TableResizeBehavior, Tooltip, WithScrollbar, bind_redistributable_columns,
     prelude::*, redistribute_hidden_fractions, redistribute_hidden_widths,
     render_redistributable_columns_resize_handles, render_table_header, table_row::TableRow,
@@ -597,6 +601,335 @@ actions!(
 #[action(namespace = git_graph)]
 pub struct OpenAtCommit {
     pub sha: String,
+}
+
+/// How many tags the toolbar's tag menu lists before it just says how many
+/// more there are; a repository can have thousands and a popover cannot.
+const TAG_MENU_LIMIT: usize = 50;
+
+/// What one of git's `%D` decorations points at. The graph shows a different
+/// icon, colour and tooltip per kind so that a tag is not mistaken for a branch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RefKind {
+    /// The branch that is checked out right now.
+    Head,
+    LocalBranch,
+    RemoteBranch,
+    Tag,
+}
+
+impl RefKind {
+    fn icon(self) -> IconName {
+        match self {
+            RefKind::Head => IconName::Check,
+            RefKind::LocalBranch => IconName::GitBranch,
+            RefKind::RemoteBranch => IconName::Server,
+            RefKind::Tag => IconName::Bookmark,
+        }
+    }
+
+    fn description(self) -> &'static str {
+        match self {
+            RefKind::Head => "現在のブランチ (今チェックアウトしているブランチ)",
+            RefKind::LocalBranch => "ローカルブランチ (この PC にあるブランチ)",
+            RefKind::RemoteBranch => "リモートブランチ (サーバー側のブランチの写し)",
+            RefKind::Tag => "タグ (特定のコミットに付けた目印)",
+        }
+    }
+
+    /// Whether the graph may move this ref, which rules out tags (they name a
+    /// fixed commit) and remote branches (they mirror the server).
+    fn is_movable_branch(self) -> bool {
+        matches!(self, RefKind::Head | RefKind::LocalBranch)
+    }
+}
+
+/// Splits `name` at the first `/` and reports whether the part before it names
+/// one of this repository's remotes. When the branch list has not loaded yet
+/// `remote_names` is empty, and only `origin/` is assumed to be a remote,
+/// because that is the name `git clone` creates.
+fn decoration_is_remote_ref(name: &str, remote_names: &[SharedString]) -> bool {
+    let Some((prefix, rest)) = name.split_once('/') else {
+        return false;
+    };
+    if prefix.is_empty() || rest.is_empty() {
+        return false;
+    }
+    if remote_names.is_empty() {
+        return prefix == "origin";
+    }
+    remote_names.iter().any(|remote| remote.as_ref() == prefix)
+}
+
+/// Classifies one decoration from git's `%D` format, returning the kind and the
+/// bare ref name. Detached `HEAD` has no ref name and yields `None`.
+fn classify_ref_decoration(
+    decoration: &str,
+    head_branch_name: Option<&str>,
+    remote_names: &[SharedString],
+) -> Option<(RefKind, SharedString)> {
+    let decoration = decoration.trim();
+    if let Some(tag_name) = decoration.strip_prefix("tag: ") {
+        let tag_name = tag_name.trim();
+        if tag_name.is_empty() {
+            return None;
+        }
+        return Some((RefKind::Tag, SharedString::from(tag_name.to_string())));
+    }
+    if let Some(branch_name) = decoration.strip_prefix("HEAD -> ") {
+        let branch_name = branch_name.trim();
+        if branch_name.is_empty() {
+            return None;
+        }
+        return Some((RefKind::Head, SharedString::from(branch_name.to_string())));
+    }
+    if decoration.is_empty() || decoration == "HEAD" {
+        return None;
+    }
+
+    let kind = if head_branch_name == Some(decoration) {
+        RefKind::Head
+    } else if decoration_is_remote_ref(decoration, remote_names) {
+        RefKind::RemoteBranch
+    } else {
+        RefKind::LocalBranch
+    };
+    Some((kind, SharedString::from(decoration.to_string())))
+}
+
+/// Which remotes this repository has, taken from the cached branch list so that
+/// classifying a chip never has to wait on git.
+fn remote_names_from_branches(branches: &[Branch]) -> Vec<SharedString> {
+    let mut names: Vec<SharedString> = Vec::new();
+    for branch in branches {
+        let Some(remote_name) = branch.remote_name() else {
+            continue;
+        };
+        if names.iter().any(|name| name.as_ref() == remote_name) {
+            continue;
+        }
+        names.push(SharedString::from(remote_name.to_string()));
+    }
+    names
+}
+
+/// How a click changes the set of picked rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SelectionGesture {
+    /// A plain click: only the clicked row stays picked.
+    Replace,
+    /// Ctrl (Cmd on macOS) click: add or remove the clicked row.
+    Toggle,
+    /// Shift click: pick everything between the anchor and the clicked row.
+    Range,
+}
+
+impl SelectionGesture {
+    fn from_modifiers(modifiers: &Modifiers) -> Self {
+        if modifiers.shift {
+            SelectionGesture::Range
+        } else if modifiers.secondary() {
+            SelectionGesture::Toggle
+        } else {
+            SelectionGesture::Replace
+        }
+    }
+}
+
+/// Applies `gesture` to the picked rows, returning the new set and the new
+/// anchor for a following shift-click. The set is never left empty: the detail
+/// panel always shows the row that was clicked last.
+fn apply_selection_gesture(
+    selection: &BTreeSet<usize>,
+    anchor: Option<usize>,
+    idx: usize,
+    gesture: SelectionGesture,
+) -> (BTreeSet<usize>, usize) {
+    match gesture {
+        SelectionGesture::Replace => (BTreeSet::from_iter([idx]), idx),
+        SelectionGesture::Toggle => {
+            let mut selection = selection.clone();
+            if !selection.remove(&idx) {
+                selection.insert(idx);
+            } else if selection.is_empty() {
+                selection.insert(idx);
+            }
+            (selection, idx)
+        }
+        SelectionGesture::Range => {
+            let Some(anchor) = anchor else {
+                return (BTreeSet::from_iter([idx]), idx);
+            };
+            let range = if anchor <= idx {
+                anchor..=idx
+            } else {
+                idx..=anchor
+            };
+            (range.collect(), anchor)
+        }
+    }
+}
+
+/// Whether the picked rows are one unbroken chain of commits, which is what
+/// `squash_range` needs: reading from the newest picked row down, every commit
+/// but the oldest must have exactly one parent, and that parent must be the
+/// next picked row. A merge commit in the middle therefore breaks the chain.
+fn is_contiguous_commit_range(commits: &[Rc<CommitEntry>], rows: &BTreeSet<usize>) -> bool {
+    if rows.is_empty() {
+        return false;
+    }
+    if rows.iter().any(|row| *row >= commits.len()) {
+        return false;
+    }
+    rows.iter().zip(rows.iter().skip(1)).all(|(child, parent)| {
+        let Some(child) = commits.get(*child) else {
+            return false;
+        };
+        let Some(parent) = commits.get(*parent) else {
+            return false;
+        };
+        child.data.parents.as_slice() == [parent.data.sha]
+    })
+}
+
+/// Whether `target` can be reached from `from` by following parents through the
+/// commits the graph has loaded.
+///
+/// `squash_range` rewrites whichever branch is checked out, so a range that is
+/// not on it would replay unrelated commits onto a new root. Commits that have
+/// not been loaded yet end the walk, which makes this answer "no" rather than
+/// guess.
+fn commit_reaches(commits: &[Rc<CommitEntry>], from: Oid, target: Oid) -> bool {
+    let mut index_by_sha = HashMap::default();
+    for (index, commit) in commits.iter().enumerate() {
+        index_by_sha.insert(commit.data.sha, index);
+    }
+    let mut visited = HashSet::default();
+    let mut pending = vec![from];
+    while let Some(current) = pending.pop() {
+        if current == target {
+            return true;
+        }
+        if !visited.insert(current) {
+            continue;
+        }
+        let Some(commit) = index_by_sha
+            .get(&current)
+            .and_then(|index| commits.get(*index))
+        else {
+            continue;
+        };
+        pending.extend(commit.data.parents.iter().copied());
+    }
+    false
+}
+
+/// The other worktree that has `branch` checked out, if there is one.
+///
+/// `git branch -f` refuses to move a branch in that state, and `update_ref`
+/// does not: it would leave that worktree's index and files describing a commit
+/// its branch no longer names. `worktrees` is the repository's linked
+/// worktrees, which already excludes the one the graph is looking at.
+fn worktree_holding_branch<'a>(
+    worktrees: &'a [GitWorktree],
+    branch: &str,
+) -> Option<&'a GitWorktree> {
+    worktrees.iter().find(|worktree| {
+        worktree.ref_name.as_ref().is_some_and(|ref_name| {
+            let ref_name = ref_name.as_ref();
+            ref_name == branch || ref_name.strip_prefix("refs/heads/") == Some(branch)
+        })
+    })
+}
+
+/// A commit row being dragged onto a ref chip.
+#[derive(Clone)]
+struct DraggedCommit {
+    sha: Oid,
+    subject: SharedString,
+}
+
+/// A ref chip being dragged onto a commit row.
+#[derive(Clone)]
+struct DraggedRef {
+    name: SharedString,
+    kind: RefKind,
+}
+
+/// What follows the pointer while a commit or a ref is dragged.
+struct DraggedGraphLabel {
+    icon: IconName,
+    text: SharedString,
+}
+
+impl Render for DraggedGraphLabel {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .gap_1()
+            .px_1p5()
+            .py_0p5()
+            .rounded_sm()
+            .elevation_2(cx)
+            .child(
+                Icon::new(self.icon)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted),
+            )
+            .child(Label::new(self.text.clone()).size(LabelSize::Small))
+    }
+}
+
+/// One side of a drag inside the graph.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum GraphDragEnd {
+    Commit(Oid),
+    Ref { name: SharedString, kind: RefKind },
+}
+
+/// What dropping one thing on another is going to do. The graph asks for
+/// confirmation before running any of these.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum GraphDropAction {
+    /// The drop target is the branch that is already checked out.
+    CherryPickOntoHead { sha: Oid, branch: SharedString },
+    /// The drop target is another local branch, so it has to be checked out first.
+    CherryPickAfterSwitch { sha: Oid, branch: SharedString },
+    /// Moving the checked-out branch also moves the index and working tree.
+    ResetHeadBranch { branch: SharedString, sha: Oid },
+    /// Another branch can be re-pointed without touching the working tree.
+    MoveBranchRef { branch: SharedString, sha: Oid },
+}
+
+/// Resolves a drag and a drop target into the git operation they stand for, or
+/// `None` when the combination means nothing (a tag or a remote branch cannot
+/// be moved, and nothing can be dropped onto itself).
+fn graph_drop_action(dragged: &GraphDragEnd, target: &GraphDragEnd) -> Option<GraphDropAction> {
+    match (dragged, target) {
+        (GraphDragEnd::Commit(sha), GraphDragEnd::Ref { name, kind }) => match kind {
+            RefKind::Head => Some(GraphDropAction::CherryPickOntoHead {
+                sha: *sha,
+                branch: name.clone(),
+            }),
+            RefKind::LocalBranch => Some(GraphDropAction::CherryPickAfterSwitch {
+                sha: *sha,
+                branch: name.clone(),
+            }),
+            RefKind::RemoteBranch | RefKind::Tag => None,
+        },
+        (GraphDragEnd::Ref { name, kind }, GraphDragEnd::Commit(sha)) => match kind {
+            RefKind::Head => Some(GraphDropAction::ResetHeadBranch {
+                branch: name.clone(),
+                sha: *sha,
+            }),
+            RefKind::LocalBranch => Some(GraphDropAction::MoveBranchRef {
+                branch: name.clone(),
+                sha: *sha,
+            }),
+            RefKind::RemoteBranch | RefKind::Tag => None,
+        },
+        (GraphDragEnd::Commit(_), GraphDragEnd::Commit(_))
+        | (GraphDragEnd::Ref { .. }, GraphDragEnd::Ref { .. }) => None,
+    }
 }
 
 fn timestamp_format() -> &'static [BorrowedFormatItem<'static>] {
@@ -1329,11 +1662,29 @@ pub struct GitGraph {
     changed_files_view_mode: ChangedFilesViewMode,
     changed_files_expanded_dirs: HashMap<RepoPath, bool>,
     pending_select_sha: Option<Oid>,
+    /// Rows picked with Ctrl / Shift click. Always contains
+    /// `selected_entry_idx` while anything is picked; empty means the graph is
+    /// back to single selection.
+    multi_selection: BTreeSet<usize>,
+    /// Where the next Shift click measures its range from.
+    selection_anchor_idx: Option<usize>,
+    /// `git describe` for the selected commit, so the detail panel can name the
+    /// tag it came after. The `Oid` is what the answer was asked for.
+    selected_commit_tag_distance: Option<(Oid, Option<TagDistance>)>,
+    _selected_commit_tag_distance_task: Option<Task<()>>,
+    /// The repository's tags, loaded the first time the tag menu is opened.
+    tags: Option<Vec<TagInfo>>,
+    _tags_task: Option<Task<()>>,
 }
 
 impl GitGraph {
     fn invalidate_state(&mut self, cx: &mut Context<Self>) {
         self.graph_data.clear();
+        self.multi_selection.clear();
+        self.selection_anchor_idx = None;
+        self.tags = None;
+        self._tags_task = None;
+        self.selected_commit_tag_distance = None;
         self.search_state.matches.clear();
         self.search_state.selected_index = None;
         self.search_state.state.next_state();
@@ -1575,6 +1926,12 @@ impl GitGraph {
             changed_files_view_mode: ChangedFilesViewMode::default(),
             changed_files_expanded_dirs: HashMap::default(),
             pending_select_sha: None,
+            multi_selection: BTreeSet::default(),
+            selection_anchor_idx: None,
+            selected_commit_tag_distance: None,
+            _selected_commit_tag_distance_task: None,
+            tags: None,
+            _tags_task: None,
         };
 
         this.fetch_initial_graph_data(cx);
@@ -1690,48 +2047,48 @@ impl GitGraph {
         git_store.repositories().get(&self.repo_id).cloned()
     }
 
-    /// Checks whether a ref name from git's `%D` decoration
-    ///  format refers to the currently checked-out branch.
-    fn is_head_ref(ref_name: &str, head_branch_name: &Option<SharedString>) -> bool {
-        head_branch_name.as_ref().is_some_and(|head| {
-            ref_name == head.as_ref() || ref_name.strip_prefix("HEAD -> ") == Some(head.as_ref())
-        })
-    }
-
-    /// Extracts a ref name (branch, remote ref, or tag) from a decoration in
-    /// git's `%D` format, returning `None` for a detached `HEAD`.
-    fn ref_name_from_decoration(decoration: &str) -> Option<SharedString> {
-        let name = decoration
-            .strip_prefix("tag: ")
-            .or_else(|| decoration.strip_prefix("HEAD -> "))
-            .unwrap_or(decoration);
-        if name.is_empty() || name == "HEAD" {
-            return None;
-        }
-        Some(SharedString::from(name.to_string()))
-    }
-
+    /// Renders one ref chip. The icon, colour and tooltip come from `kind` so
+    /// that a tag, a remote branch and the checked-out branch cannot be
+    /// confused with one another.
     fn render_chip(
         &self,
         name: &SharedString,
         accent_color: gpui::Hsla,
-        is_head: bool,
+        kind: Option<RefKind>,
+        cx: &App,
     ) -> impl IntoElement {
+        let tooltip_text: SharedString = match kind {
+            Some(kind) => format!("{name} — {}", kind.description()).into(),
+            None => name.clone(),
+        };
+        let tag_color = Color::Created.color(cx);
         Chip::new(name.clone())
             .label_size(LabelSize::Small)
             .truncate()
-            .tooltip({
-                let name = name.clone();
-                move |_, cx| Tooltip::simple(name.clone(), cx)
-            })
+            .tooltip(move |_, cx| Tooltip::simple(tooltip_text.clone(), cx))
             .map(|chip| {
-                if is_head {
-                    chip.icon(IconName::Check)
+                let Some(kind) = kind else {
+                    return chip
+                        .bg_color(accent_color.opacity(0.08))
+                        .border_color(accent_color.opacity(0.25));
+                };
+                let chip = chip.icon(kind.icon());
+                match kind {
+                    RefKind::Head => chip
                         .bg_color(accent_color.opacity(0.25))
-                        .border_color(accent_color.opacity(0.5))
-                } else {
-                    chip.bg_color(accent_color.opacity(0.08))
-                        .border_color(accent_color.opacity(0.25))
+                        .border_color(accent_color.opacity(0.5)),
+                    RefKind::LocalBranch => chip
+                        .bg_color(accent_color.opacity(0.08))
+                        .border_color(accent_color.opacity(0.25)),
+                    RefKind::RemoteBranch => chip
+                        .icon_color(Color::Muted)
+                        .label_color(Color::Muted)
+                        .bg_color(accent_color.opacity(0.04))
+                        .border_color(accent_color.opacity(0.14)),
+                    RefKind::Tag => chip
+                        .icon_color(Color::Created)
+                        .bg_color(tag_color.opacity(0.1))
+                        .border_color(tag_color.opacity(0.3)),
                 }
             })
     }
@@ -1739,22 +2096,64 @@ impl GitGraph {
     /// Renders a ref chip for the commit at `commit_idx`. Chips that name a ref
     /// (branch, remote ref, or tag) get a right-click handler that opens a
     /// ref-specific context menu, so that custom commands can be resolved
-    /// against the clicked ref.
+    /// against the clicked ref. A branch chip is also the handle for dragging
+    /// the branch onto another commit, and a drop target for a dragged commit.
     fn render_ref_chip(
         &self,
-        name: &SharedString,
+        decoration: &SharedString,
         accent_color: gpui::Hsla,
-        is_head: bool,
+        head_branch_name: Option<&str>,
+        remote_names: &[SharedString],
         commit_idx: usize,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let chip = self.render_chip(name, accent_color, is_head);
-        let Some(ref_name) = Self::ref_name_from_decoration(name) else {
+        let classified =
+            classify_ref_decoration(decoration.as_ref(), head_branch_name, remote_names);
+        let chip = self.render_chip(
+            decoration,
+            accent_color,
+            classified.as_ref().map(|(kind, _)| *kind),
+            cx,
+        );
+        let Some((kind, ref_name)) = classified else {
             return chip.into_any_element();
         };
+        let movable = kind.is_movable_branch();
         div()
+            .id(ElementId::NamedInteger(
+                SharedString::from(format!("ref-chip-{ref_name}")),
+                commit_idx as u64,
+            ))
             .min_w_0()
             .child(chip)
+            .when(movable, |this| {
+                let dragged = DraggedRef {
+                    name: ref_name.clone(),
+                    kind,
+                };
+                this.on_drag(dragged, |dragged: &DraggedRef, _, _, cx| {
+                    let icon = dragged.kind.icon();
+                    let text = dragged.name.clone();
+                    cx.new(|_| DraggedGraphLabel { icon, text })
+                })
+                .drag_over::<DraggedCommit>(|style, _, _, cx| {
+                    style.bg(cx.theme().colors().drop_target_background)
+                })
+                .on_drop(cx.listener({
+                    let ref_name = ref_name.clone();
+                    move |this, dragged: &DraggedCommit, window, cx| {
+                        this.handle_graph_drop(
+                            GraphDragEnd::Commit(dragged.sha),
+                            GraphDragEnd::Ref {
+                                name: ref_name.clone(),
+                                kind,
+                            },
+                            window,
+                            cx,
+                        );
+                    }
+                }))
+            })
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
@@ -1786,6 +2185,7 @@ impl GitGraph {
                 .as_ref()
                 .map(|branch| SharedString::from(branch.name().to_string()))
         });
+        let remote_names = self.remote_names(cx);
 
         let row_height = Self::row_height(window, cx);
 
@@ -1853,6 +2253,10 @@ impl GitGraph {
                         .into_any_element()
                 };
 
+                let dragged_commit = DraggedCommit {
+                    sha: commit.data.sha,
+                    subject: subject.clone(),
+                };
                 let subject_label = if is_matched {
                     let query = match &self.search_state.state {
                         QueryState::Confirmed((query, _)) => Some(query.clone()),
@@ -1902,19 +2306,45 @@ impl GitGraph {
                                 .children((!commit.data.ref_names.is_empty()).then(|| {
                                     h_flex().gap_1().children(commit.data.ref_names.iter().map(
                                         |name| {
-                                            let is_head =
-                                                Self::is_head_ref(name.as_ref(), &head_branch_name);
                                             self.render_ref_chip(
                                                 name,
                                                 accent_color,
-                                                is_head,
+                                                head_branch_name.as_deref(),
+                                                &remote_names,
                                                 idx,
                                                 cx,
                                             )
                                         },
                                     ))
                                 }))
-                                .child(subject_label),
+                                // The subject is the drag handle for the commit
+                                // itself, so that dragging a ref chip inside the
+                                // same cell stays unambiguous.
+                                .child(
+                                    div()
+                                        .id(ElementId::NamedInteger(
+                                            "commit-drag-handle".into(),
+                                            idx as u64,
+                                        ))
+                                        .flex_1()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .on_drag(
+                                            dragged_commit,
+                                            |dragged: &DraggedCommit, _, _, cx| {
+                                                let text = SharedString::from(format!(
+                                                    "{} {}",
+                                                    dragged.sha.display_short(),
+                                                    dragged.subject
+                                                ));
+                                                cx.new(|_| DraggedGraphLabel {
+                                                    icon: IconName::GitCommit,
+                                                    text,
+                                                })
+                                            },
+                                        )
+                                        .child(subject_label),
+                                ),
                         )
                         .into_any_element(),
                     column_label(formatted_time.into()),
@@ -1927,6 +2357,9 @@ impl GitGraph {
 
     fn cancel(&mut self, _: &Cancel, _window: &mut Window, cx: &mut Context<Self>) {
         self.selected_entry_idx = None;
+        self.multi_selection.clear();
+        self.selection_anchor_idx = None;
+        self.selected_commit_tag_distance = None;
         self.selected_commit_diff = None;
         self.selected_commit_diff_stats = None;
         self.changed_files_expanded_dirs.clear();
@@ -2131,6 +2564,10 @@ impl GitGraph {
         }
 
         self.selected_entry_idx = Some(idx);
+        if !self.multi_selection.contains(&idx) {
+            self.multi_selection.clear();
+            self.selection_anchor_idx = Some(idx);
+        }
         self.selected_commit_diff = None;
         self.selected_commit_diff_stats = None;
         self.changed_files_expanded_dirs.clear();
@@ -2167,6 +2604,8 @@ impl GitGraph {
                 .ok();
             }
         }));
+
+        self.refresh_selected_commit_tag_distance(cx);
 
         cx.emit(ItemEvent::Edit);
         cx.notify();
@@ -2720,6 +3159,7 @@ impl GitGraph {
             .branch
             .as_ref()
             .map(|branch| SharedString::from(branch.name().to_string()));
+        let remote_names = self.remote_names(cx);
 
         let accent_colors = cx.theme().accents();
         let accent_color = accent_colors
@@ -2871,11 +3311,18 @@ impl GitGraph {
                     .children((!ref_names.is_empty()).then(|| {
                         h_flex().gap_1().flex_wrap().justify_center().children(
                             ref_names.iter().map(|name| {
-                                let is_head = Self::is_head_ref(name.as_ref(), &head_branch_name);
-                                self.render_ref_chip(name, accent_color, is_head, selected_idx, cx)
+                                self.render_ref_chip(
+                                    name,
+                                    accent_color,
+                                    head_branch_name.as_deref(),
+                                    &remote_names,
+                                    selected_idx,
+                                    cx,
+                                )
                             }),
                         )
                     }))
+                    .child(self.render_latest_tag_row(commit_entry.data.sha))
                     .child(
                         v_flex()
                             .ml_neg_1()
@@ -3513,9 +3960,34 @@ impl GitGraph {
             focus_handle.focus(window, cx);
         }
 
-        self.select_entry(entry_idx, scroll_strategy, cx);
+        if entry_idx >= self.graph_data.commits.len() {
+            return;
+        }
 
-        if event.click_count() >= 2 {
+        let gesture = SelectionGesture::from_modifiers(&event.modifiers());
+        let (selection, anchor) = apply_selection_gesture(
+            &self.multi_selection,
+            self.selection_anchor_idx,
+            entry_idx,
+            gesture,
+        );
+        // Toggling a row off leaves the clicked row unpicked, so the details
+        // panel follows whichever picked row is newest instead.
+        let current = if selection.contains(&entry_idx) {
+            entry_idx
+        } else {
+            selection.iter().next().copied().unwrap_or(entry_idx)
+        };
+        self.multi_selection = if selection.len() > 1 {
+            selection
+        } else {
+            BTreeSet::default()
+        };
+        self.selection_anchor_idx = Some(anchor);
+        self.select_entry(current, scroll_strategy, cx);
+        cx.notify();
+
+        if event.click_count() >= 2 && gesture == SelectionGesture::Replace {
             self.open_commit_view(entry_idx, window, cx);
         }
     }
@@ -3538,7 +4010,11 @@ impl GitGraph {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.deploy_entry_context_menu(event.position, entry_idx, None, window, cx);
+        if self.multi_selection.len() > 1 && self.multi_selection.contains(&entry_idx) {
+            self.deploy_multi_selection_menu(event.position, window, cx);
+        } else {
+            self.deploy_entry_context_menu(event.position, entry_idx, None, window, cx);
+        }
         cx.stop_propagation();
     }
 
@@ -3713,6 +4189,1085 @@ impl GitGraph {
             )
             .into_any_element()
     }
+
+    /// The detail panel's 「直近のタグ」 line: which tag this commit came after
+    /// and how many commits have landed since, which is the usual way to find
+    /// the previous release from a commit.
+    fn render_latest_tag_row(&self, sha: Oid) -> impl IntoElement {
+        let text: SharedString = match &self.selected_commit_tag_distance {
+            Some((loaded_sha, described)) if *loaded_sha == sha => match described {
+                Some(distance) if distance.commits_since == 0 => {
+                    format!("直近のタグ: {} (このコミット自身)", distance.tag).into()
+                }
+                Some(distance) => format!(
+                    "直近のタグ: {} ({} コミット前)",
+                    distance.tag, distance.commits_since
+                )
+                .into(),
+                None => "直近のタグ: タグなし".into(),
+            },
+            _ => "直近のタグ: 確認中…".into(),
+        };
+        h_flex().w_full().justify_center().child(
+            Label::new(text)
+                .size(LabelSize::Small)
+                .color(Color::Muted)
+                .truncate(),
+        )
+    }
+
+    /// The remotes this repository knows about, derived from the cached branch
+    /// list so that rendering a chip never waits on git.
+    fn remote_names(&self, cx: &App) -> Vec<SharedString> {
+        self.get_repository(cx)
+            .map(|repository| {
+                remote_names_from_branches(&repository.read(cx).snapshot().branch_list)
+            })
+            .unwrap_or_default()
+    }
+
+    fn head_branch_name(&self, cx: &App) -> Option<SharedString> {
+        self.get_repository(cx).and_then(|repository| {
+            repository
+                .read(cx)
+                .snapshot()
+                .branch
+                .as_ref()
+                .map(|branch| SharedString::from(branch.name().to_string()))
+        })
+    }
+
+    /// Every ref the comparison picker can offer: local branches first (the
+    /// ones people compare most), then remote branches, then tags.
+    fn comparable_refs(&self, cx: &App) -> Vec<SharedString> {
+        let Some(repository) = self.get_repository(cx) else {
+            return Vec::new();
+        };
+        let snapshot = repository.read(cx).snapshot();
+        let mut local = Vec::new();
+        let mut remote = Vec::new();
+        for branch in snapshot.branch_list.iter() {
+            let name = SharedString::from(branch.name().to_string());
+            if branch.is_remote() {
+                remote.push(name);
+            } else {
+                local.push(name);
+            }
+        }
+        local.extend(remote);
+        local.extend(
+            self.tags
+                .iter()
+                .flatten()
+                .map(|tag| SharedString::from(tag.name.clone())),
+        );
+        local
+    }
+
+    /// Reloads the tag list behind the toolbar's tag menu. Tags change rarely,
+    /// so this only runs when the menu is opened or the graph is invalidated.
+    fn load_tags(&mut self, cx: &mut Context<Self>) {
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+        let receiver = repository.update(cx, |repository, _cx| repository.tags());
+        self._tags_task = Some(cx.spawn(async move |this, cx| {
+            let tags = match receiver.await {
+                Ok(Ok(tags)) => tags,
+                Ok(Err(error)) => {
+                    log::warn!("failed to list git tags: {error:#}");
+                    Vec::new()
+                }
+                Err(_) => return,
+            };
+            this.update(cx, |this, cx| {
+                this.tags = Some(tags);
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    /// Asks git which tag the selected commit came after, for the detail
+    /// panel's 「直近のタグ」 line.
+    fn refresh_selected_commit_tag_distance(&mut self, cx: &mut Context<Self>) {
+        let Some(sha) = self
+            .selected_entry_idx
+            .and_then(|idx| self.graph_data.commits.get(idx))
+            .map(|commit| commit.data.sha)
+        else {
+            self.selected_commit_tag_distance = None;
+            self._selected_commit_tag_distance_task = None;
+            return;
+        };
+        if self
+            .selected_commit_tag_distance
+            .as_ref()
+            .is_some_and(|(loaded_sha, _)| *loaded_sha == sha)
+        {
+            return;
+        }
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+        self.selected_commit_tag_distance = None;
+        let receiver =
+            repository.update(cx, |repository, _cx| repository.describe(sha.to_string()));
+        self._selected_commit_tag_distance_task = Some(cx.spawn(async move |this, cx| {
+            let described = match receiver.await {
+                Ok(Ok(described)) => described,
+                Ok(Err(error)) => {
+                    log::warn!("git describe failed: {error:#}");
+                    None
+                }
+                Err(_) => return,
+            };
+            this.update(cx, |this, cx| {
+                this.selected_commit_tag_distance = Some((sha, described));
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    fn set_log_source(&mut self, log_source: LogSource, cx: &mut Context<Self>) {
+        if self.log_source == log_source {
+            return;
+        }
+        // The file-history layout has no graph column, and the column widths
+        // were sized for it when the tab was created, so a tab cannot move
+        // between the two layouts.
+        if matches!(self.log_source, LogSource::Path(_)) != matches!(log_source, LogSource::Path(_))
+        {
+            return;
+        }
+        self.log_source = log_source;
+        self.selected_entry_idx = None;
+        self.multi_selection.clear();
+        self.selection_anchor_idx = None;
+        self.selected_commit_diff = None;
+        self.selected_commit_diff_stats = None;
+        self.selected_commit_message = None;
+        self._selected_commit_message_task = None;
+        self.selected_commit_tag_distance = None;
+        self.invalidate_state(cx);
+        self.fetch_initial_graph_data(cx);
+        cx.emit(ItemEvent::Edit);
+        cx.notify();
+    }
+
+    /// Shows what git said about an operation. A non-zero exit status is git
+    /// declining (a conflict, a dirty worktree); an `Err` means the command
+    /// could not run at all.
+    fn report_git_result(
+        &self,
+        headline: &str,
+        result: Result<
+            anyhow::Result<git::repository::GitCommandOutput>,
+            futures::channel::oneshot::Canceled,
+        >,
+        cx: &mut App,
+    ) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let (message, failed) = match result {
+            Ok(Ok(output)) if output.succeeded() => (format!("{headline}: 完了しました"), false),
+            Ok(Ok(output)) => (
+                format!("{headline}に失敗しました\n{}", output.failure_message()),
+                true,
+            ),
+            Ok(Err(error)) => (format!("{headline}を実行できませんでした\n{error:#}"), true),
+            Err(_) => return,
+        };
+        workspace.update(cx, |workspace, cx| {
+            let toast = StatusToast::new(message, cx, move |this, _cx| {
+                this.icon(
+                    Icon::new(if failed {
+                        IconName::XCircle
+                    } else {
+                        IconName::GitBranch
+                    })
+                    .size(IconSize::Small)
+                    .color(if failed { Color::Error } else { Color::Muted }),
+                )
+                .dismiss_button(true)
+            });
+            workspace.toggle_status_toast(toast, cx);
+        });
+    }
+
+    /// The picked rows, newest first, as the graph shows them.
+    fn selected_rows(&self) -> Vec<usize> {
+        if self.multi_selection.is_empty() {
+            self.selected_entry_idx.into_iter().collect()
+        } else {
+            self.multi_selection.iter().copied().collect()
+        }
+    }
+
+    /// The picked commits in the order git wants for `cherry-pick`: oldest
+    /// first. Graph rows run newest first, so this reverses them.
+    fn selected_shas_oldest_first(&self) -> Vec<String> {
+        self.selected_rows()
+            .into_iter()
+            .rev()
+            .filter_map(|row| self.graph_data.commits.get(row))
+            .map(|commit| commit.data.sha.to_string())
+            .collect()
+    }
+
+    /// The picked commits' subjects, oldest first, which is what the single
+    /// commit that replaces them says by default. A subject that git has not
+    /// handed over yet is left out; both callers let the user edit or confirm
+    /// the message before it is used.
+    fn selected_subjects_oldest_first(&mut self, cx: &mut Context<Self>) -> Vec<String> {
+        let shas = self
+            .selected_rows()
+            .into_iter()
+            .rev()
+            .filter_map(|row| self.graph_data.commits.get(row))
+            .map(|commit| commit.data.sha)
+            .collect::<Vec<_>>();
+        let Some(repository) = self.get_repository(cx) else {
+            return Vec::new();
+        };
+        repository.update(cx, |repository, cx| {
+            shas.iter()
+                .filter_map(|sha| match repository.fetch_commit_data(*sha, false, cx) {
+                    CommitDataState::Loaded(data) => Some(data.subject.to_string()),
+                    CommitDataState::Loading(_) => None,
+                })
+                .collect()
+        })
+    }
+
+    /// Whether the newest picked row sits on the branch that is checked out.
+    /// `squash_range` rewrites that branch, so squashing commits that belong to
+    /// some other branch shown by 「すべてのブランチ」 would rewrite the wrong
+    /// history.
+    fn selection_is_on_current_branch(&self, cx: &App) -> bool {
+        let Some(newest) = self
+            .selected_rows()
+            .first()
+            .and_then(|row| self.graph_data.commits.get(*row))
+            .map(|commit| commit.data.sha)
+        else {
+            return false;
+        };
+        let Some(head_sha) = self.get_repository(cx).and_then(|repository| {
+            repository
+                .read(cx)
+                .snapshot()
+                .head_commit
+                .as_ref()
+                .and_then(|commit| Oid::try_from(commit.sha.as_ref()).ok())
+        }) else {
+            return false;
+        };
+        commit_reaches(&self.graph_data.commits, head_sha, newest)
+    }
+
+    /// Refuses an operation that rewrites history while the working tree still
+    /// has uncommitted changes, which is the most common way for it to fail
+    /// half-way and leave a beginner stuck.
+    fn worktree_is_dirty(&self, cx: &App) -> bool {
+        self.get_repository(cx).is_some_and(|repository| {
+            repository
+                .read(cx)
+                .cached_status()
+                .any(|entry| entry.status.has_changes())
+        })
+    }
+
+    fn cherry_pick_rows(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let shas = self.selected_shas_oldest_first();
+        if shas.is_empty() {
+            return;
+        }
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+        let detail = format!(
+            "選んだ {} 件のコミットの変更を、現在のブランチの先頭に新しいコミットとして積みます (cherry-pick)。",
+            shas.len()
+        );
+        let confirmation = window.prompt(
+            gpui::PromptLevel::Info,
+            "選択したコミットを現在のブランチに取り込みますか?",
+            Some(&detail),
+            &["取り込む", "キャンセル"],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if confirmation.await.unwrap_or(1) != 0 {
+                return;
+            }
+            let receiver =
+                repository.update(cx, |repository, cx| repository.cherry_pick(shas, false, cx));
+            let result = receiver.await;
+            this.update(cx, |this, cx| {
+                this.report_git_result("コミットの取り込み (cherry-pick)", result, cx);
+                this.invalidate_state(cx);
+                this.fetch_initial_graph_data(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn squash_rows(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let rows: BTreeSet<usize> = self.selected_rows().into_iter().collect();
+        if rows.len() < 2
+            || !is_contiguous_commit_range(&self.graph_data.commits, &rows)
+            || !self.selection_is_on_current_branch(cx)
+        {
+            return;
+        }
+        let (Some(newest), Some(oldest)) = (rows.iter().next(), rows.iter().next_back()) else {
+            return;
+        };
+        let (Some(newest), Some(oldest)) = (
+            self.graph_data.commits.get(*newest),
+            self.graph_data.commits.get(*oldest),
+        ) else {
+            return;
+        };
+        let newest_sha = newest.data.sha.to_string();
+        let oldest_sha = oldest.data.sha.to_string();
+        if self.worktree_is_dirty(cx) {
+            self.report_dirty_worktree("まとめる (squash)", cx);
+            return;
+        }
+        // The squashed commit keeps what the picked commits said, so that the
+        // messages are not thrown away without the user ever seeing them.
+        let subjects = self.selected_subjects_oldest_first(cx);
+        let message = if subjects.is_empty() {
+            format!("{} 件のコミットをまとめました", rows.len())
+        } else {
+            subjects.join("\n")
+        };
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+        let detail = format!(
+            "{} 件のコミットが 1 つになり、それぞれの SHA は変わります (squash)。\nまとめた後のメッセージ: {}",
+            rows.len(),
+            message.lines().next().unwrap_or_default()
+        );
+        let confirmation = window.prompt(
+            gpui::PromptLevel::Warning,
+            "選択したコミットを 1 つにまとめますか?",
+            Some(&detail),
+            &["まとめる", "キャンセル"],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if confirmation.await.unwrap_or(1) != 0 {
+                return;
+            }
+            let receiver = repository.update(cx, |repository, cx| {
+                repository.squash_range(oldest_sha, newest_sha, message, cx)
+            });
+            let result = receiver.await;
+            this.update(cx, |this, cx| {
+                this.report_git_result("コミットをまとめる (squash)", result, cx);
+                this.invalidate_state(cx);
+                this.fetch_initial_graph_data(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn report_dirty_worktree(&self, operation: &str, cx: &mut App) {
+        self.report_refused(
+            format!("{operation}の前に、未コミットの変更をコミットかスタッシュしてください。"),
+            cx,
+        );
+    }
+
+    /// Says why the graph did not run an operation the user asked for.
+    fn report_refused(&self, message: String, cx: &mut App) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        workspace.update(cx, |workspace, cx| {
+            let toast = StatusToast::new(message, cx, |this, _cx| {
+                this.icon(
+                    Icon::new(IconName::Warning)
+                        .size(IconSize::Small)
+                        .color(Color::Warning),
+                )
+                .dismiss_button(true)
+            });
+            workspace.toggle_status_toast(toast, cx);
+        });
+    }
+
+    fn copy_selected_shas(&mut self, cx: &mut Context<Self>) {
+        let shas = self
+            .selected_rows()
+            .into_iter()
+            .filter_map(|row| self.graph_data.commits.get(row))
+            .map(|commit| commit.data.sha.to_string())
+            .collect::<Vec<_>>();
+        if shas.is_empty() {
+            return;
+        }
+        cx.write_to_clipboard(ClipboardItem::new_string(shas.join("\n")));
+    }
+
+    /// Opens the dialog that turns the picked commits into one commit on a
+    /// brand-new branch, which is what a merge request usually wants.
+    fn open_squash_to_branch_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let shas_oldest_first = self.selected_shas_oldest_first();
+        if shas_oldest_first.is_empty() {
+            return;
+        }
+        if self.worktree_is_dirty(cx) {
+            self.report_dirty_worktree("MR 用ブランチの作成", cx);
+            return;
+        }
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+
+        let default_message = self.selected_subjects_oldest_first(cx).join("\n");
+
+        let base_options = self.comparable_refs(cx);
+        let head_branch = self.head_branch_name(cx);
+        let default_branch =
+            repository.update(cx, |repository, _cx| repository.default_branch(false));
+        let graph = cx.weak_entity();
+        cx.spawn_in(window, async move |_this, cx| {
+            let base = match default_branch.await {
+                Ok(Ok(Some(branch))) => branch,
+                _ => head_branch.unwrap_or_else(|| SharedString::from("HEAD")),
+            };
+            workspace
+                .update_in(cx, |workspace, window, cx| {
+                    workspace.toggle_modal(window, cx, |window, cx| {
+                        SquashToBranchModal::new(
+                            graph,
+                            base,
+                            base_options,
+                            shas_oldest_first,
+                            default_message,
+                            window,
+                            cx,
+                        )
+                    });
+                })
+                .ok();
+        })
+        .detach();
+    }
+
+    /// Runs `squash_to_new_branch` and, when it works, opens the comparison of
+    /// the branch the commits came from with the branch they landed on.
+    fn squash_to_new_branch(
+        &mut self,
+        base: SharedString,
+        new_branch: SharedString,
+        message: String,
+        shas_oldest_first: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+        let source_branch = self
+            .head_branch_name(cx)
+            .unwrap_or_else(|| SharedString::from("HEAD"));
+        let workspace = self.workspace.clone();
+        let receiver = repository.update(cx, |repository, cx| {
+            repository.squash_to_new_branch(
+                base.to_string(),
+                shas_oldest_first,
+                new_branch.to_string(),
+                message,
+                cx,
+            )
+        });
+        let repository = repository.downgrade();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = receiver.await;
+            let succeeded = matches!(&result, Ok(Ok(output)) if output.succeeded());
+            this.update(cx, |this, cx| {
+                this.report_git_result("MR 用ブランチの作成", result, cx);
+                this.invalidate_state(cx);
+                this.fetch_initial_graph_data(cx);
+            })
+            .ok();
+            if !succeeded {
+                return;
+            }
+            workspace
+                .update_in(cx, |workspace, window, cx| {
+                    let Some(repository) = repository.upgrade() else {
+                        return;
+                    };
+                    crate::branch_diff::RefComparison::open(
+                        workspace,
+                        repository,
+                        source_branch,
+                        new_branch,
+                        window,
+                        cx,
+                    );
+                })
+                .ok();
+        })
+        .detach();
+    }
+
+    /// Asks for the two refs to compare and opens the comparison tab.
+    fn open_ref_comparison(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let options = self.comparable_refs(cx);
+        if options.len() < 2 {
+            return;
+        }
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+        let workspace = self.workspace.clone();
+        let repository = repository.downgrade();
+        let base_prompt = crate::picker_prompt::prompt(
+            "比べる基準 (移植元) のブランチ / タグ",
+            options.clone(),
+            workspace.clone(),
+            window,
+            cx,
+        );
+        cx.spawn_in(window, async move |_this, cx| {
+            let Some(base_index) = base_prompt.await else {
+                return;
+            };
+            let Some(base) = options.get(base_index).cloned() else {
+                return;
+            };
+            // Comparing a ref with itself has no answer to give, so the second
+            // picker does not offer the one already chosen.
+            let head_options = options
+                .iter()
+                .filter(|option| **option != base)
+                .cloned()
+                .collect::<Vec<_>>();
+            let Ok(head_prompt) = cx.update(|window, cx| {
+                crate::picker_prompt::prompt(
+                    "比べる相手 (移植先) のブランチ / タグ",
+                    head_options.clone(),
+                    workspace.clone(),
+                    window,
+                    cx,
+                )
+            }) else {
+                return;
+            };
+            let Some(head_index) = head_prompt.await else {
+                return;
+            };
+            let Some(head) = head_options.get(head_index).cloned() else {
+                return;
+            };
+            workspace
+                .update_in(cx, |workspace, window, cx| {
+                    let Some(repository) = repository.upgrade() else {
+                        return;
+                    };
+                    crate::branch_diff::RefComparison::open(
+                        workspace, repository, base, head, window, cx,
+                    );
+                })
+                .ok();
+        })
+        .detach();
+    }
+
+    /// Runs what a drag and drop inside the graph stands for, after asking the
+    /// user to confirm in the words of the operation.
+    fn perform_drop_action(
+        &mut self,
+        action: GraphDropAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+        match action {
+            GraphDropAction::CherryPickOntoHead { sha, branch } => {
+                let detail = format!(
+                    "{} の変更を、現在のブランチ {branch} の先頭に新しいコミットとして積みます (cherry-pick)。",
+                    sha.display_short()
+                );
+                let confirmation = window.prompt(
+                    gpui::PromptLevel::Info,
+                    "このコミットを現在のブランチに取り込みますか?",
+                    Some(&detail),
+                    &["取り込む", "キャンセル"],
+                    cx,
+                );
+                cx.spawn(async move |this, cx| {
+                    if confirmation.await.unwrap_or(1) != 0 {
+                        return;
+                    }
+                    let receiver = repository.update(cx, |repository, cx| {
+                        repository.cherry_pick(vec![sha.to_string()], false, cx)
+                    });
+                    let result = receiver.await;
+                    this.update(cx, |this, cx| {
+                        this.report_git_result("コミットの取り込み (cherry-pick)", result, cx);
+                        this.invalidate_state(cx);
+                        this.fetch_initial_graph_data(cx);
+                    })
+                    .ok();
+                })
+                .detach();
+            }
+            GraphDropAction::CherryPickAfterSwitch { sha, branch } => {
+                let detail = format!(
+                    "{branch} に切り替えてから、{} の変更を新しいコミットとして積みます (checkout + cherry-pick)。",
+                    sha.display_short()
+                );
+                let confirmation = window.prompt(
+                    gpui::PromptLevel::Warning,
+                    &format!("{branch} に切り替えてから取り込みますか?"),
+                    Some(&detail),
+                    &["切り替えて取り込む", "キャンセル"],
+                    cx,
+                );
+                cx.spawn(async move |this, cx| {
+                    if confirmation.await.unwrap_or(1) != 0 {
+                        return;
+                    }
+                    let switched = repository.update(cx, |repository, _cx| {
+                        repository.change_branch(branch.to_string())
+                    });
+                    match switched.await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => {
+                            this.update(cx, |this, cx| {
+                                this.report_git_result("ブランチの切り替え", Ok(Err(error)), cx);
+                            })
+                            .ok();
+                            return;
+                        }
+                        Err(_) => return,
+                    }
+                    let receiver = repository.update(cx, |repository, cx| {
+                        repository.cherry_pick(vec![sha.to_string()], false, cx)
+                    });
+                    let result = receiver.await;
+                    this.update(cx, |this, cx| {
+                        this.report_git_result("コミットの取り込み (cherry-pick)", result, cx);
+                        this.invalidate_state(cx);
+                        this.fetch_initial_graph_data(cx);
+                    })
+                    .ok();
+                })
+                .detach();
+            }
+            GraphDropAction::ResetHeadBranch { branch, sha } => {
+                let detail = format!(
+                    "現在のブランチ {branch} を {} まで戻します。\n\
+                     ・コミットだけ取り消す (--soft): 変更はステージに残ります\n\
+                     ・ステージも戻す (--mixed): 変更は作業ツリーに残ります\n\
+                     ・すべて破棄 (--hard): 未コミットの変更も消えます",
+                    sha.display_short()
+                );
+                let choice = window.prompt(
+                    gpui::PromptLevel::Warning,
+                    &format!("{branch} をこのコミットまで戻しますか?"),
+                    Some(&detail),
+                    &[
+                        "コミットだけ取り消す (--soft)",
+                        "ステージも戻す (--mixed)",
+                        "すべて破棄 (--hard)",
+                        "キャンセル",
+                    ],
+                    cx,
+                );
+                cx.spawn(async move |this, cx| {
+                    let mode = match choice.await {
+                        Ok(0) => ResetMode::Soft,
+                        Ok(1) => ResetMode::Mixed,
+                        Ok(2) => ResetMode::Hard,
+                        _ => return,
+                    };
+                    let receiver = repository.update(cx, |repository, cx| {
+                        repository.reset_to(sha.to_string(), mode, cx)
+                    });
+                    let result = receiver.await;
+                    this.update(cx, |this, cx| {
+                        this.report_git_result("ブランチを戻す (reset)", result, cx);
+                        this.invalidate_state(cx);
+                        this.fetch_initial_graph_data(cx);
+                    })
+                    .ok();
+                })
+                .detach();
+            }
+            GraphDropAction::MoveBranchRef { branch, sha } => {
+                let holder = worktree_holding_branch(
+                    repository.read(cx).snapshot().linked_worktrees(),
+                    &branch,
+                )
+                .map(|worktree| worktree.path.display().to_string());
+                if let Some(path) = holder {
+                    self.report_refused(
+                        format!(
+                            "{branch} は別のワークツリー ({path}) でチェックアウト中なので動かせません。"
+                        ),
+                        cx,
+                    );
+                    return;
+                }
+                let detail = format!(
+                    "チェックアウトしていない {branch} が {} を指すようになります。作業ツリーは変わりません。",
+                    sha.display_short()
+                );
+                let confirmation = window.prompt(
+                    gpui::PromptLevel::Warning,
+                    &format!("{branch} をこのコミットに移動しますか?"),
+                    Some(&detail),
+                    &["移動する", "キャンセル"],
+                    cx,
+                );
+                cx.spawn(async move |this, cx| {
+                    if confirmation.await.unwrap_or(1) != 0 {
+                        return;
+                    }
+                    let receiver = repository.update(cx, |repository, _cx| {
+                        repository.update_ref(format!("refs/heads/{branch}"), sha.to_string())
+                    });
+                    let result = receiver.await.map(|inner| {
+                        inner.map(|()| git::repository::GitCommandOutput {
+                            exit_code: Some(0),
+                            ..Default::default()
+                        })
+                    });
+                    this.update(cx, |this, cx| {
+                        this.report_git_result("ブランチの移動", result, cx);
+                        this.invalidate_state(cx);
+                        this.fetch_initial_graph_data(cx);
+                    })
+                    .ok();
+                })
+                .detach();
+            }
+        }
+    }
+
+    fn handle_graph_drop(
+        &mut self,
+        dragged: GraphDragEnd,
+        target: GraphDragEnd,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(action) = graph_drop_action(&dragged, &target) else {
+            return;
+        };
+        self.perform_drop_action(action, window, cx);
+    }
+
+    /// The context menu shown when more than one row is picked. The shared
+    /// commit menu only ever talks about a single commit, so the graph builds
+    /// its own here.
+    fn deploy_multi_selection_menu(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let rows: BTreeSet<usize> = self.selected_rows().into_iter().collect();
+        let count = rows.len();
+        let contiguous = is_contiguous_commit_range(&self.graph_data.commits, &rows);
+        let on_current_branch = self.selection_is_on_current_branch(cx);
+        let focus_handle = self.focus_handle.clone();
+        let graph = cx.entity();
+        let context_menu = ContextMenu::build(window, cx, move |menu, _window, _cx| {
+            let mut menu = menu
+                .context(focus_handle)
+                .header(format!("{count} 件を選択中"));
+            menu = menu.entry(
+                format!("選択した {count} 件を現在のブランチに取り込む (cherry-pick)"),
+                None,
+                {
+                    let graph = graph.clone();
+                    move |window, cx| {
+                        graph.update(cx, |graph, cx| graph.cherry_pick_rows(window, cx));
+                    }
+                },
+            );
+            // Squashing rewrites the checked-out branch in place, so it is only
+            // offered for an unbroken range that lives on that branch; the
+            // disabled entry says which of the two is missing.
+            menu = match (contiguous, on_current_branch) {
+                (true, true) => menu.entry(
+                    format!("選択した {count} 件を 1 つにまとめる (squash)"),
+                    None,
+                    {
+                        let graph = graph.clone();
+                        move |window, cx| {
+                            graph.update(cx, |graph, cx| graph.squash_rows(window, cx));
+                        }
+                    },
+                ),
+                (false, _) => menu.item(
+                    ContextMenuEntry::new("1 つにまとめる (squash) — 連続した範囲を選んでください")
+                        .disabled(true),
+                ),
+                (true, false) => menu.item(
+                    ContextMenuEntry::new(
+                        "1 つにまとめる (squash) — 現在のブランチ上のコミットを選んでください",
+                    )
+                    .disabled(true),
+                ),
+            };
+            menu = menu.entry(
+                format!("選択した {count} 件を MR 用の新しいブランチに 1 コミットとしてまとめる…"),
+                None,
+                {
+                    let graph = graph.clone();
+                    move |window, cx| {
+                        graph.update(cx, |graph, cx| {
+                            graph.open_squash_to_branch_modal(window, cx)
+                        });
+                    }
+                },
+            );
+            menu.separator().entry(
+                format!("SHA をコピー ({count} 件)"),
+                None,
+                move |_window, cx| {
+                    graph.update(cx, |graph, cx| graph.copy_selected_shas(cx));
+                },
+            )
+        });
+        self.set_context_menu(context_menu, position, self.selected_entry_idx, window, cx);
+    }
+
+    /// The row of controls above the table: which commits to show, the tag
+    /// list, and the entry point for comparing two refs. File-history tabs are about a
+    /// single file, so they keep the plain table.
+    fn render_graph_toolbar(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        if matches!(self.log_source, LogSource::Path(_)) {
+            return Empty.into_any_element();
+        }
+        // The tag menu is built when it is opened, so it can only show tags
+        // that are already in hand; loading them here means the very first
+        // open is populated instead of reading 「読み込み中」.
+        if self.tags.is_none() && self._tags_task.is_none() {
+            self.load_tags(cx);
+        }
+        let color = cx.theme().colors();
+        let head_branch_name = self.head_branch_name(cx);
+        let source_label: SharedString = match &self.log_source {
+            LogSource::All => "すべてのブランチ".into(),
+            LogSource::Branch(branch) => branch.clone(),
+            LogSource::Sha(sha) => SharedString::from(sha.display_short()),
+            LogSource::Path(_) => "ファイル履歴".into(),
+        };
+        let graph = cx.entity();
+        let selected_count = self.selected_rows().len();
+        let tags = self.tags.clone();
+
+        h_flex()
+            .w_full()
+            .px_1p5()
+            .py_1()
+            .gap_1p5()
+            .border_b_1()
+            .border_color(color.border_variant)
+            .child(
+                Label::new("表示:")
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
+            .child(
+                PopoverMenu::new("git-graph-log-source")
+                    .menu({
+                        let graph = graph.clone();
+                        move |window, cx| {
+                            let graph = graph.clone();
+                            let head_branch_name = head_branch_name.clone();
+                            Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
+                                let mut menu = menu.entry("すべてのブランチ", None, {
+                                    let graph = graph.clone();
+                                    move |_window, cx| {
+                                        graph.update(cx, |graph, cx| {
+                                            graph.set_log_source(LogSource::All, cx);
+                                        });
+                                    }
+                                });
+                                if let Some(branch) = head_branch_name.clone() {
+                                    menu = menu.entry(
+                                        format!("現在のブランチ ({branch})"),
+                                        None,
+                                        {
+                                            let graph = graph.clone();
+                                            move |_window, cx| {
+                                                let branch = branch.clone();
+                                                graph.update(cx, |graph, cx| {
+                                                    graph.set_log_source(
+                                                        LogSource::Branch(branch),
+                                                        cx,
+                                                    );
+                                                });
+                                            }
+                                        },
+                                    );
+                                }
+                                menu.separator().entry(
+                                    "ブランチを選ぶ…",
+                                    None,
+                                    move |window, cx| {
+                                        graph.update(cx, |graph, cx| {
+                                            graph.pick_log_source_branch(window, cx);
+                                        });
+                                    },
+                                )
+                            }))
+                        }
+                    })
+                    .trigger_with_tooltip(
+                        Button::new("git-graph-log-source-trigger", source_label)
+                            .label_size(LabelSize::Small)
+                            .end_icon(
+                                Icon::new(IconName::ChevronDown)
+                                    .size(IconSize::XSmall)
+                                    .color(Color::Muted),
+                            ),
+                        Tooltip::text("グラフに出すコミットの範囲を選びます"),
+                    ),
+            )
+            .child(Divider::vertical())
+            .child(
+                PopoverMenu::new("git-graph-tags")
+                    .menu({
+                        move |window, cx| {
+                            let graph = graph.clone();
+                            let tags = tags.clone();
+                            Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
+                                let Some(tags) = tags.clone() else {
+                                    return menu.label("タグを読み込み中…");
+                                };
+                                if tags.is_empty() {
+                                    return menu.label("タグがありません");
+                                }
+                                let mut menu = menu.header("タグ (新しい順)");
+                                for tag in tags.iter().take(TAG_MENU_LIMIT) {
+                                    let commit_sha = tag.commit_sha.clone();
+                                    let graph = graph.clone();
+                                    menu =
+                                        menu.entry(tag.name.clone(), None, move |_window, cx| {
+                                            let commit_sha = commit_sha.clone();
+                                            graph.update(cx, |graph, cx| {
+                                                graph.select_commit_by_sha(commit_sha.as_str(), cx);
+                                            });
+                                        });
+                                }
+                                if let Some(hidden) = tags.len().checked_sub(TAG_MENU_LIMIT)
+                                    && hidden > 0
+                                {
+                                    menu =
+                                        menu.label(format!("ほかに {hidden} 件のタグがあります"));
+                                }
+                                menu
+                            }))
+                        }
+                    })
+                    .trigger_with_tooltip(
+                        Button::new("git-graph-tags-trigger", "タグ一覧")
+                            .label_size(LabelSize::Small)
+                            .start_icon(
+                                Icon::new(IconName::Bookmark)
+                                    .size(IconSize::XSmall)
+                                    .color(Color::Muted),
+                            )
+                            .end_icon(
+                                Icon::new(IconName::ChevronDown)
+                                    .size(IconSize::XSmall)
+                                    .color(Color::Muted),
+                            ),
+                        Tooltip::text("タグを選ぶと、そのコミットまで移動します"),
+                    ),
+            )
+            .child(Divider::vertical())
+            .child(
+                Button::new("git-graph-compare-refs", "比較…")
+                    .label_size(LabelSize::Small)
+                    .start_icon(
+                        Icon::new(IconName::Diff)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    )
+                    .tooltip(Tooltip::text(
+                        "2 つのブランチ / タグの中身を比べます (全部移植できているかの確認に)",
+                    ))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_ref_comparison(window, cx);
+                    })),
+            )
+            .child(div().flex_1())
+            .when(selected_count > 1, |this| {
+                this.child(
+                    Label::new(format!("{selected_count} 件選択中"))
+                        .size(LabelSize::Small)
+                        .color(Color::Accent),
+                )
+                .child(
+                    Button::new("git-graph-selection-menu", "選択した行の操作…")
+                        .label_size(LabelSize::Small)
+                        .tooltip(Tooltip::text(
+                            "cherry-pick / squash / MR 用ブランチ作成 (行を右クリックしても出ます)",
+                        ))
+                        .on_click(cx.listener(|this, event: &ClickEvent, window, cx| {
+                            this.deploy_multi_selection_menu(event.position(), window, cx);
+                        })),
+                )
+            })
+            .into_any_element()
+    }
+
+    fn pick_log_source_branch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let workspace_weak = self.workspace.clone();
+        let graph = cx.weak_entity();
+        let on_select: crate::branch_picker::SelectBranchCallback =
+            Arc::new(move |branch: Branch, _window: &mut Window, cx: &mut App| {
+                let branch_name = SharedString::from(branch.name().to_string());
+                graph
+                    .update(cx, |graph, cx| {
+                        graph.set_log_source(LogSource::Branch(branch_name), cx);
+                    })
+                    .ok();
+            });
+        workspace.update(cx, |workspace, cx| {
+            workspace.toggle_modal(window, cx, |window, cx| {
+                crate::branch_picker::select_modal(
+                    workspace_weak,
+                    Some(repository),
+                    None,
+                    on_select,
+                    window,
+                    cx,
+                )
+            });
+        });
+    }
 }
 
 impl Render for GitGraph {
@@ -3739,18 +5294,33 @@ impl Render for GitGraph {
             } else {
                 "コミットが見つかりません".to_string()
             };
-            let label = Label::new(message)
-                .color(Color::Muted)
-                .size(LabelSize::Large);
+            // The empty graph is where a beginner most needs to know what this
+            // tab is for, so the hint names the two things that are actually
+            // missing: commits, or a wider 表示 range.
+            let hint = (!is_loading && error.is_none()).then_some(
+                "まだコミットが無いか、選んだ表示範囲に入るコミットがありません。上の「表示」で範囲を広げてみてください。",
+            );
 
-            h_flex()
+            v_flex()
                 .size_full()
                 .gap_1()
                 .justify_center()
-                .child(label)
-                .when(is_loading && error.is_none(), |this| {
-                    this.child(self.render_loading_spinner(cx))
-                })
+                .items_center()
+                .child(
+                    h_flex()
+                        .gap_1()
+                        .child(
+                            Label::new(message)
+                                .color(Color::Muted)
+                                .size(LabelSize::Large),
+                        )
+                        .when(is_loading && error.is_none(), |this| {
+                            this.child(self.render_loading_spinner(cx))
+                        }),
+                )
+                .children(
+                    hint.map(|hint| Label::new(hint).color(Color::Muted).size(LabelSize::Small)),
+                )
         } else {
             let is_path_history = matches!(self.log_source, LogSource::Path(_));
             let header_resize_info =
@@ -3910,6 +5480,7 @@ impl Render for GitGraph {
                                     let weak = weak_self.clone();
                                     let weak_for_hover = weak.clone();
                                     let weak_for_context_menu = weak.clone();
+                                    let weak_for_drop = weak.clone();
 
                                     let hover_bg = cx.theme().colors().element_hover.opacity(0.6);
                                     let selected_bg = if is_focused {
@@ -3920,6 +5491,31 @@ impl Render for GitGraph {
 
                                     row.h(row_height)
                                         .cursor_pointer()
+                                        .drag_over::<DraggedRef>(|style, _, _, cx| {
+                                            style.bg(cx.theme().colors().drop_target_background)
+                                        })
+                                        .on_drop(move |dragged: &DraggedRef, window, cx| {
+                                            let dragged = dragged.clone();
+                                            weak_for_drop
+                                                .update(cx, |this, cx| {
+                                                    let Some(commit) =
+                                                        this.graph_data.commits.get(index)
+                                                    else {
+                                                        return;
+                                                    };
+                                                    let sha = commit.data.sha;
+                                                    this.handle_graph_drop(
+                                                        GraphDragEnd::Ref {
+                                                            name: dragged.name,
+                                                            kind: dragged.kind,
+                                                        },
+                                                        GraphDragEnd::Commit(sha),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                })
+                                                .ok();
+                                        })
                                         .when(is_selected || is_context_menu_target, |row| {
                                             row.bg(selected_bg)
                                         })
@@ -4092,6 +5688,7 @@ impl Render for GitGraph {
                 v_flex()
                     .size_full()
                     .child(self.render_search_bar(cx))
+                    .child(self.render_graph_toolbar(cx))
                     .child(div().flex_1().child(content)),
             )
             .children(self.context_menu.as_ref().map(|context_menu| {
@@ -4107,6 +5704,208 @@ impl Render for GitGraph {
                 window.dispatch_action(Box::new(FocusSearch), cx);
                 cx.stop_propagation();
             }))
+    }
+}
+
+/// Collects what `squash_to_new_branch` needs: the branch the new one starts
+/// from, its name, and the single commit message the picked commits become.
+pub struct SquashToBranchModal {
+    focus_handle: FocusHandle,
+    graph: WeakEntity<GitGraph>,
+    base: SharedString,
+    base_options: Vec<SharedString>,
+    shas_oldest_first: Vec<String>,
+    branch_name_editor: Entity<Editor>,
+    message_editor: Entity<Editor>,
+}
+
+impl SquashToBranchModal {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        graph: WeakEntity<GitGraph>,
+        base: SharedString,
+        base_options: Vec<SharedString>,
+        shas_oldest_first: Vec<String>,
+        default_message: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let branch_name_editor = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_placeholder_text("例: mr/新しい機能", window, cx);
+            editor
+        });
+        let message_editor = cx.new(|cx| {
+            let mut editor = Editor::auto_height(3, 8, window, cx);
+            editor.set_text(default_message, window, cx);
+            editor
+        });
+        let focus_handle = cx.focus_handle();
+        branch_name_editor.update(cx, |editor, cx| {
+            editor.focus_handle(cx).focus(window, cx);
+        });
+        Self {
+            focus_handle,
+            graph,
+            base,
+            base_options,
+            shas_oldest_first,
+            branch_name_editor,
+            message_editor,
+        }
+    }
+
+    fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let branch_name = self.branch_name_editor.read(cx).text(cx).trim().to_string();
+        if branch_name.is_empty() {
+            return;
+        }
+        let message = self.message_editor.read(cx).text(cx);
+        if message.trim().is_empty() {
+            return;
+        }
+        let base = self.base.clone();
+        let shas = self.shas_oldest_first.clone();
+        self.graph
+            .update(cx, |graph, cx| {
+                graph.squash_to_new_branch(
+                    base,
+                    SharedString::from(branch_name),
+                    message,
+                    shas,
+                    window,
+                    cx,
+                );
+            })
+            .ok();
+        cx.emit(DismissEvent);
+    }
+
+    fn render_labelled_editor(
+        &self,
+        label: &'static str,
+        hint: &'static str,
+        editor: Entity<Editor>,
+        cx: &App,
+    ) -> impl IntoElement {
+        v_flex()
+            .gap_0p5()
+            .child(Label::new(label).size(LabelSize::Small))
+            .child(
+                div()
+                    .w_full()
+                    .px_1p5()
+                    .py_1()
+                    .border_1()
+                    .border_color(cx.theme().colors().border_variant)
+                    .rounded_md()
+                    .bg(cx.theme().colors().editor_background)
+                    .child(editor),
+            )
+            .child(Label::new(hint).size(LabelSize::XSmall).color(Color::Muted))
+    }
+}
+
+impl EventEmitter<DismissEvent> for SquashToBranchModal {}
+impl ModalView for SquashToBranchModal {}
+
+impl Focusable for SquashToBranchModal {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Render for SquashToBranchModal {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let count = self.shas_oldest_first.len();
+        let base_options = self.base_options.clone();
+        let modal = cx.entity();
+        v_flex()
+            .key_context("GitGraphSquashToBranch")
+            .track_focus(&self.focus_handle)
+            .elevation_3(cx)
+            .w(rems(34.))
+            .p_3()
+            .gap_2()
+            .on_action(cx.listener(|_, _: &Cancel, _window, cx| {
+                cx.emit(DismissEvent);
+            }))
+            .child(Label::new("MR 用の新しいブランチにまとめる").size(LabelSize::Large))
+            .child(
+                Label::new(format!(
+                    "選んだ {count} 件のコミットを、基点ブランチから作った新しいブランチの上に 1 つのコミットとして載せます (cherry-pick + squash)。",
+                ))
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+            )
+            .child(
+                v_flex()
+                    .gap_0p5()
+                    .child(Label::new("基点ブランチ").size(LabelSize::Small))
+                    .child(
+                        PopoverMenu::new("squash-to-branch-base")
+                            .menu(move |window, cx| {
+                                let modal = modal.clone();
+                                let base_options = base_options.clone();
+                                Some(ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
+                                    for option in base_options.iter().take(50) {
+                                        let option = option.clone();
+                                        let modal = modal.clone();
+                                        menu = menu.entry(option.clone(), None, move |_window, cx| {
+                                            let option = option.clone();
+                                            modal.update(cx, |modal, cx| {
+                                                modal.base = option;
+                                                cx.notify();
+                                            });
+                                        });
+                                    }
+                                    menu
+                                }))
+                            })
+                            .trigger_with_tooltip(
+                                Button::new("squash-to-branch-base-trigger", self.base.clone())
+                                    .label_size(LabelSize::Small)
+                                    .end_icon(
+                                        Icon::new(IconName::ChevronDown)
+                                            .size(IconSize::XSmall)
+                                            .color(Color::Muted),
+                                    ),
+                                Tooltip::text("新しいブランチをどこから分岐させるか"),
+                            ),
+                    ),
+            )
+            .child(self.render_labelled_editor(
+                "新しいブランチ名",
+                "まだ無い名前を入れてください。",
+                self.branch_name_editor.clone(),
+                cx,
+            ))
+            .child(self.render_labelled_editor(
+                "コミットメッセージ",
+                "まとめた 1 つのコミットに付くメッセージです。",
+                self.message_editor.clone(),
+                cx,
+            ))
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_end()
+                    .gap_1()
+                    .child(
+                        Button::new("squash-to-branch-cancel", "キャンセル").on_click(cx.listener(
+                            |_, _, _window, cx| {
+                                cx.emit(DismissEvent);
+                            },
+                        )),
+                    )
+                    .child(
+                        Button::new("squash-to-branch-confirm", "作成して比較を開く")
+                            .style(ButtonStyle::Filled)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.confirm(window, cx);
+                            })),
+                    ),
+            )
     }
 }
 
@@ -7268,25 +9067,469 @@ mod tests {
         );
     }
 
+    fn commit_entry(sha: u8, parents: &[u8]) -> Rc<CommitEntry> {
+        Rc::new(CommitEntry {
+            data: Arc::new(InitialGraphCommitData {
+                sha: Oid::from_bytes(&[sha; 20]).unwrap(),
+                parents: parents
+                    .iter()
+                    .map(|parent| Oid::from_bytes(&[*parent; 20]).unwrap())
+                    .collect(),
+                ref_names: Vec::new(),
+            }),
+            lane: 0,
+            color_idx: 0,
+        })
+    }
+
+    fn rows(indices: &[usize]) -> BTreeSet<usize> {
+        indices.iter().copied().collect()
+    }
+
     #[test]
-    fn test_ref_name_from_decoration() {
+    fn test_apply_selection_gesture() {
+        // A plain click drops whatever else was picked.
+        let (selection, anchor) =
+            apply_selection_gesture(&rows(&[1, 2, 3]), Some(1), 7, SelectionGesture::Replace);
+        assert_eq!(selection, rows(&[7]));
+        assert_eq!(anchor, 7);
+
+        // Ctrl adds, then removes, the clicked row.
+        let (selection, anchor) =
+            apply_selection_gesture(&rows(&[1]), Some(1), 4, SelectionGesture::Toggle);
+        assert_eq!(selection, rows(&[1, 4]));
+        assert_eq!(anchor, 4);
+        let (selection, _) =
+            apply_selection_gesture(&selection, Some(4), 4, SelectionGesture::Toggle);
+        assert_eq!(selection, rows(&[1]));
+
+        // The last picked row cannot be toggled away: the detail panel always
+        // has a commit to show.
+        let (selection, _) =
+            apply_selection_gesture(&rows(&[2]), Some(2), 2, SelectionGesture::Toggle);
+        assert_eq!(selection, rows(&[2]));
+
+        // Shift spans the anchor, in either direction, and keeps the anchor.
+        let (selection, anchor) =
+            apply_selection_gesture(&rows(&[2]), Some(2), 5, SelectionGesture::Range);
+        assert_eq!(selection, rows(&[2, 3, 4, 5]));
+        assert_eq!(anchor, 2);
+        let (selection, anchor) =
+            apply_selection_gesture(&rows(&[5]), Some(5), 3, SelectionGesture::Range);
+        assert_eq!(selection, rows(&[3, 4, 5]));
+        assert_eq!(anchor, 5);
+
+        // Shift without an anchor behaves like a plain click.
+        let (selection, anchor) =
+            apply_selection_gesture(&rows(&[1, 2]), None, 6, SelectionGesture::Range);
+        assert_eq!(selection, rows(&[6]));
+        assert_eq!(anchor, 6);
+    }
+
+    #[test]
+    fn test_is_contiguous_commit_range() {
+        // Rows run newest first: 0 <- 1 <- 2 <- 3, and 2 is a merge of 3 and 4.
+        let commits = vec![
+            commit_entry(0, &[1]),
+            commit_entry(1, &[2]),
+            commit_entry(2, &[3, 4]),
+            commit_entry(3, &[4]),
+            commit_entry(4, &[]),
+        ];
+
+        assert!(is_contiguous_commit_range(&commits, &rows(&[0, 1])));
+        assert!(is_contiguous_commit_range(&commits, &rows(&[0, 1, 2])));
+        // A single row is a range of one.
+        assert!(is_contiguous_commit_range(&commits, &rows(&[3])));
+
+        // A gap breaks the chain.
+        assert!(!is_contiguous_commit_range(&commits, &rows(&[0, 2])));
+        // A merge commit cannot be anywhere but the oldest end, because the
+        // squash has to know which parent the new commit hangs off.
+        assert!(!is_contiguous_commit_range(&commits, &rows(&[1, 2, 3])));
+        // Nothing picked is not a range.
+        assert!(!is_contiguous_commit_range(&commits, &rows(&[])));
+        // Out of bounds rows (a graph that shrank under the selection).
+        assert!(!is_contiguous_commit_range(&commits, &rows(&[0, 99])));
+
+        // The chain is read child-to-parent, never the other way round: the
+        // same commits listed oldest first are not a range, because squashing
+        // them would take the wrong commit's tree.
+        let oldest_first = vec![
+            commit_entry(4, &[]),
+            commit_entry(3, &[4]),
+            commit_entry(2, &[3, 4]),
+            commit_entry(1, &[2]),
+            commit_entry(0, &[1]),
+        ];
+        assert!(!is_contiguous_commit_range(&oldest_first, &rows(&[3, 4])));
+        assert!(!is_contiguous_commit_range(&oldest_first, &rows(&[0, 1])));
+    }
+
+    #[test]
+    fn test_worktree_holding_branch() {
+        let worktree = |path: &str, ref_name: Option<&str>| GitWorktree {
+            path: std::path::PathBuf::from(path),
+            ref_name: ref_name.map(|ref_name| SharedString::from(ref_name.to_string())),
+            sha: "0".into(),
+            is_main: false,
+            is_bare: false,
+        };
+        let worktrees = vec![
+            worktree("/work/release", Some("refs/heads/release")),
+            // A worktree sitting on a detached HEAD holds no branch.
+            worktree("/work/detached", None),
+            worktree("/work/nested", Some("refs/heads/feature/login")),
+        ];
+
         assert_eq!(
-            GitGraph::ref_name_from_decoration("HEAD -> main"),
-            Some("main".into())
+            worktree_holding_branch(&worktrees, "release").map(|worktree| worktree.path.as_path()),
+            Some(std::path::Path::new("/work/release"))
         );
         assert_eq!(
-            GitGraph::ref_name_from_decoration("main"),
-            Some("main".into())
+            worktree_holding_branch(&worktrees, "feature/login")
+                .map(|worktree| worktree.path.as_path()),
+            Some(std::path::Path::new("/work/nested"))
+        );
+        // A branch nobody else has checked out can be moved.
+        assert!(worktree_holding_branch(&worktrees, "main").is_none());
+        // Only the whole branch name counts, never a prefix or a suffix of one:
+        // a wrong answer here either blocks a move that is fine or lets through
+        // one that corrupts another worktree.
+        assert!(worktree_holding_branch(&worktrees, "feature").is_none());
+        assert!(worktree_holding_branch(&worktrees, "rele").is_none());
+        assert!(worktree_holding_branch(&worktrees, "login").is_none());
+        assert!(worktree_holding_branch(&worktrees, "ease").is_none());
+        assert!(worktree_holding_branch(&worktrees, "heads/release").is_none());
+        // The ref is matched under its full name too, not just the short one.
+        assert!(worktree_holding_branch(&worktrees, "refs/heads/release").is_some());
+        assert!(worktree_holding_branch(&[], "release").is_none());
+    }
+
+    #[test]
+    fn test_commit_reaches() {
+        // 0 <- 1 <- 2 is the current branch; 5 <- 6 is a branch beside it.
+        let commits = vec![
+            commit_entry(0, &[1]),
+            commit_entry(1, &[2]),
+            commit_entry(2, &[]),
+            commit_entry(5, &[6]),
+            commit_entry(6, &[2]),
+        ];
+        let oid = |sha: u8| Oid::from_bytes(&[sha; 20]).unwrap();
+
+        assert!(commit_reaches(&commits, oid(0), oid(0)));
+        assert!(commit_reaches(&commits, oid(0), oid(2)));
+        // A commit on the branch beside it is not reachable from that tip.
+        assert!(!commit_reaches(&commits, oid(0), oid(5)));
+        // …but the commit they share is.
+        assert!(commit_reaches(&commits, oid(5), oid(2)));
+        // A commit the graph has not loaded ends the walk instead of guessing.
+        assert!(!commit_reaches(&commits, oid(9), oid(2)));
+        assert!(!commit_reaches(&commits, oid(0), oid(9)));
+    }
+
+    #[test]
+    fn test_graph_drop_action() {
+        let sha = Oid::from_bytes(&[7; 20]).unwrap();
+        let named = |name: &str, kind: RefKind| GraphDragEnd::Ref {
+            name: name.to_string().into(),
+            kind,
+        };
+
+        // A commit dropped on the checked-out branch is picked straight onto it.
+        assert_eq!(
+            graph_drop_action(&GraphDragEnd::Commit(sha), &named("main", RefKind::Head)),
+            Some(GraphDropAction::CherryPickOntoHead {
+                sha,
+                branch: "main".into()
+            })
+        );
+        // Another local branch has to be checked out first.
+        assert_eq!(
+            graph_drop_action(
+                &GraphDragEnd::Commit(sha),
+                &named("dev", RefKind::LocalBranch)
+            ),
+            Some(GraphDropAction::CherryPickAfterSwitch {
+                sha,
+                branch: "dev".into()
+            })
+        );
+        // Tags and remote branches are not places to land a commit.
+        assert_eq!(
+            graph_drop_action(&GraphDragEnd::Commit(sha), &named("v1.0", RefKind::Tag)),
+            None
         );
         assert_eq!(
-            GitGraph::ref_name_from_decoration("origin/main"),
-            Some("origin/main".into())
+            graph_drop_action(
+                &GraphDragEnd::Commit(sha),
+                &named("origin/main", RefKind::RemoteBranch)
+            ),
+            None
+        );
+
+        // Dragging the checked-out branch onto a commit is a reset; another
+        // branch only has its ref moved.
+        assert_eq!(
+            graph_drop_action(&named("main", RefKind::Head), &GraphDragEnd::Commit(sha)),
+            Some(GraphDropAction::ResetHeadBranch {
+                branch: "main".into(),
+                sha
+            })
         );
         assert_eq!(
-            GitGraph::ref_name_from_decoration("tag: v1.0"),
-            Some("v1.0".into())
+            graph_drop_action(
+                &named("dev", RefKind::LocalBranch),
+                &GraphDragEnd::Commit(sha)
+            ),
+            Some(GraphDropAction::MoveBranchRef {
+                branch: "dev".into(),
+                sha
+            })
         );
-        assert_eq!(GitGraph::ref_name_from_decoration("HEAD"), None);
+        assert_eq!(
+            graph_drop_action(&named("v1.0", RefKind::Tag), &GraphDragEnd::Commit(sha)),
+            None
+        );
+
+        // Like on like means nothing.
+        assert_eq!(
+            graph_drop_action(&GraphDragEnd::Commit(sha), &GraphDragEnd::Commit(sha)),
+            None
+        );
+        assert_eq!(
+            graph_drop_action(
+                &named("dev", RefKind::LocalBranch),
+                &named("main", RefKind::Head)
+            ),
+            None
+        );
+    }
+
+    #[gpui::test]
+    async fn test_multi_selection_click_gestures(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            Path::new("/project"),
+            serde_json::json!({
+                ".git": {},
+                "file.txt": "content",
+            }),
+        )
+        .await;
+
+        let shas = (1..=4u8)
+            .map(|n| Oid::from_bytes(&[n; 20]).unwrap())
+            .collect::<Vec<_>>();
+        let commits = (0..4)
+            .map(|idx| {
+                Arc::new(InitialGraphCommitData {
+                    sha: shas[idx],
+                    parents: shas.get(idx + 1).copied().into_iter().collect(),
+                    ref_names: Vec::new(),
+                })
+            })
+            .collect::<Vec<_>>();
+        fs.set_graph_commits(Path::new("/project/.git"), commits);
+
+        let project = Project::test(fs.clone(), [Path::new("/project")], cx).await;
+        cx.run_until_parked();
+
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+
+        let (multi_workspace, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace = multi_workspace.read_with(&*cx, |multi, _| multi.workspace().clone());
+        let workspace_weak = workspace.downgrade();
+
+        let git_graph = cx.new_window_entity(|window, cx| {
+            GitGraph::new(
+                repository.read(cx).id,
+                project.read(cx).git_store().clone(),
+                workspace_weak,
+                None,
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        let click = |modifiers: Modifiers| {
+            ClickEvent::Mouse(gpui::MouseClickEvent {
+                down: gpui::MouseDownEvent {
+                    button: MouseButton::Left,
+                    position: point(px(0.), px(0.)),
+                    modifiers,
+                    click_count: 1,
+                    first_mouse: false,
+                },
+                up: gpui::MouseUpEvent {
+                    button: MouseButton::Left,
+                    position: point(px(0.), px(0.)),
+                    modifiers,
+                    click_count: 1,
+                },
+            })
+        };
+
+        git_graph.update_in(cx, |graph, window, cx| {
+            assert_eq!(graph.graph_data.commits.len(), 4);
+
+            graph.handle_entry_click(
+                0,
+                &click(Modifiers::none()),
+                ScrollStrategy::Nearest,
+                None,
+                window,
+                cx,
+            );
+            assert_eq!(graph.selected_entry_idx, Some(0));
+            assert!(graph.multi_selection.is_empty());
+            assert_eq!(graph.selected_rows(), vec![0]);
+
+            graph.handle_entry_click(
+                2,
+                &click(Modifiers::shift()),
+                ScrollStrategy::Nearest,
+                None,
+                window,
+                cx,
+            );
+            assert_eq!(graph.selected_rows(), vec![0, 1, 2]);
+            assert_eq!(graph.selected_entry_idx, Some(2));
+
+            graph.handle_entry_click(
+                1,
+                &click(Modifiers::secondary_key()),
+                ScrollStrategy::Nearest,
+                None,
+                window,
+                cx,
+            );
+            assert_eq!(graph.selected_rows(), vec![0, 2]);
+
+            // Oldest first is what cherry-pick wants, so the shas come back
+            // reversed from the row order.
+            assert_eq!(
+                graph.selected_shas_oldest_first(),
+                vec![shas[2].to_string(), shas[0].to_string()]
+            );
+
+            // A plain click collapses back to one row.
+            graph.handle_entry_click(
+                3,
+                &click(Modifiers::none()),
+                ScrollStrategy::Nearest,
+                None,
+                window,
+                cx,
+            );
+            assert_eq!(graph.selected_rows(), vec![3]);
+            assert!(graph.multi_selection.is_empty());
+
+            // Picked rows are row numbers, so they cannot outlive the rows
+            // they point at: refetching the graph has to drop them, or an
+            // operation would run against whatever commit took that row.
+            graph.handle_entry_click(
+                1,
+                &click(Modifiers::none()),
+                ScrollStrategy::Nearest,
+                None,
+                window,
+                cx,
+            );
+            graph.handle_entry_click(
+                3,
+                &click(Modifiers::shift()),
+                ScrollStrategy::Nearest,
+                None,
+                window,
+                cx,
+            );
+            assert_eq!(graph.selected_rows(), vec![1, 2, 3]);
+            graph.invalidate_state(cx);
+            assert!(graph.multi_selection.is_empty());
+            assert_eq!(graph.selection_anchor_idx, None);
+            assert!(graph.graph_data.commits.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_classify_ref_decoration() {
+        let remotes: Vec<SharedString> = vec!["origin".into(), "fork".into()];
+
+        assert_eq!(
+            classify_ref_decoration("HEAD -> main", Some("main"), &remotes),
+            Some((RefKind::Head, "main".into()))
+        );
+        assert_eq!(
+            classify_ref_decoration("main", Some("main"), &remotes),
+            Some((RefKind::Head, "main".into()))
+        );
+        assert_eq!(
+            classify_ref_decoration("main", Some("other"), &remotes),
+            Some((RefKind::LocalBranch, "main".into()))
+        );
+        assert_eq!(
+            classify_ref_decoration("origin/main", Some("main"), &remotes),
+            Some((RefKind::RemoteBranch, "origin/main".into()))
+        );
+        assert_eq!(
+            classify_ref_decoration("fork/feature/x", None, &remotes),
+            Some((RefKind::RemoteBranch, "fork/feature/x".into()))
+        );
+        assert_eq!(
+            classify_ref_decoration("tag: v1.0", None, &remotes),
+            Some((RefKind::Tag, "v1.0".into()))
+        );
+        assert_eq!(classify_ref_decoration("HEAD", None, &remotes), None);
+        assert_eq!(classify_ref_decoration("", None, &remotes), None);
+
+        // A local branch whose name contains a slash must not be taken for a
+        // remote branch just because it has one.
+        assert_eq!(
+            classify_ref_decoration("feature/login", Some("main"), &remotes),
+            Some((RefKind::LocalBranch, "feature/login".into()))
+        );
+
+        // Before the branch list has loaded there are no remote names to match
+        // against, and only `origin/` is assumed to be a remote.
+        assert_eq!(
+            classify_ref_decoration("origin/main", None, &[]),
+            Some((RefKind::RemoteBranch, "origin/main".into()))
+        );
+        assert_eq!(
+            classify_ref_decoration("fork/main", None, &[]),
+            Some((RefKind::LocalBranch, "fork/main".into()))
+        );
+    }
+
+    #[test]
+    fn test_remote_names_from_branches() {
+        let branch = |ref_name: &str| Branch {
+            is_head: false,
+            ref_name: ref_name.to_string().into(),
+            upstream: None,
+            most_recent_commit: None,
+        };
+        let branches = vec![
+            branch("refs/heads/main"),
+            branch("refs/remotes/origin/main"),
+            branch("refs/remotes/origin/dev"),
+            branch("refs/remotes/fork/main"),
+        ];
+        assert_eq!(
+            remote_names_from_branches(&branches),
+            vec![SharedString::from("origin"), SharedString::from("fork")]
+        );
     }
 
     #[gpui::test]

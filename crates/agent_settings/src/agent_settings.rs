@@ -221,6 +221,9 @@ pub struct AgentSettings {
     pub commit_message_include_project_rules: bool,
     pub commit_message_instructions: Option<String>,
     pub thread_summary_model: Option<LanguageModelSelection>,
+    /// Model that judges whether a tool action is dangerous when the tool
+    /// permission mode is `auto` (ADR-F52).
+    pub permission_judge_model: Option<LanguageModelSelection>,
     pub compaction_model: Option<LanguageModelSelection>,
     pub inline_alternatives: Vec<LanguageModelSelection>,
     pub favorite_models: Vec<LanguageModelSelection>,
@@ -799,6 +802,7 @@ impl Settings for AgentSettings {
             commit_message_model: agent.commit_message_model,
             commit_message_instructions: agent.commit_message_instructions,
             thread_summary_model: agent.thread_summary_model,
+            permission_judge_model: agent.permission_judge_model,
             compaction_model: agent.compaction_model,
             inline_alternatives: agent.inline_alternatives.unwrap_or_default(),
             favorite_models: agent.favorite_models,
@@ -1274,6 +1278,35 @@ mod tests {
         let terminal_rules = permissions.tools.get("terminal").unwrap();
         assert_eq!(terminal_rules.default, None);
         assert_eq!(terminal_rules.always_confirm.len(), 1);
+    }
+
+    // ADR-F52: the judged mode reaches the compiled permissions as a global
+    // default and as a tool-specific one, without disturbing anything the user
+    // configured per tool.
+    #[test]
+    fn test_tool_permissions_judged_default() {
+        let content: ToolPermissionsContent = serde_json::from_value(json!({
+            "default": "auto",
+            "tools": {
+                "terminal": {
+                    "always_deny": [{ "pattern": "^curl " }]
+                },
+                "edit_file": {
+                    "default": "auto"
+                }
+            }
+        }))
+        .unwrap();
+        let permissions = compile_tool_permissions(Some(content));
+
+        assert_eq!(permissions.default, ToolPermissionMode::Auto);
+        let terminal_rules = permissions.tools.get("terminal").unwrap();
+        assert_eq!(terminal_rules.default, None);
+        assert_eq!(terminal_rules.always_deny.len(), 1);
+        assert_eq!(
+            permissions.tools.get("edit_file").unwrap().default,
+            Some(ToolPermissionMode::Auto)
+        );
     }
 
     #[test]

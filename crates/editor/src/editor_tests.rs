@@ -2165,6 +2165,222 @@ fn test_fold_at_level(cx: &mut TestAppContext) {
     });
 }
 
+/// The document every Markdown heading fold test below works on. Rows:
+/// 0 `# 章`, 4 `## 節`, 8..10 a fenced code block whose 9th row looks like a
+/// heading, 12 `## 次の節`, 14 the last line of prose.
+const MARKDOWN_HEADING_FIXTURE: &str = indoc! {"
+    # 章
+
+    章の本文
+
+    ## 節
+
+    節の本文
+
+    ```
+    # これは見出しではない
+    ```
+
+    ## 次の節
+
+    最後の本文
+"};
+
+#[gpui::test]
+async fn test_markdown_heading_creases(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+    cx.set_state(&format!("ˇ{MARKDOWN_HEADING_FIXTURE}"));
+
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let crease_rows = |row: u32| {
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(row))
+                .map(|crease| crease.range().start.row..crease.range().end.row)
+        };
+
+        // The heading line stays visible, so the fold starts at its end.
+        assert_eq!(crease_rows(0), Some(0..14), "`# 章` folds the whole file");
+        assert_eq!(
+            crease_rows(4),
+            Some(4..10),
+            "`## 節` stops before the next heading of the same level, and leaves \
+             the blank line separating the two out of the fold"
+        );
+        assert_eq!(crease_rows(12), Some(12..14), "`## 次の節` folds its body");
+
+        assert_eq!(crease_rows(2), None, "prose offers no fold");
+        assert_eq!(
+            crease_rows(9),
+            None,
+            "a `# ` line inside a fenced code block is not a heading"
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_fold_markdown_headings_by_level(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+    cx.set_state(&format!("ˇ{MARKDOWN_HEADING_FIXTURE}"));
+
+    cx.update_editor(|editor, window, cx| {
+        editor.fold_headings(&FoldHeadings { level: 2 }, window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            indoc! {"
+                # 章
+
+                章の本文
+
+                ## 節⋯
+
+                ## 次の節⋯
+            "},
+            "only the level 2 bodies are folded"
+        );
+
+        editor.unfold_all_headings(&UnfoldAllHeadings, window, cx);
+        assert_eq!(editor.display_text(cx), MARKDOWN_HEADING_FIXTURE);
+
+        editor.fold_all_headings(&FoldAllHeadings, window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            indoc! {"
+                # 章⋯
+            "},
+            "the outermost heading hides the rest of the file"
+        );
+
+        editor.unfold_at(MultiBufferRow(0), window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            indoc! {"
+                # 章
+
+                章の本文
+
+                ## 節⋯
+
+                ## 次の節⋯
+            "},
+            "opening the outer heading reveals its subsections still folded"
+        );
+
+        editor.unfold_all_headings(&UnfoldAllHeadings, window, cx);
+        assert_eq!(editor.display_text(cx), MARKDOWN_HEADING_FIXTURE);
+    });
+}
+
+#[gpui::test]
+async fn test_fold_action_folds_a_markdown_heading(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+    cx.set_state(&MARKDOWN_HEADING_FIXTURE.replacen("## 節", "ˇ## 節", 1));
+
+    // No Markdown-specific binding is registered for this: `editor::Fold`
+    // reaches the heading through `crease_for_buffer_row`, which is also what
+    // the gutter toggle and the restored-from-disk folds go through.
+    cx.update_editor(|editor, window, cx| {
+        editor.fold(&Fold, window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            indoc! {"
+                # 章
+
+                章の本文
+
+                ## 節⋯
+
+                ## 次の節
+
+                最後の本文
+            "}
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_markdown_heading_folds_agree_with_asking_row_by_row(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+    cx.set_state(&format!("ˇ{MARKDOWN_HEADING_FIXTURE}"));
+
+    // `FoldAllHeadings` takes the whole-document form because asking row by row
+    // sets up one tree-sitter query per heading; the two have to answer the
+    // same, including for the `#` line inside the fenced code block, which each
+    // of them rejects by a different test.
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let max_row = snapshot.buffer_snapshot().max_row().0;
+        let row_by_row = (0..=max_row)
+            .filter_map(|row| snapshot.markdown_heading_fold(MultiBufferRow(row)))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            row_by_row
+                .iter()
+                .map(|heading| (heading.level, heading.range.start.row))
+                .collect::<Vec<_>>(),
+            vec![(1, 0), (2, 4), (2, 12)],
+            "the fixture has three headings and no others"
+        );
+        assert_eq!(snapshot.markdown_heading_folds(), row_by_row);
+    });
+}
+
+#[gpui::test]
+async fn test_fold_markdown_headings_leaves_other_languages_alone(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(rust_lang()), cx));
+    // `#` starts an attribute in Rust, and the indent fallback is what has to
+    // answer here.
+    cx.set_state(indoc! {"
+        ˇ#[derive(Debug)]
+        struct Foo {
+            bar: usize,
+        }
+    "});
+
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let crease_rows = |row: u32| {
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(row))
+                .map(|crease| crease.range().start.row..crease.range().end.row)
+        };
+        assert_eq!(crease_rows(0), None, "`#[derive]` is not a heading");
+        assert_eq!(
+            crease_rows(1),
+            Some(1..3),
+            "the indent fallback still answers for the struct body"
+        );
+        drop(snapshot);
+
+        editor.fold_all_headings(&FoldAllHeadings, window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            indoc! {"
+                #[derive(Debug)]
+                struct Foo {
+                    bar: usize,
+                }
+            "}
+        );
+    });
+}
+
 #[gpui::test]
 fn test_move_cursor(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
@@ -9792,6 +10008,180 @@ async fn test_kill_ring_yank_pastes_accumulated_kill_at_each_cursor(cx: &mut Tes
     cx.set_state("aˇ bˇ");
     cx.update_editor(|editor, window, cx| editor.kill_ring_yank(&KillRingYank, window, cx));
     cx.assert_editor_state("aone\nˇ bone\nˇ");
+}
+
+#[gpui::test]
+async fn test_kill_ring_yank_pop_cycles_through_generations(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    // Three standalone (non-empty-selection) kills always start a new generation, since
+    // `can_append` only continues a kill-line sequence over an empty selection.
+    cx.set_state("«oneˇ» two three");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+
+    cx.set_selections_state(" «twoˇ» three");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+
+    cx.set_selections_state("  «threeˇ»");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank(&KillRingYank, window, cx));
+    cx.assert_editor_state("  threeˇ");
+
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank_pop(&KillRingYankPop, window, cx));
+    cx.assert_editor_state("  twoˇ");
+
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank_pop(&KillRingYankPop, window, cx));
+    cx.assert_editor_state("  oneˇ");
+
+    // A third pop has nowhere older to go, so it wraps back around to the newest generation.
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank_pop(&KillRingYankPop, window, cx));
+    cx.assert_editor_state("  threeˇ");
+}
+
+#[gpui::test]
+async fn test_kill_ring_yank_pop_invalidated_by_intervening_action(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    cx.set_state("«oneˇ»");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+    cx.set_state("«twoˇ»");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank(&KillRingYank, window, cx));
+    cx.assert_editor_state("twoˇ");
+
+    // Moving the cursor is not a yank, so the following `KillRingYankPop` must be a no-op:
+    // Emacs' `M-y` only works immediately after a yank (or another yank-pop).
+    cx.update_editor(|editor, window, cx| editor.move_to_beginning(&MoveToBeginning, window, cx));
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank_pop(&KillRingYankPop, window, cx));
+    cx.assert_editor_state("ˇtwo");
+}
+
+#[gpui::test]
+async fn test_kill_ring_yank_pop_only_replaces_newest_generation(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    cx.set_state("«oneˇ»");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+
+    // Two immediately-continuing kill-lines merge into a single, second generation; the
+    // first generation ("one") must be left untouched by that accumulation.
+    cx.set_state("ˇtwo\nthree");
+    cx.update_editor(|editor, window, cx| {
+        editor.kill_ring_cut(&KillRingCut, window, cx);
+        editor.kill_ring_cut(&KillRingCut, window, cx);
+    });
+
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank(&KillRingYank, window, cx));
+    cx.assert_editor_state("two\nˇthree");
+
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank_pop(&KillRingYankPop, window, cx));
+    cx.assert_editor_state("oneˇthree");
+}
+
+#[gpui::test]
+async fn test_kill_ring_drops_generations_past_max_entries(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    // One more than `KILL_RING_MAX_ENTRIES` (60): the oldest ("0") must fall off the ring.
+    for generation in 0..61u32 {
+        cx.set_state(&format!("«{generation}ˇ»"));
+        cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+    }
+
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank(&KillRingYank, window, cx));
+    cx.assert_editor_state("60ˇ");
+
+    for expected in (1..60).rev() {
+        cx.update_editor(|editor, window, cx| {
+            editor.kill_ring_yank_pop(&KillRingYankPop, window, cx)
+        });
+        cx.assert_editor_state(&format!("{expected}ˇ"));
+    }
+
+    // 60 generations (60 down to 1) have now been shown; one more pop must wrap back to the
+    // newest ("60") rather than revealing "0", proving the ring holds exactly 60 entries.
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank_pop(&KillRingYankPop, window, cx));
+    cx.assert_editor_state("60ˇ");
+}
+
+#[gpui::test]
+async fn test_kill_ring_yank_pop_replaces_the_text_of_every_cursor(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    cx.set_state("«oneˇ»");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+    cx.set_state("«twoˇ»");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+
+    // The second cursor has a selection, so its yank replaces text instead of inserting.
+    cx.set_state("aˇ b«XXˇ»");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank(&KillRingYank, window, cx));
+    cx.assert_editor_state("atwoˇ btwoˇ");
+
+    // Each cursor replaces only what its own yank inserted: were the recorded ranges paired up
+    // with the wrong cursor, the untouched text between them would be swallowed.
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank_pop(&KillRingYankPop, window, cx));
+    cx.assert_editor_state("aoneˇ boneˇ");
+}
+
+#[gpui::test]
+async fn test_kill_ring_cut_starts_a_generation_once_the_cursor_moved(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    cx.set_state("ˇone\ntwo\nthree");
+    cx.update_editor(|editor, window, cx| {
+        editor.kill_ring_cut(&KillRingCut, window, cx);
+        editor.kill_ring_cut(&KillRingCut, window, cx);
+    });
+    cx.assert_editor_state("ˇtwo\nthree");
+
+    // Moving away ends the kill-line sequence, so this kill has to open a new generation rather
+    // than keep growing "one\n".
+    cx.set_selections_state("two\nˇthree");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+    cx.assert_editor_state("two\nˇ");
+
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank(&KillRingYank, window, cx));
+    cx.assert_editor_state("two\nthreeˇ");
+
+    cx.update_editor(|editor, window, cx| editor.kill_ring_yank_pop(&KillRingYankPop, window, cx));
+    cx.assert_editor_state("two\none\nˇ");
+}
+
+#[gpui::test]
+async fn test_kill_ring_yank_pop_through_dispatched_actions(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    cx.set_state("«oneˇ»");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+    cx.set_state("«twoˇ»");
+    cx.update_editor(|editor, window, cx| editor.kill_ring_cut(&KillRingCut, window, cx));
+
+    // Dispatching for real (rather than calling the handlers) makes sure that neither the
+    // action registration nor an effect running after the yank drops the state `M-y` needs.
+    cx.dispatch_action(KillRingYank);
+    cx.run_until_parked();
+    cx.assert_editor_state("twoˇ");
+
+    cx.dispatch_action(KillRingYankPop);
+    cx.run_until_parked();
+    cx.assert_editor_state("oneˇ");
 }
 
 #[gpui::test]
@@ -43868,6 +44258,172 @@ async fn test_markdown_table_target(cx: &mut TestAppContext) {
         | --- | --- | --- |
         |     |     |     |
         |     |     |     |"});
+}
+
+#[gpui::test]
+async fn test_mermaid_fence_target(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+
+    // Outside Markdown there is no diagram to edit
+    cx.set_state("ˇ");
+    assert!(
+        cx.update_editor(|e, _window, cx| e.mermaid_fence_target(cx))
+            .is_none()
+    );
+
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    cx.set_state(indoc! {"
+        前文
+
+        ```mermaid
+        flowchart TD
+          Aˇ --> B
+        ```
+
+        ```rust
+        fn main() {}
+        ```
+    "});
+
+    let target = cx
+        .update_editor(|e, _window, cx| e.mermaid_fence_target(cx))
+        .expect("the cursor is inside a mermaid fence");
+    assert_eq!(target.info, "mermaid");
+    assert_eq!(
+        target.source,
+        "flowchart TD
+  A --> B"
+    );
+
+    // A cursor outside every fence, and one inside a fence of another language
+    for state in [
+        indoc! {"
+            前ˇ文
+
+            ```mermaid
+            flowchart TD
+            ```
+        "},
+        indoc! {"
+            ```rust
+            fn main() {ˇ}
+            ```
+        "},
+    ] {
+        cx.set_state(state);
+        assert!(
+            cx.update_editor(|e, _window, cx| e.mermaid_fence_target(cx))
+                .is_none(),
+            "unexpected target for:
+{state}"
+        );
+    }
+
+    // A fence that is never closed has no body to write back into
+    cx.set_state(indoc! {"
+        ```mermaid
+        flowchart TDˇ
+    "});
+    assert!(
+        cx.update_editor(|e, _window, cx| e.mermaid_fence_target(cx))
+            .is_none()
+    );
+
+    // Tilde fences and a scale in the info string are still mermaid
+    cx.set_state(indoc! {"
+        ~~~mermaid 150
+        flowchart LRˇ
+        ~~~
+    "});
+    let target = cx
+        .update_editor(|e, _window, cx| e.mermaid_fence_target(cx))
+        .expect("a tilde fence is a fence");
+    assert_eq!(target.info, "mermaid 150");
+    assert_eq!(target.source, "flowchart LR");
+}
+
+#[gpui::test]
+async fn test_write_mermaid_fence_is_one_undo_step(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    let before = indoc! {"
+        - 項目
+
+          ```mermaid
+          flowchart TD
+            Aˇ --> B
+          ```
+
+        あと
+    "};
+    cx.set_state(before);
+
+    let target = cx
+        .update_editor(|e, _window, cx| e.mermaid_fence_target(cx))
+        .expect("the cursor is inside a mermaid fence");
+    // The fence sits inside a list item, so its body arrives without the
+    // indentation and has to be written back with it.
+    assert_eq!(
+        target.source,
+        "flowchart TD
+  A --> B"
+    );
+
+    cx.update_editor(|e, window, cx| {
+        e.write_mermaid_fence(
+            &target,
+            "flowchart LR
+    A --> C",
+            window,
+            cx,
+        )
+    });
+    // The cursor lands at the start of the body, which is column zero of the
+    // line the indentation begins.
+    cx.assert_editor_state(indoc! {"
+        - 項目
+
+          ```mermaid
+        ˇ  flowchart LR
+              A --> C
+          ```
+
+        あと
+    "});
+
+    // One edit, so one undo takes the whole diagram back
+    cx.update_editor(|e, window, cx| e.undo(&Undo, window, cx));
+    cx.assert_editor_state(before);
+}
+
+#[gpui::test]
+async fn test_write_mermaid_fence_fills_an_empty_fence(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    cx.set_state(indoc! {"
+        ```mermaidˇ
+        ```
+    "});
+    let target = cx
+        .update_editor(|e, _window, cx| e.mermaid_fence_target(cx))
+        .expect("an empty fence is still a fence");
+    assert_eq!(target.source, "");
+
+    cx.update_editor(|e, window, cx| e.write_mermaid_fence(&target, "flowchart TB", window, cx));
+    cx.assert_editor_state(indoc! {"
+        ```mermaid
+        ˇflowchart TB
+        ```
+    "});
 }
 
 #[gpui::test]

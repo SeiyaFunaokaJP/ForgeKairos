@@ -427,9 +427,22 @@ pub struct InsertMermaidDiagram {
     pub diagram: MermaidDiagramKind,
 }
 
+/// Folds the body of every Markdown heading of the given level (1 to 6),
+/// leaving the heading lines themselves visible.
+#[derive(PartialEq, Clone, Debug, Deserialize, JsonSchema, Action)]
+#[action(namespace = markdown)]
+#[serde(deny_unknown_fields)]
+pub struct FoldHeadings {
+    pub level: u32,
+}
+
 actions!(
     markdown,
     [
+        /// Folds the body of every Markdown heading, at every level.
+        FoldAllHeadings,
+        /// Unfolds everything that was folded in the Markdown file.
+        UnfoldAllHeadings,
         /// Toggles a block quote (`> `) prefix on the selected lines (or the
         /// current line) while in Markdown files.
         ToggleBlockQuote,
@@ -694,6 +707,10 @@ actions!(
         KillRingCut,
         /// Yanks from kill ring (Emacs-style).
         KillRingYank,
+        /// Replaces the text from the last kill ring yank with the next-older generation
+        /// (Emacs-style `M-y`). Only has an effect immediately after `KillRingYank` or
+        /// another `KillRingYankPop`.
+        KillRingYankPop,
         /// Moves cursor down one line.
         LineDown,
         /// Moves cursor up one line.

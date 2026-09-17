@@ -142,59 +142,6 @@ impl QuickActionBar {
         Some(button.into_any_element())
     }
 
-    /// The counterpart of the preview button, shown while a grid is the active item so
-    /// that the same file can be reopened as plain text.
-    pub fn render_open_as_text_button(&self) -> Option<AnyElement> {
-        let active_item = self.active_item.as_ref()?;
-        let grid = active_item.downcast::<TabularDataPreviewPane>()?;
-
-        let alt_click = gpui::Keystroke {
-            key: "click".into(),
-            modifiers: Modifiers::alt(),
-            ..Default::default()
-        };
-
-        let button = IconButton::new("open-tabular-as-text", IconName::FileTextOutlined)
-            .icon_size(IconSize::Small)
-            .style(ButtonStyle::Subtle)
-            .tooltip(move |_window, cx| {
-                Tooltip::with_meta(
-                    "テキストを横に開く",
-                    Some(&tabular_data_preview::OpenAsText),
-                    format!(
-                        "{} でこのタブを切り替える",
-                        text_for_keystroke(&alt_click.modifiers, &alt_click.key, cx)
-                    ),
-                    cx,
-                )
-            })
-            .on_click({
-                let workspace_handle = self.workspace.clone();
-                let active_item = active_item.boxed_clone();
-                move |_, window, cx| {
-                    let Some(workspace) = workspace_handle.upgrade() else {
-                        return;
-                    };
-                    workspace.update(cx, |workspace, cx| {
-                        let Some(pane) = workspace.pane_for(active_item.as_ref()) else {
-                            return;
-                        };
-                        let open_in_same_pane = window.modifiers().alt;
-                        TabularDataPreviewPane::open_as_text(
-                            workspace,
-                            grid.clone(),
-                            pane,
-                            open_in_same_pane,
-                            window,
-                            cx,
-                        );
-                    });
-                }
-            });
-
-        Some(button.into_any_element())
-    }
-
     pub fn render_export_pdf_button(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let active_item = self.active_item.as_ref()?;
         let editor = active_item.act_as::<Editor>(cx)?;

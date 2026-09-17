@@ -460,6 +460,9 @@ impl EditorElement {
         register_action(editor, window, Editor::fold_at_level_8);
         register_action(editor, window, Editor::fold_at_level_9);
         register_action(editor, window, Editor::fold_all);
+        register_action(editor, window, Editor::fold_headings);
+        register_action(editor, window, Editor::fold_all_headings);
+        register_action(editor, window, Editor::unfold_all_headings);
         register_action(editor, window, Editor::fold_function_bodies);
         register_action(editor, window, Editor::fold_recursive);
         register_action(editor, window, Editor::toggle_fold);
@@ -631,6 +634,7 @@ impl EditorElement {
             register_action(editor, window, Editor::cut);
             register_action(editor, window, Editor::kill_ring_cut);
             register_action(editor, window, Editor::kill_ring_yank);
+            register_action(editor, window, Editor::kill_ring_yank_pop);
             register_action(editor, window, Editor::paste);
             register_action(editor, window, Editor::undo);
             register_action(editor, window, Editor::redo);

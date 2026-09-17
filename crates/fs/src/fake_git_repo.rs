@@ -90,6 +90,9 @@ pub struct FakeGitRepositoryState {
     pub command_outputs: HashMap<String, GitCommandOutput>,
     /// Every [`GitRepository::run_command`] call, in order, as `(args, stdin)`.
     pub run_command_log: Vec<(Vec<String>, Option<String>)>,
+    /// The caller-supplied environment of each of those calls, pushed alongside
+    /// `run_command_log` so the two stay index-for-index.
+    pub run_command_envs: Vec<HashMap<String, String>>,
 }
 
 impl FakeGitRepositoryState {
@@ -119,8 +122,29 @@ impl FakeGitRepositoryState {
             commit_history: Vec::new(),
             stash_entries: Default::default(),
             commit_template: None,
-            command_outputs: Default::default(),
+            // The git panel asks on every scan whether a cherry-pick / revert / rebase is
+            // stopped part-way; in a fresh fake repository none is. Tests that want one override
+            // these.
+            command_outputs: HashMap::from_iter(
+                [
+                    "rev-parse --verify --quiet REBASE_HEAD",
+                    "rev-parse --verify --quiet CHERRY_PICK_HEAD",
+                    "rev-parse --verify --quiet REVERT_HEAD",
+                ]
+                .into_iter()
+                .map(|args| {
+                    (
+                        args.to_string(),
+                        GitCommandOutput {
+                            stdout: String::new(),
+                            stderr: String::new(),
+                            exit_code: Some(1),
+                        },
+                    )
+                }),
+            ),
             run_command_log: Vec::new(),
+            run_command_envs: Vec::new(),
         }
     }
 }
@@ -366,6 +390,11 @@ impl GitRepository for FakeGitRepository {
                 ResetMode::Mixed => {
                     state.head_contents = snapshot.head_contents;
                     state.index_contents = state.head_contents.clone();
+                }
+                // The git panel's "uncommit" is the only caller of this method and never resets
+                // hard; the fake does not model the worktree writes that would take.
+                ResetMode::Hard => {
+                    anyhow::bail!("FakeGitRepository does not implement `reset --hard`")
                 }
             }
 
@@ -1229,10 +1258,16 @@ impl GitRepository for FakeGitRepository {
         args: Vec<String>,
         stdin: Option<String>,
         _env: Arc<HashMap<String, String>>,
+        command_env: HashMap<String, String>,
     ) -> BoxFuture<'_, Result<GitCommandOutput>> {
         self.with_state_async(false, move |state| {
+            // The same checks a real repository applies, so that a wrapper building a command or
+            // an environment nobody allowed fails in tests too.
+            git::repository::validate_git_command(&args)?;
+            git::repository::validate_git_command_env(&command_env)?;
             let key = args.join(" ");
             state.run_command_log.push((args, stdin));
+            state.run_command_envs.push(command_env);
             // There is no git binary behind the fake repository, so a command
             // the test did not prepare an answer for stays an explicit error
             // rather than a silent success.

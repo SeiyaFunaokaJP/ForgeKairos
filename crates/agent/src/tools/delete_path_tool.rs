@@ -139,7 +139,9 @@ impl AgentTool for DeletePathTool {
             } else {
                 match decision {
                     ToolPermissionDecision::Allow => None,
-                    ToolPermissionDecision::Confirm => Some(cx.update(|cx| {
+                    // A judged decision reaches the same authorization call,
+                    // which re-evaluates the settings and runs the judge there.
+                    ToolPermissionDecision::Confirm | ToolPermissionDecision::Judge => Some(cx.update(|cx| {
                         let context =
                             crate::ToolPermissionContext::new(Self::NAME, vec![path.clone()]);
                         let title = format!("{} を削除", MarkdownInlineCode(&path));

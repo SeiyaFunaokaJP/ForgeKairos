@@ -38,8 +38,9 @@ use git::{
         CreateWorktreeTarget, DiffStatType, DiffType, FetchOptions, FileHistoryChangedFileSets,
         GitCommandOutput, GitCommitTemplate, GitRepository, GitRepositoryCheckpoint,
         InitialGraphCommitData, LogOrder, LogSource, PatchSource, PushOptions, Remote,
-        RemoteCommandOutput, RepoPath, ResetMode, SearchCommitArgs, UpstreamTrackingStatus,
-        Worktree as GitWorktree, delete_branch_flag, is_binary_content,
+        RemoteCommandOutput, RepoPath, ResetMode, SearchCommitArgs, SequencerKind, SequencerState,
+        TAG_LIST_FORMAT, TagDistance, TagInfo, UpstreamTrackingStatus, Worktree as GitWorktree,
+        delete_branch_flag, is_binary_content,
     },
     stash::{GitStash, StashEntry},
     status::{
@@ -834,6 +835,7 @@ enum GitJobKey {
     ReloadBufferDiffBases,
     RefreshStatuses,
     ReloadGitState,
+    SequencerState,
 }
 
 impl GitStore {
@@ -3426,6 +3428,9 @@ impl GitStore {
             .map(|_| match envelope.payload.options() {
                 proto::push::PushOptions::SetUpstream => git::repository::PushOptions::SetUpstream,
                 proto::push::PushOptions::Force => git::repository::PushOptions::Force,
+                proto::push::PushOptions::ForceWithoutLease => {
+                    git::repository::PushOptions::ForceWithoutLease
+                }
             });
 
         let branch_name = envelope.payload.branch_name.into();
@@ -4456,6 +4461,7 @@ impl GitStore {
         let mode = match envelope.payload.mode() {
             git_reset::ResetMode::Soft => ResetMode::Soft,
             git_reset::ResetMode::Mixed => ResetMode::Mixed,
+            git_reset::ResetMode::Hard => ResetMode::Hard,
         };
 
         repository_handle
@@ -4639,10 +4645,11 @@ impl GitStore {
         let repository_handle = Self::repository_for_request(&this, repository_id, &mut cx)?;
         let args = envelope.payload.args;
         let stdin = envelope.payload.stdin;
+        let command_env = envelope.payload.env.into_iter().collect();
 
         let output = repository_handle
             .update(&mut cx, |repository_handle, _| {
-                repository_handle.run_git_command(args, stdin)
+                repository_handle.run_git_command_with_env(args, stdin, command_env)
             })
             .await??;
 
@@ -7029,6 +7036,7 @@ impl Repository {
                             mode: match reset_mode {
                                 ResetMode::Soft => git_reset::ResetMode::Soft.into(),
                                 ResetMode::Mixed => git_reset::ResetMode::Mixed.into(),
+                                ResetMode::Hard => git_reset::ResetMode::Hard.into(),
                             },
                         })
                         .await?;
@@ -8607,6 +8615,7 @@ impl Repository {
             .map(|option| match option {
                 PushOptions::SetUpstream => " --set-upstream",
                 PushOptions::Force => " --force-with-lease",
+                PushOptions::ForceWithoutLease => " --force",
             })
             .unwrap_or("");
 
@@ -8660,6 +8669,9 @@ impl Repository {
                                 remote_name: remote.to_string(),
                                 options: options.map(|options| match options {
                                     PushOptions::Force => proto::push::PushOptions::Force,
+                                    PushOptions::ForceWithoutLease => {
+                                        proto::push::PushOptions::ForceWithoutLease
+                                    }
                                     PushOptions::SetUpstream => {
                                         proto::push::PushOptions::SetUpstream
                                     }
@@ -9569,37 +9581,94 @@ impl Repository {
         args: Vec<String>,
         stdin: Option<String>,
     ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        self.run_git_command_with_env(args, stdin, HashMap::default())
+    }
+
+    /// [`Self::run_git_command`] with extra environment variables, checked against
+    /// [`git::repository::ALLOWED_GIT_COMMAND_ENV`] where the command runs. Only `commit-tree`
+    /// needs this, to keep a rewritten commit's original author.
+    pub fn run_git_command_with_env(
+        &mut self,
+        args: Vec<String>,
+        stdin: Option<String>,
+        command_env: HashMap<String, String>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
         let id = self.id;
         let status = SharedString::from(format!("git {}", args.join(" ")));
         self.send_job(
             "run_git_command",
             Some(status),
             move |repo, _cx| async move {
-                match repo {
-                    RepositoryState::Local(LocalRepositoryState {
-                        backend,
-                        environment,
-                        ..
-                    }) => backend.run_command(args, stdin, environment).await,
-                    RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => {
-                        let response = client
-                            .request(proto::GitRunCommand {
-                                project_id: project_id.0,
-                                repository_id: id.to_proto(),
-                                args,
-                                stdin,
-                            })
-                            .await?;
-
-                        Ok(GitCommandOutput {
-                            stdout: response.stdout,
-                            stderr: response.stderr,
-                            exit_code: response.exit_code,
-                        })
-                    }
-                }
+                Self::run_command_in_job(&repo, id, args, stdin, command_env).await
             },
         )
+    }
+
+    /// One git subcommand against a repository already in hand inside a job.
+    ///
+    /// The multi-step wrappers below each have to be a *single* job: [`Self::run_git_command`]
+    /// queues a new one, and a running job waiting on a job queued behind it never finishes.
+    async fn run_command_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        args: Vec<String>,
+        stdin: Option<String>,
+        command_env: HashMap<String, String>,
+    ) -> Result<GitCommandOutput> {
+        match repo {
+            RepositoryState::Local(LocalRepositoryState {
+                backend,
+                environment,
+                ..
+            }) => {
+                backend
+                    .run_command(args, stdin, environment.clone(), command_env)
+                    .await
+            }
+            RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => {
+                let response = client
+                    .request(proto::GitRunCommand {
+                        project_id: project_id.0,
+                        repository_id: id.to_proto(),
+                        args,
+                        stdin,
+                        env: command_env.into_iter().collect(),
+                    })
+                    .await?;
+
+                Ok(GitCommandOutput {
+                    stdout: response.stdout,
+                    stderr: response.stderr,
+                    exit_code: response.exit_code,
+                })
+            }
+        }
+    }
+
+    /// [`Self::run_command_in_job`] for a command with no stdin and no extra environment.
+    async fn run_step_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        args: Vec<String>,
+    ) -> Result<GitCommandOutput> {
+        Self::run_command_in_job(repo, id, args, None, HashMap::default()).await
+    }
+
+    /// Runs `steps` (never empty) in order and stops at the first command git refuses, handing
+    /// back that command's output so the user is told which step actually failed.
+    async fn run_steps_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        steps: Vec<Vec<String>>,
+    ) -> Result<GitCommandOutput> {
+        let mut last = GitCommandOutput::default();
+        for args in steps {
+            last = Self::run_step_in_job(repo, id, args).await?;
+            if !last.succeeded() {
+                break;
+            }
+        }
+        Ok(last)
     }
 
     /// `git merge <committish>`. Conflicts come back as a successful future with
@@ -9652,6 +9721,580 @@ impl Repository {
         let receiver = self.run_git_command(args, Some(contents));
         self.schedule_scan_after_worktree_change(cx);
         receiver
+    }
+
+    /// `git cherry-pick [-n] <sha>…`, oldest first so the commits land in their original order.
+    pub fn cherry_pick(
+        &mut self,
+        shas_oldest_first: Vec<String>,
+        no_commit: bool,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let mut args = vec!["cherry-pick".to_string()];
+        if no_commit {
+            args.push("-n".into());
+        }
+        args.extend(shas_oldest_first);
+        let receiver = self.run_git_command(args, None);
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// `git revert [-n] <sha>…`, newest first so each revert applies to the tree the one before
+    /// it left behind.
+    pub fn revert_commits(
+        &mut self,
+        shas_newest_first: Vec<String>,
+        no_commit: bool,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let mut args = vec!["revert".to_string()];
+        if no_commit {
+            args.push("-n".into());
+        }
+        args.extend(shas_newest_first);
+        let receiver = self.run_git_command(args, None);
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// `git reset --soft|--mixed|--hard <committish>`. Callers must confirm `Hard` with the user:
+    /// it throws uncommitted work away.
+    pub fn reset_to(
+        &mut self,
+        committish: String,
+        mode: ResetMode,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let mode_flag = match mode {
+            ResetMode::Soft => "--soft",
+            ResetMode::Mixed => "--mixed",
+            ResetMode::Hard => "--hard",
+        };
+        let receiver =
+            self.run_git_command(vec!["reset".into(), mode_flag.into(), committish], None);
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// `git checkout --detach <committish>`, leaving HEAD on the commit itself.
+    pub fn checkout_detached(
+        &mut self,
+        committish: String,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let receiver =
+            self.run_git_command(vec!["checkout".into(), "--detach".into(), committish], None);
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// `git tag <name> <committish>`, annotated (`-a -m`) when a message is given.
+    pub fn create_tag(
+        &mut self,
+        name: String,
+        committish: String,
+        message: Option<String>,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let mut args = vec!["tag".to_string()];
+        if let Some(message) = message {
+            args.extend(["-a".to_string(), "-m".to_string(), message]);
+        }
+        args.extend([name, committish]);
+        let receiver = self.run_git_command(args, None);
+        // A tag is a ref, not a worktree change, but the refs the panel shows come from the same
+        // scan.
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// `git tag -d <name>`.
+    pub fn delete_tag(
+        &mut self,
+        name: String,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let receiver = self.run_git_command(vec!["tag".into(), "-d".into(), name], None);
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// Every tag in the repository, newest first.
+    pub fn tags(&mut self) -> oneshot::Receiver<Result<Vec<TagInfo>>> {
+        let id = self.id;
+        self.send_job("tags", None, move |repo, _cx| async move {
+            let output = Self::run_step_in_job(
+                &repo,
+                id,
+                vec![
+                    "for-each-ref".into(),
+                    "--sort=-creatordate".into(),
+                    format!("--format={TAG_LIST_FORMAT}"),
+                    "refs/tags/".into(),
+                ],
+            )
+            .await?;
+            anyhow::ensure!(
+                output.succeeded(),
+                "タグ一覧を取得できませんでした: {}",
+                output.failure_message()
+            );
+            Ok(TagInfo::parse_list(&output.stdout))
+        })
+    }
+
+    /// `git describe --tags --long <committish>`, or `None` when no tag reaches the commit.
+    pub fn describe(
+        &mut self,
+        committish: String,
+    ) -> oneshot::Receiver<Result<Option<TagDistance>>> {
+        let id = self.id;
+        self.send_job("describe", None, move |repo, _cx| async move {
+            let output = Self::run_step_in_job(
+                &repo,
+                id,
+                vec![
+                    "describe".into(),
+                    "--tags".into(),
+                    "--long".into(),
+                    committish,
+                ],
+            )
+            .await?;
+            // "No names found" is an ordinary answer for a repository without tags, not a failure.
+            if !output.succeeded() {
+                return Ok(None);
+            }
+            let described = output.stdout.trim();
+            TagDistance::parse(described)
+                .map(Some)
+                .with_context(|| format!("git describe の出力を解釈できませんでした: {described}"))
+        })
+    }
+
+    /// Whether a `cherry-pick` / `revert` / `rebase` is stopped part-way, and whether it stopped
+    /// on a conflict.
+    ///
+    /// The git panel asks after every scan, so this is keyed: a burst of scans must not queue a
+    /// burst of `rev-parse` processes ahead of the work the user is waiting for. The caller whose
+    /// probe gets dropped sees its receiver close and keeps the state it already has.
+    pub fn sequencer_state(&mut self) -> oneshot::Receiver<Result<Option<SequencerState>>> {
+        let id = self.id;
+        self.send_keyed_job(
+            "sequencer_state",
+            Some(GitJobKey::SequencerState),
+            None,
+            move |repo, _cx| async move {
+                for kind in SequencerKind::all() {
+                    let probe = Self::run_step_in_job(
+                        &repo,
+                        id,
+                        vec![
+                            "rev-parse".into(),
+                            "--verify".into(),
+                            "--quiet".into(),
+                            kind.in_progress_ref().to_string(),
+                        ],
+                    )
+                    .await?;
+                    if !probe.succeeded() {
+                        continue;
+                    }
+                    // The index rather than the last scan: the banner has to be right the moment a
+                    // cherry-pick comes back, which is before the scan it schedules has finished.
+                    let unmerged = Self::run_step_in_job(
+                        &repo,
+                        id,
+                        vec![
+                            "diff".into(),
+                            "--name-only".into(),
+                            "--diff-filter=U".into(),
+                        ],
+                    )
+                    .await?;
+                    return Ok(Some(SequencerState {
+                        kind,
+                        conflicted: !unmerged.stdout.trim().is_empty(),
+                    }));
+                }
+                Ok(None)
+            },
+        )
+    }
+
+    /// `git <cherry-pick|revert|rebase> --continue`.
+    pub fn sequencer_continue(
+        &mut self,
+        kind: SequencerKind,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        self.run_sequencer_step(kind, "--continue", cx)
+    }
+
+    /// `git <cherry-pick|revert|rebase> --abort`.
+    pub fn sequencer_abort(
+        &mut self,
+        kind: SequencerKind,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        self.run_sequencer_step(kind, "--abort", cx)
+    }
+
+    /// `git <cherry-pick|revert|rebase> --skip`.
+    pub fn sequencer_skip(
+        &mut self,
+        kind: SequencerKind,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        self.run_sequencer_step(kind, "--skip", cx)
+    }
+
+    fn run_sequencer_step(
+        &mut self,
+        kind: SequencerKind,
+        flag: &'static str,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let receiver =
+            self.run_git_command(vec![kind.subcommand().to_string(), flag.to_string()], None);
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// Rewrites an earlier commit's message. The commit and everything after it get new SHAs, so
+    /// a branch that was already pushed needs a force push afterwards.
+    ///
+    /// `git rebase -i` is not an option: it drives a todo list through an editor, and this fork
+    /// never lets git start a program (see `ALLOWED_GIT_COMMAND_ENV`). The commit is rebuilt with
+    /// `commit-tree` instead and the branch is moved onto it with `rebase --onto`.
+    pub fn reword_commit(
+        &mut self,
+        sha: String,
+        message: String,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let id = self.id;
+        let branch_name = self.current_branch_name();
+        let receiver = self.send_job(
+            "reword_commit",
+            Some(format!("git commit-tree {sha}").into()),
+            move |repo, _cx| async move {
+                let head = Self::run_step_in_job(
+                    &repo,
+                    id,
+                    vec![
+                        "rev-parse".into(),
+                        "--verify".into(),
+                        "--quiet".into(),
+                        "HEAD".into(),
+                    ],
+                )
+                .await?;
+                anyhow::ensure!(
+                    head.succeeded(),
+                    "HEAD を解決できませんでした: {}",
+                    head.failure_message()
+                );
+                if head.stdout.trim() == sha {
+                    // `--only` with no pathspec keeps whatever is staged out of the amended
+                    // commit, so rewording never smuggles the user's staged work into history.
+                    return Self::run_step_in_job(
+                        &repo,
+                        id,
+                        vec![
+                            "commit".into(),
+                            "--amend".into(),
+                            "--only".into(),
+                            "-m".into(),
+                            message,
+                        ],
+                    )
+                    .await;
+                }
+
+                Self::ensure_range_is_linear_in_job(&repo, id, format!("{sha}..HEAD")).await?;
+                let author = Self::author_env_in_job(&repo, id, &sha).await?;
+                let parent = Self::parent_of_in_job(&repo, id, &sha).await?;
+                let rebuilt = Self::commit_tree_in_job(
+                    &repo,
+                    id,
+                    format!("{sha}^{{tree}}"),
+                    parent,
+                    message,
+                    author,
+                )
+                .await?;
+                let new_sha = match rebuilt {
+                    Ok(new_sha) => new_sha,
+                    Err(output) => return Ok(output),
+                };
+
+                Self::run_step_in_job(
+                    &repo,
+                    id,
+                    Self::rebase_onto_args(&new_sha, &sha, branch_name.as_deref()),
+                )
+                .await
+            },
+        );
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// Squashes the consecutive range `oldest..=newest` on the current branch into one commit,
+    /// with the same plumbing [`Self::reword_commit`] uses: the new commit keeps `newest`'s tree
+    /// and hangs off `oldest`'s parent.
+    pub fn squash_range(
+        &mut self,
+        oldest_sha: String,
+        newest_sha: String,
+        message: String,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let id = self.id;
+        let branch_name = self.current_branch_name();
+        let receiver = self.send_job(
+            "squash_range",
+            Some(format!("git commit-tree {newest_sha}").into()),
+            move |repo, _cx| async move {
+                let parent = Self::parent_of_in_job(&repo, id, &oldest_sha).await?;
+                let range = match &parent {
+                    Some(parent) => format!("{parent}..{newest_sha}"),
+                    // `oldest` is the repository's first commit, so the range is all of history
+                    // up to `newest`.
+                    None => newest_sha.clone(),
+                };
+                Self::ensure_range_is_linear_in_job(&repo, id, range).await?;
+                let author = Self::author_env_in_job(&repo, id, &oldest_sha).await?;
+                let rebuilt = Self::commit_tree_in_job(
+                    &repo,
+                    id,
+                    format!("{newest_sha}^{{tree}}"),
+                    parent,
+                    message,
+                    author,
+                )
+                .await?;
+                let new_sha = match rebuilt {
+                    Ok(new_sha) => new_sha,
+                    Err(output) => return Ok(output),
+                };
+
+                Self::run_step_in_job(
+                    &repo,
+                    id,
+                    Self::rebase_onto_args(&new_sha, &newest_sha, branch_name.as_deref()),
+                )
+                .await
+            },
+        );
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// Builds a merge-request branch: `base`, then every commit of `shas_oldest_first` applied
+    /// without committing, then one commit.
+    ///
+    /// A conflict comes back as a non-zero exit code with `sequencer_state()` reporting a stopped
+    /// cherry-pick, so the panel can offer continuing or aborting.
+    pub fn squash_to_new_branch(
+        &mut self,
+        base: String,
+        shas_oldest_first: Vec<String>,
+        new_branch: String,
+        message: String,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let id = self.id;
+        let receiver = self.send_job(
+            "squash_to_new_branch",
+            Some(format!("git switch -c {new_branch}").into()),
+            move |repo, _cx| async move {
+                anyhow::ensure!(
+                    !shas_oldest_first.is_empty(),
+                    "まとめるコミットが選択されていません。"
+                );
+                let mut cherry_pick = vec!["cherry-pick".to_string(), "-n".to_string()];
+                cherry_pick.extend(shas_oldest_first);
+                Self::run_steps_in_job(
+                    &repo,
+                    id,
+                    vec![
+                        // `switch` becomes `checkout -b` where git is too old for it (ADR-F47).
+                        vec!["switch".into(), "-c".into(), new_branch, base],
+                        cherry_pick,
+                        vec!["commit".into(), "-m".into(), message],
+                    ],
+                )
+                .await
+            },
+        );
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// `git show <committish>:<path>`: the contents of one file as of a ref, with `path`
+    /// relative to the repository root and spelled with `/`. A path that does not exist there
+    /// comes back as a non-zero exit code rather than an error.
+    pub fn file_at_ref(
+        &mut self,
+        committish: String,
+        path: String,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        self.run_git_command(vec!["show".into(), format!("{committish}:{path}")], None)
+    }
+
+    /// `git diff --name-status <base>...<head>`: what `head` changed since it left `base`.
+    pub fn changed_files_between(
+        &mut self,
+        base: String,
+        head: String,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        self.run_git_command(
+            vec![
+                "diff".into(),
+                "--name-status".into(),
+                format!("{base}...{head}"),
+            ],
+            None,
+        )
+    }
+
+    /// The branch a history rewrite has to move, or `None` on a detached HEAD, where
+    /// `rebase --onto` moves HEAD itself.
+    fn current_branch_name(&self) -> Option<String> {
+        self.branch.as_ref().map(|branch| branch.name().to_string())
+    }
+
+    /// `git rebase --autostash --onto <new_base> <upstream> [<branch>]`, which replays everything
+    /// after `upstream` on top of `new_base`.
+    ///
+    /// `--autostash` always goes on the command line; a git too old for it drops the flag where
+    /// the command runs and refuses a dirty worktree instead (ADR-F47).
+    fn rebase_onto_args(new_base: &str, upstream: &str, branch: Option<&str>) -> Vec<String> {
+        let mut args = vec![
+            "rebase".to_string(),
+            "--autostash".to_string(),
+            "--onto".to_string(),
+            new_base.to_string(),
+            upstream.to_string(),
+        ];
+        args.extend(branch.map(str::to_string));
+        args
+    }
+
+    /// `git commit-tree`, returning the new commit's SHA, or the output of the failed command.
+    async fn commit_tree_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        tree: String,
+        parent: Option<String>,
+        message: String,
+        author: HashMap<String, String>,
+    ) -> Result<std::result::Result<String, GitCommandOutput>> {
+        let mut args = vec!["commit-tree".to_string(), tree];
+        if let Some(parent) = parent {
+            args.extend(["-p".to_string(), parent]);
+        }
+        args.extend(["-m".to_string(), message]);
+        let output = Self::run_command_in_job(repo, id, args, None, author).await?;
+        if !output.succeeded() {
+            return Ok(Err(output));
+        }
+        let new_sha = output.stdout.trim().to_string();
+        anyhow::ensure!(
+            !new_sha.is_empty(),
+            "git commit-tree が新しいコミットを返しませんでした。"
+        );
+        Ok(Ok(new_sha))
+    }
+
+    /// `GIT_AUTHOR_*` of `sha`, so a commit rebuilt with `commit-tree` keeps its original author.
+    /// The committer becomes whoever is doing the rewrite, which is what `git rebase` does too.
+    async fn author_env_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        sha: &str,
+    ) -> Result<HashMap<String, String>> {
+        // `--date=raw` rather than `%aI`: strict ISO 8601 needs git 2.2, and git prints an
+        // unrecognized placeholder verbatim, which would then travel into GIT_AUTHOR_DATE
+        // (ADR-F47).
+        let output = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "log".into(),
+                "-1".into(),
+                "--format=%an%x00%ae%x00%ad".into(),
+                "--date=raw".into(),
+                sha.to_string(),
+            ],
+        )
+        .await?;
+        anyhow::ensure!(
+            output.succeeded(),
+            "元のコミットの作者を取得できませんでした: {}",
+            output.failure_message()
+        );
+        let mut fields = output.stdout.trim_end_matches(['\r', '\n']).split('\0');
+        let name = fields.next().unwrap_or_default();
+        let email = fields.next().unwrap_or_default();
+        let date = fields.next().unwrap_or_default();
+        anyhow::ensure!(
+            !name.is_empty() && !email.is_empty() && !date.is_empty(),
+            "元のコミットの作者を取得できませんでした: git log の出力を解釈できません。"
+        );
+        Ok(HashMap::from_iter([
+            ("GIT_AUTHOR_NAME".to_string(), name.to_string()),
+            ("GIT_AUTHOR_EMAIL".to_string(), email.to_string()),
+            ("GIT_AUTHOR_DATE".to_string(), date.to_string()),
+        ]))
+    }
+
+    /// The parent of `sha`, or `None` when it is a root commit.
+    async fn parent_of_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        sha: &str,
+    ) -> Result<Option<String>> {
+        let output = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "rev-parse".into(),
+                "--verify".into(),
+                "--quiet".into(),
+                format!("{sha}^"),
+            ],
+        )
+        .await?;
+        Ok(output.succeeded().then(|| output.stdout.trim().to_string()))
+    }
+
+    /// Refuses a range containing a merge commit: replaying it with `commit-tree` +
+    /// `rebase --onto` would silently flatten the merged-in history.
+    async fn ensure_range_is_linear_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        range: String,
+    ) -> Result<()> {
+        let output = Self::run_step_in_job(
+            repo,
+            id,
+            vec!["log".into(), "--merges".into(), "--format=%H".into(), range],
+        )
+        .await?;
+        anyhow::ensure!(
+            output.succeeded(),
+            "書き換える範囲を調べられませんでした: {}",
+            output.failure_message()
+        );
+        anyhow::ensure!(
+            output.stdout.trim().is_empty(),
+            "マージコミットを含む範囲は書き換えられません。マージを含まない範囲を選び直してください。"
+        );
+        Ok(())
     }
 
     /// Refreshes git state after a command that may have rewritten the working
@@ -10732,6 +11375,7 @@ fn format_job_key(key: &GitJobKey) -> SharedString {
         GitJobKey::ReloadBufferDiffBases => "ReloadBufferDiffBases".into(),
         GitJobKey::RefreshStatuses => "RefreshStatuses".into(),
         GitJobKey::ReloadGitState => "ReloadGitState".into(),
+        GitJobKey::SequencerState => "SequencerState".into(),
     }
 }
 

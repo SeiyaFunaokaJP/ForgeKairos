@@ -7595,6 +7595,97 @@ async fn test_copy_path_tool_deny_rule_blocks_copy(cx: &mut TestAppContext) {
     );
 }
 
+/// ADR-F52: with the judged default nothing above the default step decided the
+/// call, so `copy_path` and `move_path` must still reach an authorization
+/// prompt. Reading the judged decision as "no confirmation needed" would move
+/// the user's files with nobody having approved it.
+#[gpui::test]
+async fn test_judged_default_still_authorizes_copy_and_move(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        "/root",
+        json!({
+            "source.txt": "content",
+            "dest": {}
+        }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), ["/root".as_ref()], cx).await;
+
+    cx.update(|cx| {
+        language_model::LanguageModelRegistry::test(cx);
+        // No model can judge, so the judge always hands the decision back to
+        // the user; the point of the test is that it is asked for at all.
+        language_model::LanguageModelRegistry::global(cx).update(cx, |registry, cx| {
+            registry.set_default_model(None, cx);
+        });
+        let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+        settings.tool_permissions.default = settings::ToolPermissionMode::Auto;
+        agent_settings::AgentSettings::override_global(settings, cx);
+    });
+
+    #[allow(clippy::arc_with_non_send_sync)]
+    let copy_tool = Arc::new(crate::CopyPathTool::new(project.clone()));
+    let (event_stream, mut receiver) = crate::ToolCallEventStream::test();
+    let task = cx.update(|cx| {
+        copy_tool.run(
+            ToolInput::resolved(crate::CopyPathToolInput {
+                source_path: "root/source.txt".to_string(),
+                destination_path: "root/dest/source.txt".to_string(),
+            }),
+            event_stream,
+            cx,
+        )
+    });
+    // The judge is asked, cannot decide (no model), and hands over to the user.
+    assert_eq!(
+        receiver.expect_permission_judge().await.state,
+        acp_thread::PermissionJudgeState::Judging
+    );
+    assert_eq!(
+        receiver.expect_permission_judge().await.state,
+        acp_thread::PermissionJudgeState::Unsafe
+    );
+    let authorization = receiver.expect_authorization().await;
+    drop(authorization);
+    task.await.expect_err("nobody approved the copy");
+    assert!(
+        !fs.is_file("/root/dest/source.txt".as_ref()).await,
+        "the copy must not have run without an approval"
+    );
+
+    #[allow(clippy::arc_with_non_send_sync)]
+    let move_tool = Arc::new(crate::MovePathTool::new(project));
+    let (event_stream, mut receiver) = crate::ToolCallEventStream::test();
+    let task = cx.update(|cx| {
+        move_tool.run(
+            ToolInput::resolved(crate::MovePathToolInput {
+                source_path: "root/source.txt".to_string(),
+                destination_path: "root/dest/source.txt".to_string(),
+            }),
+            event_stream,
+            cx,
+        )
+    });
+    assert_eq!(
+        receiver.expect_permission_judge().await.state,
+        acp_thread::PermissionJudgeState::Judging
+    );
+    assert_eq!(
+        receiver.expect_permission_judge().await.state,
+        acp_thread::PermissionJudgeState::Unsafe
+    );
+    let authorization = receiver.expect_authorization().await;
+    drop(authorization);
+    task.await.expect_err("nobody approved the move");
+    assert!(
+        fs.is_file("/root/source.txt".as_ref()).await,
+        "the move must not have run without an approval"
+    );
+}
+
 #[gpui::test]
 async fn test_web_search_tool_deny_rule_blocks_search(cx: &mut TestAppContext) {
     init_test(cx);

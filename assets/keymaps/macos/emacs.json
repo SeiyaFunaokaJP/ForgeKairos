@@ -60,6 +60,7 @@
       "ctrl-w": "editor::Cut", // kill-region
       "alt-w": "editor::Copy", // kill-ring-save
       "ctrl-y": "editor::KillRingYank", // yank
+      "alt-y": "editor::KillRingYankPop", // yank-pop
       "ctrl-_": "editor::Undo", // undo
       "ctrl-/": "editor::Undo", // undo
       "ctrl-x u": "editor::Undo", // undo

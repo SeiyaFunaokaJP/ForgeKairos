@@ -1,12 +1,16 @@
 use collections::HashMap;
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, ClipboardItem, Context, Entity, ImageSource,
-    ParsedSvg, RenderImage, SMOOTH_SVG_SCALE_FACTOR, ScrollDelta, ScrollHandle, ScrollWheelEvent,
-    Size, Stateful, StyledText, Task, Window, img, pulsating_between, size,
+    Animation, AnimationExt, AnyElement, App, BorderStyle, Bounds, ClipboardItem, Context, Entity,
+    ImageSource, Img, MouseButton, MouseDownEvent, MouseMoveEvent, ParsedSvg, Point, RenderImage,
+    SMOOTH_SVG_SCALE_FACTOR, ScrollDelta, ScrollHandle, ScrollWheelEvent, Size, Stateful,
+    StyledText, Task, Window, canvas, img, point, pulsating_between, quad, size,
 };
+use mermaid_render::DiagramGeometry;
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use ui::{CopyButton, ScrollAxes, Scrollbars, TintColor, Tooltip, WithScrollbar, prelude::*};
@@ -15,7 +19,12 @@ use crate::parser::{CodeBlockKind, MarkdownEvent, MarkdownTag};
 use settings::Settings as _;
 use theme_settings::ThemeSettings;
 
-use super::{CopyButtonVisibility, Markdown, MarkdownStyle, MermaidZoomCallback, ParsedMarkdown};
+use crate::mermaid_source::{self, MermaidLabelQuoting};
+
+use super::{
+    CopyButtonVisibility, Markdown, MarkdownEditCallback, MarkdownStyle, MermaidLabelEditCallback,
+    MermaidLabelEditRequest, MermaidZoomCallback, ParsedMarkdown,
+};
 
 type MermaidDiagramCache = HashMap<ParsedMarkdownMermaidDiagramContents, Arc<CachedMermaidDiagram>>;
 
@@ -46,6 +55,10 @@ pub(crate) struct MermaidState {
 struct CachedMermaidDiagram {
     render_image: Arc<OnceLock<anyhow::Result<Arc<RenderImage>>>>,
     parsed_svg: Arc<OnceLock<Arc<ParsedSvg>>>,
+    /// Where the diagram's nodes and edge labels landed, filled in alongside
+    /// `parsed_svg` and reused across re-rasters since zooming does not change
+    /// the layout.
+    geometry: Arc<OnceLock<Arc<DiagramGeometry>>>,
     /// The previous raster shown while `render_image` is pending, along with
     /// the scale it was rasterized at, so it can be displayed at the same
     /// logical size as the raster that will replace it.
@@ -191,6 +204,7 @@ impl MermaidState {
         let scale_factor = contents.scale as f32 / 100.0 * target_scale;
         *cached = Arc::new(CachedMermaidDiagram::new_from_parsed(
             parsed_svg,
+            cached.geometry.clone(),
             scale_factor,
             target_scale,
             new_fallback,
@@ -208,18 +222,23 @@ impl CachedMermaidDiagram {
     ) -> Self {
         let render_image = Arc::new(OnceLock::<anyhow::Result<Arc<RenderImage>>>::new());
         let parsed_svg = Arc::new(OnceLock::<Arc<ParsedSvg>>::new());
+        let geometry = Arc::new(OnceLock::<Arc<DiagramGeometry>>::new());
         let svg_renderer = cx.svg_renderer();
         let mermaid_theme = build_mermaid_theme(cx);
 
         let task = cx.spawn({
             let render_image = render_image.clone();
             let parsed_svg = parsed_svg.clone();
+            let geometry = geometry.clone();
             let fallback_image = fallback_image.clone();
             async move |this, cx| {
                 let value = cx
                     .background_spawn(async move {
-                        let svg_string =
-                            mermaid_render::render_to_svg(&contents.contents, &mermaid_theme)?;
+                        let (svg_string, diagram_geometry) =
+                            mermaid_render::render_to_svg_with_geometry(
+                                &contents.contents,
+                                &mermaid_theme,
+                            )?;
                         let tree = svg_renderer
                             .parse_svg(svg_string.as_bytes())
                             .map_err(|error| anyhow::anyhow!("{error}"))?;
@@ -228,12 +247,13 @@ impl CachedMermaidDiagram {
                         let image = svg_renderer
                             .render_parsed(&tree, scale)
                             .map_err(|error| anyhow::anyhow!("{error}"))?;
-                        anyhow::Ok((tree, image))
+                        anyhow::Ok((tree, Arc::new(diagram_geometry), image))
                     })
                     .await;
                 let value = match value {
-                    Ok((tree, image)) => {
+                    Ok((tree, diagram_geometry, image)) => {
                         parsed_svg.set(tree).ok();
+                        geometry.set(diagram_geometry).ok();
                         Ok(image)
                     }
                     Err(error) => Err(error),
@@ -246,6 +266,7 @@ impl CachedMermaidDiagram {
         Self {
             render_image,
             parsed_svg,
+            geometry,
             fallback_image,
             rasterized_scale: zoom,
             _task: task,
@@ -254,6 +275,7 @@ impl CachedMermaidDiagram {
 
     fn new_from_parsed(
         parsed_svg: Arc<ParsedSvg>,
+        geometry: Arc<OnceLock<Arc<DiagramGeometry>>>,
         scale_factor: f32,
         rasterized_scale: f32,
         fallback_image: Option<(Arc<RenderImage>, f32)>,
@@ -283,6 +305,7 @@ impl CachedMermaidDiagram {
         Self {
             render_image,
             parsed_svg: parsed_svg_cell,
+            geometry,
             fallback_image,
             rasterized_scale,
             _task: task,
@@ -331,6 +354,7 @@ impl CachedMermaidDiagram {
         Self {
             render_image: result,
             parsed_svg: parsed_svg_cell,
+            geometry: Arc::new(OnceLock::new()),
             fallback_image: fallback_image.map(|image| (image, 1.0)),
             rasterized_scale: 1.0,
             _task: Task::ready(()),
@@ -359,7 +383,11 @@ fn mermaid_font_family(font_family: &str) -> String {
     }
 }
 
-fn build_mermaid_theme(cx: &Context<Markdown>) -> mermaid_render::MermaidTheme {
+/// The Mermaid palette derived from the user's Zed theme.
+///
+/// Public so that the structured flowchart editor's live preview draws with the
+/// same colors as the preview it will write back into.
+pub fn build_mermaid_theme(cx: &App) -> mermaid_render::MermaidTheme {
     let colors = cx.theme().colors();
     let theme_settings = ThemeSettings::get_global(cx);
     let is_dark = !cx.theme().appearance.is_light();
@@ -580,10 +608,14 @@ pub(crate) fn render_mermaid_diagram(
     zoom: f32,
     copy_button_visibility: CopyButtonVisibility,
     on_zoom: Option<MermaidZoomCallback>,
+    on_edit: Option<MarkdownEditCallback>,
+    on_label_edit: Option<MermaidLabelEditCallback>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
     let cached = mermaid_state.cache.get(&parsed.contents);
+    let content_range = parsed.content_range.clone();
+    let geometry = cached.and_then(|cached| cached.geometry.get().cloned());
     let render_result = cached.and_then(|cached| cached.render_image.get());
     let show_interactive = copy_button_visibility != CopyButtonVisibility::Hidden;
 
@@ -613,7 +645,16 @@ pub(crate) fn render_mermaid_diagram(
                     &scroll_handle,
                     on_zoom.clone(),
                 )
-                .child(image_element.w(display_size.width).h(display_size.height))
+                .child(render_mermaid_image(
+                    image_element,
+                    display_size,
+                    geometry,
+                    parsed,
+                    markdown.clone(),
+                    source_offset,
+                    on_label_edit,
+                    cx,
+                ))
                 .into_any_element();
                 with_mermaid_horizontal_scrollbar(source_offset, &scroll_handle, body, window, cx)
             };
@@ -630,10 +671,12 @@ pub(crate) fn render_mermaid_diagram(
                 .when(show_interactive, |container| {
                     container.child(render_mermaid_overlay_controls(
                         source_offset,
+                        content_range,
                         code.to_string(),
                         (!showing_code && zoom != 1.0).then_some(zoom),
                         markdown,
                         on_zoom,
+                        on_edit,
                     ))
                 })
                 .into_any_element()
@@ -654,10 +697,12 @@ pub(crate) fn render_mermaid_diagram(
                 .when(show_interactive, |container| {
                     container.child(render_mermaid_overlay_controls(
                         source_offset,
+                        content_range,
                         code.to_string(),
                         None,
                         markdown,
                         on_zoom,
+                        on_edit,
                     ))
                 })
                 .into_any_element()
@@ -687,11 +732,16 @@ pub(crate) fn render_mermaid_diagram(
                     &scroll_handle,
                     on_zoom.clone(),
                 )
-                .child(
-                    fallback_element
-                        .w(display_size.width)
-                        .h(display_size.height),
-                )
+                .child(render_mermaid_image(
+                    fallback_element,
+                    display_size,
+                    geometry,
+                    parsed,
+                    markdown.clone(),
+                    source_offset,
+                    on_label_edit,
+                    cx,
+                ))
                 .into_any_element();
                 let body = with_mermaid_horizontal_scrollbar(
                     source_offset,
@@ -712,10 +762,12 @@ pub(crate) fn render_mermaid_diagram(
                     .when(show_interactive, |container| {
                         container.child(render_mermaid_overlay_controls(
                             source_offset,
+                            content_range,
                             code.to_string(),
                             (zoom != 1.0).then_some(zoom),
                             markdown,
                             on_zoom,
+                            on_edit,
                         ))
                     })
                     .into_any_element()
@@ -740,10 +792,12 @@ pub(crate) fn render_mermaid_diagram(
                     .when(show_interactive, |container| {
                         container.child(render_mermaid_overlay_controls(
                             source_offset,
+                            content_range,
                             code.to_string(),
                             None,
                             markdown,
                             on_zoom,
+                            on_edit,
                         ))
                     })
                     .into_any_element()
@@ -866,10 +920,12 @@ fn render_mermaid_tab_header(
 /// away from the natural size) followed by the hover-revealed copy button.
 fn render_mermaid_overlay_controls(
     source_offset: usize,
+    content_range: Range<usize>,
     code: String,
     zoom: Option<f32>,
     markdown: Entity<Markdown>,
     on_zoom: Option<MermaidZoomCallback>,
+    on_edit: Option<MarkdownEditCallback>,
 ) -> impl IntoElement {
     h_flex()
         .absolute()
@@ -884,7 +940,35 @@ fn render_mermaid_overlay_controls(
                 on_zoom,
             ))
         })
+        .when_some(on_edit, |this, on_edit| {
+            this.child(render_mermaid_edit_button(
+                source_offset,
+                content_range,
+                on_edit,
+            ))
+        })
         .child(render_mermaid_copy_button(source_offset, code, markdown))
+}
+
+/// Opens the structured editor on the fence this diagram was drawn from. Only
+/// offered when the preview knows which editor holds the source, which is what
+/// the callback carries. DESIGN.md §5.7
+fn render_mermaid_edit_button(
+    source_offset: usize,
+    content_range: Range<usize>,
+    on_edit: MarkdownEditCallback,
+) -> impl IntoElement {
+    IconButton::new(
+        ElementId::named_usize("mermaid-edit", source_offset),
+        IconName::Pencil,
+    )
+    .icon_size(IconSize::Small)
+    .icon_color(Color::Muted)
+    .visible_on_hover("code_block")
+    .tooltip(Tooltip::text("Mermaid 図を編集"))
+    .on_click(move |_event, window, cx| {
+        on_edit(content_range.clone(), window, cx);
+    })
 }
 
 /// A "Zoom NNN%" readout paired with a reset button, styled like the adjacent
@@ -967,6 +1051,317 @@ fn render_mermaid_code_view(contents: &SharedString) -> AnyElement {
         .into_any_element()
 }
 
+/// A label in a rendered diagram that the preview can edit in place.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum MermaidLabelTarget {
+    Node {
+        node_id: SharedString,
+    },
+    Edge {
+        from: SharedString,
+        to: SharedString,
+        /// Which edge this is among those connecting the same two nodes, in
+        /// source order.
+        occurrence: usize,
+    },
+}
+
+/// Maps a point in window coordinates onto the diagram's own `viewBox`.
+///
+/// `bounds` is where the raster sits on screen, so it already carries both the
+/// zoom (it is the displayed size, not the natural one) and the horizontal
+/// scroll position (the origin moves with the scroll container). Neither needs
+/// a term of its own here.
+fn mermaid_view_box_point(
+    position: Point<Pixels>,
+    bounds: Bounds<Pixels>,
+    view_box: [f32; 4],
+) -> Option<Point<f32>> {
+    let scale = mermaid_view_box_scale(bounds, view_box)?;
+    Some(point(
+        view_box[0] + f32::from(position.x - bounds.origin.x) / scale,
+        view_box[1] + f32::from(position.y - bounds.origin.y) / scale,
+    ))
+}
+
+/// The inverse of [`mermaid_view_box_point`] for a whole rectangle.
+fn mermaid_window_rect(
+    rect: [f32; 4],
+    bounds: Bounds<Pixels>,
+    view_box: [f32; 4],
+) -> Option<Bounds<Pixels>> {
+    let scale = mermaid_view_box_scale(bounds, view_box)?;
+    Some(Bounds {
+        origin: gpui::point(
+            bounds.origin.x + px((rect[0] - view_box[0]) * scale),
+            bounds.origin.y + px((rect[1] - view_box[1]) * scale),
+        ),
+        size: size(px(rect[2] * scale), px(rect[3] * scale)),
+    })
+}
+
+/// Displayed pixels per `viewBox` unit. The rasterizer preserves the aspect
+/// ratio, so one factor covers both axes.
+fn mermaid_view_box_scale(bounds: Bounds<Pixels>, view_box: [f32; 4]) -> Option<f32> {
+    if view_box[2] <= 0.0 {
+        return None;
+    }
+    let scale = f32::from(bounds.size.width) / view_box[2];
+    (scale.is_finite() && scale > 0.0).then_some(scale)
+}
+
+fn rect_contains(rect: [f32; 4], point: Point<f32>) -> bool {
+    point.x >= rect[0]
+        && point.y >= rect[1]
+        && point.x <= rect[0] + rect[2]
+        && point.y <= rect[1] + rect[3]
+}
+
+/// The label under `point`, if any.
+///
+/// Edge labels are tested first: they are small, they are drawn over the edges
+/// rather than over a node, and preferring them keeps a label that happens to
+/// touch a node box reachable.
+fn mermaid_label_at(geometry: &DiagramGeometry, point: Point<f32>) -> Option<MermaidLabelTarget> {
+    for edge in &geometry.edges {
+        if edge
+            .label_rect
+            .is_some_and(|rect| rect_contains(rect, point))
+        {
+            return Some(MermaidLabelTarget::Edge {
+                from: edge.from.clone().into(),
+                to: edge.to.clone().into(),
+                occurrence: edge.occurrence,
+            });
+        }
+    }
+    geometry
+        .nodes
+        .iter()
+        .find(|node| rect_contains(node.rect, point))
+        .map(|node| MermaidLabelTarget::Node {
+            node_id: node.node_id.clone().into(),
+        })
+}
+
+fn mermaid_label_rect(geometry: &DiagramGeometry, target: &MermaidLabelTarget) -> Option<[f32; 4]> {
+    match target {
+        MermaidLabelTarget::Node { node_id } => geometry
+            .nodes
+            .iter()
+            .find(|node| node.node_id == node_id.as_ref())
+            .map(|node| node.rect),
+        MermaidLabelTarget::Edge {
+            from,
+            to,
+            occurrence,
+        } => geometry
+            .edges
+            .iter()
+            .find(|edge| {
+                edge.from == from.as_ref()
+                    && edge.to == to.as_ref()
+                    && edge.occurrence == *occurrence
+            })
+            .and_then(|edge| edge.label_rect),
+    }
+}
+
+/// The label as the diagram draws it, used only when the matching token cannot
+/// be found in the source.
+fn mermaid_rendered_label(geometry: &DiagramGeometry, target: &MermaidLabelTarget) -> String {
+    match target {
+        MermaidLabelTarget::Node { node_id } => geometry
+            .nodes
+            .iter()
+            .find(|node| node.node_id == node_id.as_ref())
+            .map(|node| node.label.clone())
+            .unwrap_or_default(),
+        MermaidLabelTarget::Edge {
+            from,
+            to,
+            occurrence,
+        } => geometry
+            .edges
+            .iter()
+            .find(|edge| {
+                edge.from == from.as_ref()
+                    && edge.to == to.as_ref()
+                    && edge.occurrence == *occurrence
+            })
+            .and_then(|edge| edge.label.clone())
+            .unwrap_or_default(),
+    }
+}
+
+fn mermaid_source_span(
+    fence_body: &str,
+    target: &MermaidLabelTarget,
+) -> Option<mermaid_source::MermaidLabelSpan> {
+    match target {
+        MermaidLabelTarget::Node { node_id } => {
+            mermaid_source::find_node_label(fence_body, node_id)
+        }
+        MermaidLabelTarget::Edge {
+            from,
+            to,
+            occurrence,
+        } => mermaid_source::find_edge_label(fence_body, from, to, *occurrence),
+    }
+}
+
+/// The diagram's raster, with a hit-testing layer on top when the consumer can
+/// write label edits back to a source file.
+///
+/// Without that callback (the agent panel, hover popups, a read-only buffer)
+/// this is just the image, so those surfaces keep behaving exactly as before.
+fn render_mermaid_image(
+    image: Img,
+    display_size: Size<Pixels>,
+    geometry: Option<Arc<DiagramGeometry>>,
+    parsed: &ParsedMarkdownMermaidDiagram,
+    markdown: Entity<Markdown>,
+    source_offset: usize,
+    on_label_edit: Option<MermaidLabelEditCallback>,
+    cx: &mut App,
+) -> AnyElement {
+    let image = image.w(display_size.width).h(display_size.height);
+    let (Some(geometry), Some(on_label_edit)) = (geometry, on_label_edit) else {
+        return image.into_any_element();
+    };
+    if geometry.is_empty() {
+        return image.into_any_element();
+    }
+
+    let view_box = geometry.view_box;
+    let hovered = markdown
+        .read(cx)
+        .mermaid_hovered_label(source_offset)
+        .cloned();
+    let highlight = hovered
+        .as_ref()
+        .and_then(|target| mermaid_label_rect(&geometry, target));
+    let highlight_color = cx.theme().colors().text_accent;
+    // Written during prepaint, read by the mouse handlers of the next event.
+    let image_bounds: Rc<Cell<Option<Bounds<Pixels>>>> = Rc::default();
+
+    let overlay = div()
+        .id(ElementId::named_usize(
+            "mermaid-label-hit-layer",
+            source_offset,
+        ))
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .when(hovered.is_some(), |this| {
+            this.cursor_pointer()
+                .tooltip(Tooltip::text("ダブルクリックで文字を編集"))
+        })
+        .child(
+            canvas(
+                {
+                    let image_bounds = image_bounds.clone();
+                    move |bounds, _window, _cx| image_bounds.set(Some(bounds))
+                },
+                move |bounds, _prepaint, window, _cx| {
+                    let Some(rect) =
+                        highlight.and_then(|rect| mermaid_window_rect(rect, bounds, view_box))
+                    else {
+                        return;
+                    };
+                    window.paint_quad(quad(
+                        rect,
+                        4.0,
+                        gpui::transparent_black(),
+                        2.0,
+                        highlight_color,
+                        BorderStyle::Solid,
+                    ));
+                },
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full(),
+        )
+        .on_mouse_move({
+            let markdown = markdown.clone();
+            let geometry = geometry.clone();
+            let image_bounds = image_bounds.clone();
+            move |event: &MouseMoveEvent, _window, cx| {
+                let target = image_bounds
+                    .get()
+                    .and_then(|bounds| mermaid_view_box_point(event.position, bounds, view_box))
+                    .and_then(|position| mermaid_label_at(&geometry, position));
+                markdown.update(cx, |markdown, cx| {
+                    markdown.set_mermaid_hovered_label(source_offset, target, cx);
+                });
+            }
+        })
+        .on_mouse_exit({
+            move |_event, _window, cx| {
+                markdown.update(cx, |markdown, cx| {
+                    markdown.set_mermaid_hovered_label(source_offset, None, cx);
+                });
+            }
+        })
+        .on_mouse_down(MouseButton::Left, {
+            let fence_body = parsed.contents.contents.clone();
+            let content_start = parsed.content_range.start;
+            move |event: &MouseDownEvent, window, cx| {
+                if event.click_count < 2 {
+                    return;
+                }
+                let Some(bounds) = image_bounds.get() else {
+                    return;
+                };
+                let Some(target) = mermaid_view_box_point(event.position, bounds, view_box)
+                    .and_then(|position| mermaid_label_at(&geometry, position))
+                else {
+                    return;
+                };
+                let Some(label_bounds) = mermaid_label_rect(&geometry, &target)
+                    .and_then(|rect| mermaid_window_rect(rect, bounds, view_box))
+                else {
+                    return;
+                };
+                let span = mermaid_source_span(&fence_body, &target);
+                let request = MermaidLabelEditRequest {
+                    source_range: span.as_ref().map(|span| {
+                        (content_start + span.range.start)..(content_start + span.range.end)
+                    }),
+                    source_text: span
+                        .as_ref()
+                        .and_then(|span| fence_body.get(span.range.clone()))
+                        .unwrap_or_default()
+                        .to_string()
+                        .into(),
+                    quoting: span
+                        .as_ref()
+                        .map_or(MermaidLabelQuoting::Delimited, |span| span.quoting),
+                    current_label: match &span {
+                        Some(span) => span.label.clone().into(),
+                        None => mermaid_rendered_label(&geometry, &target).into(),
+                    },
+                    bounds: label_bounds,
+                };
+                // Without this the preview would also move the source cursor to
+                // the fence, stealing focus from the field about to open.
+                cx.stop_propagation();
+                on_label_edit(request, window, cx);
+            }
+        });
+
+    div()
+        .relative()
+        .w(display_size.width)
+        .h(display_size.height)
+        .child(image)
+        .child(overlay)
+        .into_any_element()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -986,6 +1381,302 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
     use ui::prelude::*;
+
+    mod label_editing {
+        use super::super::{
+            MermaidLabelTarget, mermaid_label_at, mermaid_label_rect, mermaid_source_span,
+            mermaid_view_box_point, mermaid_window_rect,
+        };
+        use crate::mermaid_source::MermaidLabelQuoting;
+        use gpui::{Bounds, point, px, size};
+        use mermaid_render::{DiagramGeometry, EdgeGeometry, NodeGeometry};
+
+        /// A two-node diagram whose `viewBox` is 200x100, with one node in each
+        /// half and an edge label between them.
+        fn geometry() -> DiagramGeometry {
+            DiagramGeometry {
+                view_box: [0.0, 0.0, 200.0, 100.0],
+                nodes: vec![
+                    NodeGeometry {
+                        node_id: "A".into(),
+                        label: "\u{958b}\u{59cb}".into(),
+                        rect: [10.0, 20.0, 40.0, 30.0],
+                    },
+                    NodeGeometry {
+                        node_id: "B".into(),
+                        label: "\u{7d42}\u{4e86}".into(),
+                        rect: [150.0, 20.0, 40.0, 30.0],
+                    },
+                ],
+                edges: vec![EdgeGeometry {
+                    edge_id: "L_A_B_0".into(),
+                    from: "A".into(),
+                    to: "B".into(),
+                    occurrence: 0,
+                    label: Some("\u{306f}\u{3044}".into()),
+                    label_rect: Some([90.0, 30.0, 20.0, 10.0]),
+                }],
+            }
+        }
+
+        fn bounds(origin_x: f32, origin_y: f32, zoom: f32) -> Bounds<gpui::Pixels> {
+            Bounds {
+                origin: point(px(origin_x), px(origin_y)),
+                size: size(px(200.0 * zoom), px(100.0 * zoom)),
+            }
+        }
+
+        /// The mapping has to account for where the raster is on screen and for
+        /// the zoom it is displayed at. Both are carried by the raster's own
+        /// bounds: scrolling moves the origin, zooming changes the size.
+        #[test]
+        fn window_points_map_into_view_box_coordinates() {
+            // Unzoomed, at the window origin: one displayed pixel is one unit.
+            let unzoomed = bounds(0.0, 0.0, 1.0);
+            assert_eq!(
+                mermaid_view_box_point(
+                    point(px(30.0), px(35.0)),
+                    unzoomed,
+                    [0.0, 0.0, 200.0, 100.0]
+                ),
+                Some(point(30.0, 35.0))
+            );
+
+            // Zoomed to 2x, the same unit is two displayed pixels.
+            let zoomed = bounds(0.0, 0.0, 2.0);
+            assert_eq!(
+                mermaid_view_box_point(point(px(60.0), px(70.0)), zoomed, [0.0, 0.0, 200.0, 100.0]),
+                Some(point(30.0, 35.0))
+            );
+
+            // Scrolled right by 120 displayed pixels while zoomed: the raster's
+            // origin has moved off the left edge of the viewport.
+            let scrolled = bounds(-120.0, 8.0, 2.0);
+            assert_eq!(
+                mermaid_view_box_point(
+                    point(px(-60.0), px(78.0)),
+                    scrolled,
+                    [0.0, 0.0, 200.0, 100.0]
+                ),
+                Some(point(30.0, 35.0))
+            );
+
+            // A `viewBox` that does not start at the origin shifts the result.
+            assert_eq!(
+                mermaid_view_box_point(
+                    point(px(30.0), px(35.0)),
+                    unzoomed,
+                    [-50.0, -10.0, 200.0, 100.0]
+                ),
+                Some(point(-20.0, 25.0))
+            );
+
+            // A degenerate diagram has no usable mapping rather than a bogus one.
+            assert_eq!(
+                mermaid_view_box_point(point(px(1.0), px(1.0)), unzoomed, [0.0, 0.0, 0.0, 0.0]),
+                None
+            );
+        }
+
+        #[test]
+        fn label_boxes_map_back_out_to_the_window() {
+            let view_box = [0.0, 0.0, 200.0, 100.0];
+            let mapped =
+                mermaid_window_rect([10.0, 20.0, 40.0, 30.0], bounds(-120.0, 8.0, 2.0), view_box)
+                    .expect("the rect should map");
+            assert_eq!(mapped.origin, point(px(-100.0), px(48.0)));
+            assert_eq!(mapped.size, size(px(80.0), px(60.0)));
+
+            // Round-tripping a corner through both directions lands back where
+            // it started, which is what keeps the highlight on the label.
+            let round_tripped =
+                mermaid_view_box_point(mapped.origin, bounds(-120.0, 8.0, 2.0), view_box);
+            assert_eq!(round_tripped, Some(point(10.0, 20.0)));
+        }
+
+        #[test]
+        fn hit_testing_picks_the_label_under_the_pointer() {
+            let geometry = geometry();
+            assert_eq!(
+                mermaid_label_at(&geometry, point(30.0, 35.0)),
+                Some(MermaidLabelTarget::Node {
+                    node_id: "A".into()
+                })
+            );
+            assert_eq!(
+                mermaid_label_at(&geometry, point(170.0, 35.0)),
+                Some(MermaidLabelTarget::Node {
+                    node_id: "B".into()
+                })
+            );
+            assert_eq!(
+                mermaid_label_at(&geometry, point(95.0, 35.0)),
+                Some(MermaidLabelTarget::Edge {
+                    from: "A".into(),
+                    to: "B".into(),
+                    occurrence: 0,
+                })
+            );
+            // Between the boxes there is nothing to edit.
+            assert_eq!(mermaid_label_at(&geometry, point(70.0, 90.0)), None);
+            assert_eq!(mermaid_label_at(&geometry, point(9.0, 35.0)), None);
+        }
+
+        #[test]
+        fn a_target_reports_the_box_it_was_found_in() {
+            let geometry = geometry();
+            assert_eq!(
+                mermaid_label_rect(
+                    &geometry,
+                    &MermaidLabelTarget::Node {
+                        node_id: "B".into()
+                    }
+                ),
+                Some([150.0, 20.0, 40.0, 30.0])
+            );
+            assert_eq!(
+                mermaid_label_rect(
+                    &geometry,
+                    &MermaidLabelTarget::Edge {
+                        from: "A".into(),
+                        to: "B".into(),
+                        occurrence: 0,
+                    }
+                ),
+                Some([90.0, 30.0, 20.0, 10.0])
+            );
+            // A diagram that has been re-rendered since the pointer moved may no
+            // longer contain the target.
+            assert_eq!(
+                mermaid_label_rect(
+                    &geometry,
+                    &MermaidLabelTarget::Node {
+                        node_id: "gone".into()
+                    }
+                ),
+                None
+            );
+        }
+
+        /// A hit-tested target has to resolve to the token in the fence body,
+        /// which is what the edit actually replaces.
+        #[test]
+        fn targets_resolve_to_the_token_in_the_fence() {
+            let fence_body =
+                "flowchart LR\n  A[\u{958b}\u{59cb}] -->|\u{306f}\u{3044}| B[\u{7d42}\u{4e86}]";
+            let node = mermaid_source_span(
+                fence_body,
+                &MermaidLabelTarget::Node {
+                    node_id: "B".into(),
+                },
+            )
+            .expect("the node label should be found");
+            assert_eq!(&fence_body[node.range.clone()], "\u{7d42}\u{4e86}");
+            assert_eq!(node.quoting, MermaidLabelQuoting::Delimited);
+
+            let edge = mermaid_source_span(
+                fence_body,
+                &MermaidLabelTarget::Edge {
+                    from: "A".into(),
+                    to: "B".into(),
+                    occurrence: 0,
+                },
+            )
+            .expect("the edge label should be found");
+            assert_eq!(&fence_body[edge.range], "\u{306f}\u{3044}");
+
+            assert_eq!(
+                mermaid_source_span(
+                    fence_body,
+                    &MermaidLabelTarget::Node {
+                        node_id: "missing".into()
+                    }
+                ),
+                None
+            );
+        }
+    }
+
+    /// Hovering has to repaint only when the highlighted label actually
+    /// changes, since the pointer moving across one node produces an event per
+    /// frame.
+    #[gpui::test]
+    fn test_mermaid_hover_state_only_changes_on_a_new_label(cx: &mut TestAppContext) {
+        use super::MermaidLabelTarget;
+
+        ensure_theme_initialized(cx);
+        let markdown = cx.new(|cx| {
+            Markdown::new(
+                "```mermaid\nflowchart LR\n  A[one] --> B[two]\n```".into(),
+                None,
+                None,
+                cx,
+            )
+        });
+        let node_a = MermaidLabelTarget::Node {
+            node_id: "A".into(),
+        };
+        let node_b = MermaidLabelTarget::Node {
+            node_id: "B".into(),
+        };
+
+        // Counting the notifications is the point: the return value alone
+        // would not catch a `cx.notify()` that escaped the guard.
+        let repaints = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let subscription = cx.update(|cx| {
+            cx.observe(&markdown, {
+                let repaints = repaints.clone();
+                move |_, _| repaints.set(repaints.get() + 1)
+            })
+        });
+
+        let set = |markdown: &Entity<Markdown>,
+                   cx: &mut TestAppContext,
+                   target: Option<MermaidLabelTarget>| {
+            markdown.update(cx, |markdown, cx| {
+                markdown.set_mermaid_hovered_label(0, target, cx)
+            })
+        };
+
+        assert!(markdown.read_with(cx, |markdown, _| {
+            markdown.mermaid_hovered_label(0).is_none()
+        }));
+        // The background parse notifies once it lands; start counting after it.
+        cx.run_until_parked();
+        repaints.set(0);
+        let mut expected_repaints = 0;
+
+        assert!(set(&markdown, cx, Some(node_a.clone())));
+        expected_repaints += 1;
+        cx.run_until_parked();
+        assert_eq!(repaints.get(), expected_repaints);
+
+        // The pointer moving within the same node produces an event per frame,
+        // and none of them may repaint.
+        for _ in 0..5 {
+            assert!(!set(&markdown, cx, Some(node_a.clone())));
+        }
+        cx.run_until_parked();
+        assert_eq!(repaints.get(), expected_repaints);
+        assert_eq!(
+            markdown.read_with(cx, |markdown, _| markdown.mermaid_hovered_label(0).cloned()),
+            Some(node_a)
+        );
+
+        assert!(set(&markdown, cx, Some(node_b)));
+        expected_repaints += 1;
+        assert!(set(&markdown, cx, None));
+        expected_repaints += 1;
+        assert!(!set(&markdown, cx, None));
+        cx.run_until_parked();
+        assert_eq!(repaints.get(), expected_repaints);
+
+        // Diagrams are keyed by their own source offset.
+        assert!(markdown.read_with(cx, |markdown, _| {
+            markdown.mermaid_hovered_label(999).is_none()
+        }));
+        drop(subscription);
+    }
 
     fn ensure_theme_initialized(cx: &mut TestAppContext) {
         cx.update(|cx| {

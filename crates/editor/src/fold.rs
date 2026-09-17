@@ -54,6 +54,9 @@ impl EditorSnapshot {
         }
 
         is_foldable |= !self.use_lsp_folding_ranges && self.starts_indent(buffer_row);
+        // Short-circuited rather than `|=`: the Markdown test runs a
+        // tree-sitter query, and the gutter asks this for every visible row.
+        is_foldable = is_foldable || self.markdown_heading_fold(buffer_row).is_some();
 
         if folded || (is_foldable && (row_contains_cursor || self.gutter_hovered)) {
             Some(
@@ -354,6 +357,62 @@ impl Editor {
                     .ok();
             });
         }
+    }
+
+    pub fn fold_headings(
+        &mut self,
+        action: &actions::FoldHeadings,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.fold_markdown_headings(Some(action.level), window, cx);
+    }
+
+    pub fn fold_all_headings(
+        &mut self,
+        _: &actions::FoldAllHeadings,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.fold_markdown_headings(None, window, cx);
+    }
+
+    /// The counterpart of the two actions above. `editor::UnfoldAll` does the
+    /// same thing; this exists so the Markdown menus can offer a matching pair
+    /// instead of mixing namespaces.
+    pub fn unfold_all_headings(
+        &mut self,
+        _: &actions::UnfoldAllHeadings,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.unfold_all(&actions::UnfoldAll, window, cx);
+    }
+
+    /// Folds the body of every Markdown heading of `level`, or of every
+    /// heading when `level` is `None`, leaving the heading lines visible.
+    fn fold_markdown_headings(
+        &mut self,
+        level: Option<u32>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.buffer.read(cx).is_singleton() {
+            return;
+        }
+
+        let snapshot = self.snapshot(window, cx);
+        let placeholder = snapshot.fold_placeholder.clone();
+        // Nested headings are folded too, so unfolding an outer one reveals its
+        // subsections still collapsed, the way `editor::FoldAll` behaves.
+        let creases = snapshot
+            .markdown_heading_folds()
+            .into_iter()
+            .filter(|heading| level.is_none_or(|level| level == heading.level))
+            .map(|heading| Crease::simple(heading.range, placeholder.clone()))
+            .collect();
+
+        self.fold_creases(creases, true, window, cx);
     }
 
     pub fn fold_function_bodies(

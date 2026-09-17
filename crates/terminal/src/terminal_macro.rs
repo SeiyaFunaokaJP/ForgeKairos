@@ -7,7 +7,7 @@
 //! comments tolerated and written atomically, the same way the egress policy
 //! file is handled (DESIGN.md §4.3).
 
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use fs::Fs;
@@ -42,6 +42,16 @@ pub enum MacroStep {
         regex: bool,
         #[serde(default = "default_wait_timeout_ms")]
         timeout_ms: u64,
+        /// Name of the variable the match is stored under, for later
+        /// `${name}` references. A regex pattern also stores every named
+        /// group of the match under its own name, whether or not this is set.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        capture: Option<String>,
+        /// What to run instead of aborting the macro when `pattern` never
+        /// turns up. `None` keeps the original behaviour (the run stops with
+        /// an error); `Some` — even an empty list — means "carry on".
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        on_timeout: Option<Vec<MacroStep>>,
     },
     /// Block for a fixed duration.
     Sleep { ms: u64 },
@@ -55,6 +65,69 @@ pub enum MacroStep {
         #[serde(default)]
         steps: Vec<MacroStep>,
     },
+    /// Run `then_steps` when `pattern` is already in the output, `else_steps`
+    /// when it is not.
+    ///
+    /// Unlike [`MacroStep::WaitFor`] this never waits: it decides on whatever
+    /// the terminal holds at that moment, so a macro that needs the device to
+    /// answer first puts a wait in front of the branch.
+    If {
+        pattern: String,
+        #[serde(default)]
+        regex: bool,
+        #[serde(default, skip_serializing_if = "MatchScope::is_default")]
+        scope: MatchScope,
+        #[serde(rename = "then", default, skip_serializing_if = "Vec::is_empty")]
+        then_steps: Vec<MacroStep>,
+        #[serde(rename = "else", default, skip_serializing_if = "Vec::is_empty")]
+        else_steps: Vec<MacroStep>,
+    },
+}
+
+/// Which part of the terminal a [`MacroStep::If`] looks at.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MatchScope {
+    /// Only what arrived after the last 送信, the same window a
+    /// [`MacroStep::WaitFor`] measures. This is the default because a branch
+    /// almost always asks about the answer to the command just sent, and the
+    /// prompt that provoked it is still on screen.
+    #[default]
+    SinceLastSend,
+    /// The trailing [`WAIT_SCAN_LINES`] lines of the grid, banner included.
+    Screen,
+}
+
+impl MatchScope {
+    fn is_default(&self) -> bool {
+        matches!(self, MatchScope::SinceLastSend)
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            MatchScope::SinceLastSend => "直前の出力",
+            MatchScope::Screen => "画面全体",
+        }
+    }
+}
+
+/// Which branch of a [`MacroStep::If`] or a timed-out [`MacroStep::WaitFor`] is
+/// running, so the session strip can say which way the macro went.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MacroBranch {
+    Then,
+    Else,
+    Timeout,
+}
+
+impl MacroBranch {
+    pub fn label(&self) -> &'static str {
+        match self {
+            MacroBranch::Then => "一致 → そのとき",
+            MacroBranch::Else => "不一致 → それ以外",
+            MacroBranch::Timeout => "タイムアウト → 続行",
+        }
+    }
 }
 
 impl MacroStep {
@@ -66,6 +139,7 @@ impl MacroStep {
             MacroStep::Sleep { .. } => "秒待ち",
             MacroStep::Clear => "画面を消去",
             MacroStep::Repeat { .. } => "繰り返し",
+            MacroStep::If { .. } => "分岐",
         }
     }
 
@@ -75,17 +149,40 @@ impl MacroStep {
             MacroStep::WaitFor {
                 pattern,
                 timeout_ms,
+                capture,
+                on_timeout,
                 ..
-            } => format!(
-                "待機: 『{pattern}』 ({} 秒以内)",
-                *timeout_ms as f64 / 1000.0
-            ),
+            } => {
+                let mut summary = format!(
+                    "待機: 『{pattern}』 ({} 秒以内)",
+                    *timeout_ms as f64 / 1000.0
+                );
+                if let Some(capture) = capture {
+                    summary.push_str(&format!("、${{{capture}}} に取り込む"));
+                }
+                if let Some(on_timeout) = on_timeout {
+                    summary.push_str(&format!("、タイムアウト時 {} ステップ", on_timeout.len()));
+                }
+                summary
+            }
             MacroStep::Sleep { ms } => format!("待機: {} 秒", *ms as f64 / 1000.0),
             MacroStep::Clear => "画面を消去".to_string(),
             MacroStep::Repeat { count, steps } => match count {
                 0 => format!("繰り返し: 中止まで ({} ステップ)", steps.len()),
                 count => format!("繰り返し: {count} 回 ({} ステップ)", steps.len()),
             },
+            MacroStep::If {
+                pattern,
+                scope,
+                then_steps,
+                else_steps,
+                ..
+            } => format!(
+                "分岐: 『{pattern}』が{}にあれば {} ステップ、なければ {} ステップ",
+                scope.label(),
+                then_steps.len(),
+                else_steps.len(),
+            ),
         }
     }
 }
@@ -632,6 +729,10 @@ pub struct MacroProgress {
     /// running. Its steps are deliberately left out of `step_count`: the outer
     /// position is what says how far the macro as a whole has got.
     pub nested: Option<NestedProgress>,
+    /// Which way the innermost 分岐 / タイムアウト分岐 currently running went.
+    /// An annotation rather than a position: it says what the macro decided,
+    /// and the step counters keep saying where it is.
+    pub branch: Option<MacroBranch>,
 }
 
 /// Position inside a running [`MacroStep::Repeat`].
@@ -666,12 +767,15 @@ pub fn run_macro(
             on_progress: Box::new(on_progress),
             cx: cx.clone(),
             baseline: None,
+            send_baseline: None,
+            variables: HashMap::new(),
             progress: MacroProgress {
                 step_index: 0,
                 step_count,
                 iteration: 1,
                 iteration_count,
                 nested: None,
+                branch: None,
             },
             path: Vec::new(),
         };
@@ -719,6 +823,16 @@ struct MacroRunner {
     /// only look at output that arrived afterwards, so a stale prompt cannot
     /// satisfy them instantly.
     baseline: Option<Vec<String>>,
+    /// The grid as the last 送信 left it, which is what
+    /// [`MatchScope::SinceLastSend`] measures against. Kept apart from
+    /// `baseline`, because a satisfied wait moves that one forward — a 分岐
+    /// placed after a wait would otherwise be looking at an empty window and
+    /// could never match the answer it was put there to inspect.
+    send_baseline: Option<Vec<String>>,
+    /// Values captured by [`MacroStep::WaitFor`], expanded into later steps as
+    /// `${name}`. They live for the whole run, repetitions included, so a value
+    /// read on the first pass is still there on the second.
+    variables: HashMap<String, String>,
     progress: MacroProgress,
     /// Position of the running step, outermost first, so a failure inside a
     /// nested repeat can name 「ステップ 3-2」.
@@ -803,11 +917,83 @@ impl MacroRunner {
         })
     }
 
+    /// Runs the body of a branch — either side of a [`MacroStep::If`], or the
+    /// 「タイムアウト時」 list of a [`MacroStep::WaitFor`]. Boxed for the same
+    /// reason as [`Self::run_repeat`]: the body may hold another branch.
+    ///
+    /// The enclosing step's counters are left alone, because the branch is part
+    /// of that step rather than a step of its own; only `branch` is set, so the
+    /// strip can say which way the run went.
+    fn run_branch<'a>(
+        &'a mut self,
+        branch: MacroBranch,
+        steps: &'a [MacroStep],
+    ) -> LocalBoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            let enclosing = self.progress.branch;
+            self.progress.branch = Some(branch);
+            for (index, step) in steps.iter().enumerate() {
+                self.path.push(index);
+                self.report();
+                let result = self.run_step(step).await;
+                self.path.pop();
+                result?;
+            }
+            self.progress.branch = enclosing;
+            Ok(())
+        })
+    }
+
+    /// Substitutes `${name}` in a step's text against the variables captured so
+    /// far.
+    fn expand(&self, text: &str) -> String {
+        expand_variables(text, &self.variables)
+    }
+
+    /// The same for the pattern of a wait or a branch, where a value spliced
+    /// into a regular expression has to stand for itself: what a previous step
+    /// read off the terminal is text to find, not a sub-pattern the user wrote.
+    fn expand_pattern(&self, pattern: &str, regex: bool) -> String {
+        if regex {
+            expand_variables_into_regex(pattern, &self.variables)
+        } else {
+            self.expand(pattern)
+        }
+    }
+
+    /// Files what a [`MacroStep::WaitFor`] matched. Named regex groups always
+    /// land under their own names; `capture` additionally names the match as a
+    /// whole (the matched line, for a substring pattern).
+    fn store_captures(&mut self, capture: Option<&String>, matched: &PatternMatch) {
+        for (name, value) in &matched.named_groups {
+            self.variables.insert(name.clone(), value.clone());
+        }
+        if let Some(capture) = capture {
+            self.variables
+                .insert(capture.clone(), matched.matched.clone());
+        }
+    }
+
+    /// The lines a [`MacroStep::If`] decides on, which is either everything the
+    /// grid holds or only what arrived after the last 送信.
+    fn lines_in_scope(&mut self, scope: MatchScope) -> Vec<String> {
+        let current = scan_lines(&self.terminal, &mut self.cx);
+        match (scope, self.send_baseline.as_deref()) {
+            // Before the first 送信 there is no window to narrow to, so the
+            // branch decides on whatever the terminal was already showing —
+            // the same rule a wait follows.
+            (MatchScope::Screen, _) | (MatchScope::SinceLastSend, None) => current,
+            (MatchScope::SinceLastSend, Some(baseline)) => new_output_since(baseline, &current),
+        }
+    }
+
     async fn run_step(&mut self, step: &MacroStep) -> Result<()> {
         match step {
             MacroStep::Send { text, newline } => {
-                self.baseline = Some(scan_lines(&self.terminal, &mut self.cx));
-                let mut bytes = text.clone().into_bytes();
+                let before = scan_lines(&self.terminal, &mut self.cx);
+                self.send_baseline = Some(before.clone());
+                self.baseline = Some(before);
+                let mut bytes = self.expand(text).into_bytes();
                 if *newline {
                     // TeraTerm sends CR for Enter; LF puts PowerShell into its
                     // continuation mode.
@@ -830,6 +1016,7 @@ impl MacroRunner {
                 self.terminal
                     .update(&mut self.cx, |terminal, _| terminal.clear());
                 self.baseline = None;
+                self.send_baseline = None;
             }
             MacroStep::Repeat { count, steps } => {
                 self.run_repeat(*count, steps).await?;
@@ -838,8 +1025,11 @@ impl MacroRunner {
                 pattern,
                 regex,
                 timeout_ms,
+                capture,
+                on_timeout,
             } => {
-                let matcher = PatternMatcher::new(pattern, *regex).map_err(|error| {
+                let pattern = self.expand_pattern(pattern, *regex);
+                let matcher = PatternMatcher::new(&pattern, *regex).map_err(|error| {
                     anyhow!(
                         "ステップ {}: 正規表現が不正です ({error})",
                         self.step_label()
@@ -854,21 +1044,107 @@ impl MacroRunner {
                 )
                 .await
                 {
-                    Ok(matched) => self.baseline = Some(matched),
-                    Err(WaitFailure::TimedOut) => bail!(
-                        "ステップ {}: 『{pattern}』が {} 秒以内に現れませんでした",
-                        self.step_label(),
-                        *timeout_ms as f64 / 1000.0
-                    ),
+                    Ok(hit) => {
+                        self.store_captures(capture.as_ref(), &hit.matched);
+                        self.baseline = Some(hit.lines);
+                    }
+                    Err(WaitFailure::TimedOut) => match on_timeout {
+                        // The wait failed, so the baseline still marks the last
+                        // 送信: a later wait keeps measuring from there rather
+                        // than from the output the timeout gave up on.
+                        Some(steps) => self.run_branch(MacroBranch::Timeout, steps).await?,
+                        None => bail!(
+                            "ステップ {}: 『{pattern}』が {} 秒以内に現れませんでした",
+                            self.step_label(),
+                            *timeout_ms as f64 / 1000.0
+                        ),
+                    },
                     Err(WaitFailure::TerminalGone) => bail!(
                         "ステップ {}: 『{pattern}』を待っている間にターミナルが終了しました",
                         self.step_label()
                     ),
                 }
             }
+            MacroStep::If {
+                pattern,
+                regex,
+                scope,
+                then_steps,
+                else_steps,
+            } => {
+                let pattern = self.expand_pattern(pattern, *regex);
+                let matcher = PatternMatcher::new(&pattern, *regex).map_err(|error| {
+                    anyhow!(
+                        "ステップ {}: 正規表現が不正です ({error})",
+                        self.step_label()
+                    )
+                })?;
+                let lines = self.lines_in_scope(*scope);
+                if matcher.find(&lines).is_some() {
+                    self.run_branch(MacroBranch::Then, then_steps).await?;
+                } else {
+                    self.run_branch(MacroBranch::Else, else_steps).await?;
+                }
+            }
         }
         Ok(())
     }
+}
+
+/// Replaces every `${name}` in `text` with the matching variable.
+///
+/// An unknown name is left exactly as written instead of turning into an empty
+/// string, so a typo shows up in the terminal rather than sending a truncated
+/// command to a switch. `$${` is the escape for a literal `${`.
+pub fn expand_variables(text: &str, variables: &HashMap<String, String>) -> String {
+    expand_variables_with(text, variables, false)
+}
+
+/// [`expand_variables`] for a pattern that is about to be compiled as a regular
+/// expression.
+///
+/// The values go in as the literal text they are: a captured `10.0.0.1` has to
+/// match that address and not any character where its dots are, and a captured
+/// `Invalid input (config)` has to compile at all. What the user wrote around
+/// the references stays a regular expression.
+pub fn expand_variables_into_regex(text: &str, variables: &HashMap<String, String>) -> String {
+    expand_variables_with(text, variables, true)
+}
+
+fn expand_variables_with(
+    text: &str,
+    variables: &HashMap<String, String>,
+    escape_values: bool,
+) -> String {
+    let mut expanded = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(dollar) = rest.find('$') {
+        expanded.push_str(&rest[..dollar]);
+        let after = &rest[dollar..];
+        if let Some(escaped) = after.strip_prefix("$${") {
+            expanded.push_str("${");
+            rest = escaped;
+            continue;
+        }
+        let Some(opened) = after.strip_prefix("${") else {
+            expanded.push('$');
+            rest = &after[1..];
+            continue;
+        };
+        let Some(closed) = opened.find('}') else {
+            expanded.push_str(after);
+            return expanded;
+        };
+        let name = &opened[..closed];
+        match variables.get(name) {
+            Some(value) if escape_values => expanded.push_str(&regex::escape(value)),
+            Some(value) => expanded.push_str(value),
+            None => expanded.push_str(&after[..closed + 3]),
+        }
+        rest = &opened[closed + 1..];
+    }
+    expanded.push_str(rest);
+    expanded
 }
 
 fn scan_lines(terminal: &Entity<Terminal>, cx: &mut AsyncApp) -> Vec<String> {
@@ -884,15 +1160,21 @@ enum WaitFailure {
     TerminalGone,
 }
 
+/// A satisfied [`MacroStep::WaitFor`].
+struct WaitHit {
+    /// The tail at the moment of the match, to be used as the next baseline.
+    lines: Vec<String>,
+    matched: PatternMatch,
+}
+
 /// Waits until `matcher` hits the output that arrived after `baseline`.
-/// Returns the tail at the moment of the match, to be used as the next baseline.
 async fn wait_for_pattern(
     terminal: &Entity<Terminal>,
     matcher: &PatternMatcher,
     baseline: Option<&[String]>,
     timeout: Duration,
     cx: &mut AsyncApp,
-) -> Result<Vec<String>, WaitFailure> {
+) -> Result<WaitHit, WaitFailure> {
     let (wake_tx, wake_rx) = async_channel::unbounded::<()>();
     // Registered before the first check so output produced while we look is
     // still guaranteed to wake us.
@@ -918,8 +1200,11 @@ async fn wait_for_pattern(
             Some(baseline) => new_output_since(baseline, &current),
             None => current.clone(),
         };
-        if matcher.matches(&scanned) {
-            return Ok(current);
+        if let Some(matched) = matcher.find(&scanned) {
+            return Ok(WaitHit {
+                lines: current,
+                matched,
+            });
         }
 
         let mut next_wake = wake_rx.next();
@@ -938,6 +1223,20 @@ pub enum PatternMatcher {
     Regex(regex::Regex),
 }
 
+/// What a [`PatternMatcher`] found, so a step can file it under a variable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PatternMatch {
+    /// The whole line the pattern hit.
+    pub line: String,
+    /// The text the pattern itself covers: the regex match, or — for a
+    /// substring pattern, where matching the search text back would be
+    /// useless — the whole line.
+    pub matched: String,
+    /// Named groups (`(?P<name>…)`) of a regex pattern, in the order the
+    /// pattern declares them.
+    pub named_groups: Vec<(String, String)>,
+}
+
 impl PatternMatcher {
     pub fn new(pattern: &str, regex: bool) -> Result<Self> {
         if regex {
@@ -947,11 +1246,38 @@ impl PatternMatcher {
         }
     }
 
-    pub fn matches(&self, lines: &[String]) -> bool {
-        lines.iter().any(|line| match self {
-            PatternMatcher::Substring(pattern) => line.contains(pattern.as_str()),
-            PatternMatcher::Regex(regex) => regex.is_match(line),
+    /// The first line of `lines` the pattern hits, with whatever it captured
+    /// there. First rather than last, so a paged banner that repeats a prompt
+    /// yields the answer that provoked the wait.
+    pub fn find(&self, lines: &[String]) -> Option<PatternMatch> {
+        lines.iter().find_map(|line| match self {
+            PatternMatcher::Substring(pattern) => {
+                line.contains(pattern.as_str()).then(|| PatternMatch {
+                    line: line.clone(),
+                    matched: line.clone(),
+                    named_groups: Vec::new(),
+                })
+            }
+            PatternMatcher::Regex(regex) => regex.captures(line).map(|captures| PatternMatch {
+                line: line.clone(),
+                matched: captures
+                    .get(0)
+                    .map(|whole| whole.as_str().to_string())
+                    .unwrap_or_default(),
+                named_groups: regex
+                    .capture_names()
+                    .flatten()
+                    .filter_map(|name| {
+                        let value = captures.name(name)?;
+                        Some((name.to_string(), value.as_str().to_string()))
+                    })
+                    .collect(),
+            }),
         })
+    }
+
+    pub fn matches(&self, lines: &[String]) -> bool {
+        self.find(lines).is_some()
     }
 }
 
@@ -1030,6 +1356,8 @@ mod tests {
                         pattern: "Password:".to_string(),
                         regex: false,
                         timeout_ms: 5_000,
+                        capture: None,
+                        on_timeout: None,
                     },
                     MacroStep::Send {
                         text: "secret".to_string(),
@@ -1323,7 +1651,9 @@ mod tests {
             MacroStep::WaitFor {
                 pattern: "PROMPT".to_string(),
                 regex: false,
-                timeout_ms: DEFAULT_WAIT_TIMEOUT_MS
+                timeout_ms: DEFAULT_WAIT_TIMEOUT_MS,
+                capture: None,
+                on_timeout: None,
             }
         );
     }
@@ -1415,6 +1745,293 @@ mod tests {
         let text = serialize_sessions_file(&file).expect("serializes");
         assert!(text.contains(r#""type": "repeat""#), "{text}");
         assert_eq!(parse_sessions_file(&text), file);
+    }
+
+    #[test]
+    fn a_wait_that_uses_none_of_the_new_fields_is_written_the_old_way() {
+        let file = parse_sessions_file(
+            r#"{
+                "macros": [{
+                    "name": "m",
+                    "steps": [
+                        { "type": "wait_for", "pattern": "router#", "timeout_ms": 5000 }
+                    ]
+                }]
+            }"#,
+        );
+        assert_eq!(
+            file.macros[0].steps,
+            vec![MacroStep::WaitFor {
+                pattern: "router#".to_string(),
+                regex: false,
+                timeout_ms: 5_000,
+                capture: None,
+                on_timeout: None,
+            }]
+        );
+
+        let text = serialize_sessions_file(&file).expect("serializes");
+        assert!(!text.contains("capture"), "{text}");
+        assert!(!text.contains("on_timeout"), "{text}");
+        assert_eq!(parse_sessions_file(&text), file);
+    }
+
+    #[test]
+    fn a_wait_with_a_capture_and_a_timeout_branch_round_trips() {
+        let file = parse_sessions_file(
+            r#"{
+                "macros": [{
+                    "name": "m",
+                    "steps": [{
+                        "type": "wait_for",
+                        "pattern": "Version (?P<version>[0-9.]+)",
+                        "regex": true,
+                        "timeout_ms": 5000,
+                        "capture": "banner",
+                        "on_timeout": [{ "type": "send", "text": "exit" }]
+                    }]
+                }]
+            }"#,
+        );
+        assert_eq!(
+            file.macros[0].steps,
+            vec![MacroStep::WaitFor {
+                pattern: "Version (?P<version>[0-9.]+)".to_string(),
+                regex: true,
+                timeout_ms: 5_000,
+                capture: Some("banner".to_string()),
+                on_timeout: Some(vec![MacroStep::Send {
+                    text: "exit".to_string(),
+                    newline: true,
+                }]),
+            }]
+        );
+        assert_eq!(
+            parse_sessions_file(&serialize_sessions_file(&file).expect("serializes")),
+            file
+        );
+    }
+
+    #[test]
+    fn an_empty_timeout_branch_is_kept_apart_from_no_branch_at_all() {
+        let file = parse_sessions_file(
+            r#"{
+                "macros": [{
+                    "name": "m",
+                    "steps": [
+                        { "type": "wait_for", "pattern": "a", "on_timeout": [] }
+                    ]
+                }]
+            }"#,
+        );
+        let MacroStep::WaitFor { on_timeout, .. } = &file.macros[0].steps[0] else {
+            panic!("the step should be a wait");
+        };
+        assert_eq!(
+            on_timeout.as_deref(),
+            Some(&[][..]),
+            "an empty list still means 「中断せず次へ」, so it has to survive a save"
+        );
+        assert_eq!(
+            parse_sessions_file(&serialize_sessions_file(&file).expect("serializes")),
+            file
+        );
+    }
+
+    #[test]
+    fn a_branch_step_round_trips() {
+        let file = parse_sessions_file(
+            r#"{
+                "macros": [{
+                    "name": "m",
+                    "steps": [
+                        {
+                            "type": "if",
+                            "pattern": "Invalid input",
+                            "scope": "screen",
+                            "then": [{ "type": "send", "text": "exit" }],
+                            "else": [{
+                                "type": "repeat",
+                                "count": 2,
+                                "steps": [{ "type": "send", "text": "show ip route" }]
+                            }]
+                        },
+                        { "type": "if", "pattern": "x" }
+                    ]
+                }]
+            }"#,
+        );
+        assert_eq!(
+            file.macros[0].steps[0],
+            MacroStep::If {
+                pattern: "Invalid input".to_string(),
+                regex: false,
+                scope: MatchScope::Screen,
+                then_steps: vec![MacroStep::Send {
+                    text: "exit".to_string(),
+                    newline: true,
+                }],
+                else_steps: vec![MacroStep::Repeat {
+                    count: 2,
+                    steps: vec![MacroStep::Send {
+                        text: "show ip route".to_string(),
+                        newline: true,
+                    }],
+                }],
+            }
+        );
+        assert_eq!(
+            file.macros[0].steps[1],
+            MacroStep::If {
+                pattern: "x".to_string(),
+                regex: false,
+                scope: MatchScope::SinceLastSend,
+                then_steps: Vec::new(),
+                else_steps: Vec::new(),
+            }
+        );
+
+        let text = serialize_sessions_file(&file).expect("serializes");
+        assert!(text.contains(r#""type": "if""#), "{text}");
+        // The default scope and the two empty branches of the second step stay
+        // out of the file, so a macro the user never branched on reads back the
+        // way it was written.
+        assert!(!text.contains(r#""since_last_send""#), "{text}");
+        assert_eq!(parse_sessions_file(&text), file);
+    }
+
+    #[test]
+    fn a_branch_step_summarizes_both_sides() {
+        assert_eq!(
+            MacroStep::If {
+                pattern: "Invalid".to_string(),
+                regex: false,
+                scope: MatchScope::Screen,
+                then_steps: vec![MacroStep::Clear],
+                else_steps: Vec::new(),
+            }
+            .summary(),
+            "分岐: 『Invalid』が画面全体にあれば 1 ステップ、なければ 0 ステップ"
+        );
+    }
+
+    #[test]
+    fn a_wait_summarizes_its_capture_and_its_timeout_branch() {
+        assert_eq!(
+            MacroStep::WaitFor {
+                pattern: "router#".to_string(),
+                regex: false,
+                timeout_ms: 5_000,
+                capture: Some("prompt".to_string()),
+                on_timeout: Some(vec![MacroStep::Clear]),
+            }
+            .summary(),
+            "待機: 『router#』 (5 秒以内)、${prompt} に取り込む、タイムアウト時 1 ステップ"
+        );
+    }
+
+    #[test]
+    fn variables_are_expanded_and_unknown_names_are_left_alone() {
+        let variables = HashMap::from([
+            ("host".to_string(), "rt01".to_string()),
+            ("empty".to_string(), String::new()),
+        ]);
+
+        assert_eq!(
+            expand_variables("ping ${host} -c ${count}", &variables),
+            "ping rt01 -c ${count}",
+            "an undefined name stays visible instead of silently truncating the command"
+        );
+        assert_eq!(expand_variables("[${empty}]", &variables), "[]");
+        assert_eq!(
+            expand_variables("$${host}", &variables),
+            "${host}",
+            "$$ opens the escape for a literal reference"
+        );
+        assert_eq!(
+            expand_variables("cost is $5 and $${x}", &variables),
+            "cost is $5 and ${x}"
+        );
+        assert_eq!(
+            expand_variables("${host", &variables),
+            "${host",
+            "an unterminated reference is text, not an error"
+        );
+        assert_eq!(expand_variables("${host}${host}", &variables), "rt01rt01");
+        assert_eq!(expand_variables("", &variables), "");
+    }
+
+    #[test]
+    fn a_value_spliced_into_a_regex_pattern_stands_for_itself() {
+        let variables = HashMap::from([
+            ("host".to_string(), "10.0.0.1".to_string()),
+            ("error".to_string(), "unexpected ) here".to_string()),
+        ]);
+
+        assert_eq!(
+            expand_variables_into_regex(r"^From ${host}:", &variables),
+            r"^From 10\.0\.0\.1:",
+            "the value is escaped, the anchor the user wrote around it is not"
+        );
+        assert_eq!(
+            expand_variables(r"^From ${host}:", &variables),
+            "^From 10.0.0.1:",
+            "a 送信 still gets the value as the user would type it"
+        );
+        assert_eq!(
+            expand_variables_into_regex("${missing}", &variables),
+            "${missing}",
+            "an unknown name is still left visible rather than escaped away"
+        );
+
+        let matcher =
+            PatternMatcher::new(&expand_variables_into_regex("${host}", &variables), true)
+                .expect("compiles");
+        assert!(matcher.find(&lines(&["ping 10.0.0.1"])).is_some());
+        assert!(
+            matcher.find(&lines(&["ping 10a0b0c1"])).is_none(),
+            "an unescaped value would have matched this too, because . is 任意の 1 文字"
+        );
+
+        assert!(
+            PatternMatcher::new(&expand_variables_into_regex("${error}", &variables), true).is_ok(),
+            "a captured value must not be able to turn a valid pattern into a broken one"
+        );
+    }
+
+    #[test]
+    fn a_regex_match_reports_its_named_groups() {
+        let matcher =
+            PatternMatcher::new(r"Version (?P<version>[^,]+), RELEASE (?P<image>\S+)", true)
+                .expect("compiles");
+        let found = matcher
+            .find(&lines(&[
+                "router#show version",
+                "Cisco IOS Software, Version 15.2(4)E7, RELEASE c2960x",
+            ]))
+            .expect("the second line matches");
+        assert_eq!(
+            found.named_groups,
+            vec![
+                ("version".to_string(), "15.2(4)E7".to_string()),
+                ("image".to_string(), "c2960x".to_string()),
+            ]
+        );
+        assert_eq!(found.matched, "Version 15.2(4)E7, RELEASE c2960x");
+        assert_eq!(
+            found.line,
+            "Cisco IOS Software, Version 15.2(4)E7, RELEASE c2960x"
+        );
+
+        let substring = PatternMatcher::new("Version", false).expect("compiles");
+        let found = substring
+            .find(&lines(&["banner", "IOS Version 15"]))
+            .expect("matches");
+        assert_eq!(
+            found.matched, "IOS Version 15",
+            "a substring pattern captures the line, because the search text itself says nothing new"
+        );
+        assert!(found.named_groups.is_empty());
     }
 
     #[test]
@@ -1619,6 +2236,8 @@ mod tests {
                                 pattern: "READY".into(),
                                 regex: false,
                                 timeout_ms: 60_000,
+                                capture: None,
+                                on_timeout: None,
                             },
                         ],
                         ..TerminalMacro::default()
@@ -1824,6 +2443,8 @@ mod tests {
                                     pattern: "Password:".into(),
                                     regex: false,
                                     timeout_ms: 5_000,
+                                    capture: None,
+                                    on_timeout: None,
                                 }],
                             },
                         ],
@@ -1903,6 +2524,8 @@ mod tests {
                             pattern: "Password:".into(),
                             regex: false,
                             timeout_ms: 5_000,
+                            capture: None,
+                            on_timeout: None,
                         }],
                         ..TerminalMacro::default()
                     },
@@ -1946,6 +2569,8 @@ mod tests {
                                 pattern: "router#".into(),
                                 regex: false,
                                 timeout_ms: 1_000,
+                                capture: None,
+                                on_timeout: None,
                             },
                         ],
                         ..TerminalMacro::default()
@@ -1963,6 +2588,529 @@ mod tests {
             assert!(
                 error.to_string().starts_with("ステップ 2: 『router#』"),
                 "unexpected error: {error}"
+            );
+        }
+
+        /// What the macro typed, one entry per 送信, with the trailing CR cut
+        /// off so the assertions read as commands.
+        fn sent_commands(terminal: &Entity<Terminal>, cx: &mut TestAppContext) -> Vec<String> {
+            terminal.update(cx, |terminal, _| {
+                terminal
+                    .take_pty_write_log()
+                    .into_iter()
+                    .map(|bytes| {
+                        String::from_utf8_lossy(&bytes)
+                            .trim_end_matches('\r')
+                            .to_string()
+                    })
+                    .collect()
+            })
+        }
+
+        #[gpui::test]
+        async fn a_capture_feeds_the_sends_that_follow_it(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::Send {
+                                text: "show version".into(),
+                                newline: true,
+                            },
+                            MacroStep::WaitFor {
+                                pattern: r"Version (?P<version>\S+) on (?P<host>\S+)".into(),
+                                regex: true,
+                                timeout_ms: 60_000,
+                                capture: Some("banner".into()),
+                                on_timeout: None,
+                            },
+                            MacroStep::Send {
+                                text: "echo ${host} runs ${version} [${banner}] ${missing} $${x}"
+                                    .into(),
+                                newline: true,
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"Version 15.2 on rt01\r\n", cx);
+            });
+            cx.run_until_parked();
+            run.await.expect("the macro should finish");
+
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec![
+                    "show version".to_string(),
+                    "echo rt01 runs 15.2 [Version 15.2 on rt01] ${missing} ${x}".to_string(),
+                ]
+            );
+        }
+
+        #[gpui::test]
+        async fn a_substring_capture_stores_the_whole_line(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::Send {
+                                text: "hostname".into(),
+                                newline: true,
+                            },
+                            MacroStep::WaitFor {
+                                pattern: "uptime is".into(),
+                                regex: false,
+                                timeout_ms: 60_000,
+                                capture: Some("line".into()),
+                                on_timeout: None,
+                            },
+                            MacroStep::Send {
+                                text: "echo ${line}".into(),
+                                newline: false,
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"rt01 uptime is 3 days\r\n", cx);
+            });
+            cx.run_until_parked();
+            run.await.expect("the macro should finish");
+
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec![
+                    "hostname".to_string(),
+                    "echo rt01 uptime is 3 days".to_string(),
+                ]
+            );
+        }
+
+        #[gpui::test]
+        async fn a_branch_runs_the_side_the_output_picks(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::Send {
+                                text: "show ip route".into(),
+                                newline: true,
+                            },
+                            MacroStep::WaitFor {
+                                pattern: "rt01#".into(),
+                                regex: false,
+                                timeout_ms: 60_000,
+                                capture: None,
+                                on_timeout: None,
+                            },
+                            MacroStep::If {
+                                pattern: "Invalid input".into(),
+                                regex: false,
+                                scope: MatchScope::SinceLastSend,
+                                then_steps: vec![MacroStep::Send {
+                                    text: "enable".into(),
+                                    newline: true,
+                                }],
+                                else_steps: vec![MacroStep::Send {
+                                    text: "write memory".into(),
+                                    newline: true,
+                                }],
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"Invalid input detected\r\nrt01#", cx);
+            });
+            cx.run_until_parked();
+            run.await.expect("the macro should finish");
+
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec!["show ip route".to_string(), "enable".to_string()]
+            );
+        }
+
+        #[gpui::test]
+        async fn a_branch_sees_only_the_output_of_the_last_send_until_it_is_told_otherwise(
+            cx: &mut TestAppContext,
+        ) {
+            let terminal = display_only_terminal(cx);
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"Invalid input detected\r\nrt01#", cx);
+            });
+            cx.run_until_parked();
+
+            let branch = |scope, then_text: &str, else_text: &str| MacroStep::If {
+                pattern: "Invalid input".into(),
+                regex: false,
+                scope,
+                then_steps: vec![MacroStep::Send {
+                    text: then_text.into(),
+                    newline: true,
+                }],
+                else_steps: vec![MacroStep::Send {
+                    text: else_text.into(),
+                    newline: true,
+                }],
+            };
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::Send {
+                                text: "show clock".into(),
+                                newline: true,
+                            },
+                            MacroStep::WaitFor {
+                                pattern: "12:00".into(),
+                                regex: false,
+                                timeout_ms: 60_000,
+                                capture: None,
+                                on_timeout: None,
+                            },
+                            branch(MatchScope::SinceLastSend, "見えた", "見えない"),
+                            branch(MatchScope::Screen, "画面で見えた", "画面で見えない"),
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"12:00:00 JST\r\n", cx);
+            });
+            cx.run_until_parked();
+            run.await.expect("the macro should finish");
+
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec![
+                    "show clock".to_string(),
+                    // The banner is still on the grid, but it arrived before
+                    // the 送信, so only the 画面全体 branch may see it.
+                    "見えない".to_string(),
+                    "画面で見えた".to_string(),
+                ]
+            );
+        }
+
+        #[gpui::test]
+        async fn a_timeout_branch_carries_on_where_a_bare_wait_would_stop(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+            let branches = Rc::new(RefCell::new(Vec::new()));
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::Send {
+                                text: "reload".into(),
+                                newline: true,
+                            },
+                            MacroStep::WaitFor {
+                                pattern: "[confirm]".into(),
+                                regex: false,
+                                timeout_ms: 2_000,
+                                capture: None,
+                                on_timeout: Some(vec![MacroStep::Send {
+                                    text: "諦めた".into(),
+                                    newline: true,
+                                }]),
+                            },
+                            MacroStep::Send {
+                                text: "続き".into(),
+                                newline: true,
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    {
+                        let branches = branches.clone();
+                        move |progress, _| branches.borrow_mut().push(progress.branch)
+                    },
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            cx.executor().advance_clock(Duration::from_millis(2_100));
+            cx.run_until_parked();
+            run.await
+                .expect("the timeout branch must not abort the run");
+
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec![
+                    "reload".to_string(),
+                    "諦めた".to_string(),
+                    "続き".to_string(),
+                ]
+            );
+            assert_eq!(
+                *branches.borrow(),
+                vec![None, None, Some(MacroBranch::Timeout), None],
+                "the strip names the branch only while it runs"
+            );
+        }
+
+        #[gpui::test]
+        async fn a_branch_and_a_repeat_nest_both_ways_round(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+            // Nothing the macro sends comes back as output (there is no PTY),
+            // so the branches decide on what the test put on the grid.
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"Invalid input detected\r\n", cx);
+            });
+            cx.run_until_parked();
+
+            let send = |text: &str| MacroStep::Send {
+                text: text.to_string(),
+                newline: true,
+            };
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::If {
+                                pattern: "Invalid input".into(),
+                                regex: false,
+                                scope: MatchScope::Screen,
+                                then_steps: vec![MacroStep::Repeat {
+                                    count: 2,
+                                    steps: vec![send("再実行")],
+                                }],
+                                else_steps: vec![send("そのまま")],
+                            },
+                            MacroStep::Repeat {
+                                count: 2,
+                                steps: vec![MacroStep::If {
+                                    pattern: "現れない".into(),
+                                    regex: false,
+                                    scope: MatchScope::Screen,
+                                    then_steps: vec![send("あり")],
+                                    else_steps: vec![send("なし")],
+                                }],
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            run.await.expect("the macro should finish");
+
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec![
+                    "再実行".to_string(),
+                    "再実行".to_string(),
+                    "なし".to_string(),
+                    "なし".to_string(),
+                ]
+            );
+        }
+
+        #[gpui::test]
+        async fn a_failure_inside_a_branch_names_the_step_by_its_path(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::Clear,
+                            MacroStep::If {
+                                pattern: "現れない".into(),
+                                regex: false,
+                                scope: MatchScope::Screen,
+                                then_steps: Vec::new(),
+                                else_steps: vec![
+                                    MacroStep::Clear,
+                                    MacroStep::WaitFor {
+                                        pattern: "Password:".into(),
+                                        regex: false,
+                                        timeout_ms: 1_000,
+                                        capture: None,
+                                        on_timeout: None,
+                                    },
+                                ],
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            cx.executor().advance_clock(Duration::from_millis(1_100));
+            cx.run_until_parked();
+
+            let error = run.await.expect_err("the wait inside the branch times out");
+            assert_eq!(
+                error.to_string(),
+                "ステップ 2-2: 『Password:』が 1 秒以内に現れませんでした"
+            );
+        }
+
+        #[gpui::test]
+        async fn captured_values_outlive_a_repetition(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        repeat: 2,
+                        steps: vec![
+                            MacroStep::If {
+                                pattern: "現れない".into(),
+                                regex: false,
+                                scope: MatchScope::Screen,
+                                then_steps: Vec::new(),
+                                else_steps: vec![MacroStep::WaitFor {
+                                    pattern: r"host=(?P<host>\S+)".into(),
+                                    regex: true,
+                                    timeout_ms: 500,
+                                    capture: None,
+                                    // The second pass finds nothing new to
+                                    // match, and must keep the value anyway.
+                                    on_timeout: Some(Vec::new()),
+                                }],
+                            },
+                            MacroStep::Send {
+                                text: "ping ${host}".into(),
+                                newline: true,
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"host=rt01\r\n", cx);
+            });
+            cx.run_until_parked();
+            cx.executor().advance_clock(Duration::from_millis(600));
+            cx.run_until_parked();
+            run.await.expect("the macro should finish");
+
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec!["ping rt01".to_string(), "ping rt01".to_string()]
+            );
+        }
+
+        #[gpui::test]
+        async fn a_captured_value_is_matched_as_text_by_a_later_pattern(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::Send {
+                                text: "show".into(),
+                                newline: true,
+                            },
+                            MacroStep::WaitFor {
+                                pattern: r"addr=(?P<host>\S+)".into(),
+                                regex: true,
+                                timeout_ms: 60_000,
+                                capture: None,
+                                on_timeout: None,
+                            },
+                            MacroStep::WaitFor {
+                                pattern: "${host}".into(),
+                                regex: true,
+                                timeout_ms: 1_000,
+                                capture: None,
+                                on_timeout: Some(vec![MacroStep::Send {
+                                    text: "別物だった".into(),
+                                    newline: true,
+                                }]),
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"addr=10.0.0.1\r\n", cx);
+            });
+            cx.run_until_parked();
+            // Every 10.0.0.1 has become 10a0b0c1 by the time the second wait
+            // looks, so the wait may only be satisfied if the dots of the
+            // captured address went in as dots.
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"10a0b0c1 answered\r\n", cx);
+            });
+            cx.run_until_parked();
+            cx.executor().advance_clock(Duration::from_millis(1_100));
+            cx.run_until_parked();
+            run.await.expect("the timeout branch carries the run on");
+
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec!["show".to_string(), "別物だった".to_string()]
             );
         }
     }

@@ -1,9 +1,9 @@
-use gpui::{Action as _, prelude::FluentBuilder as _};
+use gpui::{Action as _, Modifiers, prelude::FluentBuilder as _};
 use ui::{
     ActiveTheme as _, AnyElement, Button, ButtonCommon as _, ButtonSize, ButtonStyle, Checkbox,
     Clickable as _, Color, Context, ContextMenu, DropdownMenu, ElementId, Icon, IconButton,
     IconName, IconPosition, IconSize, IntoElement as _, Label, LabelCommon as _, LabelSize,
-    ParentElement as _, Styled as _, ToggleState, Tooltip, Window, div, h_flex,
+    ParentElement as _, Styled as _, ToggleState, Tooltip, Window, div, h_flex, text_for_keystroke,
 };
 
 use crate::{
@@ -36,9 +36,24 @@ impl TabularDataPreviewPane {
                 .style(ButtonStyle::Subtle)
                 .size(ButtonSize::Compact)
                 .start_icon(Icon::new(IconName::FileTextOutlined).size(IconSize::Small))
-                .tooltip(Tooltip::text("元のテキストを隣のペインで開きます"))
-                .on_click(|_event, window, cx| {
-                    window.dispatch_action(OpenAsText.boxed_clone(), cx);
+                .tooltip(|_window, cx| {
+                    Tooltip::with_meta(
+                        "元のテキストを隣のペインで開きます",
+                        Some(&OpenAsText::default()),
+                        format!(
+                            "{} でこのタブを切り替える",
+                            text_for_keystroke(&Modifiers::alt(), "click", cx)
+                        ),
+                        cx,
+                    )
+                })
+                .on_click(|event, window, cx| {
+                    // Alt swaps this very tab for the text one instead of
+                    // opening the text beside the grid, which is the only way
+                    // to have the file's text in this pane: the two cannot
+                    // share it.
+                    let in_same_pane = event.modifiers().alt;
+                    window.dispatch_action(OpenAsText { in_same_pane }.boxed_clone(), cx);
                 }),
             )
             .child(

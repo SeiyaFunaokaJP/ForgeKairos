@@ -12,12 +12,16 @@ use editor::{
     Addon, Editor, EditorEvent, RestoreOnlyDiffHunkDelegate, SplittableEditor,
     actions::SendReviewToAgent,
 };
-use git::{repository::DiffType, status::FileStatus};
-use gpui::{
-    Action, AnyElement, App, AppContext as _, Entity, EventEmitter, FocusHandle, Focusable, Render,
-    SharedString, Subscription, Task, WeakEntity,
+use git::{
+    repository::{DiffType, RepoPath},
+    status::{DiffTreeType, FileStatus, TreeDiffStatus},
 };
-use language::{BufferId, Capability};
+use gpui::{
+    Action, AnyElement, App, AppContext as _, Empty, Entity, EventEmitter, FocusHandle, Focusable,
+    Render, SharedString, Subscription, Task, WeakEntity, rems,
+};
+use language::{Buffer, BufferId, Capability};
+use multi_buffer::MultiBuffer;
 use project::{
     Project, ProjectPath,
     git_store::{
@@ -30,7 +34,9 @@ use std::{
     any::{Any, TypeId},
     sync::Arc,
 };
-use ui::{DiffStat, Divider, PopoverMenu, Tooltip, prelude::*};
+use ui::{
+    DiffStat, Divider, IconName, ListItem, ListItemSpacing, PopoverMenu, Tooltip, prelude::*,
+};
 use workspace::{
     ItemHandle, ItemNavHistory, SerializableItem, ToolbarItemEvent, ToolbarItemLocation,
     ToolbarItemView, Workspace,
@@ -1279,5 +1285,596 @@ mod tests {
 
         assert_eq!(active_base_ref, "origin/main");
         assert_eq!(base_refs, vec!["origin/main", "topic"]);
+    }
+
+    #[gpui::test]
+    async fn test_ref_comparison_reports_identical_and_changed_trees(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".git": {},
+                "a.txt": "same
+            ",
+            }),
+        )
+        .await;
+        fs.set_head_and_index_for_repo(
+            path!("/project/.git").as_ref(),
+            &[(
+                "a.txt",
+                "same
+"
+                .to_string(),
+            )],
+        );
+        fs.set_merge_base_content_for_repo(
+            path!("/project/.git").as_ref(),
+            &[(
+                "a.txt",
+                "same
+"
+                .to_string(),
+            )],
+        );
+
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+
+        let comparison = cx.new(|cx| {
+            RefComparison::new(
+                repository.clone(),
+                project.clone(),
+                "base".into(),
+                "head".into(),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        comparison.read_with(cx, |comparison, _| {
+            assert!(
+                matches!(comparison.state, RefComparisonState::Identical),
+                "two refs with the same tree must report that everything was ported"
+            );
+        });
+
+        fs.set_merge_base_content_for_repo(
+            path!("/project/.git").as_ref(),
+            &[(
+                "a.txt",
+                "different
+"
+                .to_string(),
+            )],
+        );
+        let comparison = cx.new(|cx| {
+            RefComparison::new(
+                repository.clone(),
+                project.clone(),
+                "base".into(),
+                "head".into(),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        comparison.read_with(cx, |comparison, _| match &comparison.state {
+            RefComparisonState::Changed(entries) => {
+                assert_eq!(entries.len(), 1);
+                assert_eq!(entries[0].path.as_unix_str(), "a.txt");
+                assert!(matches!(entries[0].status, TreeDiffStatus::Modified { .. }));
+            }
+            _ => panic!("a file that differs between the refs must be listed"),
+        });
+    }
+
+    #[gpui::test]
+    async fn test_ref_comparison_is_released_when_its_tab_closes(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".git": {},
+                "a.txt": "base\n",
+            }),
+        )
+        .await;
+        fs.set_head_and_index_for_repo(
+            path!("/project/.git").as_ref(),
+            &[("a.txt", "base\n".to_string())],
+        );
+        fs.set_merge_base_content_for_repo(
+            path!("/project/.git").as_ref(),
+            &[("a.txt", "different\n".to_string())],
+        );
+        for (args, stdout) in [("show base:a.txt", "base\n"), ("show head:a.txt", "head\n")] {
+            fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
+                state.command_outputs.insert(
+                    args.to_owned(),
+                    git::repository::GitCommandOutput {
+                        stdout: stdout.to_owned(),
+                        stderr: String::new(),
+                        exit_code: Some(0),
+                    },
+                );
+            })
+            .expect("fake repository should exist");
+        }
+
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(&*cx, |multi, _| multi.workspace().clone());
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            RefComparison::open(
+                workspace,
+                repository.clone(),
+                "base".into(),
+                "head".into(),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let comparison = workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .items_of_type::<RefComparison>(cx)
+                .next()
+                .expect("the comparison should have opened as an item")
+        });
+        comparison.update_in(cx, |comparison, window, cx| {
+            comparison.open_file_diff(RepoPath::from_rel_path(rel_path("a.txt")), window, cx);
+        });
+        cx.run_until_parked();
+
+        let released_editor = comparison.read_with(cx, |comparison, _| {
+            comparison
+                .file_diff_editor
+                .as_ref()
+                .expect("picking a file should have built an editor")
+                .downgrade()
+        });
+        let released_comparison = comparison.downgrade();
+        drop(comparison);
+
+        let close = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.active_pane().update(cx, |pane, cx| {
+                pane.close_active_item(&workspace::CloseActiveItem::default(), window, cx)
+            })
+        });
+        close.await.expect("closing the comparison tab should work");
+        cx.run_until_parked();
+
+        released_comparison.assert_released();
+        released_editor.assert_released();
+    }
+}
+
+/// One changed file between the two refs.
+struct RefComparisonEntry {
+    path: RepoPath,
+    status: TreeDiffStatus,
+}
+
+impl RefComparisonEntry {
+    fn status_label(&self) -> &'static str {
+        match self.status {
+            TreeDiffStatus::Added => "追加",
+            TreeDiffStatus::Modified { .. } => "変更",
+            TreeDiffStatus::Deleted { .. } => "削除",
+        }
+    }
+
+    fn status_color(&self) -> Color {
+        match self.status {
+            TreeDiffStatus::Added => Color::Created,
+            TreeDiffStatus::Modified { .. } => Color::Modified,
+            TreeDiffStatus::Deleted { .. } => Color::Deleted,
+        }
+    }
+}
+
+enum RefComparisonState {
+    Loading,
+    /// The two refs have the same tree, which is the answer the user is
+    /// usually after: everything was ported.
+    Identical,
+    Changed(Vec<RefComparisonEntry>),
+    Failed(SharedString),
+}
+
+/// Compares the contents of two refs — "did everything make it across?".
+///
+/// This cannot go through [`diff_buffer_list::DiffBufferList`], which always
+/// diffs a ref against the working tree; here both sides are commits, so the
+/// file list comes from `diff-tree <base> <head>` and each side of a file is
+/// read out of git directly.
+pub struct RefComparison {
+    focus_handle: FocusHandle,
+    repository: Entity<Repository>,
+    project: Entity<Project>,
+    base: SharedString,
+    head: SharedString,
+    state: RefComparisonState,
+    selected_path: Option<RepoPath>,
+    file_diff_editor: Option<Entity<Editor>>,
+    /// Why the picked file could not be shown. Kept apart from `state` so that
+    /// one unshowable file does not take the whole file list down with it.
+    file_diff_error: Option<SharedString>,
+    _load_task: Task<()>,
+    _file_task: Option<Task<()>>,
+}
+
+impl RefComparison {
+    pub fn open(
+        workspace: &mut Workspace,
+        repository: Entity<Repository>,
+        base: SharedString,
+        head: SharedString,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        if base == head {
+            return;
+        }
+        let existing = workspace.items_of_type::<RefComparison>(cx).find(|item| {
+            let item = item.read(cx);
+            item.base == base && item.head == head
+        });
+        if let Some(existing) = existing {
+            workspace.activate_item(&existing, true, true, window, cx);
+            return;
+        }
+        let project = workspace.project().clone();
+        let comparison = cx.new(|cx| RefComparison::new(repository, project, base, head, cx));
+        workspace.add_item_to_active_pane(Box::new(comparison), None, true, window, cx);
+    }
+
+    fn new(
+        repository: Entity<Repository>,
+        project: Entity<Project>,
+        base: SharedString,
+        head: SharedString,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let tree = repository.update(cx, |repository, cx| {
+            repository.diff_tree(
+                DiffTreeType::Since {
+                    base: base.clone(),
+                    head: head.clone(),
+                },
+                cx,
+            )
+        });
+        let load_task = cx.spawn(async move |this, cx| {
+            let state = match tree.await {
+                Ok(Ok(tree)) if tree.entries.is_empty() => RefComparisonState::Identical,
+                Ok(Ok(tree)) => {
+                    let mut entries = tree
+                        .entries
+                        .into_iter()
+                        .map(|(path, status)| RefComparisonEntry { path, status })
+                        .collect::<Vec<_>>();
+                    entries.sort_by(|left, right| left.path.cmp(&right.path));
+                    RefComparisonState::Changed(entries)
+                }
+                Ok(Err(error)) => RefComparisonState::Failed(format!("{error:#}").into()),
+                Err(_) => return,
+            };
+            this.update(cx, |this, cx| {
+                this.state = state;
+                cx.notify();
+            })
+            .ok();
+        });
+
+        Self {
+            focus_handle: cx.focus_handle(),
+            repository,
+            project,
+            base,
+            head,
+            state: RefComparisonState::Loading,
+            selected_path: None,
+            file_diff_editor: None,
+            file_diff_error: None,
+            _load_task: load_task,
+            _file_task: None,
+        }
+    }
+
+    /// Loads both sides of one file and shows them as a diff. A side that does
+    /// not exist at its ref (an added or deleted file) reads as empty, which is
+    /// exactly how git presents it.
+    fn open_file_diff(&mut self, path: RepoPath, window: &mut Window, cx: &mut Context<Self>) {
+        self.selected_path = Some(path.clone());
+        self.file_diff_editor = None;
+        self.file_diff_error = None;
+        cx.notify();
+
+        let path_text = path.as_unix_str().to_string();
+        let (base_text, head_text) = self.repository.update(cx, |repository, _cx| {
+            (
+                repository.file_at_ref(self.base.to_string(), path_text.clone()),
+                repository.file_at_ref(self.head.to_string(), path_text.clone()),
+            )
+        });
+        let project = self.project.clone();
+        self._file_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let side = |output: Result<Result<git::repository::GitCommandOutput>, _>| match output {
+                Ok(Ok(output)) if output.succeeded() => output.stdout,
+                _ => String::new(),
+            };
+            let base_text = side(base_text.await);
+            let head_text = side(head_text.await);
+            if base_text.contains('\0') || head_text.contains('\0') {
+                this.update(cx, |this, cx| {
+                    this.file_diff_editor = None;
+                    this.file_diff_error = Some("バイナリファイルは並べて表示できません。".into());
+                    cx.notify();
+                })
+                .ok();
+                return;
+            }
+
+            let language_registry =
+                project.read_with(cx, |project, _cx| project.languages().clone());
+            let language = language_registry
+                .load_language_for_file_path(path.as_std_path())
+                .await
+                .ok();
+
+            this.update_in(cx, |this, window, cx| {
+                let build_buffer = |text: String, cx: &mut App| {
+                    cx.new(|cx| {
+                        let mut buffer = Buffer::local(text, cx);
+                        buffer.set_language_registry(language_registry.clone());
+                        buffer.set_language(language.clone(), cx);
+                        buffer.set_capability(Capability::ReadOnly, cx);
+                        buffer
+                    })
+                };
+                let base_buffer = build_buffer(base_text.clone(), cx);
+                let head_buffer = build_buffer(head_text, cx);
+                let head_snapshot = head_buffer.read(cx).snapshot();
+                let base_snapshot = base_buffer.read(cx).snapshot();
+                let diff = cx.new(|cx| {
+                    buffer_diff::BufferDiff::new_with_base_text_buffer(
+                        &head_snapshot.text,
+                        base_buffer,
+                        buffer_diff::DiffBaseKind::Custom,
+                        cx,
+                    )
+                });
+                let multibuffer = cx.new(|cx| {
+                    let mut multibuffer = MultiBuffer::singleton(head_buffer, cx);
+                    multibuffer.add_diff(diff.clone(), cx);
+                    multibuffer
+                });
+                let project = this.project.clone();
+                let editor = cx.new(|cx| {
+                    let mut editor =
+                        Editor::for_multibuffer(multibuffer, Some(project), window, cx);
+                    editor.set_read_only(true);
+                    editor.set_expand_all_diff_hunks(cx);
+                    editor
+                });
+                this.file_diff_editor = Some(editor);
+                cx.spawn(async move |_this, cx| {
+                    let update = diff.update(cx, |diff, cx| {
+                        diff.update_diff(
+                            head_snapshot.text.clone(),
+                            &base_snapshot,
+                            Some(Arc::<str>::from(base_text)),
+                            cx,
+                        )
+                    });
+                    let update = update.await;
+                    diff.update(cx, |diff, cx| diff.set_snapshot(update, cx));
+                })
+                .detach();
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    fn render_file_list(&self, cx: &mut Context<Self>) -> AnyElement {
+        let RefComparisonState::Changed(entries) = &self.state else {
+            return Empty.into_any_element();
+        };
+        v_flex()
+            .id("ref-comparison-files")
+            .h_full()
+            .w(rems(20.))
+            .flex_none()
+            .overflow_y_scroll()
+            .border_r_1()
+            .border_color(cx.theme().colors().border_variant)
+            .children(entries.iter().enumerate().map(|(index, entry)| {
+                let path = entry.path.clone();
+                let is_selected = self.selected_path.as_ref() == Some(&entry.path);
+                let label = entry
+                    .path
+                    .file_name()
+                    .map(|name| name.to_string())
+                    .unwrap_or_else(|| entry.path.as_unix_str().to_string());
+                ListItem::new(("ref-comparison-file", index))
+                    .spacing(ListItemSpacing::Sparse)
+                    .toggle_state(is_selected)
+                    .tooltip({
+                        let full_path = entry.path.as_unix_str().to_string();
+                        move |_, cx| Tooltip::simple(full_path.clone(), cx)
+                    })
+                    .child(Label::new(label).truncate())
+                    .end_slot(
+                        Label::new(entry.status_label())
+                            .size(LabelSize::XSmall)
+                            .color(entry.status_color()),
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_file_diff(path.clone(), window, cx);
+                    }))
+            }))
+            .into_any_element()
+    }
+}
+
+impl EventEmitter<ItemEvent> for RefComparison {}
+
+impl Focusable for RefComparison {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Item for RefComparison {
+    type Event = ItemEvent;
+
+    fn tab_icon(&self, _window: &Window, _cx: &App) -> Option<ui::Icon> {
+        Some(ui::Icon::new(IconName::Diff))
+    }
+
+    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
+        format!("{} と {} の比較", self.base, self.head).into()
+    }
+
+    fn show_toolbar(&self) -> bool {
+        false
+    }
+
+    fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
+        f(*event)
+    }
+}
+
+impl Render for RefComparison {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let header = v_flex()
+            .w_full()
+            .p_2()
+            .gap_0p5()
+            .border_b_1()
+            .border_color(cx.theme().colors().border_variant)
+            .child(Label::new(format!(
+                "{} (移植元) と {} (移植先) の比較",
+                self.base, self.head
+            )))
+            .child(
+                Label::new(
+                    "2 つのブランチ / タグの中身そのものを比べます。差分が無ければ、すべて移植できています。",
+                )
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+            );
+
+        let body = match &self.state {
+            RefComparisonState::Loading => h_flex()
+                .size_full()
+                .justify_center()
+                .child(
+                    Label::new("比較を読み込み中…")
+                        .color(Color::Muted)
+                        .size(LabelSize::Large),
+                )
+                .into_any_element(),
+            RefComparisonState::Identical => v_flex()
+                .size_full()
+                .justify_center()
+                .items_center()
+                .gap_1()
+                .child(
+                    Label::new("差分はありません (全部移植できています)")
+                        .color(Color::Success)
+                        .size(LabelSize::Large),
+                )
+                .child(
+                    Label::new(format!("{} と {} は同じ中身です。", self.base, self.head))
+                        .color(Color::Muted)
+                        .size(LabelSize::Small),
+                )
+                .into_any_element(),
+            RefComparisonState::Failed(error) => v_flex()
+                .size_full()
+                .justify_center()
+                .items_center()
+                .gap_1()
+                .child(
+                    Label::new("比較できませんでした")
+                        .color(Color::Error)
+                        .size(LabelSize::Large),
+                )
+                .child(
+                    Label::new(error.clone())
+                        .color(Color::Muted)
+                        .size(LabelSize::Small),
+                )
+                .into_any_element(),
+            RefComparisonState::Changed(entries) => {
+                let count = entries.len();
+                h_flex()
+                    .size_full()
+                    .child(self.render_file_list(cx))
+                    .child(match (self.file_diff_editor.clone(), &self.file_diff_error) {
+                        (_, Some(error)) => h_flex()
+                            .flex_1()
+                            .size_full()
+                            .justify_center()
+                            .child(Label::new(error.clone()).color(Color::Muted))
+                            .into_any_element(),
+                        (Some(editor), None) => {
+                            div().flex_1().size_full().child(editor).into_any_element()
+                        }
+                        (None, None) => v_flex()
+                            .flex_1()
+                            .size_full()
+                            .justify_center()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                Label::new(format!(
+                                    "{count} 個のファイルに差分があります。左の一覧から選ぶと中身を並べて表示します。"
+                                ))
+                                .color(Color::Muted),
+                            )
+                            // `diff-tree` runs with `--no-renames`, so a renamed
+                            // file shows up twice and the count looks inflated.
+                            .child(
+                                Label::new(
+                                    "名前を変えたファイルは「削除」と「追加」の 2 行に分かれます。",
+                                )
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                            )
+                            .into_any_element(),
+                    })
+                    .into_any_element()
+            }
+        };
+
+        v_flex()
+            .key_context("RefComparison")
+            .track_focus(&self.focus_handle)
+            .size_full()
+            .bg(cx.theme().colors().editor_background)
+            .child(header)
+            .child(div().flex_1().min_h_0().child(body))
     }
 }

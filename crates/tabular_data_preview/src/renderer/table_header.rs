@@ -20,6 +20,7 @@ use ui::{
 use crate::{
     TabularDataPreviewPane,
     grid::{CellEditMode, GridCell, GridRow, column_label},
+    renderer::table_cell::CELL_FRAME_DEBUG_SELECTOR,
     settings::FilterSortOrder,
     table_data_engine::{
         filtering_by_column::{FilterEntry, FilterEntryState},
@@ -558,7 +559,7 @@ impl TabularDataPreviewPane {
         } else {
             px(20.)
         };
-        h_flex()
+        let heading = h_flex()
             .group(group_name.clone())
             .relative()
             .overflow_hidden()
@@ -571,6 +572,9 @@ impl TabularDataPreviewPane {
                 colors.border_focused
             } else {
                 search_range_border.unwrap_or_else(transparent_black)
+            })
+            .when(needs_probe, |this| {
+                this.debug_selector(|| CELL_FRAME_DEBUG_SELECTOR.to_owned())
             })
             .when_some(paint.background, |this, background| this.bg(background))
             .when_some(paint.text, |this, color| this.text_color(color))
@@ -633,7 +637,6 @@ impl TabularDataPreviewPane {
                     )
                     .child(header_text),
             )
-            .when(needs_probe, |this| this.child(self.active_cell_probe(cx)))
             .child(
                 GradientFade::new(base_bg, base_bg, base_bg)
                     .width(grad_width)
@@ -655,7 +658,18 @@ impl TabularDataPreviewPane {
                     })
                     .child(self.create_filter_button(cx, col_idx))
                     .child(self.create_sort_button(cx, col_idx)),
-            )
+            );
+
+        // As in the body cells, the probe has to hang off an undecorated
+        // wrapper: inside the heading it would be laid out against the padding
+        // box and report a rectangle two pixels inside the one the overlay
+        // editor has to cover.
+        div()
+            .relative()
+            .flex()
+            .w_full()
+            .child(heading)
+            .when(needs_probe, |this| this.child(self.active_cell_probe(cx)))
             .into_any_element()
     }
 

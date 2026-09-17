@@ -153,8 +153,106 @@ actions!(
         CreatePatch,
         /// パッチファイルを作業ツリーに適用します。
         ApplyPatch,
+        /// lease を使わずに強制プッシュします (他の人が push したコミットも上書きします)。
+        ForcePushWithoutLease,
     ]
 );
+
+/// 選択したコミットを基点に新しいブランチを作成します。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct CreateBranchFrom {
+    /// 基点にするコミットの SHA。
+    #[serde(default)]
+    pub sha: String,
+}
+
+/// 選択したコミットをチェックアウトします (detached HEAD になります)。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct CheckoutCommit {
+    /// チェックアウトするコミットの SHA。
+    #[serde(default)]
+    pub sha: String,
+}
+
+/// 選択したコミットにタグを付けます。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct CreateTagAt {
+    /// タグを付けるコミットの SHA。
+    #[serde(default)]
+    pub sha: String,
+}
+
+/// 選択したコミットを現在のブランチに取り込みます (cherry-pick)。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct CherryPickCommit {
+    /// 取り込むコミットの SHA。
+    #[serde(default)]
+    pub sha: String,
+}
+
+/// 選択したコミットを打ち消すコミットを作ります (revert)。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct RevertCommit {
+    /// 打ち消すコミットの SHA。
+    #[serde(default)]
+    pub sha: String,
+}
+
+/// 選択したコミットのメッセージを書き換えます (以降のコミットの SHA が変わります)。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct RewordCommit {
+    /// 書き換えるコミットの SHA。
+    #[serde(default)]
+    pub sha: String,
+}
+
+/// `git reset` の残し方。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ResetToCommitMode {
+    /// 変更をステージに残す。
+    #[default]
+    Soft,
+    /// 変更を作業ツリーに残す。
+    Mixed,
+    /// 変更を捨てる。
+    Hard,
+}
+
+/// 選択したコミットまで現在のブランチを戻します。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct ResetToCommit {
+    /// 戻す先のコミットの SHA。
+    #[serde(default)]
+    pub sha: String,
+    /// 変更をどこに残すか。
+    #[serde(default)]
+    pub mode: ResetToCommitMode,
+}
+
+/// 直近のタグからの距離 (`v1.2.3-5-gabcdef`) をクリップボードにコピーします。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct CopyTagDistance {
+    /// 対象のコミットの SHA。
+    #[serde(default)]
+    pub sha: String,
+}
 
 /// Renames a git branch.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]

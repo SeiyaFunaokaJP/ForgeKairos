@@ -272,6 +272,10 @@ pub struct AgentSettingsContent {
     pub commit_message_instructions: Option<String>,
     /// Model to use for generating thread summaries. Defaults to default_model when not specified.
     pub thread_summary_model: Option<LanguageModelSelection>,
+    /// Model that judges whether a tool action is dangerous when the tool
+    /// permission mode is `auto`. Defaults to the fast model, then to
+    /// default_model, when not specified.
+    pub permission_judge_model: Option<LanguageModelSelection>,
     /// Model to use for context compaction (`/compact` and auto-compaction).
     /// Falls back to the thread's currently selected model when not specified.
     /// If the configured model is unavailable (provider not registered, model
@@ -444,6 +448,16 @@ impl AgentSettingsContent {
 
     pub fn set_inline_assistant_model(&mut self, provider: String, model: String) {
         self.inline_assistant_model = Some(LanguageModelSelection {
+            provider: provider.into(),
+            model,
+            enable_thinking: false,
+            effort: None,
+            speed: None,
+        });
+    }
+
+    pub fn set_permission_judge_model(&mut self, provider: String, model: String) {
+        self.permission_judge_model = Some(LanguageModelSelection {
             provider: provider.into(),
             model,
             enable_thinking: false,
@@ -1102,6 +1116,13 @@ pub enum ToolPermissionMode {
     /// Always prompt for confirmation (default behavior).
     #[default]
     Confirm,
+    /// Ask a separate, cheap language model whether the operation is dangerous,
+    /// and auto-approve it only when that model answers that it is safe
+    /// (ADR-F52). Every rule that outranks the default — the built-in security
+    /// rules and the user's `always_deny`/`always_confirm`/`always_allow`
+    /// patterns — is applied first, so this only replaces the "ask every time"
+    /// step.
+    Auto,
 }
 
 impl std::fmt::Display for ToolPermissionMode {
@@ -1110,6 +1131,7 @@ impl std::fmt::Display for ToolPermissionMode {
             ToolPermissionMode::Allow => write!(f, "Allow"),
             ToolPermissionMode::Deny => write!(f, "Deny"),
             ToolPermissionMode::Confirm => write!(f, "Confirm"),
+            ToolPermissionMode::Auto => write!(f, "Auto"),
         }
     }
 }
@@ -1156,6 +1178,56 @@ mod tests {
         value.merge_from(&AgentConfigOptionValue::Boolean(true));
 
         assert_eq!(value, AgentConfigOptionValue::Boolean(true));
+    }
+
+    /// ADR-F52: the judged mode is spelled `"auto"` in settings.json, and it
+    /// survives a round trip through the file.
+    #[test]
+    fn test_tool_permission_mode_auto_round_trips_as_auto() {
+        assert_eq!(
+            serde_json::to_string(&ToolPermissionMode::Auto).unwrap(),
+            "\"auto\""
+        );
+        assert_eq!(
+            serde_json::from_str::<ToolPermissionMode>("\"auto\"").unwrap(),
+            ToolPermissionMode::Auto
+        );
+
+        let mut settings = AgentSettingsContent::default();
+        settings.set_tool_default_permission("terminal", ToolPermissionMode::Auto);
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("\"default\":\"auto\""), "{json}");
+
+        let parsed: AgentSettingsContent = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed
+                .tool_permissions
+                .as_ref()
+                .unwrap()
+                .tools
+                .get("terminal")
+                .unwrap()
+                .default,
+            Some(ToolPermissionMode::Auto)
+        );
+    }
+
+    #[test]
+    fn test_set_permission_judge_model_round_trips() {
+        let mut settings = AgentSettingsContent::default();
+        assert!(settings.permission_judge_model.is_none());
+
+        settings.set_permission_judge_model("ollama".to_string(), "qwen3:8b".to_string());
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let parsed: AgentSettingsContent = serde_json::from_str(&json).unwrap();
+        let judge_model = parsed.permission_judge_model.as_ref().unwrap();
+        assert_eq!(judge_model.provider.0, "ollama");
+        assert_eq!(judge_model.model, "qwen3:8b");
+        assert!(
+            !judge_model.enable_thinking,
+            "a judge does not need to think"
+        );
     }
 
     #[test]

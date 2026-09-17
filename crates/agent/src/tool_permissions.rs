@@ -214,6 +214,12 @@ pub enum ToolPermissionDecision {
     Allow,
     Deny(String),
     Confirm,
+    /// The settings put this decision in the hands of the permission judge
+    /// model (ADR-F52): nothing above the default step decided it, and the
+    /// effective default is [`ToolPermissionMode::Auto`]. Callers that can't
+    /// run the judge (the settings UI's preview, the unsandboxed terminal
+    /// path) must treat this as [`Self::Confirm`].
+    Judge,
 }
 
 impl ToolPermissionDecision {
@@ -300,6 +306,7 @@ impl ToolPermissionDecision {
                         ToolPermissionDecision::Deny("Blocked by global default: deny".into())
                     }
                     ToolPermissionMode::Confirm => ToolPermissionDecision::Confirm,
+                    ToolPermissionMode::Auto => ToolPermissionDecision::Judge,
                 };
             }
         };
@@ -432,6 +439,7 @@ fn check_commands(
         }
         ToolPermissionMode::Allow => ToolPermissionDecision::Allow,
         ToolPermissionMode::Confirm => ToolPermissionDecision::Confirm,
+        ToolPermissionMode::Auto => ToolPermissionDecision::Judge,
     }
 }
 
@@ -537,10 +545,12 @@ pub fn decide_terminal_permission(
                 // to refuse the command here.
                 ToolPermissionDecision::Deny(reason) => ToolPermissionDecision::Deny(reason),
                 // The user allowed the command, but not to run outside the
-                // sandbox without seeing it first.
-                ToolPermissionDecision::Allow | ToolPermissionDecision::Confirm => {
-                    ToolPermissionDecision::Confirm
-                }
+                // sandbox without seeing it first. The judge doesn't get to
+                // approve it either: outside the sandbox nothing but the user
+                // may approve a command (ADR-F46).
+                ToolPermissionDecision::Allow
+                | ToolPermissionDecision::Confirm
+                | ToolPermissionDecision::Judge => ToolPermissionDecision::Confirm,
             }
         }
     }
@@ -643,7 +653,194 @@ pub fn most_restrictive(
         (ToolPermissionDecision::Confirm, _) | (_, ToolPermissionDecision::Confirm) => {
             ToolPermissionDecision::Confirm
         }
+        // A judged decision may still end up being confirmed, so it outranks a
+        // plain allow.
+        (ToolPermissionDecision::Judge, _) | (_, ToolPermissionDecision::Judge) => {
+            ToolPermissionDecision::Judge
+        }
         _ => a,
+    }
+}
+
+/// How many characters of the tool input are shown to the permission judge
+/// model. Long inputs (a whole file being written) are cut here so a cheap,
+/// small model isn't asked to read something far larger than its context.
+pub const PERMISSION_JUDGE_INPUT_CHAR_LIMIT: usize = 4_000;
+
+/// How long the permission judge model has to answer before the tool call
+/// falls back to asking the user.
+pub const PERMISSION_JUDGE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The instructions given to the permission judge model (ADR-F52). Kept in
+/// English because the small, fast models this is meant for follow English
+/// instructions more reliably; only the reason comes back in Japanese, since
+/// that is what ends up on the tool card.
+pub const PERMISSION_JUDGE_SYSTEM_PROMPT: &str = "\
+You are the safety reviewer for an IDE agent. The agent is about to perform a tool action, \
+and you decide whether that action is dangerous.
+
+Answer UNSAFE when the action does any of these:
+- writes to or deletes anything outside the project's worktree roots
+- `rm -rf`, formatting a disk, or partition operations
+- reads, writes or transmits credentials, keys or tokens
+- sends anything over the network (curl, wget, scp, `git push`, and so on)
+- escalates privileges (sudo, runas, and so on)
+- changes system settings, the registry, or services
+- installs packages globally
+- performs an irreversible git operation (force push, `reset --hard`, `branch -D`, `clean`)
+- is obfuscated or encoded
+- chains several commands so that the combined intent is hidden
+
+Answer SAFE for anything else: reading, building, testing, and edits inside the worktree roots.
+When in doubt, answer UNSAFE.
+
+Reply with exactly two lines. The first line is the single word SAFE or UNSAFE and nothing else. \
+The second line is the reason, written in Japanese, in about 20 characters.";
+
+/// Everything the permission judge model is told about the tool action.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PermissionJudgeContext {
+    pub tool_name: String,
+    /// The tool's permission-relevant inputs, exactly as the permission rules
+    /// see them (the command string for the terminal tool, paths for the file
+    /// tools).
+    pub input_values: Vec<String>,
+    /// Absolute paths of the project's worktree roots, so the judge can tell
+    /// "inside the project" from "outside" it.
+    pub worktree_roots: Vec<String>,
+    /// Whether the user has trusted this project (an untrusted project's own
+    /// files may be hostile).
+    pub project_trusted: bool,
+}
+
+impl PermissionJudgeContext {
+    /// The tool's side of the context. The project's side (worktree roots and
+    /// trust) is filled in when the judge actually runs.
+    pub fn new(tool_name: String, input_values: Vec<String>) -> Self {
+        Self {
+            tool_name,
+            input_values,
+            worktree_roots: Vec::new(),
+            project_trusted: false,
+        }
+    }
+}
+
+/// The judge's answer, as the tool card and the log line report it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PermissionJudgeVerdict {
+    Safe {
+        reason: String,
+    },
+    /// Dangerous, or not decided at all (no model, an error, a timeout, an
+    /// answer that couldn't be parsed): either way the user is asked, and
+    /// `reason` says why.
+    Unsafe {
+        reason: String,
+    },
+}
+
+impl PermissionJudgeVerdict {
+    /// The word used in the audit log line. Deliberately not the reason, which
+    /// can quote the command.
+    pub fn log_word(&self) -> &'static str {
+        match self {
+            PermissionJudgeVerdict::Safe { .. } => "SAFE",
+            PermissionJudgeVerdict::Unsafe { .. } => "UNSAFE",
+        }
+    }
+}
+
+/// The reason shown when no model could judge the action at all.
+pub const PERMISSION_JUDGE_NO_MODEL_REASON: &str = "判定に使うモデルが未設定のため確認します";
+pub const PERMISSION_JUDGE_TIMEOUT_REASON: &str = "判定が時間内に終わらなかったので確認します";
+pub const PERMISSION_JUDGE_ERROR_REASON: &str = "判定できなかったので確認します";
+pub const PERMISSION_JUDGE_UNPARSABLE_REASON: &str = "判定の答えを読み取れなかったので確認します";
+/// Used when there is nothing for the judge to look at, so approving the call
+/// would mean approving arguments nobody has seen.
+pub const PERMISSION_JUDGE_NO_INPUT_REASON: &str = "入力を確認できないので確認します";
+/// Used when the judge answered `SAFE` but gave no reason of its own.
+pub const PERMISSION_JUDGE_SAFE_REASON: &str = "安全と判定しました";
+
+/// Builds the user message sent to the permission judge model.
+pub fn build_permission_judge_prompt(context: &PermissionJudgeContext) -> String {
+    let mut prompt = format!("Tool: {}\n", context.tool_name);
+
+    prompt.push_str("Worktree roots:\n");
+    if context.worktree_roots.is_empty() {
+        prompt.push_str("- (none; the project has no worktree)\n");
+    } else {
+        for root in &context.worktree_roots {
+            prompt.push_str("- ");
+            prompt.push_str(root);
+            prompt.push('\n');
+        }
+    }
+
+    prompt.push_str(if context.project_trusted {
+        "Project trusted by the user: yes\n"
+    } else {
+        "Project trusted by the user: no\n"
+    });
+
+    prompt.push_str("Input:\n");
+    let joined = context.input_values.join("\n---\n");
+    let (shown, truncated) = truncate_chars(&joined, PERMISSION_JUDGE_INPUT_CHAR_LIMIT);
+    prompt.push_str(shown);
+    if truncated {
+        prompt.push_str("\n… (input truncated)");
+    }
+    prompt.push('\n');
+    prompt
+}
+
+/// Truncates on a character boundary, so a multi-byte input can never panic
+/// here, and reports whether anything was cut.
+fn truncate_chars(text: &str, limit: usize) -> (&str, bool) {
+    match text.char_indices().nth(limit) {
+        Some((byte_ix, _)) => (&text[..byte_ix], true),
+        None => (text, false),
+    }
+}
+
+/// Reads the judge model's answer.
+///
+/// Only an exact `SAFE` on the verdict line approves the action; everything
+/// else — `unsafe`, `SAFE.`, a refusal, an explanation, an empty answer — is
+/// treated as UNSAFE, so a model that doesn't follow the format costs a
+/// confirmation prompt rather than an unreviewed tool call. Leading blank
+/// lines are skipped because many small models start their answer with one.
+pub fn parse_permission_judge_response(response: &str) -> PermissionJudgeVerdict {
+    let mut lines = response
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty());
+    let Some(verdict_line) = lines.next() else {
+        return PermissionJudgeVerdict::Unsafe {
+            reason: PERMISSION_JUDGE_UNPARSABLE_REASON.to_string(),
+        };
+    };
+
+    let reason = lines.next().map(|reason| {
+        // The reason ends up on a tool card, so a model that ignores the
+        // "about 20 characters" instruction can't stretch the card.
+        truncate_chars(reason, 120).0.to_string()
+    });
+
+    if verdict_line == "SAFE" {
+        return PermissionJudgeVerdict::Safe {
+            reason: reason.unwrap_or_else(|| PERMISSION_JUDGE_SAFE_REASON.to_string()),
+        };
+    }
+
+    PermissionJudgeVerdict::Unsafe {
+        reason: reason.unwrap_or_else(|| {
+            if verdict_line == "UNSAFE" {
+                PERMISSION_JUDGE_ERROR_REASON.to_string()
+            } else {
+                PERMISSION_JUDGE_UNPARSABLE_REASON.to_string()
+            }
+        }),
     }
 }
 
@@ -676,6 +873,7 @@ mod tests {
             commit_message_include_project_rules: true,
             commit_message_instructions: None,
             thread_summary_model: None,
+            permission_judge_model: None,
             compaction_model: None,
             inline_alternatives: vec![],
             favorite_models: vec![],
@@ -2628,6 +2826,222 @@ mod tests {
             default: global_default,
             tools,
         }
+    }
+
+    /// ADR-F52: "AI が判定" replaces the default step and nothing else. The
+    /// built-in security rules and every user pattern still decide first, and a
+    /// tool-specific default still beats the global one.
+    #[test]
+    fn auto_mode_only_replaces_the_default_step() {
+        let auto = global_default_only(ToolPermissionMode::Auto);
+
+        assert!(
+            matches!(
+                terminal_permission("rm -rf /", &auto, TerminalExecution::Sandboxed),
+                ToolPermissionDecision::Deny(_)
+            ),
+            "the hardcoded rules must outrank the judge"
+        );
+
+        assert_eq!(
+            terminal_permission("cargo build", &auto, TerminalExecution::Sandboxed),
+            ToolPermissionDecision::Judge,
+            "nothing else matched, so the judge decides"
+        );
+
+        assert!(
+            matches!(
+                terminal_permission(
+                    "curl https://example.com",
+                    &terminal_rules(ToolPermissionMode::Auto, None, &[], &["^curl"]),
+                    TerminalExecution::Sandboxed,
+                ),
+                ToolPermissionDecision::Deny(_)
+            ),
+            "always_deny must refuse before the judge is asked"
+        );
+
+        assert_eq!(
+            terminal_permission(
+                "cargo build",
+                &terminal_rules(ToolPermissionMode::Auto, None, &["^cargo"], &[]),
+                TerminalExecution::Sandboxed,
+            ),
+            ToolPermissionDecision::Allow,
+            "always_allow must approve before the judge is asked"
+        );
+
+        assert_eq!(
+            terminal_permission(
+                "cargo build",
+                &terminal_rules(
+                    ToolPermissionMode::Auto,
+                    Some(ToolPermissionMode::Confirm),
+                    &[],
+                    &[],
+                ),
+                TerminalExecution::Sandboxed,
+            ),
+            ToolPermissionDecision::Confirm,
+            "a tool-specific default must beat the global one"
+        );
+
+        assert_eq!(
+            terminal_permission(
+                "cargo build",
+                &terminal_rules(
+                    ToolPermissionMode::Confirm,
+                    Some(ToolPermissionMode::Auto),
+                    &[],
+                    &[],
+                ),
+                TerminalExecution::Sandboxed,
+            ),
+            ToolPermissionDecision::Judge,
+            "a tool-specific judged default must beat a global confirm"
+        );
+    }
+
+    #[test]
+    fn auto_mode_loses_to_always_confirm() {
+        let mut tools = collections::HashMap::default();
+        tools.insert(
+            Arc::from(TerminalTool::NAME),
+            ToolRules {
+                default: None,
+                always_allow: vec![],
+                always_deny: vec![],
+                always_confirm: vec![
+                    CompiledRegex::new("^git push", false).expect("valid test regex"),
+                ],
+                invalid_patterns: vec![],
+            },
+        );
+        let permissions = ToolPermissions {
+            default: ToolPermissionMode::Auto,
+            tools,
+        };
+
+        assert_eq!(
+            terminal_permission("git push", &permissions, TerminalExecution::Sandboxed),
+            ToolPermissionDecision::Confirm
+        );
+    }
+
+    /// ADR-F46 holds for the judge too: a command that runs outside the sandbox
+    /// is only ever approved by the user.
+    #[test]
+    fn auto_mode_asks_outside_the_sandbox() {
+        assert_eq!(
+            terminal_permission(
+                "cargo build",
+                &global_default_only(ToolPermissionMode::Auto),
+                TerminalExecution::Unsandboxed,
+            ),
+            ToolPermissionDecision::Confirm
+        );
+        assert_eq!(
+            terminal_permission(
+                "cargo build",
+                &terminal_rules(
+                    ToolPermissionMode::Confirm,
+                    Some(ToolPermissionMode::Auto),
+                    &[],
+                    &[],
+                ),
+                TerminalExecution::Unsandboxed,
+            ),
+            ToolPermissionDecision::Confirm
+        );
+    }
+
+    #[test]
+    fn permission_judge_prompt_lists_worktrees_and_truncates_input() {
+        let oversized = "あ".repeat(PERMISSION_JUDGE_INPUT_CHAR_LIMIT + 50);
+        let prompt = build_permission_judge_prompt(&PermissionJudgeContext {
+            tool_name: "terminal".to_string(),
+            input_values: vec![oversized],
+            worktree_roots: vec!["/home/u/project".to_string(), "/home/u/docs".to_string()],
+            project_trusted: true,
+        });
+
+        assert!(prompt.contains("Tool: terminal"));
+        assert!(prompt.contains("- /home/u/project\n- /home/u/docs\n"));
+        assert!(prompt.contains("Project trusted by the user: yes"));
+        assert!(prompt.contains("… (input truncated)"));
+        // Truncation counts characters, not bytes, so a multi-byte input is cut
+        // where the model would expect and never mid-character.
+        assert_eq!(
+            prompt.matches('あ').count(),
+            PERMISSION_JUDGE_INPUT_CHAR_LIMIT
+        );
+    }
+
+    #[test]
+    fn permission_judge_prompt_reports_a_project_with_no_worktrees() {
+        let prompt = build_permission_judge_prompt(&PermissionJudgeContext {
+            tool_name: "edit_file".to_string(),
+            input_values: vec!["src/main.rs".to_string(), "src/lib.rs".to_string()],
+            worktree_roots: Vec::new(),
+            project_trusted: false,
+        });
+
+        assert!(prompt.contains("- (none; the project has no worktree)"));
+        assert!(prompt.contains("Project trusted by the user: no"));
+        assert!(prompt.contains("src/main.rs\n---\nsrc/lib.rs"));
+        assert!(!prompt.contains("truncated"));
+    }
+
+    /// Only an exact `SAFE` approves an action: a judge that doesn't follow the
+    /// format costs a confirmation prompt, never an unreviewed tool call.
+    #[test]
+    fn permission_judge_only_accepts_an_exact_safe_line() {
+        assert_eq!(
+            parse_permission_judge_response("SAFE\nプロジェクト内のビルドです"),
+            PermissionJudgeVerdict::Safe {
+                reason: "プロジェクト内のビルドです".to_string()
+            }
+        );
+        assert_eq!(
+            parse_permission_judge_response("\n\n SAFE \n"),
+            PermissionJudgeVerdict::Safe {
+                reason: PERMISSION_JUDGE_SAFE_REASON.to_string()
+            },
+            "a leading blank line and trailing spaces are tolerated"
+        );
+        assert_eq!(
+            parse_permission_judge_response("UNSAFE\n作業フォルダーの外を消します"),
+            PermissionJudgeVerdict::Unsafe {
+                reason: "作業フォルダーの外を消します".to_string()
+            }
+        );
+
+        for response in [
+            "safe",
+            "SAFE.",
+            "**SAFE**",
+            "I think this is SAFE",
+            "Sure! SAFE",
+            "",
+            "   ",
+        ] {
+            assert!(
+                matches!(
+                    parse_permission_judge_response(response),
+                    PermissionJudgeVerdict::Unsafe { .. }
+                ),
+                "{response:?} must not approve the action"
+            );
+        }
+    }
+
+    #[test]
+    fn permission_judge_reason_is_capped() {
+        let verdict = parse_permission_judge_response(&format!("UNSAFE\n{}", "危".repeat(500)));
+        let PermissionJudgeVerdict::Unsafe { reason } = verdict else {
+            panic!("expected an unsafe verdict");
+        };
+        assert_eq!(reason.chars().count(), 120);
     }
 
     /// ADR-F46: auto-approval (`tool_permissions.default = "allow"`, or the

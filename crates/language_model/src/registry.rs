@@ -53,6 +53,7 @@ pub struct LanguageModelRegistry {
     inline_assistant_model: Option<ConfiguredModel>,
     commit_message_model: Option<ConfiguredModel>,
     thread_summary_model: Option<ConfiguredModel>,
+    permission_judge_model: Option<ConfiguredModel>,
     compaction_model: Option<ConfiguredModel>,
     providers: BTreeMap<LanguageModelProviderId, Arc<dyn LanguageModelProvider>>,
     inline_alternatives: Vec<Arc<dyn LanguageModel>>,
@@ -114,6 +115,7 @@ pub enum Event {
     CommitMessageModelChanged,
     CompactionModelChanged,
     ThreadSummaryModelChanged,
+    PermissionJudgeModelChanged,
     ProviderStateChanged(LanguageModelProviderId),
     AddedProvider(LanguageModelProviderId),
     RemovedProvider(LanguageModelProviderId),
@@ -326,6 +328,15 @@ impl LanguageModelRegistry {
         self.set_thread_summary_model(configured_model, cx);
     }
 
+    pub fn select_permission_judge_model(
+        &mut self,
+        model: Option<&SelectedModel>,
+        cx: &mut Context<Self>,
+    ) {
+        let configured_model = model.and_then(|model| self.select_model(model, cx));
+        self.set_permission_judge_model(configured_model, cx);
+    }
+
     pub fn select_compaction_model(
         &mut self,
         model: Option<&SelectedModel>,
@@ -447,6 +458,19 @@ impl LanguageModelRegistry {
         self.thread_summary_model = model;
     }
 
+    pub fn set_permission_judge_model(
+        &mut self,
+        model: Option<ConfiguredModel>,
+        cx: &mut Context<Self>,
+    ) {
+        match (self.permission_judge_model.as_ref(), model.as_ref()) {
+            (Some(old), Some(new)) if old.is_same_as(new) => {}
+            (None, None) => {}
+            _ => cx.emit(Event::PermissionJudgeModelChanged),
+        }
+        self.permission_judge_model = model;
+    }
+
     pub fn set_compaction_model(&mut self, model: Option<ConfiguredModel>, cx: &mut Context<Self>) {
         match (self.compaction_model.as_ref(), model.as_ref()) {
             (Some(old), Some(new)) if old.is_same_as(new) => {}
@@ -510,6 +534,22 @@ impl LanguageModelRegistry {
         }
 
         self.thread_summary_model
+            .clone()
+            .or_else(|| self.default_fast_model(cx))
+            .or_else(|| self.default_model())
+    }
+
+    /// The model that judges whether a tool action is dangerous while the tool
+    /// permission mode is `auto` (ADR-F52). Falls back the same way the thread
+    /// summary model does, so a user who only configured a fast model still
+    /// gets a cheap judge.
+    pub fn permission_judge_model(&self, cx: &App) -> Option<ConfiguredModel> {
+        #[cfg(debug_assertions)]
+        if std::env::var("ZED_SIMULATE_NO_LLM_PROVIDER").is_ok() {
+            return None;
+        }
+
+        self.permission_judge_model
             .clone()
             .or_else(|| self.default_fast_model(cx))
             .or_else(|| self.default_model())

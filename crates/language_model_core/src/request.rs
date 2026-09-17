@@ -456,6 +456,9 @@ pub enum CompletionIntent {
     InlineAssist,
     TerminalInlineAssist,
     GenerateGitCommitMessage,
+    /// A one-shot safety review of a tool action the agent is about to take
+    /// (ADR-F52). Never part of a conversation.
+    PermissionJudge,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]

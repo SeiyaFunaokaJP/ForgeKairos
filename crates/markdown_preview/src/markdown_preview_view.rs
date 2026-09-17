@@ -13,14 +13,15 @@ use editor::{
     Editor, EditorEvent, EditorSettingsScrollbarProxy, MultiBufferOffset, SelectionEffects,
 };
 use gpui::{
-    App, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, ImageSource,
+    Anchor, App, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, ImageSource,
     InteractiveElement, IntoElement, IsZero, Pixels, Render, Resource, RetainAllImageCache,
-    ScrollHandle, SharedString, SharedUri, Subscription, Task, WeakEntity, Window, point, px,
+    ScrollHandle, SharedString, SharedUri, Subscription, Task, WeakEntity, Window, anchored,
+    deferred, point, px,
 };
 use language::{Buffer, LanguageRegistry};
 use markdown::{
     CodeBlockRenderer, CopyButtonVisibility, Markdown, MarkdownElement, MarkdownFont,
-    MarkdownOptions, MarkdownStyle,
+    MarkdownOptions, MarkdownStyle, MermaidLabelEditRequest,
 };
 use project::search::SearchQuery;
 use project::{Project, ProjectPath, image_store};
@@ -76,6 +77,25 @@ pub struct MarkdownPreviewView {
     /// Search results depend on the parsed markdown, which lags behind the source while a
     /// background parse is in flight. Tracked so matches can be invalidated once it lands.
     markdown_parse_pending: bool,
+    /// The in-place field opened by double-clicking a label in a rendered
+    /// mermaid diagram, if one is open.
+    mermaid_label_editor: Option<MermaidLabelEditor>,
+}
+
+/// A single-line field anchored over a mermaid label, editing the source token
+/// that produced it.
+struct MermaidLabelEditor {
+    editor: Entity<Editor>,
+    /// Where in the markdown source the confirmed text goes.
+    source_range: Range<usize>,
+    /// What stood there when the field opened, checked again before the edit
+    /// lands so a buffer that moved on in the meantime is left alone.
+    source_text: SharedString,
+    /// The label's box in window coordinates, which the field is placed over.
+    bounds: gpui::Bounds<Pixels>,
+    /// Quotes the new text the way the token it replaces needs.
+    encode: Box<dyn Fn(&str) -> String>,
+    _subscriptions: Vec<Subscription>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -289,10 +309,18 @@ impl MarkdownPreviewView {
     ) {
         let source = buffer.read(cx).text();
         let fs = workspace.project().read(cx).fs().clone();
+        let soft_break_as_hard_break =
+            MarkdownPreviewSettings::get_global(cx).soft_break_as_hard_break;
         Self::show_pdf_export_toast(workspace, "PDF を書き出しています…", cx);
 
         cx.spawn(async move |workspace, cx| {
-            let result = markdown_export::export_to_pdf(fs.as_ref(), &source_path, &source).await;
+            let result = markdown_export::export_to_pdf(
+                fs.as_ref(),
+                &source_path,
+                &source,
+                soft_break_as_hard_break,
+            )
+            .await;
             if let Err(error) = &result {
                 log::error!("markdown PDF export failed: {error:?}");
             }
@@ -535,6 +563,7 @@ impl MarkdownPreviewView {
                 hovered_url: None,
                 mode,
                 markdown_parse_pending: false,
+                mermaid_label_editor: None,
             };
 
             this.set_editor(active_editor, window, cx);
@@ -1173,7 +1202,7 @@ impl MarkdownPreviewView {
             project = Some(project_entity);
         }
 
-        let markdown_style = if let Some(theme) = preview_theme {
+        let mut markdown_style = if let Some(theme) = preview_theme {
             MarkdownStyle::themed_with_overrides(
                 MarkdownFont::Preview,
                 theme.colors(),
@@ -1184,6 +1213,10 @@ impl MarkdownPreviewView {
         } else {
             MarkdownStyle::themed(MarkdownFont::Preview, window, cx)
         };
+        // Only the preview follows this setting: hover popups and the agent
+        // panel build their own styles from the same `MarkdownStyle`.
+        markdown_style.soft_break_as_hard_break =
+            MarkdownPreviewSettings::get_global(cx).soft_break_as_hard_break;
 
         let mut markdown_element = MarkdownElement::new(self.markdown.clone(), markdown_style)
             .code_block_renderer(CodeBlockRenderer::Default {
@@ -1238,8 +1271,38 @@ impl MarkdownPreviewView {
 
         if let Some(active_editor) = active_editor {
             let editor_for_checkbox = active_editor.clone();
+            let editor_for_mermaid = active_editor.clone();
+            let workspace_for_mermaid = self.workspace.clone();
             let view_handle = cx.entity().downgrade();
+            let mermaid_view_handle = cx.entity().downgrade();
+            // Editing a label rewrites the source, so it is offered only when
+            // there is a buffer that can actually take the edit.
+            if !active_editor.read(cx).read_only(cx) {
+                markdown_element = markdown_element.on_mermaid_label_edit({
+                    move |request, window, cx| {
+                        mermaid_view_handle
+                            .update(cx, |view, cx| {
+                                view.open_mermaid_label_editor(request, window, cx);
+                            })
+                            .log_err();
+                    }
+                });
+            }
             markdown_element = markdown_element
+                // The diagram's own edit button opens the structured editor on
+                // the fence it was drawn from, without moving the cursor there
+                // first. DESIGN.md §5.7
+                .on_mermaid_edit(move |content_range, window, cx| {
+                    let editor = editor_for_mermaid.clone();
+                    let target = editor.update(cx, |editor, cx| {
+                        editor.mermaid_fence_target_at(content_range.start, cx)
+                    });
+                    workspace_for_mermaid
+                        .update(cx, |workspace, cx| {
+                            crate::mermaid_editor::open(workspace, editor, target, window, cx);
+                        })
+                        .log_err();
+                })
                 .on_source_click(move |source_index, click_count, window, cx| {
                     if click_count == 1 {
                         Self::change_selection_to_source_index(
@@ -1295,6 +1358,164 @@ impl MarkdownPreviewView {
                 cx,
             );
         });
+    }
+
+    /// Opens (or re-targets) the in-place field for a mermaid label.
+    ///
+    /// A label whose token could not be found in the fence is reported instead
+    /// of guessed at: rewriting the wrong span would corrupt the diagram.
+    fn open_mermaid_label_editor(
+        &mut self,
+        request: MermaidLabelEditRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(source_range) = request.source_range() else {
+            self.mermaid_label_editor = None;
+            self.report_mermaid_label_edit_refused(
+                "このラベルはソースの位置を特定できませんでした。",
+                cx,
+            );
+            cx.notify();
+            return;
+        };
+
+        let current_label = request.current_label.clone();
+        let source_text = request.source_text();
+        let editor = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_text(current_label.clone(), window, cx);
+            editor.select_all(&Default::default(), window, cx);
+            editor
+        });
+        let focus_handle = editor.focus_handle(cx);
+        let subscriptions =
+            vec![
+                cx.on_focus_out(&focus_handle, window, |view, _event, _window, cx| {
+                    if view.mermaid_label_editor.is_some() {
+                        view.mermaid_label_editor = None;
+                        cx.notify();
+                    }
+                }),
+            ];
+        window.focus(&focus_handle, cx);
+
+        self.mermaid_label_editor = Some(MermaidLabelEditor {
+            editor,
+            source_range,
+            source_text,
+            bounds: request.bounds,
+            encode: Box::new(move |new_label| request.encode(new_label)),
+            _subscriptions: subscriptions,
+        });
+        cx.notify();
+    }
+
+    fn report_mermaid_label_edit_refused(&self, message: &'static str, cx: &mut Context<Self>) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        workspace.update(cx, |workspace, cx| {
+            workspace.show_toast(
+                Toast::new(NotificationId::unique::<MermaidLabelNotFound>(), message),
+                cx,
+            );
+        });
+    }
+
+    fn confirm_mermaid_label_edit(
+        &mut self,
+        _: &menu::Confirm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(state) = self.mermaid_label_editor.take() else {
+            return;
+        };
+        let Some(source_editor) = self
+            .active_editor
+            .as_ref()
+            .map(|state| state.editor.clone())
+        else {
+            cx.notify();
+            return;
+        };
+        let new_text = (state.encode)(&state.editor.read(cx).text(cx));
+        let range =
+            MultiBufferOffset(state.source_range.start)..MultiBufferOffset(state.source_range.end);
+        let applied = source_editor.update(cx, |editor, cx| {
+            // The preview renders a snapshot of the buffer taken some frames
+            // ago, so the range is only meaningful while the token it was taken
+            // from is still there. If the buffer moved on, replacing it anyway
+            // would drop the new label into an unrelated part of the document.
+            let existing: String = editor
+                .buffer()
+                .read(cx)
+                .snapshot(cx)
+                .text_for_range(range.clone())
+                .collect();
+            if existing != state.source_text.as_ref() {
+                return false;
+            }
+            editor.edit([(range, new_text)], cx);
+            true
+        });
+        if !applied {
+            self.report_mermaid_label_edit_refused(
+                "ソースが変更されたため、このラベルを書き換えられませんでした。",
+                cx,
+            );
+        }
+        self.focus_handle.focus(window, cx);
+        cx.stop_propagation();
+        cx.notify();
+    }
+
+    /// Escape inside the field arrives as `editor::Cancel`, which the editor
+    /// propagates once it has no popup of its own to dismiss; escape with the
+    /// preview itself focused arrives as `menu::Cancel`. Both close the field.
+    fn cancel_mermaid_label_edit(
+        &mut self,
+        _: &menu::Cancel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_mermaid_label_editor(window, cx);
+    }
+
+    fn cancel_mermaid_label_edit_from_editor(
+        &mut self,
+        _: &editor::actions::Cancel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_mermaid_label_editor(window, cx);
+    }
+
+    fn close_mermaid_label_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.mermaid_label_editor.take().is_some() {
+            self.focus_handle.focus(window, cx);
+            cx.stop_propagation();
+            cx.notify();
+        }
+    }
+
+    fn render_mermaid_label_editor(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let state = self.mermaid_label_editor.as_ref()?;
+        let editor = state.editor.clone();
+        // Wide enough for a comfortable label even when the node itself is
+        // narrow, but never narrower than the label it covers.
+        let width = state.bounds.size.width.max(px(160.));
+        Some(
+            deferred(
+                anchored()
+                    .position(state.bounds.origin)
+                    .anchor(Anchor::TopLeft)
+                    .snap_to_window_with_margin(px(8.))
+                    .child(div().elevation_2(cx).w(width).px_1().py_0p5().child(editor)),
+            )
+            .with_priority(1),
+        )
     }
 
     fn refresh_preview(view_handle: WeakEntity<Self>, window: &mut Window, cx: &mut App) {
@@ -1872,6 +2093,9 @@ impl Render for MarkdownPreviewView {
             .on_action(cx.listener(MarkdownPreviewView::increase_font_size))
             .on_action(cx.listener(MarkdownPreviewView::decrease_font_size))
             .on_action(cx.listener(MarkdownPreviewView::reset_font_size))
+            .on_action(cx.listener(MarkdownPreviewView::confirm_mermaid_label_edit))
+            .on_action(cx.listener(MarkdownPreviewView::cancel_mermaid_label_edit))
+            .on_action(cx.listener(MarkdownPreviewView::cancel_mermaid_label_edit_from_editor))
             .w_full()
             .flex_1()
             .min_h_0()
@@ -1977,8 +2201,12 @@ impl Render for MarkdownPreviewView {
                         .child(LinkPreview::new(hovered_url.as_ref(), cx)),
                 )
             })
+            .children(self.render_mermaid_label_editor(cx))
     }
 }
+
+/// Identifies the toast shown when a label cannot be traced back to the source.
+struct MermaidLabelNotFound;
 
 impl SearchableItem for MarkdownPreviewView {
     type Match = Range<usize>;
@@ -2373,7 +2601,7 @@ mod tests {
     use crate::markdown_preview_view::resolve_preview_image;
     use crate::markdown_preview_view::resolve_project_path_for_preview_image;
     use buffer_diff::BufferDiff;
-    use editor::Editor;
+    use editor::{Editor, MultiBufferOffset};
     use fs::FakeFs;
     use gpui::{
         App, AppContext as _, Entity, Focusable as _, Modifiers, TestAppContext, WindowHandle, px,
@@ -2394,6 +2622,35 @@ mod tests {
     };
 
     use super::{MarkdownPreviewView, filter_non_rendered_matches, open_preview_url};
+    use crate::markdown_preview_settings::MarkdownPreviewSettings;
+    use gpui::BorrowAppContext as _;
+    use settings::{Settings as _, SettingsStore};
+
+    #[gpui::test]
+    fn single_newlines_are_line_breaks_in_the_preview_by_default(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        cx.update(|cx| {
+            assert!(
+                MarkdownPreviewSettings::get_global(cx).soft_break_as_hard_break,
+                "the shipped defaults render a single newline as a line break"
+            );
+
+            cx.update_global::<SettingsStore, _>(|settings, cx| {
+                settings.update_user_settings(cx, |settings| {
+                    settings
+                        .markdown_preview
+                        .get_or_insert_default()
+                        .soft_break_as_hard_break = Some(false);
+                });
+            });
+
+            assert!(
+                !MarkdownPreviewSettings::get_global(cx).soft_break_as_hard_break,
+                "turning the setting off returns the preview to CommonMark"
+            );
+        });
+    }
 
     #[test]
     fn filters_matches_in_non_rendered_link_source() {
@@ -3932,6 +4189,211 @@ mod tests {
             MarkdownPreviewView::get_folder_for_active_editor(editor, cx)
         });
         assert_eq!(folder, Some(PathBuf::from("/remote/project/docs")));
+    }
+
+    /// Opens `contents` as a markdown file with a preview on it, and returns
+    /// the pieces the mermaid label tests drive.
+    async fn open_preview_over(
+        contents: &str,
+        cx: &mut TestAppContext,
+    ) -> (
+        WindowHandle<MultiWorkspace>,
+        Entity<MarkdownPreviewView>,
+        Entity<Editor>,
+    ) {
+        let app_state = init_test(cx);
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(path!("/dir"), json!({ "diagram.md": contents }))
+            .await;
+
+        cx.update(|cx| {
+            open_paths(
+                &[PathBuf::from(path!("/dir/diagram.md"))],
+                app_state.clone(),
+                workspace::OpenOptions::default(),
+                cx,
+            )
+        })
+        .await
+        .unwrap();
+
+        let multi_workspace = cx.update(|cx| cx.windows()[0].downcast::<MultiWorkspace>().unwrap());
+        let (preview, editor) = multi_workspace
+            .update(cx, |multi_workspace, window, cx| {
+                let workspace = multi_workspace.workspace().clone();
+                let editor: Entity<Editor> = workspace
+                    .read(cx)
+                    .active_item(cx)
+                    .and_then(|item| item.act_as::<Editor>(cx))
+                    .unwrap();
+                let preview = workspace.update(cx, |workspace, cx| {
+                    let preview = MarkdownPreviewView::create_markdown_view(
+                        workspace,
+                        editor.clone(),
+                        window,
+                        cx,
+                    );
+                    workspace.active_pane().update(cx, |pane, cx| {
+                        pane.add_item(Box::new(preview.clone()), true, true, None, window, cx)
+                    });
+                    preview
+                });
+                (preview, editor)
+            })
+            .unwrap();
+        cx.run_until_parked();
+        (multi_workspace, preview, editor)
+    }
+
+    fn label_request(contents: &str, token: &str) -> markdown::MermaidLabelEditRequest {
+        let start = contents.find(token).expect("the token should be present");
+        markdown::MermaidLabelEditRequest::new_for_test(
+            Some((start..start + token.len(), token)),
+            token,
+            gpui::Bounds {
+                origin: gpui::point(px(10.), px(20.)),
+                size: gpui::size(px(40.), px(16.)),
+            },
+        )
+    }
+
+    const DIAGRAM: &str = "```mermaid\nflowchart LR\n  A[old] --> B[two]\n```\n";
+
+    /// Confirming the field replaces exactly the token it was opened on, and
+    /// the field itself goes away afterwards rather than outliving the edit.
+    #[gpui::test]
+    async fn mermaid_label_edit_rewrites_its_token_and_releases_the_field(cx: &mut TestAppContext) {
+        let (multi_workspace, preview, editor) = open_preview_over(DIAGRAM, cx).await;
+        let request = label_request(DIAGRAM, "old");
+
+        let field = multi_workspace
+            .update(cx, |_, window, cx| {
+                preview.update(cx, |preview, cx| {
+                    preview.open_mermaid_label_editor(request, window, cx);
+                    let field = preview
+                        .mermaid_label_editor
+                        .as_ref()
+                        .expect("the field should be open")
+                        .editor
+                        .clone();
+                    assert!(field.focus_handle(cx).is_focused(window));
+                    field.update(cx, |field, cx| field.set_text("新しい", window, cx));
+                    field
+                })
+            })
+            .unwrap();
+        let released_field = field.downgrade();
+        drop(field);
+
+        multi_workspace
+            .update(cx, |_, window, cx| {
+                preview.update(cx, |preview, cx| {
+                    preview.confirm_mermaid_label_edit(&menu::Confirm, window, cx);
+                    assert!(preview.mermaid_label_editor.is_none());
+                })
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.buffer().read(cx).read(cx).text()),
+            "```mermaid\nflowchart LR\n  A[新しい] --> B[two]\n```\n"
+        );
+        released_field.assert_released();
+    }
+
+    /// Cancelling leaves the source alone, and a label whose token could not be
+    /// traced never opens a field at all.
+    #[gpui::test]
+    async fn mermaid_label_edit_can_be_cancelled_and_needs_a_token(cx: &mut TestAppContext) {
+        let (multi_workspace, preview, editor) = open_preview_over(DIAGRAM, cx).await;
+        let request = label_request(DIAGRAM, "old");
+
+        let field = multi_workspace
+            .update(cx, |_, window, cx| {
+                preview.update(cx, |preview, cx| {
+                    preview.open_mermaid_label_editor(request, window, cx);
+                    let field = preview
+                        .mermaid_label_editor
+                        .as_ref()
+                        .expect("the field should be open")
+                        .editor
+                        .clone();
+                    field.update(cx, |field, cx| field.set_text("discarded", window, cx));
+                    preview.cancel_mermaid_label_edit(&menu::Cancel, window, cx);
+                    assert!(preview.mermaid_label_editor.is_none());
+                    field
+                })
+            })
+            .unwrap();
+        let released_field = field.downgrade();
+        drop(field);
+        cx.update(|_| {});
+        cx.run_until_parked();
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.buffer().read(cx).read(cx).text()),
+            DIAGRAM
+        );
+        released_field.assert_released();
+
+        let untraceable =
+            markdown::MermaidLabelEditRequest::new_for_test(None, "old", gpui::Bounds::default());
+        multi_workspace
+            .update(cx, |_, window, cx| {
+                preview.update(cx, |preview, cx| {
+                    preview.open_mermaid_label_editor(untraceable, window, cx);
+                    assert!(preview.mermaid_label_editor.is_none());
+                })
+            })
+            .unwrap();
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.buffer().read(cx).read(cx).text()),
+            DIAGRAM
+        );
+    }
+
+    /// The preview renders a snapshot of the buffer from some frames ago, so
+    /// the range the field was opened with can stop pointing at its token. The
+    /// edit has to be dropped then: applying it would write the label into
+    /// whatever moved into that range.
+    #[gpui::test]
+    async fn mermaid_label_edit_is_refused_when_the_source_moved_on(cx: &mut TestAppContext) {
+        let (multi_workspace, preview, editor) = open_preview_over(DIAGRAM, cx).await;
+        let request = label_request(DIAGRAM, "old");
+
+        multi_workspace
+            .update(cx, |_, window, cx| {
+                preview.update(cx, |preview, cx| {
+                    preview.open_mermaid_label_editor(request, window, cx);
+                });
+                // Something else rewrites the file while the field is open: a
+                // line inserted above the fence shifts every later offset.
+                editor.update(cx, |editor, cx| {
+                    editor.edit(
+                        [(MultiBufferOffset(0)..MultiBufferOffset(0), "# 見出し\n")],
+                        cx,
+                    );
+                });
+                preview.update(cx, |preview, cx| {
+                    preview
+                        .mermaid_label_editor
+                        .as_ref()
+                        .expect("the field should still be open")
+                        .editor
+                        .update(cx, |field, cx| field.set_text("新しい", window, cx));
+                    preview.confirm_mermaid_label_edit(&menu::Confirm, window, cx);
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.buffer().read(cx).read(cx).text()),
+            format!("# 見出し\n{DIAGRAM}"),
+            "the stale range must not be overwritten"
+        );
     }
 
     fn init_test(cx: &mut TestAppContext) -> Arc<AppState> {

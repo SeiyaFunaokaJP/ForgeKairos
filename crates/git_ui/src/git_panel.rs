@@ -33,7 +33,8 @@ use git::commit::ParsedCommitMessage;
 use git::repository::{
     Branch, CommitData, CommitDetails, CommitOptions, CommitSummary, DiffType, FetchOptions,
     GitCommitTemplate, InitialGraphCommitData, LogOrder, LogSource, PatchSource, PushOptions,
-    Remote, RemoteCommandOutput, ResetMode, Upstream, UpstreamTracking, UpstreamTrackingStatus,
+    Remote, RemoteCommandOutput, ResetMode, SequencerKind, SequencerState, Upstream,
+    UpstreamTracking, UpstreamTrackingStatus,
 };
 use git::stash::GitStash;
 use git::status::{DiffStat, StageStatus};
@@ -1066,6 +1067,35 @@ struct GitPanelContextMenu {
     _subscription: Subscription,
 }
 
+/// How hard the panel pushes.
+///
+/// `--force-with-lease` still refuses to overwrite commits the remote gained since the last fetch;
+/// plain `--force` does not, so it sits behind its own menu item and a confirmation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PushForce {
+    No,
+    WithLease,
+    WithoutLease,
+}
+
+/// The three ways out of a stopped `cherry-pick` / `revert` / `rebase`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SequencerStep {
+    Continue,
+    Skip,
+    Abort,
+}
+
+impl SequencerStep {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Continue => "続行",
+            Self::Skip => "スキップ",
+            Self::Abort => "中止",
+        }
+    }
+}
+
 pub struct GitPanel {
     pub(crate) active_repository: Option<Entity<Repository>>,
     pub(crate) commit_editor: Entity<Editor>,
@@ -1114,6 +1144,9 @@ pub struct GitPanel {
     bulk_staging: Option<BulkStaging>,
     stash_entries: GitStash,
     active_tab: GitPanelTab,
+    /// A cherry-pick / revert / rebase that stopped part-way, shown as a banner above the changes.
+    sequencer_state: Option<SequencerState>,
+    sequencer_state_task: Task<()>,
     commit_history_scroll_handle: UniformListScrollHandle,
     commit_history: CommitHistory,
     focused_history_entry: Option<usize>,
@@ -1346,6 +1379,7 @@ impl GitPanel {
                     | GitStoreEvent::RepositoryRemoved(_)
                     | GitStoreEvent::ActiveRepositoryChanged(_) => {
                         this.schedule_update(window, cx);
+                        this.refresh_sequencer_state(cx);
                     }
                     GitStoreEvent::GlobalConfigurationUpdated => {
                         this.git_access = None;
@@ -1393,6 +1427,8 @@ impl GitPanel {
                 new_staged_count: 0,
                 changes_count: 0,
                 diff_stat_total: DiffStat::default(),
+                sequencer_state: None,
+                sequencer_state_task: Task::ready(()),
                 pending_commit: None,
                 pending_remote_operation: None,
                 amend_pending,
@@ -4104,9 +4140,42 @@ impl GitPanel {
         .detach_and_log_err(cx);
     }
 
+    /// Asks before a `--force` push, which unlike `--force-with-lease` overwrites whatever the
+    /// remote branch holds, including commits somebody else pushed.
+    pub(crate) fn force_push_without_lease(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(branch) = self
+            .active_repository
+            .as_ref()
+            .and_then(|repository| repository.read(cx).branch.clone())
+        else {
+            return;
+        };
+        let branch_name = branch.name().to_string();
+        let prompt = window.prompt(
+            PromptLevel::Warning,
+            "lease なしで強制プッシュしますか?",
+            Some(&format!(
+                "git push --force で {branch_name} をリモートに上書きします。\
+                 \nlease を使わないため、前回のフェッチ以降に他の人がプッシュしたコミットも失われます。"
+            )),
+            &["強制プッシュ (lease なし)", "キャンセル"],
+            cx,
+        );
+        cx.spawn_in(window, async move |this, cx| {
+            if prompt.await.ok() != Some(0) {
+                return;
+            }
+            this.update_in(cx, |this, window, cx| {
+                this.push(PushForce::WithoutLease, false, window, cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     pub(crate) fn push(
         &mut self,
-        force_push: bool,
+        force: PushForce,
         select_remote: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -4126,17 +4195,17 @@ impl GitPanel {
 
         telemetry::event!("Git Pushed");
 
-        let options = if force_push {
-            Some(PushOptions::Force)
-        } else {
-            match branch.upstream {
+        let options = match force {
+            PushForce::WithLease => Some(PushOptions::Force),
+            PushForce::WithoutLease => Some(PushOptions::ForceWithoutLease),
+            PushForce::No => match branch.upstream {
                 Some(Upstream {
                     tracking: UpstreamTracking::Gone,
                     ..
                 })
                 | None => Some(PushOptions::SetUpstream),
                 _ => None,
-            }
+            },
         };
         let remote = self.get_remote(select_remote, true, window, cx);
 
@@ -7298,6 +7367,13 @@ impl GitPanel {
         }
     }
 
+    /// The commit picked in the history tab, for the commit actions that arrive without one:
+    /// the command palette and a keybinding cannot carry a SHA the way the context menu does.
+    pub(crate) fn selected_history_commit(&self) -> Option<String> {
+        let index = self.focused_history_entry?;
+        Some(self.commit_history_entries().get(index)?.sha.to_string())
+    }
+
     fn select_next_history_entry(&mut self, cx: &mut Context<Self>) {
         let count = self.commit_history_entries().len();
         if count == 0 {
@@ -7849,6 +7925,127 @@ impl GitPanel {
                 )
                 .vertical_scrollbar_for(&commit_history_scroll_handle, window, cx),
         )
+    }
+
+    /// The banner above the changes list for a `cherry-pick` / `revert` / `rebase` that stopped
+    /// part-way, with the three ways out git offers.
+    fn render_sequencer_banner(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let state = self.sequencer_state.clone()?;
+        let kind = state.kind;
+        let description = if state.conflicted {
+            "コンフリクトを解決してステージしてから「続行」を押してください。"
+        } else {
+            "「続行」で残りを進めるか、「中止」で元の状態に戻します。"
+        };
+        let step_button =
+            |id: &'static str, label: &'static str, step: SequencerStep, cx: &mut Context<Self>| {
+                Button::new(id, label).on_click(cx.listener(move |this, _, window, cx| {
+                    this.run_sequencer_step(kind, step, window, cx);
+                }))
+            };
+        Some(
+            div().debug_selector(|| "git-sequencer".into()).child(
+                Callout::new()
+                    .severity(Severity::Warning)
+                    .icon(IconName::Warning)
+                    .border_position(CalloutBorderPosition::Bottom)
+                    .title(format!("{}が途中で止まっています", kind.label()))
+                    .description(description)
+                    .actions_slot(
+                        h_flex()
+                            .gap_1()
+                            .child(step_button(
+                                "sequencer-continue",
+                                "続行",
+                                SequencerStep::Continue,
+                                cx,
+                            ))
+                            .child(step_button(
+                                "sequencer-skip",
+                                "スキップ",
+                                SequencerStep::Skip,
+                                cx,
+                            ))
+                            .child(step_button(
+                                "sequencer-abort",
+                                "中止",
+                                SequencerStep::Abort,
+                                cx,
+                            )),
+                    ),
+            ),
+        )
+    }
+
+    fn run_sequencer_step(
+        &mut self,
+        kind: SequencerKind,
+        step: SequencerStep,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(repository) = self.active_repository.clone() else {
+            return;
+        };
+        let receiver = repository.update(cx, |repository, cx| match step {
+            SequencerStep::Continue => repository.sequencer_continue(kind, cx),
+            SequencerStep::Skip => repository.sequencer_skip(kind, cx),
+            SequencerStep::Abort => repository.sequencer_abort(kind, cx),
+        });
+        let operation = kind.subcommand();
+        let success = format!("{}を{}しました。", kind.label(), step.label());
+        cx.spawn(async move |this, cx| {
+            let output = receiver.await;
+            this.update(cx, |this, cx| {
+                match output {
+                    Ok(Ok(output)) if output.succeeded() => {
+                        this.show_git_output_toast(operation, success, &output, cx);
+                    }
+                    Ok(Ok(output)) => this.show_error_toast(
+                        operation,
+                        anyhow::anyhow!("{}", output.failure_message()),
+                        cx,
+                    ),
+                    Ok(Err(error)) => this.show_error_toast(operation, error, cx),
+                    Err(_) => this.show_error_toast(
+                        operation,
+                        anyhow::anyhow!("git の実行が中断されました。"),
+                        cx,
+                    ),
+                }
+                this.refresh_sequencer_state(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Re-reads whether a cherry-pick / revert / rebase is stopped part-way.
+    ///
+    /// This runs with every status scan: `git rev-parse --verify --quiet` costs far less than the
+    /// `git status` the scan already ran, and nothing else fires exactly when the sequencer stops
+    /// (a conflicted cherry-pick leaves HEAD where it was).
+    pub(crate) fn refresh_sequencer_state(&mut self, cx: &mut Context<Self>) {
+        let Some(repository) = self.active_repository.clone() else {
+            if self.sequencer_state.take().is_some() {
+                cx.notify();
+            }
+            return;
+        };
+        let receiver = repository.update(cx, |repository, _| repository.sequencer_state());
+        self.sequencer_state_task = cx.spawn(async move |this, cx| {
+            let Ok(state) = receiver.await else {
+                return;
+            };
+            let state = state.log_err().flatten();
+            this.update(cx, |this, cx| {
+                if this.sequencer_state != state {
+                    this.sequencer_state = state;
+                    cx.notify();
+                }
+            })
+            .ok();
+        });
     }
 
     fn render_git_error(&self, cx: &App) -> Option<impl IntoElement> {
@@ -9301,6 +9498,9 @@ impl Render for GitPanel {
                                 this.children(self.render_git_error(cx))
                             })
                             .when(!self.commit_editor_expanded, |this| {
+                                this.children(self.render_sequencer_banner(cx))
+                            })
+                            .when(!self.commit_editor_expanded, |this| {
                                 this.map(|this| {
                                     if let Some(repo) = self.active_repository.clone()
                                         && has_entries
@@ -10262,11 +10462,601 @@ mod tests {
         .expect("fake repository should exist");
     }
 
+    /// Every `run_command` the panel made, minus the sequencer probes it issues after every
+    /// scan: they are read-only and would swamp the sequences these tests are about.
     fn fake_git_command_log(fs: &FakeFs) -> Vec<(Vec<String>, Option<String>)> {
         fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
-            state.run_command_log.clone()
+            state
+                .run_command_log
+                .iter()
+                .filter(|(args, _)| !is_sequencer_probe(args))
+                .cloned()
+                .collect()
         })
         .expect("fake repository should exist")
+    }
+
+    fn is_sequencer_probe(args: &[String]) -> bool {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        if args == ["diff", "--name-only", "--diff-filter=U"] {
+            return true;
+        }
+        SequencerKind::all()
+            .iter()
+            .any(|kind| args == ["rev-parse", "--verify", "--quiet", kind.in_progress_ref()])
+    }
+
+    fn set_fake_git_command_result(
+        fs: &FakeFs,
+        args: &str,
+        stdout: &str,
+        stderr: &str,
+        exit_code: i32,
+    ) {
+        fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
+            state.command_outputs.insert(
+                args.to_owned(),
+                git::repository::GitCommandOutput {
+                    stdout: stdout.to_owned(),
+                    stderr: stderr.to_owned(),
+                    exit_code: Some(exit_code),
+                },
+            );
+        })
+        .expect("fake repository should exist");
+    }
+
+    /// A frame that reuses the panel's cached view does not carry its debug bounds, so render the
+    /// panel afresh before looking (the same dance `git_error_is_rendered` does).
+    fn sequencer_banner_is_rendered(panel: &Entity<GitPanel>, cx: &mut VisualTestContext) -> bool {
+        panel.update(cx, |_, cx| cx.notify());
+        cx.run_until_parked();
+        cx.debug_bounds("git-sequencer").is_some()
+    }
+
+    fn active_repository(
+        panel: &Entity<GitPanel>,
+        cx: &mut VisualTestContext,
+    ) -> Entity<Repository> {
+        panel
+            .read_with(cx, |panel, _| panel.active_repository.clone())
+            .expect("the test project has a repository")
+    }
+
+    const OLD_SHA: &str = "1111111111111111111111111111111111111111";
+    const HEAD_SHA: &str = "3333333333333333333333333333333333333333";
+
+    /// Rewording an older commit rebuilds it with `commit-tree`, keeping the original author in
+    /// the environment, and then moves the branch onto the rebuilt commit.
+    #[gpui::test]
+    async fn test_reword_commit_rebuilds_the_commit_and_rebases_onto_it(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+
+        set_fake_git_command_result(&fs, "rev-parse --verify --quiet HEAD", HEAD_SHA, "", 0);
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --merges --format=%H {OLD_SHA}..HEAD"),
+            "",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("log -1 --format=%an%x00%ae%x00%ad --date=raw {OLD_SHA}"),
+            "Ada\u{0}ada@example.com\u{0}1700000000 +0900\n",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("rev-parse --verify --quiet {OLD_SHA}^"),
+            "2222222222222222222222222222222222222222\n",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!(
+                "commit-tree {OLD_SHA}^{{tree}} -p 2222222222222222222222222222222222222222 -m 書き換え後"
+            ),
+            "4444444444444444444444444444444444444444\n",
+            "",
+            0,
+        );
+
+        let repository = active_repository(&panel, &mut cx);
+        let branch = repository.read_with(&cx, |repository, _| {
+            repository
+                .branch
+                .as_ref()
+                .map(|branch| branch.name().to_string())
+        });
+        let mut rebase_args = vec![
+            "rebase".to_string(),
+            "--autostash".to_string(),
+            "--onto".to_string(),
+            "4444444444444444444444444444444444444444".to_string(),
+            OLD_SHA.to_string(),
+        ];
+        rebase_args.extend(branch);
+        set_fake_git_command_result(&fs, &rebase_args.join(" "), "", "", 0);
+
+        let reword = repository.update(&mut cx, |repository, cx| {
+            repository.reword_commit(OLD_SHA.to_string(), "書き換え後".to_string(), cx)
+        });
+        let output = reword.await.unwrap().unwrap();
+        assert!(output.succeeded(), "{}", output.failure_message());
+
+        let commands: Vec<String> = fake_git_command_log(&fs)
+            .into_iter()
+            .map(|(args, _)| args.join(" "))
+            .collect();
+        assert_eq!(
+            commands,
+            vec![
+                "rev-parse --verify --quiet HEAD".to_string(),
+                format!("log --merges --format=%H {OLD_SHA}..HEAD"),
+                format!("log -1 --format=%an%x00%ae%x00%ad --date=raw {OLD_SHA}"),
+                format!("rev-parse --verify --quiet {OLD_SHA}^"),
+                format!(
+                    "commit-tree {OLD_SHA}^{{tree}} -p 2222222222222222222222222222222222222222 -m 書き換え後"
+                ),
+                rebase_args.join(" "),
+            ]
+        );
+
+        // The rebuilt commit has to be authored by whoever wrote the original, which only the
+        // environment of that one `commit-tree` call can carry.
+        let envs = fs
+            .with_git_state(path!("/project/.git").as_ref(), false, |state| {
+                state
+                    .run_command_log
+                    .iter()
+                    .zip(state.run_command_envs.iter())
+                    .filter(|((args, _), _)| {
+                        args.first().map(String::as_str) == Some("commit-tree")
+                    })
+                    .map(|(_, env)| env.clone())
+                    .collect::<Vec<_>>()
+            })
+            .expect("fake repository should exist");
+        assert_eq!(envs.len(), 1);
+        assert_eq!(
+            envs[0].get("GIT_AUTHOR_NAME").map(String::as_str),
+            Some("Ada")
+        );
+        assert_eq!(
+            envs[0].get("GIT_AUTHOR_EMAIL").map(String::as_str),
+            Some("ada@example.com")
+        );
+        assert_eq!(
+            envs[0].get("GIT_AUTHOR_DATE").map(String::as_str),
+            Some("1700000000 +0900")
+        );
+    }
+
+    /// A range that contains a merge cannot be replayed with `commit-tree` without quietly
+    /// dropping the merged-in history, so it is refused before anything is written.
+    #[gpui::test]
+    async fn test_reword_commit_refuses_a_range_containing_a_merge(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+
+        set_fake_git_command_result(&fs, "rev-parse --verify --quiet HEAD", HEAD_SHA, "", 0);
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --merges --format=%H {OLD_SHA}..HEAD"),
+            "5555555555555555555555555555555555555555\n",
+            "",
+            0,
+        );
+
+        let repository = active_repository(&panel, &mut cx);
+        let reword = repository.update(&mut cx, |repository, cx| {
+            repository.reword_commit(OLD_SHA.to_string(), "書き換え後".to_string(), cx)
+        });
+        let error = reword
+            .await
+            .unwrap()
+            .expect_err("a range with a merge commit must be refused");
+        assert!(
+            error.to_string().contains("マージコミット"),
+            "unexpected error: {error:#}"
+        );
+
+        let log = fake_git_command_log(&fs);
+        assert!(
+            log.iter()
+                .all(|(args, _)| args[0] != "commit-tree" && args[0] != "rebase"),
+            "nothing may be rewritten once the range is refused: {log:?}"
+        );
+    }
+
+    /// A rewrite whose rebase stops on a conflict is git refusing, not an error, and the banner
+    /// has to name the rebase: a stopped rebase leaves `CHERRY_PICK_HEAD` behind as well, and
+    /// `git cherry-pick --continue` cannot finish one.
+    #[gpui::test]
+    async fn test_reword_commit_stopped_by_a_conflict_shows_a_rebase_banner(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let (fs, _project, workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            workspace.focus_panel::<GitPanel>(window, cx);
+        });
+        cx.run_until_parked();
+
+        set_fake_git_command_result(&fs, "rev-parse --verify --quiet HEAD", HEAD_SHA, "", 0);
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --merges --format=%H {OLD_SHA}..HEAD"),
+            "",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("log -1 --format=%an%x00%ae%x00%ad --date=raw {OLD_SHA}"),
+            "Ada\u{0}ada@example.com\u{0}1700000000 +0900\n",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("rev-parse --verify --quiet {OLD_SHA}^"),
+            "2222222222222222222222222222222222222222\n",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!(
+                "commit-tree {OLD_SHA}^{{tree}} -p 2222222222222222222222222222222222222222 -m 書き換え後"
+            ),
+            "4444444444444444444444444444444444444444\n",
+            "",
+            0,
+        );
+
+        let repository = active_repository(&panel, &mut cx);
+        let branch = repository.read_with(&cx, |repository, _| {
+            repository
+                .branch
+                .as_ref()
+                .map(|branch| branch.name().to_string())
+        });
+        let mut rebase_args = vec![
+            "rebase".to_string(),
+            "--autostash".to_string(),
+            "--onto".to_string(),
+            "4444444444444444444444444444444444444444".to_string(),
+            OLD_SHA.to_string(),
+        ];
+        rebase_args.extend(branch);
+        set_fake_git_command_result(
+            &fs,
+            &rebase_args.join(" "),
+            "",
+            "error: could not apply 3333333...\n",
+            1,
+        );
+
+        let reword = repository.update(&mut cx, |repository, cx| {
+            repository.reword_commit(OLD_SHA.to_string(), "書き換え後".to_string(), cx)
+        });
+        let output = reword
+            .await
+            .unwrap()
+            .expect("a conflicted rebase is git refusing, not a failure to run it");
+        assert!(!output.succeeded());
+        assert!(output.stderr.contains("could not apply"));
+
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet REBASE_HEAD",
+            OLD_SHA,
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet CHERRY_PICK_HEAD",
+            OLD_SHA,
+            "",
+            0,
+        );
+        set_fake_git_command_result(&fs, "diff --name-only --diff-filter=U", "file.txt\n", "", 0);
+        panel.update(&mut cx, |panel, cx| panel.refresh_sequencer_state(cx));
+        cx.run_until_parked();
+
+        assert_eq!(
+            panel.read_with(&cx, |panel, _| panel.sequencer_state.clone()),
+            Some(git::repository::SequencerState {
+                kind: SequencerKind::Rebase,
+                conflicted: true,
+            })
+        );
+        assert!(sequencer_banner_is_rendered(&panel, &mut cx));
+    }
+
+    /// The merge-request helper: branch off the base, apply the commits without committing, then
+    /// make one commit.
+    #[gpui::test]
+    async fn test_squash_to_new_branch_runs_the_three_steps_in_order(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+
+        set_fake_git_command_result(&fs, "switch -c mr/1 origin/main", "", "", 0);
+        set_fake_git_command_result(&fs, "cherry-pick -n aaa bbb", "", "", 0);
+        set_fake_git_command_result(&fs, "commit -m まとめ", "", "", 0);
+
+        let repository = active_repository(&panel, &mut cx);
+        let squash = repository.update(&mut cx, |repository, cx| {
+            repository.squash_to_new_branch(
+                "origin/main".to_string(),
+                vec!["aaa".to_string(), "bbb".to_string()],
+                "mr/1".to_string(),
+                "まとめ".to_string(),
+                cx,
+            )
+        });
+        assert!(squash.await.unwrap().unwrap().succeeded());
+
+        assert_eq!(
+            fake_git_command_log(&fs)
+                .into_iter()
+                .map(|(args, _)| args.join(" "))
+                .collect::<Vec<_>>(),
+            vec![
+                "switch -c mr/1 origin/main".to_string(),
+                "cherry-pick -n aaa bbb".to_string(),
+                "commit -m まとめ".to_string(),
+            ]
+        );
+    }
+
+    /// A step git refuses stops the sequence, so the user is told about the command that actually
+    /// failed rather than a later one that never ran.
+    #[gpui::test]
+    async fn test_squash_to_new_branch_stops_at_the_first_refused_step(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+
+        set_fake_git_command_result(
+            &fs,
+            "switch -c mr/1 origin/main",
+            "",
+            "fatal: a branch named 'mr/1' already exists\n",
+            128,
+        );
+
+        let repository = active_repository(&panel, &mut cx);
+        let squash = repository.update(&mut cx, |repository, cx| {
+            repository.squash_to_new_branch(
+                "origin/main".to_string(),
+                vec!["aaa".to_string()],
+                "mr/1".to_string(),
+                "まとめ".to_string(),
+                cx,
+            )
+        });
+        let output = squash.await.unwrap().unwrap();
+        assert!(!output.succeeded());
+        assert!(output.stderr.contains("already exists"));
+        assert_eq!(fake_git_command_log(&fs).len(), 1);
+    }
+
+    /// Reading a file as of a ref goes through the same escape hatch, as a `show <ref>:<path>`
+    /// with the path spelled the way git stores it.
+    #[gpui::test]
+    async fn test_file_at_ref_reads_one_path(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+
+        set_fake_git_command_result(&fs, "show origin/main:src/main.rs", "fn main() {}\n", "", 0);
+
+        let repository = active_repository(&panel, &mut cx);
+        let contents = repository.update(&mut cx, |repository, _| {
+            repository.file_at_ref("origin/main".to_string(), "src/main.rs".to_string())
+        });
+        let output = contents.await.unwrap().unwrap();
+        assert!(output.succeeded());
+        assert_eq!(output.stdout, "fn main() {}\n");
+        assert_eq!(
+            fake_git_command_log(&fs)
+                .into_iter()
+                .map(|(args, _)| args.join(" "))
+                .collect::<Vec<_>>(),
+            vec!["show origin/main:src/main.rs".to_string()]
+        );
+    }
+
+    /// A cherry-pick git stops on has to surface in the panel: the banner is the only place the
+    /// user can continue or abort from.
+    #[gpui::test]
+    async fn test_stopped_cherry_pick_shows_the_sequencer_banner(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        // A panel that was only added to the workspace is never drawn, so its debug bounds would
+        // stay empty whatever it rendered.
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            workspace.focus_panel::<GitPanel>(window, cx);
+        });
+        cx.run_until_parked();
+
+        assert!(
+            !sequencer_banner_is_rendered(&panel, &mut cx),
+            "nothing is in progress to start with"
+        );
+
+        set_fake_git_command_result(
+            &fs,
+            &format!("cherry-pick {OLD_SHA}"),
+            "",
+            "error: could not apply 1111111...\n",
+            1,
+        );
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet CHERRY_PICK_HEAD",
+            OLD_SHA,
+            "",
+            0,
+        );
+        set_fake_git_command_result(&fs, "diff --name-only --diff-filter=U", "file.txt\n", "", 0);
+
+        cx.dispatch_action(git::CherryPickCommit {
+            sha: OLD_SHA.to_string(),
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            fake_git_command_log(&fs)
+                .into_iter()
+                .map(|(args, _)| args.join(" "))
+                .collect::<Vec<_>>(),
+            vec![format!("cherry-pick {OLD_SHA}")]
+        );
+
+        assert_eq!(
+            panel.read_with(&cx, |panel, _| panel.sequencer_state.clone()),
+            Some(git::repository::SequencerState {
+                kind: SequencerKind::CherryPick,
+                conflicted: true,
+            })
+        );
+        assert!(
+            sequencer_banner_is_rendered(&panel, &mut cx),
+            "the banner has to be on screen once a cherry-pick is stopped"
+        );
+
+        // Aborting clears it again.
+        set_fake_git_command_result(&fs, "cherry-pick --abort", "", "", 0);
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet CHERRY_PICK_HEAD",
+            "",
+            "",
+            1,
+        );
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.run_sequencer_step(SequencerKind::CherryPick, SequencerStep::Abort, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            panel.read_with(&cx, |panel, _| panel.sequencer_state.clone()),
+            None
+        );
+        assert!(!sequencer_banner_is_rendered(&panel, &mut cx));
+    }
+
+    /// The commit actions also arrive from the command palette and from a keybinding, where
+    /// nothing can carry a SHA: they fall back to what the history tab has selected and then to
+    /// HEAD. The ones that open a modal do so after the workspace's own update, which is what
+    /// makes the second half of this test more than a repeat of the first.
+    #[gpui::test]
+    async fn test_commit_action_without_a_sha_falls_back_to_head(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            workspace.focus_panel::<GitPanel>(window, cx);
+        });
+        fs.with_git_state(path!("/project/.git").as_ref(), true, |state| {
+            state.refs.insert("HEAD".into(), HEAD_SHA.to_string());
+        })
+        .expect("fake repository should exist");
+        cx.run_until_parked();
+        assert_eq!(
+            active_repository(&panel, &mut cx).read_with(&cx, |repository, _| repository
+                .head_commit
+                .as_ref()
+                .map(|commit| commit.sha.to_string())),
+            Some(HEAD_SHA.to_string()),
+            "the fallback has nothing to find unless the repository knows its HEAD"
+        );
+
+        set_fake_git_command_result(&fs, &format!("cherry-pick {HEAD_SHA}"), "", "", 0);
+        cx.dispatch_action(git::CherryPickCommit { sha: String::new() });
+        cx.run_until_parked();
+        assert_eq!(
+            fake_git_command_log(&fs)
+                .into_iter()
+                .map(|(args, _)| args.join(" "))
+                .collect::<Vec<_>>(),
+            vec![format!("cherry-pick {HEAD_SHA}")]
+        );
+
+        cx.dispatch_action(git::CreateTagAt { sha: String::new() });
+        cx.run_until_parked();
+        assert!(
+            workspace.read_with(&cx, |workspace, cx| workspace
+                .active_modal::<crate::commit_context_menu::CommitTextModal>(cx)
+                .is_some()),
+            "the tag modal has to open rather than the action falling over"
+        );
+    }
+
+    /// git reads a ref name that starts with `-` as an option, so the modal refuses it and stays
+    /// open with what the user typed; Ctrl+Enter (`menu::SecondaryConfirm`) confirms like Enter.
+    #[gpui::test]
+    async fn test_commit_text_modal_refuses_a_name_starting_with_a_dash(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, workspace, _panel, mut cx) = setup_docked_git_panel(cx).await;
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            workspace.focus_panel::<GitPanel>(window, cx);
+        });
+        cx.run_until_parked();
+
+        cx.dispatch_action(git::CreateTagAt {
+            sha: OLD_SHA.to_string(),
+        });
+        cx.run_until_parked();
+        let modal = workspace
+            .read_with(&cx, |workspace, cx| {
+                workspace.active_modal::<crate::commit_context_menu::CommitTextModal>(cx)
+            })
+            .expect("the tag modal has to be open");
+
+        modal.update_in(&mut cx, |modal, window, cx| {
+            modal.set_name("-x", window, cx);
+        });
+        cx.dispatch_action(menu::Confirm);
+        cx.run_until_parked();
+        assert_eq!(
+            modal.read_with(&cx, |modal, _| modal.name_error()),
+            Some("先頭に - は使えません。".into())
+        );
+        assert!(
+            workspace.read_with(&cx, |workspace, cx| workspace
+                .active_modal::<crate::commit_context_menu::CommitTextModal>(cx)
+                .is_some()),
+            "a refused name must not close the modal"
+        );
+        assert!(
+            fake_git_command_log(&fs).is_empty(),
+            "nothing may run until the name is accepted"
+        );
+
+        set_fake_git_command_result(&fs, &format!("tag v1.0.0 {OLD_SHA}"), "", "", 0);
+        modal.update_in(&mut cx, |modal, window, cx| {
+            modal.set_name("v1.0.0", window, cx);
+        });
+        cx.dispatch_action(menu::SecondaryConfirm);
+        cx.run_until_parked();
+        assert_eq!(
+            fake_git_command_log(&fs)
+                .into_iter()
+                .map(|(args, _)| args.join(" "))
+                .collect::<Vec<_>>(),
+            vec![format!("tag v1.0.0 {OLD_SHA}")]
+        );
+        assert!(
+            workspace.read_with(&cx, |workspace, cx| workspace
+                .active_modal::<crate::commit_context_menu::CommitTextModal>(cx)
+                .is_none()),
+            "confirming closes it"
+        );
     }
 
     const TEST_PATCH: &str = concat!(

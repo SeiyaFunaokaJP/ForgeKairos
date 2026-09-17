@@ -11,6 +11,8 @@ use gpui::{
     AnyElement, Bounds, Entity, Focusable as _, ListOffset, MouseButton, Point, Subscription,
     TextStyleRefinement, canvas,
 };
+use settings::Settings as _;
+use theme_settings::ThemeSettings;
 use ui::{ContextMenu, prelude::*};
 
 use crate::{
@@ -215,9 +217,10 @@ pub(crate) struct GridState {
 
 impl GridState {
     pub(crate) fn new(window: &mut Window, cx: &mut Context<TabularDataPreviewPane>) -> Self {
+        let line_height = cell_line_height(cx);
         let cell_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_text_style_refinement(cell_text_style(cx));
+            editor.set_text_style_refinement(cell_text_style(line_height, cx));
             editor
         });
 
@@ -260,18 +263,43 @@ impl GridState {
     }
 }
 
-/// The overlay editor is styled with the UI font by default, but it sits on top
-/// of buffer text, so it follows the font the user sized for buffers instead.
-pub(crate) fn cell_text_style(cx: &App) -> TextStyleRefinement {
-    let settings = theme::theme_settings(cx);
-    let font = settings.buffer_font(cx);
+/// The style the cells draw their text in, and that the overlay editor types
+/// in on top of them.
+///
+/// Both go through this one function: an overlay whose font differed from the
+/// cell it covers would move the text the moment the cell was opened. It is the
+/// buffer font rather than the UI font because the grid is a view of buffer
+/// text, and it is the same font the file's text tab shows.
+///
+/// `line_height` is taken as an argument rather than derived so that the rows,
+/// the cell text and the editor are all laid out from the one value the pane
+/// settled on.
+pub(crate) fn cell_text_style(line_height: Pixels, cx: &App) -> TextStyleRefinement {
+    let settings = ThemeSettings::get_global(cx);
+    let font = &settings.buffer_font;
     TextStyleRefinement {
         font_family: Some(font.family.clone()),
         font_features: Some(font.features.clone()),
         font_size: Some(settings.buffer_font_size(cx).into()),
         font_weight: Some(font.weight),
+        line_height: Some(line_height.into()),
         ..Default::default()
     }
+}
+
+/// How tall one line of cell text is.
+///
+/// Derived from the buffer font, which is what the cells and the overlay editor
+/// are drawn in: a row sized from the window's UI text would keep its height
+/// when the user enlarges the buffer font, and the text would outgrow it.
+///
+/// Rounded to a whole pixel because that is what the editor does with the line
+/// height it is handed ([`gpui::TextStyle::line_height_in_pixels`]), and a cell
+/// whose text sat on a half pixel the editor rounded away would be half a pixel
+/// shorter than the editor that opens over it.
+pub(crate) fn cell_line_height(cx: &App) -> Pixels {
+    let settings = ThemeSettings::get_global(cx);
+    (settings.buffer_font_size(cx) * settings.buffer_line_height.value()).round()
 }
 
 /// How many rows a page key covers before the body has ever been laid out.

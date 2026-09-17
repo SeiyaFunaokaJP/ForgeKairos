@@ -745,11 +745,8 @@ impl ToolCallLayout {
 /// rules, any `always_deny`/`always_confirm` patterns the user configured,
 /// the sandbox, symlink escapes and the settings/skills write prompts all
 /// still apply.
-pub(crate) fn auto_approve_tool_actions(cx: &App) -> bool {
-    matches!(
-        AgentSettings::get_global(cx).tool_permissions.default,
-        settings::ToolPermissionMode::Allow
-    )
+pub(crate) fn tool_permission_default_mode(cx: &App) -> settings::ToolPermissionMode {
+    AgentSettings::get_global(cx).tool_permissions.default
 }
 
 pub(crate) fn set_tool_permission_default(
@@ -5105,14 +5102,20 @@ impl ThreadView {
     fn render_tool_permission_control(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.as_native_thread(cx)?;
 
-        let auto_approve = auto_approve_tool_actions(cx);
+        let mode = tool_permission_default_mode(cx);
         let focus_handle = self.message_editor.focus_handle(cx);
         let fs = self.thread.read(cx).project().read(cx).fs().clone();
 
-        let (label, color, icon) = if auto_approve {
-            ("自動承認 中", Color::Warning, IconName::LockOff)
-        } else {
-            ("確認する", Color::Muted, IconName::Lock)
+        // "AI が判定" still reviews every action, so it gets the information
+        // colour rather than the warning colour that marks blanket approval.
+        let (label, color, icon) = match mode {
+            settings::ToolPermissionMode::Allow => {
+                ("自動承認 中", Color::Warning, IconName::LockOff)
+            }
+            settings::ToolPermissionMode::Auto => ("AI が判定 中", Color::Info, IconName::AiZed),
+            settings::ToolPermissionMode::Deny | settings::ToolPermissionMode::Confirm => {
+                ("確認する", Color::Muted, IconName::Lock)
+            }
         };
 
         let trigger = Button::new("tool-permission-mode", label)
@@ -5139,11 +5142,16 @@ impl ThreadView {
                 .menu(move |window, cx| {
                     let confirm_fs = fs.clone();
                     let allow_fs = fs.clone();
+                    let judge_fs = fs.clone();
                     Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
                         menu.header("ツールの権限")
                             .toggleable_entry(
                                 "確認する",
-                                !auto_approve,
+                                matches!(
+                                    mode,
+                                    settings::ToolPermissionMode::Confirm
+                                        | settings::ToolPermissionMode::Deny
+                                ),
                                 IconPosition::Start,
                                 None,
                                 move |_window, cx| {
@@ -5155,8 +5163,21 @@ impl ThreadView {
                                 },
                             )
                             .toggleable_entry(
+                                "AI が判定 (安全なら自動実行)",
+                                matches!(mode, settings::ToolPermissionMode::Auto),
+                                IconPosition::Start,
+                                None,
+                                move |_window, cx| {
+                                    set_tool_permission_default(
+                                        settings::ToolPermissionMode::Auto,
+                                        judge_fs.clone(),
+                                        cx,
+                                    );
+                                },
+                            )
+                            .toggleable_entry(
                                 "自動承認 (すべてのツールを許可)",
-                                auto_approve,
+                                matches!(mode, settings::ToolPermissionMode::Allow),
                                 IconPosition::Start,
                                 None,
                                 move |_window, cx| {
@@ -5173,7 +5194,7 @@ impl ThreadView {
                                     .max_w_72()
                                     .child(
                                         Label::new(
-                                            "自動承認でも、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認は残ります。サンドボックスの外で実行されるターミナルコマンドは、自動承認でも毎回確認します。",
+                                            "自動承認でも「AI が判定」でも、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認は残ります。サンドボックスの外で実行されるターミナルコマンドは、どちらでも毎回確認します。「AI が判定」の判定内容 (コマンドやパス) は判定に使うモデルの提供元に送られるので、ローカルのモデルをお勧めします。",
                                         )
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
@@ -8359,7 +8380,52 @@ impl ThreadView {
                     cx,
                 ))
             }
+            .children(Self::render_permission_judge_line(tool_call, layout))
         })
+    }
+
+    /// One line recording what the permission judge decided about this tool
+    /// call (ADR-F52), kept on the card so the decision can be reviewed later.
+    /// Rendered for every tool-call layout, including the terminal card, which
+    /// has its own body.
+    fn render_permission_judge_line(
+        tool_call: &ToolCall,
+        layout: ToolCallLayout,
+    ) -> Option<AnyElement> {
+        let judge = tool_call.permission_judge.as_ref()?;
+        let (icon, color, text) = match judge.state {
+            acp_thread::PermissionJudgeState::Judging => (
+                IconName::AiZed,
+                Color::Muted,
+                SharedString::from("AI が判定中…"),
+            ),
+            acp_thread::PermissionJudgeState::Safe => (
+                IconName::AiZed,
+                Color::Info,
+                SharedString::from(format!("AI 判定: 安全 (自動実行) — {}", judge.reason)),
+            ),
+            acp_thread::PermissionJudgeState::Unsafe => (
+                IconName::Warning,
+                Color::Warning,
+                SharedString::from(format!("AI 判定: 危険 — {}", judge.reason)),
+            ),
+            acp_thread::PermissionJudgeState::Superseded => (
+                IconName::AiZed,
+                Color::Muted,
+                SharedString::from(format!("AI 判定: 中止 — {}", judge.reason)),
+            ),
+        };
+
+        Some(
+            h_flex()
+                .gap_1()
+                .when(layout == ToolCallLayout::Standalone, |this| {
+                    this.mx_5().mb_1()
+                })
+                .child(Icon::new(icon).size(IconSize::XSmall).color(color))
+                .child(Label::new(text).size(LabelSize::Small).color(color))
+                .into_any_element(),
+        )
     }
 
     fn render_tool_call(
@@ -12787,10 +12853,17 @@ impl Render for ThreadView {
                     if this.as_native_thread(cx).is_none() {
                         return;
                     }
-                    let mode = if auto_approve_tool_actions(cx) {
-                        settings::ToolPermissionMode::Confirm
-                    } else {
+                    // From any mode that skips the prompt — blanket approval or
+                    // the AI judge — the shortcut turns confirmation back on,
+                    // so it is always the safe direction out of an unattended
+                    // mode.
+                    let mode = if matches!(
+                        tool_permission_default_mode(cx),
+                        settings::ToolPermissionMode::Confirm | settings::ToolPermissionMode::Deny
+                    ) {
                         settings::ToolPermissionMode::Allow
+                    } else {
+                        settings::ToolPermissionMode::Confirm
                     };
                     let fs = this.thread.read(cx).project().read(cx).fs().clone();
                     set_tool_permission_default(mode, fs, cx);
@@ -13220,7 +13293,7 @@ mod tests {
         assert_eq!(strip_leading_command("hello", "compact"), "hello");
     }
 
-    // The panel's "auto approve" switch has no setting of its own: it reads and
+    // The panel's permission switch has no setting of its own: it reads and
     // writes the same global tool-permission default the settings UI exposes,
     // so the two can never disagree.
     #[gpui::test]
@@ -13230,23 +13303,29 @@ mod tests {
         crate::test_support::init_test(cx);
 
         cx.update(|cx| {
-            assert!(
-                !auto_approve_tool_actions(cx),
+            assert_eq!(
+                tool_permission_default_mode(cx),
+                settings::ToolPermissionMode::Confirm,
                 "確認するのが既定でなければならない"
             );
 
-            settings::SettingsStore::update_global(cx, |store, cx| {
-                store.update_user_settings(cx, |settings| {
-                    settings
-                        .agent
-                        .get_or_insert_default()
-                        .tool_permissions
-                        .get_or_insert_default()
-                        .default = Some(settings::ToolPermissionMode::Allow);
+            for mode in [
+                settings::ToolPermissionMode::Allow,
+                settings::ToolPermissionMode::Auto,
+            ] {
+                settings::SettingsStore::update_global(cx, |store, cx| {
+                    store.update_user_settings(cx, |settings| {
+                        settings
+                            .agent
+                            .get_or_insert_default()
+                            .tool_permissions
+                            .get_or_insert_default()
+                            .default = Some(mode);
+                    });
                 });
-            });
 
-            assert!(auto_approve_tool_actions(cx));
+                assert_eq!(tool_permission_default_mode(cx), mode);
+            }
         });
     }
 

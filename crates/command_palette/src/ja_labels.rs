@@ -863,6 +863,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("git::SkipHooks", "Git: フックをスキップ"),
     ("git::Push", "Git: プッシュ"),
     ("git::ForcePush", "Git: 強制プッシュ"),
+    (
+        "git::ForcePushWithoutLease",
+        "Git: 強制プッシュ (lease なし)",
+    ),
     ("git::PushTo", "Git: プッシュ先を指定してプッシュ"),
     ("git::Pull", "Git: プル"),
     ("git::PullRebase", "Git: リベースしてプル"),
@@ -877,6 +881,23 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("git::RemoveRemote", "Git: リモートを削除"),
     ("git::CreatePatch", "Git: パッチファイルを作成"),
     ("git::ApplyPatch", "Git: パッチファイルを適用"),
+    (
+        "git::CreateBranchFrom",
+        "Git: このコミットからブランチを作成",
+    ),
+    (
+        "git::CheckoutCommit",
+        "Git: このコミットをチェックアウト (detached)",
+    ),
+    ("git::CreateTagAt", "Git: このコミットにタグを付ける"),
+    (
+        "git::CherryPickCommit",
+        "Git: このコミットを現在のブランチに取り込む",
+    ),
+    ("git::RevertCommit", "Git: このコミットを打ち消す"),
+    ("git::RewordCommit", "Git: コミットのメッセージを書き換える"),
+    ("git::ResetToCommit", "Git: このコミットまで戻す"),
+    ("git::CopyTagDistance", "Git: 直近のタグからの距離をコピー"),
     ("git::Init", "Git: リポジトリを初期化"),
     ("git::Clone", "Git: リポジトリをクローン"),
     ("git::SelectRepo", "Git: リポジトリを選択"),
@@ -985,7 +1006,17 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "Markdown: Mermaid 図を挿入 (種類を選ぶ)",
     ),
     ("markdown::EditTable", "Markdown: 表を編集…"),
+    ("markdown::EditMermaid", "Markdown: Mermaid 図を編集…"),
     ("markdown::ExportToPdf", "Markdown: PDF に書き出す"),
+    (
+        "markdown::FoldHeadings",
+        "Markdown: 指定した見出しレベルで畳む",
+    ),
+    ("markdown::FoldAllHeadings", "Markdown: 見出しをすべて畳む"),
+    (
+        "markdown::UnfoldAllHeadings",
+        "Markdown: 見出しをすべて展開",
+    ),
     // IDE サーバー (ADR-F26)
     (
         "ide_server::ToggleIdeServer",

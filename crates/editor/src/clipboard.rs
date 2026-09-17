@@ -57,6 +57,13 @@ impl ClipboardSelection {
 }
 
 impl Editor {
+    /// Returns the ranges the pasted text now occupies, one per selection that received a
+    /// paste, in the same order as `self.selections`, or an empty vector when they can't be
+    /// determined. Only exact when `handle_entire_lines` is `false` (as kill-ring yank uses):
+    /// with `handle_entire_lines: true`, an empty selection whose clipboard slice was an entire
+    /// line pastes before the current line instead, and the returned start doesn't account for
+    /// that shift. Callers that need to replace what was just inserted (e.g. Emacs-style
+    /// yank-pop) can select these ranges and paste again.
     pub fn do_paste(
         &mut self,
         text: &String,
@@ -64,14 +71,15 @@ impl Editor {
         handle_entire_lines: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> Vec<Range<Anchor>> {
         if self.read_only(cx) {
-            return;
+            return Vec::new();
         }
 
         self.finalize_last_transaction(cx);
 
         let clipboard_text = Cow::Borrowed(text.as_str());
+        let mut inserted_ranges = Vec::new();
 
         self.transact(window, cx, |this, window, cx| {
             let had_active_edit_prediction = this.has_active_edit_prediction();
@@ -81,6 +89,11 @@ impl Editor {
                 .selections
                 .last::<MultiBufferOffset>(&display_map)
                 .head();
+            let pre_edit_snapshot = display_map.buffer_snapshot();
+            let insertion_starts = old_selections
+                .iter()
+                .map(|selection| pre_edit_snapshot.anchor_before(selection.start))
+                .collect::<Vec<_>>();
 
             if let Some(mut clipboard_selections) = clipboard_selections {
                 let all_selections_were_entire_line =
@@ -238,6 +251,19 @@ impl Editor {
                 });
             }
 
+            let post_edit_selections = this.selections.disjoint_anchors();
+            // Selections that ended up overlapping are merged, so there can be fewer of them
+            // than there were insertion points. Pairing them up anyway would span the gap
+            // between two insertions, and a caller replacing that range would destroy the text
+            // in between, so give up on reporting the ranges instead.
+            if post_edit_selections.len() == insertion_starts.len() {
+                inserted_ranges = insertion_starts
+                    .iter()
+                    .zip(post_edit_selections.iter())
+                    .map(|(start, selection)| *start..selection.head())
+                    .collect();
+            }
+
             //   🤔                 |    ..     | show_in_menu |
             // | ..                  |   true        true
             // | had_edit_prediction |   false       true
@@ -247,6 +273,8 @@ impl Editor {
 
             this.trigger_completion_on_input(text, trigger_in_words, window, cx);
         });
+
+        inserted_ranges
     }
 
     pub fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
@@ -334,7 +362,7 @@ impl Editor {
                 cx,
             ),
             _ => self.do_paste(&item.text().unwrap_or_default(), None, true, window, cx),
-        }
+        };
     }
 
     fn insert_image_snippet(
@@ -470,45 +498,39 @@ impl Editor {
         });
 
         let can_append = selection_count == 1 && first_selection_is_empty;
-        let item = if can_append
-            && let Some(previous_ring) = cx.try_global::<KillRing>()
-            && previous_ring.can_append
-            && previous_ring.buffer_id == buffer_id
-            && previous_ring.row == selection_start_row
-            && previous_ring.column == selection_start_column
-        {
-            let mut entries = previous_ring
-                .metadata
-                .as_ref()
-                .map_or_else(Vec::new, Clone::clone);
-            if let Some(metadata) = entry_metadata.as_ref() {
-                entries.extend_from_slice(metadata);
+        cx.update_default_global::<KillRing, _>(|kill_ring, _| {
+            let continues_previous_cut = can_append
+                && kill_ring.can_append
+                && kill_ring.last_cut.as_ref().is_some_and(|position| {
+                    position.buffer_id == buffer_id
+                        && position.row == selection_start_row
+                        && position.column == selection_start_column
+                });
+
+            if continues_previous_cut && let Some(front) = kill_ring.entries.front_mut() {
+                let mut entries = front.metadata.take().unwrap_or_default();
+                if let Some(metadata) = entry_metadata.as_ref() {
+                    entries.extend_from_slice(metadata);
+                }
+                front.text.push_str(&item_text);
+                let text_len = front.text.len();
+                front.metadata = kill_ring_metadata_for_text(entries, text_len);
+            } else {
+                kill_ring.entries.push_front(KillRingEntry {
+                    text: item_text,
+                    metadata: entry_metadata,
+                });
+                // Mirrors Emacs' `kill-ring-max` default of 60: oldest generations fall off.
+                kill_ring.entries.truncate(KILL_RING_MAX_ENTRIES);
             }
 
-            let mut text = previous_ring.text.clone();
-            text.push_str(&item_text);
-            let text_len = text.len();
-
-            KillRing {
-                text,
-                metadata: kill_ring_metadata_for_text(entries, text_len),
-                row: previous_ring.row,
-                column: previous_ring.column,
-                buffer_id: previous_ring.buffer_id,
-                can_append,
-            }
-        } else {
-            KillRing {
-                text: item_text,
-                metadata: entry_metadata,
+            kill_ring.last_cut = Some(KillRingCutPosition {
                 row: selection_start_row,
                 column: selection_start_column,
                 buffer_id,
-                can_append,
-            }
-        };
-
-        cx.set_global(item)
+            });
+            kill_ring.can_append = can_append;
+        });
     }
 
     pub(super) fn kill_ring_yank(
@@ -521,12 +543,69 @@ impl Editor {
             return;
         }
 
-        let (text, metadata) = cx.update_global::<KillRing, _>(|kill_ring, _| {
+        let Some((text, metadata)) = cx.update_global::<KillRing, _>(|kill_ring, _| {
             kill_ring.can_append = false;
-            (kill_ring.text.clone(), kill_ring.metadata.clone())
-        });
+            kill_ring
+                .entries
+                .front()
+                .map(|entry| (entry.text.clone(), entry.metadata.clone()))
+        }) else {
+            return;
+        };
 
-        self.do_paste(&text, metadata, false, window, cx);
+        let ranges = self.do_paste(&text, metadata, false, window, cx);
+        if !ranges.is_empty() {
+            self.kill_ring_yank_pop_state = Some(KillRingYankPopState {
+                ranges,
+                entry_index: 0,
+            });
+        }
+    }
+
+    /// Emacs' `M-y`: only valid immediately after `KillRingYank` (or another `KillRingYankPop`).
+    /// Replaces the text that was just inserted with the next-older kill ring generation,
+    /// wrapping back around to the newest generation after the oldest.
+    pub(super) fn kill_ring_yank_pop(
+        &mut self,
+        _: &KillRingYankPop,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.read_only(cx) {
+            return;
+        }
+        let Some(state) = self.kill_ring_yank_pop_state.take() else {
+            return;
+        };
+        // Selecting no ranges at all would leave the editor without a selection, which the rest
+        // of the editor assumes never happens.
+        if state.ranges.is_empty() || !cx.has_global::<KillRing>() {
+            return;
+        }
+
+        let Some((next_index, text, metadata)) = cx.update_global::<KillRing, _>(|kill_ring, _| {
+            if kill_ring.entries.is_empty() {
+                return None;
+            }
+            let next_index = (state.entry_index + 1) % kill_ring.entries.len();
+            kill_ring
+                .entries
+                .get(next_index)
+                .map(|entry| (next_index, entry.text.clone(), entry.metadata.clone()))
+        }) else {
+            return;
+        };
+
+        self.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+            s.select_anchor_ranges(state.ranges.iter().cloned());
+        });
+        let ranges = self.do_paste(&text, metadata, false, window, cx);
+        if !ranges.is_empty() {
+            self.kill_ring_yank_pop_state = Some(KillRingYankPopState {
+                ranges,
+                entry_index: next_index,
+            });
+        }
     }
 
     pub(super) fn copy_and_trim(
@@ -680,15 +759,38 @@ impl Editor {
     }
 }
 
-struct KillRing {
+/// Mirrors Emacs' `kill-ring-max` default: generations beyond this are dropped.
+const KILL_RING_MAX_ENTRIES: usize = 60;
+
+struct KillRingEntry {
     text: String,
     metadata: Option<Vec<ClipboardSelection>>,
+}
+
+struct KillRingCutPosition {
     row: u32,
     column: u32,
     buffer_id: BufferId,
+}
+
+#[derive(Default)]
+struct KillRing {
+    /// Newest generation first, like Emacs' `kill-ring`.
+    entries: VecDeque<KillRingEntry>,
+    /// Where the most recent kill happened, used to decide whether the next kill continues it.
+    last_cut: Option<KillRingCutPosition>,
     can_append: bool,
 }
 impl Global for KillRing {}
+
+/// Tracks the buffer ranges a `KillRingYank`/`KillRingYankPop` last inserted, so a following
+/// `KillRingYankPop` (`M-y`) knows what to replace and which kill ring generation to show next.
+/// Cleared on any selection change (see `Editor::selections_did_change`), matching Emacs: `M-y`
+/// only works immediately after a yank, not once some other command has run.
+pub(super) struct KillRingYankPopState {
+    ranges: Vec<Range<Anchor>>,
+    entry_index: usize,
+}
 
 fn kill_ring_metadata_for_text(
     mut metadata: Vec<ClipboardSelection>,

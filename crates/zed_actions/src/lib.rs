@@ -976,6 +976,9 @@ pub mod preview {
                 /// Opens the table editor on the pipe table under the cursor, or
                 /// on a blank table when the cursor is not inside one.
                 EditTable,
+                /// Opens the structured editor on the Mermaid flowchart the
+                /// cursor is inside. DESIGN.md §5.7
+                EditMermaid,
             ]
         );
     }

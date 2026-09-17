@@ -86,7 +86,12 @@ sup, sub { line-height: 0; }
 ///
 /// Relative link and image destinations are resolved against `base_directory`
 /// and rewritten to `file://` URLs so a headless browser can load them.
-pub fn render_html_document(source: &str, title: &str, base_directory: Option<&Path>) -> String {
+pub fn render_html_document(
+    source: &str,
+    title: &str,
+    base_directory: Option<&Path>,
+    soft_break_as_hard_break: bool,
+) -> String {
     let mut document = String::with_capacity(source.len() * 2 + DOCUMENT_CSS.len() + 512);
     document
         .push_str("<!DOCTYPE html>\n<html lang=\"ja\">\n<head>\n<meta charset=\"utf-8\">\n<title>");
@@ -94,7 +99,12 @@ pub fn render_html_document(source: &str, title: &str, base_directory: Option<&P
     document.push_str("</title>\n<style>");
     document.push_str(DOCUMENT_CSS);
     document.push_str("</style>\n</head>\n<body>\n");
-    render_body(source, base_directory, &mut document);
+    render_body(
+        source,
+        base_directory,
+        soft_break_as_hard_break,
+        &mut document,
+    );
     document.push_str("</body>\n</html>\n");
     document
 }
@@ -165,7 +175,12 @@ fn render_mermaid_block(contents: &str) -> Result<String, String> {
         .map_err(|error| format!("{error:#}"))
 }
 
-fn render_body(source: &str, base_directory: Option<&Path>, output: &mut String) {
+fn render_body(
+    source: &str,
+    base_directory: Option<&Path>,
+    soft_break_as_hard_break: bool,
+    output: &mut String,
+) {
     let events = parse_markdown_events(source);
 
     // Image alt text arrives as the inline events between `Start(Image)` and
@@ -485,6 +500,8 @@ fn render_body(source: &str, base_directory: Option<&Path>, output: &mut String)
             MarkdownEvent::SoftBreak => {
                 if image.is_some() {
                     image_alt.push(' ');
+                } else if soft_break_as_hard_break {
+                    output.push_str("<br>\n");
                 } else {
                     output.push('\n');
                 }
@@ -742,12 +759,22 @@ pub const NO_CONVERTER: &str = "no-pdf-converter";
 
 /// Writes `source` as HTML into the temp directory and prints it to
 /// `pdf_output_path(markdown_path)`, returning the PDF path.
-pub async fn export_to_pdf(fs: &dyn Fs, markdown_path: &Path, source: &str) -> Result<PathBuf> {
+pub async fn export_to_pdf(
+    fs: &dyn Fs,
+    markdown_path: &Path,
+    source: &str,
+    soft_break_as_hard_break: bool,
+) -> Result<PathBuf> {
     let title = markdown_path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Markdown".to_owned());
-    let html = render_html_document(source, &title, markdown_path.parent());
+    let html = render_html_document(
+        source,
+        &title,
+        markdown_path.parent(),
+        soft_break_as_hard_break,
+    );
 
     let html_path = temp_html_path(markdown_path);
     fs.write(&html_path, html.as_bytes())
@@ -782,7 +809,13 @@ mod tests {
 
     fn render(source: &str) -> String {
         let mut html = String::new();
-        render_body(source, None, &mut html);
+        render_body(source, None, false, &mut html);
+        html
+    }
+
+    fn render_with_soft_breaks_as_hard_breaks(source: &str) -> String {
+        let mut html = String::new();
+        render_body(source, None, true, &mut html);
         html
     }
 
@@ -900,6 +933,7 @@ mod tests {
         render_body(
             "[説明](sub/page.md) と ![図](<img/a b.png>)",
             Some(base),
+            false,
             &mut html,
         );
         assert!(
@@ -934,6 +968,7 @@ mod tests {
         render_body(
             "[a](https://example.com/x) [b](#section) [c](mailto:a@example.com)",
             Some(base),
+            false,
             &mut html,
         );
         assert!(html.contains("href=\"https://example.com/x\""), "{html}");
@@ -960,8 +995,23 @@ mod tests {
     }
 
     #[test]
+    fn test_soft_break_follows_the_preview_setting() {
+        assert_eq!(render("一行目\n二行目\n"), "<p>一行目\n二行目</p>\n");
+        assert_eq!(
+            render_with_soft_breaks_as_hard_breaks("一行目\n二行目\n"),
+            "<p>一行目<br>\n二行目</p>\n",
+            "the PDF has to break where the preview breaks"
+        );
+        assert_eq!(
+            render_with_soft_breaks_as_hard_breaks("![alt\n続き](a.png)\n"),
+            render("![alt\n続き](a.png)\n"),
+            "a newline inside image alt text stays a space either way"
+        );
+    }
+
+    #[test]
     fn test_document_is_self_contained() {
-        let document = render_html_document("# タイトル\n", "doc.md", None);
+        let document = render_html_document("# タイトル\n", "doc.md", None, true);
         assert!(document.starts_with("<!DOCTYPE html>"));
         assert!(document.contains("<title>doc.md</title>"));
         assert!(document.contains("<style>"));

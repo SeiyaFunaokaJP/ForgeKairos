@@ -1,5 +1,6 @@
 pub mod html;
 mod mermaid;
+mod mermaid_source;
 pub mod parser;
 mod path_range;
 mod selection;
@@ -13,9 +14,10 @@ use language::LanguageName;
 
 use log::Level;
 use mermaid::{
-    MermaidState, ParsedMarkdownMermaidDiagram, extract_mermaid_diagrams, render_mermaid_diagram,
+    MermaidLabelTarget, MermaidState, ParsedMarkdownMermaidDiagram, extract_mermaid_diagrams,
+    render_mermaid_diagram,
 };
-pub use mermaid::{is_supported_diagram_type, parse_mermaid_info};
+pub use mermaid::{build_mermaid_theme, is_supported_diagram_type, parse_mermaid_info};
 pub use path_range::{LineCol, PathWithRange};
 use settings::Settings as _;
 use smallvec::SmallVec;
@@ -73,6 +75,76 @@ type CheckboxToggleCallback = Rc<dyn Fn(Range<usize>, bool, &mut Window, &mut Ap
 /// Invoked when a mermaid diagram's zoom level changes (via scroll gesture or
 /// the reset button), so a scroll container can keep the diagram anchored.
 pub type MermaidZoomCallback = Rc<dyn Fn(&mut Window, &mut App)>;
+/// Invoked when the user asks to edit a rendered block — currently only the
+/// Mermaid diagram's "edit" button. The range is the block's contents in the
+/// Markdown source, which is what lets the consumer find it in the buffer the
+/// preview was built from. DESIGN.md §5.7
+pub type MarkdownEditCallback = Rc<dyn Fn(Range<usize>, &mut Window, &mut App)>;
+
+/// Invoked when a label in a rendered mermaid diagram is double-clicked.
+///
+/// Registering it is what turns label editing on; a consumer that has no
+/// writable source to edit (the agent panel, a hover popup) leaves it unset and
+/// the diagram stays a plain image.
+pub type MermaidLabelEditCallback = Rc<dyn Fn(MermaidLabelEditRequest, &mut Window, &mut App)>;
+
+/// A request to edit one mermaid label, raised by double-clicking it in the
+/// rendered diagram.
+pub struct MermaidLabelEditRequest {
+    source_range: Option<Range<usize>>,
+    source_text: SharedString,
+    quoting: crate::mermaid_source::MermaidLabelQuoting,
+    /// What the label says now, ready to be put in an input field.
+    pub current_label: SharedString,
+    /// The label's box in window coordinates, for positioning that field.
+    pub bounds: Bounds<Pixels>,
+}
+
+impl MermaidLabelEditRequest {
+    /// The byte range in the markdown source that a new label replaces, or
+    /// `None` when the label could not be traced back to a token in the fence
+    /// (in which case the source must be left alone).
+    pub fn source_range(&self) -> Option<Range<usize>> {
+        self.source_range.clone()
+    }
+
+    /// The token exactly as the source behind the rendered diagram spells it.
+    ///
+    /// The preview lags the buffer (it re-parses in the background, and the
+    /// diagram is rastered later still), so by the time a new label is
+    /// confirmed the range may no longer point at this token. The caller
+    /// compares first: writing over whatever has moved into that range would
+    /// corrupt the document.
+    pub fn source_text(&self) -> SharedString {
+        self.source_text.clone()
+    }
+
+    /// Writes `new_label` in the form the token it replaces expects, quoting it
+    /// when it would otherwise close its delimiter.
+    pub fn encode(&self, new_label: &str) -> String {
+        crate::mermaid_source::encode_label(new_label, self.quoting)
+    }
+
+    /// The request a double-click on a `A[…]` label raises, so a consumer can
+    /// be tested without driving a rendered diagram.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn new_for_test(
+        source: Option<(Range<usize>, &str)>,
+        current_label: impl Into<SharedString>,
+        bounds: Bounds<Pixels>,
+    ) -> Self {
+        Self {
+            source_range: source.as_ref().map(|(range, _)| range.clone()),
+            source_text: source
+                .map(|(_, text)| text.to_owned())
+                .unwrap_or_default()
+                .into(),
+            quoting: crate::mermaid_source::MermaidLabelQuoting::Delimited,
+            current_label: current_label.into(),
+            bounds,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Default)]
 pub struct BlockQuoteKindColors {
@@ -423,6 +495,8 @@ struct MermaidViewState {
     zoomed_to_fit: bool,
     /// Horizontal scroll position, used when the diagram overflows.
     scroll_handle: ScrollHandle,
+    /// The label the pointer is currently over, highlighted until it moves off.
+    hovered_label: Option<MermaidLabelTarget>,
     /// The pending debounced re-raster scheduled by the last zoom change.
     debounce_task: Option<Task<()>>,
     /// Overrides the scroll container width, which tests can't obtain from
@@ -450,6 +524,7 @@ impl Default for MermaidViewState {
             zoom: 1.0,
             zoomed_to_fit: false,
             scroll_handle: ScrollHandle::new(),
+            hovered_label: None,
             debounce_task: None,
             #[cfg(test)]
             container_width_for_test: None,
@@ -881,6 +956,34 @@ impl Markdown {
             })
             .ok();
         })
+    }
+
+    pub(crate) fn mermaid_hovered_label(
+        &self,
+        source_offset: usize,
+    ) -> Option<&MermaidLabelTarget> {
+        self.mermaid_views
+            .get(&source_offset)
+            .and_then(|view| view.hovered_label.as_ref())
+    }
+
+    /// Records which label the pointer is over. Returns whether that changed,
+    /// so a mouse move that stays on the same label does not repaint.
+    pub(crate) fn set_mermaid_hovered_label(
+        &mut self,
+        source_offset: usize,
+        hovered_label: Option<MermaidLabelTarget>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.mermaid_hovered_label(source_offset) == hovered_label.as_ref() {
+            return false;
+        }
+        self.mermaid_views
+            .entry(source_offset)
+            .or_default()
+            .hovered_label = hovered_label;
+        cx.notify();
+        true
     }
 
     pub(crate) fn mermaid_scroll_handle(&mut self, source_offset: usize) -> ScrollHandle {
@@ -1620,6 +1723,8 @@ pub struct MarkdownElement {
     on_source_click: Option<SourceClickCallback>,
     on_checkbox_toggle: Option<CheckboxToggleCallback>,
     on_mermaid_zoom: Option<MermaidZoomCallback>,
+    on_mermaid_edit: Option<MarkdownEditCallback>,
+    on_mermaid_label_edit: Option<MermaidLabelEditCallback>,
     image_resolver: Option<Box<dyn Fn(&str, &App) -> Option<ImageSource>>>,
     show_root_block_markers: bool,
     autoscroll: AutoscrollBehavior,
@@ -1646,6 +1751,8 @@ impl MarkdownElement {
             on_source_click: None,
             on_checkbox_toggle: None,
             on_mermaid_zoom: None,
+            on_mermaid_edit: None,
+            on_mermaid_label_edit: None,
             image_resolver: None,
             show_root_block_markers: false,
             autoscroll: AutoscrollBehavior::Propagate,
@@ -1733,6 +1840,29 @@ impl MarkdownElement {
     /// position anchored while it grows or shrinks.
     pub fn on_mermaid_zoom(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
         self.on_mermaid_zoom = Some(Rc::new(handler));
+        self
+    }
+
+    /// Registers a callback invoked when a mermaid diagram's edit button is
+    /// pressed, with the diagram's range in the Markdown source. Without one the
+    /// button is not drawn, since a consumer that cannot write back to a buffer
+    /// has nothing to open. DESIGN.md §5.7
+    pub fn on_mermaid_edit(
+        mut self,
+        handler: impl Fn(Range<usize>, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_mermaid_edit = Some(Rc::new(handler));
+        self
+    }
+
+    /// Enables editing a mermaid label by double-clicking it in the rendered
+    /// diagram. The handler receives where the label lives in the source and
+    /// puts the new text there.
+    pub fn on_mermaid_label_edit(
+        mut self,
+        handler: impl Fn(MermaidLabelEditRequest, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_mermaid_label_edit = Some(Rc::new(handler));
         self
     }
 
@@ -2654,6 +2784,8 @@ impl Element for MarkdownElement {
                                         zoom,
                                         copy_button_visibility,
                                         self.on_mermaid_zoom.clone(),
+                                        self.on_mermaid_edit.clone(),
+                                        self.on_mermaid_label_edit.clone(),
                                         window,
                                         cx,
                                     ),

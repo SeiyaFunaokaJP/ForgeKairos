@@ -5563,6 +5563,16 @@ mod tests {
 
     /// The actions the emacs keymap resolves for `keystroke` in `context`.
     fn emacs_bindings_for(keystroke: &str, context: &str, cx: &mut TestAppContext) -> Vec<String> {
+        emacs_bindings_for_stack(keystroke, &[context], cx)
+    }
+
+    /// The actions the emacs keymap resolves for `keystroke`, with `contexts` as the stack of
+    /// elements from the outermost inwards.
+    fn emacs_bindings_for_stack(
+        keystroke: &str,
+        contexts: &[&str],
+        cx: &mut TestAppContext,
+    ) -> Vec<String> {
         cx.update(|cx| {
             let mut bindings = settings::KeymapFile::load_asset_allow_partial_failure(
                 "keymaps/default-linux.json",
@@ -5582,10 +5592,15 @@ mod tests {
             }
             bindings.extend(emacs_bindings);
 
+            let context_stack = contexts
+                .iter()
+                .map(|context| gpui::KeyContext::parse(context).unwrap())
+                .collect::<Vec<_>>();
+
             gpui::Keymap::new(bindings)
                 .bindings_for_input(
                     &[gpui::Keystroke::parse(keystroke).unwrap()],
-                    &[gpui::KeyContext::parse(context).unwrap()],
+                    &context_stack,
                 )
                 .0
                 .iter()
@@ -5646,6 +5661,30 @@ mod tests {
         assert_eq!(
             emacs_bindings_for("ctrl-p", selection_mode, cx).first(),
             Some(&"editor::SelectUp".to_string())
+        );
+    }
+
+    /// The default keymap binds `alt-y` to `git::StageAndNext` in an editor and to `agent::Keep`
+    /// in an agent diff. Both predicates apply to the same (innermost) context as the emacs
+    /// keymap's plain `Editor`, so they tie on depth, and a tie goes to the keymap loaded last:
+    /// yank-pop wins in both. `ctrl-alt-y` is left untouched and still keeps an agent diff hunk.
+    #[gpui::test]
+    fn test_emacs_yank_pop_outranks_the_default_alt_y_bindings(cx: &mut TestAppContext) {
+        init_keymap_test(cx);
+
+        assert_eq!(
+            emacs_bindings_for_stack("alt-y", &["Workspace", "Editor"], cx).first(),
+            Some(&"editor::KillRingYankPop".to_string())
+        );
+
+        let agent_diff = ["Workspace", "Editor editor_agent_diff"];
+        assert_eq!(
+            emacs_bindings_for_stack("alt-y", &agent_diff, cx).first(),
+            Some(&"editor::KillRingYankPop".to_string())
+        );
+        assert_eq!(
+            emacs_bindings_for_stack("ctrl-alt-y", &agent_diff, cx).first(),
+            Some(&"agent::Keep".to_string())
         );
     }
 
@@ -6286,7 +6325,9 @@ mod tests {
     /// buttons of the tab the pane has just left, which is why the grid is
     /// opened here on top of a text tab rather than into an empty workspace.
     #[gpui::test]
-    async fn test_the_grid_keeps_its_quick_action_bar(cx: &mut TestAppContext) {
+    async fn test_the_grid_hides_the_quick_action_bar_behind_its_breadcrumbs(
+        cx: &mut TestAppContext,
+    ) {
         use std::{cell::Cell, rc::Rc};
         use workspace::{ToolbarItemLocation, ToolbarItemView as _};
 
@@ -6362,7 +6403,7 @@ mod tests {
         );
 
         cx.update(|window, cx| {
-            let (item, quick_action_bar) = workspace.read_with(cx, |workspace, cx| {
+            let (item, quick_action_bar, breadcrumbs) = workspace.read_with(cx, |workspace, cx| {
                 let pane = workspace.active_pane().read(cx);
                 let item = pane
                     .active_item()
@@ -6381,41 +6422,32 @@ mod tests {
                     .read(cx)
                     .item_of_type::<QuickActionBar>()
                     .expect("the pane's toolbar should carry a quick action bar");
-                (item, quick_action_bar)
+                let breadcrumbs = pane
+                    .toolbar()
+                    .read(cx)
+                    .item_of_type::<breadcrumbs::Breadcrumbs>()
+                    .expect("the pane's toolbar should carry breadcrumbs");
+                (item, quick_action_bar, breadcrumbs)
             });
 
+            // The grid drives its own toolbar row, so the quick action bar (an
+            // editor's companion) steps aside and the breadcrumbs take the left
+            // end of the pane's toolbar instead of leaving it empty.
             quick_action_bar.update(cx, |bar, cx| {
                 assert_eq!(
                     bar.set_active_pane_item(Some(item.as_ref()), window, cx),
-                    ToolbarItemLocation::PrimaryRight,
-                    "the quick action bar should stay visible over a grid"
+                    ToolbarItemLocation::Hidden,
+                    "the quick action bar has nothing to offer a grid"
+                );
+            });
+            breadcrumbs.update(cx, |breadcrumbs_view, cx| {
+                assert_eq!(
+                    breadcrumbs_view.set_active_pane_item(Some(item.as_ref()), window, cx),
+                    ToolbarItemLocation::PrimaryLeft,
+                    "the grid should show its file path in the breadcrumbs"
                 );
             });
         });
-
-        // The toolbar's items are cached views, so a frame that reuses the cache
-        // records no debug selector; one forced redraw puts them back.
-        cx.update(|window, _| window.refresh());
-        cx.run_until_parked();
-
-        // `FileTextOutlined` reaches this window through no other `IconButton`:
-        // the grid's own toolbar carries it on a labelled `Button`, which
-        // registers no selector.
-        let button = cx
-            .debug_bounds("ICON-FileTextOutlined")
-            .expect("the grid's quick action bar should draw the button back to the text");
-        assert!(
-            button.size.width > px(0.) && button.size.height > px(0.),
-            "a button squeezed to nothing is not on screen; it was drawn at {:?}",
-            button.size
-        );
-        let viewport = cx.update(|window, _| window.viewport_size());
-        assert!(
-            button.origin.x > viewport.width / 2.,
-            "the grid has no breadcrumbs to push the bar over, and it still \
-             belongs at the right end of the toolbar; it was drawn at {:?}",
-            button.origin
-        );
     }
 
     pub(crate) fn init_test(cx: &mut TestAppContext) -> Arc<AppState> {

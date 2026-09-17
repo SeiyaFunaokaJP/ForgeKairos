@@ -13,18 +13,22 @@
 
 mod accent_colors;
 mod center_edge_labels;
+mod collect_geometry;
 mod element_fixup;
 mod inject_css;
 mod strip_foreignobject;
 pub(crate) mod util;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use anyhow::{Context as _, Result};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
-use crate::MermaidTheme;
+use crate::{DiagramGeometry, MermaidTheme};
 
-pub(super) fn postprocess(svg: &str, theme: &MermaidTheme) -> Result<String> {
+pub(super) fn postprocess(svg: &str, theme: &MermaidTheme) -> Result<(String, DiagramGeometry)> {
     // merman 0.6 already applies the generic resvg-safe cleanup before this point.
     // The remaining passes are Zed-specific theme and accent adjustments.
     let svg_id = extract_svg_id(svg);
@@ -38,6 +42,11 @@ pub(super) fn postprocess(svg: &str, theme: &MermaidTheme) -> Result<String> {
     // <text> (e.g. user journey renders some labels both ways).
     let events = strip_foreignobject::process(events, svg);
     let events = center_edge_labels::process(events);
+    // Geometry is read after the edge labels have been recentered, so the boxes
+    // it reports are the ones that actually get painted, and before the passes
+    // below, which only rewrite styles and classes.
+    let geometry = Rc::new(RefCell::new(DiagramGeometry::default()));
+    let events = collect_geometry::process(events, &svg_id, geometry.clone());
     let events = element_fixup::process(events, theme);
 
     let events = accent_colors::process(events, theme);
@@ -47,7 +56,8 @@ pub(super) fn postprocess(svg: &str, theme: &MermaidTheme) -> Result<String> {
     for event in events {
         writer.write_event(event?)?;
     }
-    String::from_utf8(writer.into_inner()).context("SVG output is not valid UTF-8")
+    let svg = String::from_utf8(writer.into_inner()).context("SVG output is not valid UTF-8")?;
+    Ok((svg, geometry.take()))
 }
 
 fn extract_svg_id(svg: &str) -> String {

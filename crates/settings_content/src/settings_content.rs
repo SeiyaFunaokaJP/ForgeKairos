@@ -557,7 +557,7 @@ impl strum::VariantNames for BaseKeymapContent {
         "Sublime Text",
         "Atom",
         "TextMate",
-        "Emacs",
+        "Emacs (ベータ)",
         "Cursor",
         "None",
     ];
@@ -1328,6 +1328,12 @@ pub struct MarkdownPreviewSettingsContent {
     ///
     /// Default: 800
     pub max_width: Option<PixelSetting>,
+    /// 単一の改行を、そのまま改行として表示するかどうかを設定します。
+    /// オフにすると CommonMark どおり空白 1 つになり、行末の半角スペース 2 つ /
+    /// `\` / `<br>` だけが改行になります。PDF の書き出しにも同じ設定が効きます。
+    ///
+    /// Default: true
+    pub soft_break_as_hard_break: Option<bool>,
 }
 
 /// CSV / TSV などの表形式ファイルの設定です。

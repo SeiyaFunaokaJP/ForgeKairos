@@ -1595,7 +1595,7 @@ fn keymap_page() -> SettingsPage {
             SettingsPageItem::SectionHeader("ベースキーマップ"),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "ベースキーマップ",
-                description: "基準にするキーバインドのセットの名前です。",
+                description: "基準にするキーバインドのセットの名前です。Emacs (ベータ) では C-x C-s (保存) / C-x C-f (ファイルを開く) / C-k (行をキル) / C-y (ヤンク) / M-y (直前のヤンクを 1 つ古い世代に差し替え) / C-space (マーク) などが使えます。C-x などのプレフィックスキーの入力中に候補を出したいときは、「エディター」ページの「Which-key メニューを表示」を有効にしてください。",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("base_keymap"),
@@ -10745,7 +10745,7 @@ fn language_settings_data() -> Box<[SettingsPageItem]> {
         ]
     }
 
-    fn global_only_miscellaneous_sub_section() -> [SettingsPageItem; 5] {
+    fn global_only_miscellaneous_sub_section() -> [SettingsPageItem; 6] {
         [
             SettingsPageItem::SettingItem(SettingItem {
                 title: "画像ビューアー",
@@ -10824,6 +10824,29 @@ fn language_settings_data() -> Box<[SettingsPageItem]> {
                         metadata: None,
                     }],
                 ],
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "改行をそのまま改行として表示",
+                description: "オフにすると CommonMark 準拠になり、行末の半角スペース 2 つ / `\\` / `<br>` だけが改行になります。PDF の書き出しにも同じ設定が効きます。",
+                field: Box::new(SettingField::<bool> {
+                    organization_override: None,
+                    json_path: Some("markdown_preview.soft_break_as_hard_break"),
+                    pick: |settings_content| {
+                        settings_content
+                            .markdown_preview
+                            .as_ref()?
+                            .soft_break_as_hard_break
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .markdown_preview
+                            .get_or_insert_default()
+                            .soft_break_as_hard_break = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "CSV / TSV を表として開く",

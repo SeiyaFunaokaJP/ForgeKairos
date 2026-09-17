@@ -2,11 +2,23 @@ use gpui::Pixels;
 use settings::{IntoGpui, RegisterSetting, Settings};
 
 /// The settings for the markdown preview.
-#[derive(Clone, Copy, Debug, Default, RegisterSetting)]
+#[derive(Clone, Copy, Debug, RegisterSetting)]
 pub struct MarkdownPreviewSettings {
     /// The maximum width of the rendered markdown content, or `None` to render
     /// content edge to edge.
     pub max_width: Option<Pixels>,
+    /// Whether a single newline is rendered as a line break rather than as the
+    /// single space CommonMark calls for.
+    pub soft_break_as_hard_break: bool,
+}
+
+impl Default for MarkdownPreviewSettings {
+    fn default() -> Self {
+        Self {
+            max_width: None,
+            soft_break_as_hard_break: true,
+        }
+    }
 }
 
 impl Settings for MarkdownPreviewSettings {
@@ -17,6 +29,9 @@ impl Settings for MarkdownPreviewSettings {
         } else {
             None
         };
-        Self { max_width }
+        Self {
+            max_width,
+            soft_break_as_hard_break: content.soft_break_as_hard_break.unwrap_or(true),
+        }
     }
 }

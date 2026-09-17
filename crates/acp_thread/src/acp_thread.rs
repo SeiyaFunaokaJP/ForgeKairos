@@ -302,6 +302,48 @@ pub fn sandbox_not_applied_from_meta(meta: &Option<acp::Meta>) -> Option<Sandbox
         .and_then(|v| serde_json::from_value(v.clone()).ok())
 }
 
+/// Meta key carrying the permission judge's state for a tool call (ADR-F52):
+/// it is set to `judging` while the judge model is being asked, then to the
+/// verdict, so the tool card can show what the judge decided and why long
+/// after the call finished.
+pub const PERMISSION_JUDGE_META_KEY: &str = "permission_judge";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionJudgeState {
+    /// The judge model has been asked and hasn't answered yet.
+    Judging,
+    /// The judge approved the action, which then ran without a prompt.
+    Safe,
+    /// The judge refused the action, or couldn't decide, so the user was asked.
+    Unsafe,
+    /// The user changed the permission settings while the judge was being
+    /// asked, so its answer no longer decides anything.
+    Superseded,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PermissionJudgeDetails {
+    pub state: PermissionJudgeState,
+    /// The judge's own one-line reason, in Japanese, or the reason the judge
+    /// couldn't decide. Empty while judging.
+    #[serde(default)]
+    pub reason: String,
+}
+
+pub fn meta_with_permission_judge(details: PermissionJudgeDetails) -> acp::Meta {
+    acp::Meta::from_iter([(
+        PERMISSION_JUDGE_META_KEY.into(),
+        serde_json::to_value(details).unwrap_or_default(),
+    )])
+}
+
+pub fn permission_judge_from_meta(meta: &Option<acp::Meta>) -> Option<PermissionJudgeDetails> {
+    meta.as_ref()
+        .and_then(|m| m.get(PERMISSION_JUDGE_META_KEY))
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SubagentSessionInfo {
     /// The session id of the subagent sessiont that was spawned
@@ -906,6 +948,9 @@ pub struct ToolCall {
     /// sandboxing was active (see [`SANDBOX_NOT_APPLIED_META_KEY`]). `None` when
     /// the command was sandboxed normally (or sandboxing was off).
     pub sandbox_not_applied: Option<SandboxNotAppliedReason>,
+    /// What the permission judge decided about this tool call, when the tool
+    /// permission mode was `auto` (ADR-F52). `None` when no judge was involved.
+    pub permission_judge: Option<PermissionJudgeDetails>,
 }
 
 impl ToolCall {
@@ -952,6 +997,7 @@ impl ToolCall {
         let sandbox_fallback_authorization_details =
             sandbox_fallback_authorization_details_from_meta(&tool_call.meta);
         let sandbox_not_applied = sandbox_not_applied_from_meta(&tool_call.meta);
+        let permission_judge = permission_judge_from_meta(&tool_call.meta);
 
         let label = if tool_call.kind == acp::ToolKind::Execute {
             cx.new(|cx| Markdown::new_text(title.into(), cx))
@@ -975,6 +1021,7 @@ impl ToolCall {
             sandbox_authorization_details,
             sandbox_fallback_authorization_details,
             sandbox_not_applied,
+            permission_judge,
         };
         Ok(result)
     }
@@ -1022,6 +1069,9 @@ impl ToolCall {
         }
         if let Some(sandbox_not_applied) = sandbox_not_applied_from_meta(&meta) {
             self.sandbox_not_applied = Some(sandbox_not_applied);
+        }
+        if let Some(permission_judge) = permission_judge_from_meta(&meta) {
+            self.permission_judge = Some(permission_judge);
         }
 
         if let Some(title) = title {
@@ -3328,6 +3378,7 @@ impl AcpThread {
                     sandbox_authorization_details: None,
                     sandbox_fallback_authorization_details: None,
                     sandbox_not_applied: None,
+                    permission_judge: None,
                 };
                 self.push_entry(AgentThreadEntry::ToolCall(failed_tool_call), cx);
                 return Ok(());

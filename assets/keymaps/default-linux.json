@@ -1073,6 +1073,16 @@
     },
   },
   {
+    // The multi-line field of the commit menu's modals (rewriting a commit message) behaves like
+    // the git panel's commit box: Enter makes a new line, ctrl-enter confirms. The single-line
+    // fields (branch and tag names) keep Enter for confirming.
+    "context": "CommitTextModal > Editor && mode == auto_height",
+    "bindings": {
+      "enter": "editor::Newline",
+      "ctrl-enter": "menu::Confirm",
+    },
+  },
+  {
     "context": "GitPanel",
     "bindings": {
       "ctrl-g ctrl-g": "git::Fetch",

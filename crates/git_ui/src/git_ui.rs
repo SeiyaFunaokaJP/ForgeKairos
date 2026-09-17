@@ -237,7 +237,7 @@ pub fn init(cx: &mut App) {
                     return;
                 };
                 panel.update(cx, |panel, cx| {
-                    panel.push(false, false, window, cx);
+                    panel.push(git_panel::PushForce::No, false, window, cx);
                 });
             });
             workspace.register_action(|workspace, _: &git::PushTo, window, cx| {
@@ -245,7 +245,7 @@ pub fn init(cx: &mut App) {
                     return;
                 };
                 panel.update(cx, |panel, cx| {
-                    panel.push(false, true, window, cx);
+                    panel.push(git_panel::PushForce::No, true, window, cx);
                 });
             });
             workspace.register_action(|workspace, _: &git::ForcePush, window, cx| {
@@ -253,7 +253,15 @@ pub fn init(cx: &mut App) {
                     return;
                 };
                 panel.update(cx, |panel, cx| {
-                    panel.push(true, false, window, cx);
+                    panel.push(git_panel::PushForce::WithLease, false, window, cx);
+                });
+            });
+            workspace.register_action(|workspace, _: &git::ForcePushWithoutLease, window, cx| {
+                let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                    return;
+                };
+                panel.update(cx, |panel, cx| {
+                    panel.force_push_without_lease(window, cx);
                 });
             });
             workspace.register_action(|workspace, _: &git::Pull, window, cx| {
@@ -281,6 +289,7 @@ pub fn init(cx: &mut App) {
                 });
             });
         }
+        crate::commit_context_menu::register_commit_actions(workspace);
         workspace.register_action(|workspace, _: &git::Merge, window, cx| {
             let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
                 return;
@@ -1148,6 +1157,10 @@ mod remote_button {
                         .action("プッシュ", git::Push.boxed_clone())
                         .action("プッシュ先を指定してプッシュ", git::PushTo.boxed_clone())
                         .action("強制プッシュ", git::ForcePush.boxed_clone())
+                        .action(
+                            "強制プッシュ (lease なし)…",
+                            git::ForcePushWithoutLease.boxed_clone(),
+                        )
                         .separator()
                         .action("ブランチをマージ…", git::Merge.boxed_clone())
                         .action(

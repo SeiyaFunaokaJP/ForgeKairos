@@ -1596,6 +1596,7 @@ impl Editor {
         }
         self.select_next_state = None;
         self.select_prev_state = None;
+        self.kill_ring_yank_pop_state = None;
         self.select_syntax_node_history.try_clear();
         self.invalidate_autoclose_regions(&selection_anchors, buffer);
         self.snippet_stack.invalidate(&selection_anchors, buffer);

@@ -1182,6 +1182,17 @@
     },
   },
   {
+    // The multi-line field of the commit menu's modals (rewriting a commit message) behaves like
+    // the git panel's commit box: Enter makes a new line, cmd-enter confirms. The single-line
+    // fields (branch and tag names) keep Enter for confirming.
+    "context": "CommitTextModal > Editor && mode == auto_height",
+    "use_key_equivalents": true,
+    "bindings": {
+      "enter": "editor::Newline",
+      "cmd-enter": "menu::Confirm",
+    },
+  },
+  {
     // While a debug session is live, debugger controls take over their F-keys.
     // `f6` becomes Pause (region navigation stays on `cmd-f6` / `shift-f6`),
     // and step/stop/rerun are scoped here so they're inert when not debugging.

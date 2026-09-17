@@ -6,6 +6,7 @@ use ui::{ColumnWidthConfig, ResizableColumnsState, Table, UncheckedTableRow, div
 use crate::{
     TabularDataPreviewPane,
     grid::{GridCell, GridRow},
+    renderer::table_cell::CELL_FRAME_HEIGHT,
     settings::RowRenderMechanism,
     types::{AnyColumn, DisplayRow},
 };
@@ -147,9 +148,14 @@ impl TabularDataPreviewPane {
                 .when(
                     !this.settings.multiline_cells_effectively_enabled(),
                     |div| {
+                        // The frame is added on top of the line so that the
+                        // clamped cell is exactly as tall as the same cell is
+                        // with multiline on, and as the editor that opens over
+                        // it: clamping to the bare line height would cut two
+                        // pixels off the text at each end.
                         div.whitespace_nowrap()
                             .text_ellipsis()
-                            .h(row_height)
+                            .h(row_height + CELL_FRAME_HEIGHT)
                             .overflow_hidden()
                     },
                 )

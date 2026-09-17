@@ -139,6 +139,10 @@
     // The maximum width, in pixels, of the rendered markdown content when
     // limit_content_width is enabled.
     "max_width": 800,
+    // 単一の改行を、そのまま改行として表示するかどうか。オフにすると
+    // CommonMark どおり空白 1 つになり、行末の半角スペース 2 つ / `\` /
+    // `<br>` だけが改行になります。
+    "soft_break_as_hard_break": true,
   },
   // CSV / TSV などの表形式ファイルの設定
   "tabular_data": {
