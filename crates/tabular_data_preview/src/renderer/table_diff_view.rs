@@ -13,8 +13,8 @@ use chrono::{DateTime, Local};
 use editor::markdown_actions::display_width;
 use gpui::{
     Action as _, AnyElement, App, AppContext as _, Entity, EventEmitter, FocusHandle, Focusable,
-    HighlightStyle, PathPromptOptions, ScrollHandle, ScrollStrategy, StyledText, Subscription,
-    Task, UniformListScrollHandle, WeakEntity, actions, uniform_list,
+    Font, HighlightStyle, ListAlignment, ListOffset, ListState, PathPromptOptions, ScrollHandle,
+    StyledText, Subscription, Task, WeakEntity, actions, canvas, list,
 };
 use language::{Buffer, BufferEvent};
 use project::{DirectoryLister, Project};
@@ -22,18 +22,18 @@ use settings::Settings as _;
 use theme_settings::ThemeSettings;
 use ui::{
     ActiveTheme as _, Button, ButtonSize, ButtonStyle, Checkbox, ContextMenu, DropdownMenu,
-    ElementId, Icon, IconButton, IconName, IconSize, Label, LabelCommon as _, LabelSize,
-    ScrollAxes, Scrollbars, SharedString, StyledTypography as _, ToggleState, Tooltip,
-    WithScrollbar as _, div, h_flex, prelude::*, v_flex,
+    ElementId, Icon, IconButton, IconName, IconPosition, IconSize, Label, LabelCommon as _,
+    LabelSize, PopoverMenu, ScrollAxes, Scrollbars, SharedString, StyledTypography as _,
+    ToggleState, Tooltip, WithScrollbar as _, div, h_flex, prelude::*, v_flex,
 };
 use workspace::{
     Workspace,
-    item::{Item, TabContentParams},
+    item::{Item, ItemEvent, TabContentParams},
 };
 
 use crate::{
     TabularDataPreviewPane,
-    grid::{GridRect, GridRow, cell_line_height, column_label},
+    grid::{GridRect, GridRow, GridSelectionKind, cell_line_height, column_label},
     renderer::table_cell::CELL_FRAME_HEIGHT,
     table_diff::{
         CellCharDiff, ChangeStop, DiffRow, DiffRowKind, DiffSide, TableDiff, cell_at,
@@ -55,21 +55,27 @@ const RECOMPUTE_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis
 /// Rows sampled to size a column, the same bound the grid puts on it: enough to
 /// catch the shape of the data without walking a file of millions of rows.
 const COLUMN_WIDTH_SAMPLE_ROWS: usize = 200;
-/// Rough advance of one character in the buffer font. The comparison is read
-/// only, so unlike the grid's columns these cannot be dragged and the estimate
-/// is all there is.
-const COLUMN_WIDTH_PER_CHARACTER: f32 = 8.0;
+/// One character's width for each pixel of font size, for a buffer font whose
+/// advance cannot be read: the 8px the columns were sized at before they were
+/// measured, over the default 15px buffer font.
+const FALLBACK_CHARACTER_WIDTH_PER_FONT_SIZE: f32 = 8.0 / 15.0;
 const COLUMN_WIDTH_PADDING: f32 = 16.0;
 const MINIMUM_COLUMN_WIDTH: f32 = 64.0;
 const MAXIMUM_COLUMN_WIDTH: f32 = 320.0;
 /// Room for the row number and the padding around it.
 const ROW_NUMBER_PADDING: f32 = 14.0;
+const MINIMUM_ROW_NUMBER_DIGITS: usize = 2;
 /// The strip the two horizontal scrollbars are laid into, over the foot of the
 /// body the way a scrollbar always overlays what it scrolls.
 const HORIZONTAL_SCROLLBAR_HEIGHT: Pixels = px(12.);
 /// The header row's place in the element ids the panes are keyed by. It is not
 /// a row of the list, so it cannot collide with one.
 const HEADER_ELEMENT_INDEX: usize = usize::MAX;
+/// How far above and below the view the list measures rows it does not draw.
+/// The list only scrolls as far as the rows it has measured reach, so this
+/// is also how far one turn of the wheel can go in a frame where it has nothing
+/// else to go on.
+const LIST_OVERDRAW: Pixels = px(200.);
 
 /// Marks the two panes of the header row, so that a test can check that they
 /// are laid out beside each other and at the same width - the whole premise of
@@ -77,6 +83,25 @@ const HEADER_ELEMENT_INDEX: usize = usize::MAX;
 /// tests.
 pub(crate) const DIFF_LEFT_PANE_DEBUG_SELECTOR: &str = "tabular-diff-left-pane";
 pub(crate) const DIFF_RIGHT_PANE_DEBUG_SELECTOR: &str = "tabular-diff-right-pane";
+/// Marks the pane titles that are lists to pick from, which is what a test
+/// needs to tell them apart from the plain titles every other comparison has.
+const DIFF_LEFT_PICK_DEBUG_SELECTOR: &str = "tabular-diff-left-pick";
+const DIFF_RIGHT_PICK_DEBUG_SELECTOR: &str = "tabular-diff-right-pick";
+
+/// The most things one comparison of cells offers to pick from. Past it the
+/// pick list stops being something a person chooses from, and a whole column
+/// selected by its header would otherwise have every row of it read out as a
+/// candidate of its own.
+const MAX_CELL_CANDIDATES: usize = 100;
+/// The most cells a comparison of more than two candidates reads out of the
+/// grid, which is the budget the grid already puts on copying a selection.
+///
+/// Every candidate is read and held when the tab opens and read again by
+/// "再比較", so Ctrl+A over a wide table of a million rows would otherwise copy
+/// all of it cell by cell on the UI thread. Two candidates are exactly the two
+/// sides, which is all a comparison of cells has ever read, so they are left
+/// to that.
+const MAX_CELL_CANDIDATE_CELLS: usize = crate::grid::MAX_GRID_OPERATION_CELLS;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PaneSide {
@@ -118,8 +143,8 @@ impl LeftSource {
     }
 }
 
-/// One of the two blocks of a cell comparison, as what it takes to read the
-/// block again rather than as the values it held.
+/// One of the blocks of a cell comparison, as what it takes to read the block
+/// again rather than as the values it held.
 #[derive(Clone, Copy)]
 enum CellBlock {
     /// A rectangle of the grid, read cell by cell at the positions it covers.
@@ -168,18 +193,15 @@ enum DiffSource {
         left_delimiter: char,
         right_delimiter: char,
     },
-    /// Two blocks of cells lifted out of one grid. These do not follow the grid:
-    /// a block is a place in the table rather than a thing, and rows moving
-    /// under it would quietly change what the comparison is of. The user takes
-    /// it again when they want it again.
+    /// Blocks of cells lifted out of one grid, two of them side by side at a
+    /// time. These do not follow the grid: a block is a place in the table
+    /// rather than a thing, and rows moving under it would quietly change what
+    /// the comparison is of. The user takes it again when they want it again.
     Cells {
         /// Weak because the comparison outlives the grid's tab, which is exactly
         /// the case "take it again" has to refuse rather than guess at.
         grid: WeakEntity<TabularDataPreviewPane>,
-        left: CellBlock,
-        right: CellBlock,
-        left_rows: Vec<Vec<SharedString>>,
-        right_rows: Vec<Vec<SharedString>>,
+        comparison: CellComparison,
     },
 }
 
@@ -250,16 +272,40 @@ pub(crate) struct TableDiffView {
     /// Whether a comparison is in flight, which is all there is to show for a
     /// table big enough that aligning it takes a moment.
     is_computing: bool,
-    column_widths: Vec<Pixels>,
-    row_number_width: Pixels,
+    /// How many characters wide each column's widest value is, full width ones
+    /// counting as two. Kept in characters rather than pixels so that the
+    /// columns follow the buffer font the moment it changes, rather than when
+    /// the comparison is next taken.
+    column_characters: Vec<usize>,
+    /// How many digits the largest row number either pane shows has.
+    row_number_digits: usize,
+    /// How wide one character of a value is drawn, which is what the columns
+    /// are sized in. The comparison is read only, so unlike the grid's columns
+    /// these cannot be dragged wider, and a column sized from a guess narrower
+    /// than the font hid the end of a value - the part that changed included -
+    /// behind an ellipsis.
+    character_width: Pixels,
+    /// The buffer font and size `character_width` was measured in.
+    character_width_measured_in: Option<(Font, Pixels)>,
     /// `None` while every row is shown; the changed rows only when the view is
     /// filtered down to the differences.
     shown_rows: Option<Vec<usize>>,
     /// Which change "previous" and "next" last stopped at, as an index into
     /// [`TableDiff::change_blocks`].
     current_change: Option<usize>,
-    row_height: Pixels,
-    list_scroll: UniformListScrollHandle,
+    /// How tall one line of a cell is. A row is as many of these tall as its
+    /// tallest value has lines, both panes together, so that the two halves of
+    /// a row stay side by side.
+    line_height: Pixels,
+    list_state: ListState,
+    /// The width the list's rows were last given a height estimate at, or
+    /// `None` before they ever were.
+    ///
+    /// The list forgets every height it has not measured whenever it is laid
+    /// out at a new width, its first layout included, and a list that only
+    /// knows the rows it has drawn offers a scrollbar sized to those rows and
+    /// a wheel that stops at the last of them.
+    list_width_estimated_at: Option<Pixels>,
     /// Shared by both panes, which is what keeps them showing the same columns:
     /// the handle holds the offset, so a scroll in either pane moves both.
     horizontal_scroll: ScrollHandle,
@@ -416,12 +462,13 @@ impl TableDiffView {
         .detach();
     }
 
-    /// Compares two blocks of cells inside one grid.
+    /// Compares blocks of cells inside one grid.
     ///
-    /// A selection two columns wide compares the two columns, a selection two
-    /// rows tall in one column compares the two cells, and a single cell is
-    /// compared against the clipboard. Anything else has no two things in it to
-    /// compare, and says so.
+    /// Every block picked with Ctrl, every row of rows picked by their numbers,
+    /// every column of a block several columns wide, or every cell of a block
+    /// one column wide is something either side can show. The first two start
+    /// out side by side and the pane titles pick among the rest. A single cell
+    /// is compared against the clipboard.
     pub(crate) fn diff_selected_cells(
         workspace: &mut Workspace,
         grid: Entity<TabularDataPreviewPane>,
@@ -432,31 +479,19 @@ impl TableDiffView {
             .read_from_clipboard()
             .and_then(|item| item.text())
             .unwrap_or_default();
-        let Some(comparison) = grid.update(cx, |grid, cx| {
-            let comparison = cell_comparison(grid, &clipboard);
-            if comparison.is_none() {
-                grid.set_status_message(
-                    "Ctrl で 2 つの範囲を選ぶとその 2 つを比べます (2 列か 2 行でも、\
-                     1 つのセルはクリップボードと比べます)",
-                    cx,
-                );
-            }
-            comparison
-        }) else {
+        let Some(comparison) =
+            grid.update(cx, |grid, cx| match cell_comparison(grid, &clipboard) {
+                Ok(comparison) => Some(comparison),
+                Err(refusal) => {
+                    grid.set_status_message(refusal.message(), cx);
+                    None
+                }
+            })
+        else {
             return;
         };
 
-        let view = cx.new(|cx| {
-            Self::from_cells(
-                comparison.title,
-                comparison.left_title,
-                comparison.right_title,
-                grid.downgrade(),
-                comparison.left,
-                comparison.right,
-                cx,
-            )
-        });
+        let view = cx.new(|cx| Self::from_cells(grid.downgrade(), comparison, cx));
         workspace.add_item_to_active_pane(Box::new(view), None, true, window, cx);
     }
 
@@ -506,38 +541,30 @@ impl TableDiffView {
             }
         }
 
-        let mut view = Self::empty(title, left_title, right_title, cx);
-        view.first_row_is_header = first_row_is_header;
-        view.source = DiffSource::Files {
+        let source = DiffSource::Files {
             left,
             left_text: SharedString::default(),
             buffer,
             left_delimiter,
             right_delimiter,
         };
+        let mut view = Self::empty(title, left_title, right_title, source, cx);
+        view.first_row_is_header = first_row_is_header;
         view._subscriptions = subscriptions;
         view.recompute(false, cx);
         view
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn from_cells(
-        title: SharedString,
-        left_title: SharedString,
-        right_title: SharedString,
         grid: WeakEntity<TabularDataPreviewPane>,
-        left: CellComparisonSide,
-        right: CellComparisonSide,
+        comparison: CellComparison,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut view = Self::empty(title, left_title, right_title, cx);
-        view.source = DiffSource::Cells {
-            grid,
-            left: left.block,
-            right: right.block,
-            left_rows: left.rows,
-            right_rows: right.rows,
-        };
+        let title = comparison.title();
+        let left_title = comparison.pane_title(PaneSide::Left);
+        let right_title = comparison.pane_title(PaneSide::Right);
+        let source = DiffSource::Cells { grid, comparison };
+        let mut view = Self::empty(title, left_title, right_title, source, cx);
         view.left_taken_at = Some(Local::now());
         view.recompute(false, cx);
         view
@@ -547,20 +574,15 @@ impl TableDiffView {
         title: SharedString,
         left_title: SharedString,
         right_title: SharedString,
+        source: DiffSource,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self {
+        let mut view = Self {
             focus_handle: cx.focus_handle(),
             title,
             left_title,
             right_title,
-            source: DiffSource::Cells {
-                grid: WeakEntity::new_invalid(),
-                left: CellBlock::Clipboard,
-                right: CellBlock::Clipboard,
-                left_rows: Vec::new(),
-                right_rows: Vec::new(),
-            },
+            source,
             first_row_is_header: false,
             left: DiffSide::default(),
             right: DiffSide::default(),
@@ -568,16 +590,21 @@ impl TableDiffView {
             left_taken_at: None,
             left_is_stale: false,
             is_computing: false,
-            column_widths: Vec::new(),
-            row_number_width: px(MINIMUM_COLUMN_WIDTH),
+            column_characters: Vec::new(),
+            row_number_digits: MINIMUM_ROW_NUMBER_DIGITS,
+            character_width: px(0.),
+            character_width_measured_in: None,
             shown_rows: None,
             current_change: None,
-            row_height: cell_line_height(cx) + CELL_FRAME_HEIGHT,
-            list_scroll: UniformListScrollHandle::new(),
+            line_height: cell_line_height(cx),
+            list_state: ListState::new(0, ListAlignment::Top, LIST_OVERDRAW),
+            list_width_estimated_at: None,
             horizontal_scroll: ScrollHandle::new(),
             recompute_task: None,
             _subscriptions: Vec::new(),
-        }
+        };
+        view.measure_character_width(cx);
+        view
     }
 
     /// The two sides as they are now, copied so that the alignment can run off
@@ -610,13 +637,9 @@ impl TableDiffView {
                     first_row_is_header,
                 }
             }
-            DiffSource::Cells {
-                left_rows,
-                right_rows,
-                ..
-            } => DiffInput::Rows {
-                left_rows: left_rows.clone(),
-                right_rows: right_rows.clone(),
+            DiffSource::Cells { comparison, .. } => DiffInput::Rows {
+                left_rows: comparison.rows(PaneSide::Left).to_vec(),
+                right_rows: comparison.rows(PaneSide::Right).to_vec(),
                 first_row_is_header,
             },
         };
@@ -635,13 +658,7 @@ impl TableDiffView {
     /// would not have done by themselves for a comparison of cells, which is a
     /// place in a grid rather than a thing that can announce that it changed.
     fn recompare(&mut self, cx: &mut Context<Self>) {
-        let blocks = match &self.source {
-            DiffSource::Cells {
-                grid, left, right, ..
-            } => Some((grid.clone(), *left, *right)),
-            DiffSource::Files { .. } => None,
-        };
-        if let Some((grid, left_block, right_block)) = blocks {
+        if let DiffSource::Cells { grid, comparison } = &mut self.source {
             // The reason is already on the toolbar and in the button's tooltip,
             // so a comparison that cannot be taken again leaves what it shows
             // alone rather than emptying itself.
@@ -652,23 +669,34 @@ impl TableDiffView {
                 .read_from_clipboard()
                 .and_then(|item| item.text())
                 .unwrap_or_default();
-            let (left, right) = grid.read_with(cx, |grid, _cx| {
-                (
-                    read_cell_block(grid, left_block, &clipboard),
-                    read_cell_block(grid, right_block, &clipboard),
-                )
-            });
-            if let DiffSource::Cells {
-                left_rows,
-                right_rows,
-                ..
-            } = &mut self.source
-            {
-                *left_rows = left;
-                *right_rows = right;
+            // Every candidate is read again, not only the two on screen: one
+            // picked afterwards is shown from what was read here, and it would
+            // otherwise be older than the time the left pane's title gives.
+            let pane = grid.read(cx);
+            for candidate in &mut comparison.candidates {
+                candidate.rows = read_cell_block(pane, candidate.block, &clipboard);
             }
             self.left_taken_at = Some(Local::now());
         }
+        self.recompute(false, cx);
+    }
+
+    /// Puts another of the things the selection offered on one side.
+    ///
+    /// It is compared as it was read when the comparison was last taken, like
+    /// the two it replaces: picking is no reason to start following the grid,
+    /// and it has to keep working once the grid's tab is closed.
+    fn pick_cell_candidate(&mut self, side: PaneSide, index: usize, cx: &mut Context<Self>) {
+        let DiffSource::Cells { comparison, .. } = &mut self.source else {
+            return;
+        };
+        if !comparison.pick(side, index) {
+            return;
+        }
+        self.title = comparison.title();
+        self.left_title = comparison.pane_title(PaneSide::Left);
+        self.right_title = comparison.pane_title(PaneSide::Right);
+        cx.emit(ItemEvent::UpdateTab);
         self.recompute(false, cx);
     }
 
@@ -699,13 +727,14 @@ impl TableDiffView {
             let computed = cx.background_spawn(async move { input.compute() }).await;
             this.update(cx, |this, cx| {
                 let (left, right, diff) = computed;
-                this.column_widths = column_widths(&left, &right, diff.column_count);
-                this.row_number_width = row_number_width(&left, &right);
+                this.column_characters = column_characters(&left, &right, diff.column_count);
+                this.row_number_digits = row_number_digits(&left, &right);
                 this.left = left;
                 this.right = right;
                 this.diff = diff;
                 this.is_computing = false;
                 this.refresh_shown_rows();
+                this.sync_list_state();
                 cx.notify();
             })
             .ok();
@@ -750,11 +779,143 @@ impl TableDiffView {
     }
 
     fn toggle_only_differences(&mut self, cx: &mut Context<Self>) {
+        let scroll_top = self.list_state.logical_scroll_top();
+        let top_row = self.row_at(scroll_top.item_ix);
         self.shown_rows = match self.shown_rows {
             Some(_) => None,
             None => Some(self.diff.changed_row_indices()),
         };
+        // The positions on screen stand for different rows once the filter
+        // changes, so the view is kept on the row it was showing - or, when
+        // that row is filtered out, on the first change after it - rather than
+        // on a position that now means something else.
+        let scroll_top = match top_row {
+            Some(row) => {
+                let item_ix = self.shown_index_of(row);
+                let offset_in_item = if self.row_at(item_ix) == Some(row) {
+                    scroll_top.offset_in_item
+                } else {
+                    px(0.)
+                };
+                ListOffset {
+                    item_ix,
+                    offset_in_item,
+                }
+            }
+            None => scroll_top,
+        };
+        self.reset_list(scroll_top);
         cx.notify();
+    }
+
+    /// Brings the list up to the rows about to be shown after a comparison was
+    /// taken again, holding on to where it was scrolled to.
+    fn sync_list_state(&mut self) {
+        let row_count = self.shown_row_count();
+        if self.list_state.item_count() == row_count {
+            // The rows are the same in number but their values may not be,
+            // and a value that gained a line makes its row taller.
+            self.list_state.remeasure_items(0..row_count);
+        } else {
+            // `reset` throws the scroll position away along with the rows.
+            let scroll_top = self.list_state.logical_scroll_top();
+            self.reset_list(scroll_top);
+        }
+    }
+
+    /// Replaces every row of the list with a fresh one estimated at a single
+    /// line, which the rows correct as they are drawn, and scrolls it to
+    /// `scroll_top`.
+    fn reset_list(&mut self, scroll_top: ListOffset) {
+        self.list_state
+            .reset_with_uniform_height(self.shown_row_count(), self.row_height(1));
+        self.list_state.scroll_to(scroll_top);
+    }
+
+    /// Puts the row height estimate back after the list dropped it for being
+    /// laid out at a new width (see [`Self::list_width_estimated_at`]).
+    fn restore_row_height_estimate(&mut self) {
+        let list_width = self.list_state.viewport_bounds().size.width;
+        if list_width <= px(0.) || self.list_width_estimated_at == Some(list_width) {
+            return;
+        }
+        self.list_width_estimated_at = Some(list_width);
+        let scroll_top = self.list_state.logical_scroll_top();
+        self.reset_list(scroll_top);
+    }
+
+    fn row_height(&self, lines: usize) -> Pixels {
+        self.line_height * lines + CELL_FRAME_HEIGHT
+    }
+
+    /// Measures how wide one character of the buffer font is drawn, unless it
+    /// already was in the font and size the cells are drawn in now.
+    fn measure_character_width(&mut self, cx: &App) {
+        let settings = ThemeSettings::get_global(cx);
+        let font = &settings.buffer_font;
+        let font_size = settings.buffer_font_size(cx);
+        if let Some((measured_font, measured_size)) = &self.character_width_measured_in
+            && measured_font == font
+            && *measured_size == font_size
+        {
+            return;
+        }
+        let text_system = cx.text_system();
+        let font_id = text_system.resolve_font(font);
+        self.character_width = match text_system.em_advance(font_id, font_size) {
+            Ok(width) => width,
+            Err(error) => {
+                log::error!(
+                    "failed to measure a character of {:?} for a table comparison: {error}",
+                    font.family
+                );
+                font_size * FALLBACK_CHARACTER_WIDTH_PER_FONT_SIZE
+            }
+        };
+        self.character_width_measured_in = Some((font.clone(), font_size));
+    }
+
+    /// How many lines the row at a position on screen is tall.
+    fn shown_row_line_count(&self, shown_index: usize) -> usize {
+        let Some(row) = self
+            .row_at(shown_index)
+            .and_then(|row| self.diff.rows.get(row))
+        else {
+            return 1;
+        };
+        let left = row
+            .left_row
+            .map_or(&[] as &[SharedString], |row| self.left.row(row));
+        let right = row
+            .right_row
+            .map_or(&[] as &[SharedString], |row| self.right.row(row));
+        tallest_cell_line_count([left, right])
+    }
+
+    /// Scrolls a row to the middle of the view, which leaves what comes before
+    /// and after a change in sight along with it.
+    ///
+    /// Worked out from the rows' own line counts rather than asked of the list,
+    /// which knows the heights only of the rows it has drawn and would count
+    /// the rest as nothing.
+    fn scroll_row_to_center(&self, shown_index: usize) {
+        let viewport_height = self.list_state.viewport_bounds().size.height;
+        let row_height = self.row_height(self.shown_row_line_count(shown_index));
+        let mut space_above = ((viewport_height - row_height) * 0.5).max(px(0.));
+        let mut scroll_top = ListOffset {
+            item_ix: shown_index,
+            offset_in_item: px(0.),
+        };
+        while space_above > px(0.) && scroll_top.item_ix > 0 {
+            scroll_top.item_ix -= 1;
+            let height = self.row_height(self.shown_row_line_count(scroll_top.item_ix));
+            if height >= space_above {
+                scroll_top.offset_in_item = height - space_above;
+                break;
+            }
+            space_above -= height;
+        }
+        self.list_state.scroll_to(scroll_top);
     }
 
     fn go_to_change(&mut self, forward: bool, cx: &mut Context<Self>) {
@@ -773,10 +934,8 @@ impl TableDiffView {
             // The header has a strip of its own above the list and is always on
             // screen, so stopping at it means putting the top of the table under
             // it rather than scrolling to a row.
-            Some(ChangeStop::Header) => self.list_scroll.scroll_to_item(0, ScrollStrategy::Top),
-            Some(&ChangeStop::Row(row)) => self
-                .list_scroll
-                .scroll_to_item(self.shown_index_of(row), ScrollStrategy::Center),
+            Some(ChangeStop::Header) => self.list_state.scroll_to(ListOffset::default()),
+            Some(&ChangeStop::Row(row)) => self.scroll_row_to_center(self.shown_index_of(row)),
             None => {}
         }
         cx.notify();
@@ -797,7 +956,17 @@ impl TableDiffView {
 
 impl Render for TableDiffView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.row_height = cell_line_height(cx) + CELL_FRAME_HEIGHT;
+        let line_height = cell_line_height(cx);
+        if line_height != self.line_height {
+            self.line_height = line_height;
+            // Every row is a whole number of lines tall, so a new font size
+            // changes the height of all of them.
+            self.list_state.remeasure();
+        }
+        self.measure_character_width(cx);
+        if self.diff.column_count > 0 {
+            self.restore_row_height_estimate();
+        }
         let colors = cx.theme().colors();
 
         v_flex()
@@ -1005,28 +1174,92 @@ impl TableDiffView {
 
     fn render_pane_titles(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = cx.theme().colors();
-        let title = |text: SharedString| {
-            div()
-                .flex_1()
-                .min_w_0()
-                .px_2()
-                .py_0p5()
-                .overflow_hidden()
-                .child(
-                    Label::new(text)
-                        .size(LabelSize::Small)
-                        .color(Color::Muted)
-                        .single_line(),
-                )
-        };
         h_flex()
             .flex_none()
             .w_full()
             .bg(colors.surface_background)
             .font_ui(cx)
-            .child(title(self.left_pane_title()))
+            .child(self.render_pane_title(PaneSide::Left, self.left_pane_title(), cx))
             .child(self.render_divider(cx))
-            .child(title(self.right_title.clone()))
+            .child(self.render_pane_title(PaneSide::Right, self.right_title.clone(), cx))
+            .into_any_element()
+    }
+
+    /// One pane's title. When the selection offered more than the two things
+    /// on screen, it is also where the side is switched to another of them.
+    fn render_pane_title(
+        &self,
+        side: PaneSide,
+        text: SharedString,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let title = div().flex_1().min_w_0().px_2().py_0p5().overflow_hidden();
+        let comparison = match &self.source {
+            DiffSource::Cells { comparison, .. } if comparison.candidates.len() > 2 => comparison,
+            _ => {
+                return title
+                    .child(
+                        Label::new(text)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .single_line(),
+                    )
+                    .into_any_element();
+            }
+        };
+
+        let (id, debug_selector) = match side {
+            PaneSide::Left => ("tabular-diff-left-pick", DIFF_LEFT_PICK_DEBUG_SELECTOR),
+            PaneSide::Right => ("tabular-diff-right-pick", DIFF_RIGHT_PICK_DEBUG_SELECTOR),
+        };
+        let names: Vec<SharedString> = comparison
+            .candidates
+            .iter()
+            .map(|candidate| candidate.pane_title.clone())
+            .collect();
+        let picked = comparison.picked(side);
+        // Weak because the menu outlives this frame: one left open over a tab
+        // being closed must not keep the comparison alive.
+        let view = cx.weak_entity();
+        title
+            .debug_selector(|| debug_selector.to_owned())
+            .child(
+                PopoverMenu::new(ElementId::Name(id.into()))
+                    .trigger_with_tooltip(
+                        Button::new(ElementId::NamedInteger(id.into(), 0), text)
+                            .style(ButtonStyle::Subtle)
+                            .size(ButtonSize::Compact)
+                            .label_size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .truncate(true)
+                            .end_icon(Icon::new(IconName::ChevronDown).size(IconSize::XSmall)),
+                        Tooltip::text("この側で比べるものを選びます"),
+                    )
+                    .menu(move |window, cx| {
+                        let names = names.clone();
+                        let view = view.clone();
+                        Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
+                            names
+                                .into_iter()
+                                .enumerate()
+                                .fold(menu, |menu, (index, name)| {
+                                    let view = view.clone();
+                                    menu.toggleable_entry(
+                                        name,
+                                        index == picked,
+                                        IconPosition::Start,
+                                        None,
+                                        move |_window, cx| {
+                                            view.update(cx, |view, cx| {
+                                                view.pick_cell_candidate(side, index, cx);
+                                            })
+                                            .ok();
+                                        },
+                                    )
+                                })
+                        }))
+                    }),
+            )
             .into_any_element()
     }
 
@@ -1050,11 +1283,16 @@ impl TableDiffView {
         // claim the file has a line there.
         let left_present = !has_header || self.left.header.is_some();
         let right_present = !has_header || self.right.header.is_some();
+        let lines = tallest_cell_line_count(
+            [(left_present, left_cells), (right_present, right_cells)]
+                .into_iter()
+                .filter_map(|(present, cells)| present.then_some(cells)),
+        );
 
         h_flex()
             .flex_none()
             .w_full()
-            .h(self.row_height)
+            .h(self.row_height(lines))
             .items_stretch()
             .bg(colors.title_bar_background)
             .border_b_1()
@@ -1121,28 +1359,57 @@ impl TableDiffView {
                 .into_any_element();
         }
 
-        let row_count = self.shown_row_count();
         div()
             .relative()
             .flex_1()
             .min_h_0()
             .w_full()
             .child(
-                uniform_list(
-                    "tabular-diff-rows",
-                    row_count,
-                    cx.processor(|this, range: Range<usize>, _window, cx| {
-                        range
-                            .map(|shown_index| this.render_aligned_row(shown_index, cx))
-                            .collect()
+                list(
+                    self.list_state.clone(),
+                    cx.processor(|this, shown_index: usize, _window, cx| {
+                        this.render_aligned_row(shown_index, cx)
                     }),
                 )
-                .size_full()
-                .track_scroll(&self.list_scroll),
+                .size_full(),
             )
-            .vertical_scrollbar_for(&self.list_scroll, window, cx)
+            .child(self.render_list_width_watcher(cx))
+            .vertical_scrollbar_for(&self.list_state, window, cx)
             .child(self.render_horizontal_scrollbars(window, cx))
             .into_any_element()
+    }
+
+    /// Draws nothing, and asks for another frame when the list has just been
+    /// laid out at a width its rows' height estimate was not made for, which is
+    /// when the list throws the estimate away (see
+    /// [`Self::list_width_estimated_at`]).
+    ///
+    /// The width the list ends up at is only known once it has been laid out,
+    /// after this view was rendered, so this sits after the list: by the time
+    /// it is laid out itself, the list's layout for this frame is there to read.
+    fn render_list_width_watcher(&self, cx: &Context<Self>) -> AnyElement {
+        let list_state = self.list_state.clone();
+        let estimated_at = self.list_width_estimated_at;
+        let view = cx.entity().downgrade();
+        canvas(
+            move |_bounds, window, _cx| {
+                let list_width = list_state.viewport_bounds().size.width;
+                if list_width > px(0.) && estimated_at != Some(list_width) {
+                    // A view notified while the frame is being laid out is
+                    // forgotten along with the frame, so the notification goes
+                    // out with the next one instead.
+                    window.on_next_frame(move |_window, cx| {
+                        // The tab may have been closed by then, and a view
+                        // that is gone has nothing left to redraw.
+                        view.update(cx, |_, cx| cx.notify()).ok();
+                    });
+                }
+            },
+            |_bounds, _state, _window, _cx| {},
+        )
+        .absolute()
+        .size_0()
+        .into_any_element()
     }
 
     /// One horizontal scrollbar under each pane. The two track the one shared
@@ -1176,7 +1443,7 @@ impl TableDiffView {
             .flex_1()
             .min_w_0()
             .h_full()
-            .child(div().w(self.row_number_width).flex_none())
+            .child(div().w(self.row_number_width()).flex_none())
             .child(
                 div().flex_1().min_w_0().h_full().custom_scrollbars(
                     Scrollbars::new(ScrollAxes::Horizontal)
@@ -1203,11 +1470,11 @@ impl TableDiffView {
             .row_at(shown_index)
             .and_then(|row| self.diff.rows.get(row));
         let Some(row) = row else {
-            return div().h(self.row_height).w_full().into_any_element();
+            return div().h(self.row_height(1)).w_full().into_any_element();
         };
 
         h_flex()
-            .h(self.row_height)
+            .h(self.row_height(self.shown_row_line_count(shown_index)))
             .w_full()
             .items_stretch()
             .child(self.render_pane(
@@ -1242,10 +1509,14 @@ impl TableDiffView {
     }
 
     fn column_width(&self, column: usize) -> Pixels {
-        self.column_widths
-            .get(column)
-            .copied()
-            .unwrap_or(px(MINIMUM_COLUMN_WIDTH))
+        let characters = self.column_characters.get(column).copied().unwrap_or(0);
+        (self.character_width * characters as f32 + px(COLUMN_WIDTH_PADDING))
+            .clamp(px(MINIMUM_COLUMN_WIDTH), px(MAXIMUM_COLUMN_WIDTH))
+    }
+
+    /// Wide enough for the largest number either pane puts in front of a row.
+    fn row_number_width(&self) -> Pixels {
+        self.character_width * self.row_number_digits as f32 + px(ROW_NUMBER_PADDING)
     }
 
     /// Width of one pane's cells laid end to end.
@@ -1277,6 +1548,13 @@ impl TableDiffView {
                 _ => None,
             }
         };
+        let highlight = HighlightStyle {
+            background_color: Some(match side {
+                PaneSide::Left => status.deleted_background,
+                PaneSide::Right => status.created_background,
+            }),
+            ..HighlightStyle::default()
+        };
 
         let cells = (0..self.diff.column_count).map(|column| {
             let width = self.column_width(column);
@@ -1286,7 +1564,24 @@ impl TableDiffView {
                 ""
             };
             let is_changed = row.kind == DiffRowKind::Modified && row.is_changed(column);
-            div()
+            let highlights = if is_changed {
+                changed_character_ranges(side, value, cell_at(row.other_cells, column))
+            } else {
+                Vec::new()
+            };
+            let lines = highlighted_lines(value, &highlights)
+                .into_iter()
+                .map(|(line, ranges)| {
+                    if ranges.is_empty() {
+                        SharedString::from(line.to_owned()).into_any_element()
+                    } else {
+                        StyledText::new(line.to_owned())
+                            .with_highlights(ranges.into_iter().map(|range| (range, highlight)))
+                            .into_any_element()
+                    }
+                });
+            v_flex()
+                .debug_selector(|| cell_debug_selector(side, element_index, column))
                 .w(width)
                 .flex_none()
                 .h_full()
@@ -1297,12 +1592,7 @@ impl TableDiffView {
                 .border_r_1()
                 .border_color(colors.border_variant)
                 .when(is_changed, |this| this.bg(status.modified_background))
-                .child(if is_changed {
-                    let other = cell_at(row.other_cells, column);
-                    highlighted_cell(side, value, other, cx)
-                } else {
-                    SharedString::from(value.to_owned()).into_any_element()
-                })
+                .children(lines)
         });
 
         let element_id = ElementId::NamedInteger(
@@ -1318,10 +1608,14 @@ impl TableDiffView {
             .min_w_0()
             .h_full()
             .items_stretch()
+            // The row was sized in lines of exactly this height, so the text
+            // has to be laid out in them too or a value of many lines would
+            // outgrow its row.
+            .line_height(self.line_height)
             .when_some(background, |this, background| this.bg(background))
             .child(
                 div()
-                    .w(self.row_number_width)
+                    .w(self.row_number_width())
                     .flex_none()
                     .h_full()
                     .px_1()
@@ -1354,6 +1648,17 @@ impl TableDiffView {
     }
 }
 
+/// Marks one cell of one pane, so that a test can check the width it was drawn
+/// at. `element_index` is the row's position on screen, or
+/// [`HEADER_ELEMENT_INDEX`] for the header strip.
+fn cell_debug_selector(side: PaneSide, element_index: usize, column: usize) -> String {
+    let side = match side {
+        PaneSide::Left => "left",
+        PaneSide::Right => "right",
+    };
+    format!("tabular-diff-{side}-cell-{element_index}-{column}")
+}
+
 /// One aligned row as one pane has to draw it.
 struct PaneRow<'a> {
     kind: DiffRowKind,
@@ -1374,36 +1679,76 @@ impl PaneRow<'_> {
     }
 }
 
-/// A changed cell with the characters that differ picked out, so that a long
-/// value whose middle changed does not leave the user comparing two strings by
-/// eye.
-fn highlighted_cell(side: PaneSide, value: &str, other: &str, cx: &App) -> AnyElement {
-    let CellCharDiff { left, right } = match side {
-        PaneSide::Left => cell_char_diff(value, other),
-        PaneSide::Right => cell_char_diff(other, value),
-    };
-    let ranges = match side {
-        PaneSide::Left => left,
-        PaneSide::Right => right,
-    };
-    let status = cx.theme().status();
-    let background = match side {
-        PaneSide::Left => status.deleted_background,
-        PaneSide::Right => status.created_background,
-    };
-    let highlight = HighlightStyle {
-        background_color: Some(background),
-        ..HighlightStyle::default()
-    };
-    StyledText::new(value.to_owned())
-        .with_highlights(ranges.into_iter().map(|range| (range, highlight)))
-        .into_any_element()
+/// The characters of a changed cell that differ from the other pane's value, as
+/// byte ranges into `value`, so that a long value whose middle changed does not
+/// leave the user comparing two strings by eye.
+fn changed_character_ranges(side: PaneSide, value: &str, other: &str) -> Vec<Range<usize>> {
+    match side {
+        PaneSide::Left => {
+            let CellCharDiff { left, .. } = cell_char_diff(value, other);
+            left
+        }
+        PaneSide::Right => {
+            let CellCharDiff { right, .. } = cell_char_diff(other, value);
+            right
+        }
+    }
 }
 
-fn column_widths(left: &DiffSide, right: &DiffSide, column_count: usize) -> Vec<Pixels> {
+/// How many lines a value is drawn on.
+fn cell_line_count(value: &str) -> usize {
+    value.split('\n').count()
+}
+
+/// How many lines the tallest of these cells is drawn on, which is how tall the
+/// row holding them is: a comparison shows every value in full, since clipping
+/// one could hide the very line that changed.
+fn tallest_cell_line_count<'a>(rows: impl IntoIterator<Item = &'a [SharedString]>) -> usize {
+    rows.into_iter()
+        .flatten()
+        .map(|cell| cell_line_count(cell))
+        .max()
+        .unwrap_or(1)
+        .max(1)
+}
+
+/// A value split into the lines it is drawn as, each with the parts of
+/// `highlights` that fall on it made relative to the line.
+///
+/// Every line is drawn as a text of its own because a text is truncated as
+/// though it were one line: a value wider than its column would be cut off at
+/// the end of its first line and the rest of it, changes included, never drawn.
+fn highlighted_lines<'a>(
+    value: &'a str,
+    highlights: &[Range<usize>],
+) -> Vec<(&'a str, Vec<Range<usize>>)> {
+    let mut lines = Vec::new();
+    let mut line_start = 0;
+    for line in value.split('\n') {
+        // A carriage return ahead of the line feed belongs to the line break,
+        // and drawn as part of the line it would show up as a stray glyph.
+        let shown = line.strip_suffix('\r').unwrap_or(line);
+        let shown_end = line_start + shown.len();
+        let ranges = highlights
+            .iter()
+            .filter_map(|range| {
+                let start = range.start.max(line_start);
+                let end = range.end.min(shown_end);
+                (start < end).then(|| start - line_start..end - line_start)
+            })
+            .collect();
+        lines.push((shown, ranges));
+        line_start += line.len() + '\n'.len_utf8();
+    }
+    lines
+}
+
+/// How many characters wide the widest value of each column is, over both
+/// sides, full width characters counting as two.
+fn column_characters(left: &DiffSide, right: &DiffSide, column_count: usize) -> Vec<usize> {
     (0..column_count)
         .map(|column| {
-            let widest = [left, right]
+            [left, right]
                 .into_iter()
                 .flat_map(|side| {
                     side.header.iter().map(Vec::as_slice).chain(
@@ -1421,22 +1766,17 @@ fn column_widths(left: &DiffSide, right: &DiffSide, column_count: usize) -> Vec<
                         .unwrap_or(0)
                 })
                 .max()
-                .unwrap_or(0);
-            px(
-                (widest as f32 * COLUMN_WIDTH_PER_CHARACTER + COLUMN_WIDTH_PADDING)
-                    .clamp(MINIMUM_COLUMN_WIDTH, MAXIMUM_COLUMN_WIDTH),
-            )
+                .unwrap_or(0)
         })
         .collect()
 }
 
-/// Wide enough for the largest number either pane puts in front of a row. That
-/// is the last row's line rather than the row count: one quoted line break puts
-/// the two apart.
-fn row_number_width(left: &DiffSide, right: &DiffSide) -> Pixels {
+/// How many digits the largest number either pane puts in front of a row has.
+/// That is the last row's line rather than the row count: one quoted line break
+/// puts the two apart.
+fn row_number_digits(left: &DiffSide, right: &DiffSide) -> usize {
     let last = left.last_row_number().max(right.last_row_number()).max(1);
-    let digits = last.to_string().len().max(2);
-    px(digits as f32 * COLUMN_WIDTH_PER_CHARACTER + ROW_NUMBER_PADDING)
+    last.to_string().len().max(MINIMUM_ROW_NUMBER_DIGITS)
 }
 
 fn file_name(buffer: &Entity<Buffer>, cx: &App) -> String {
@@ -1481,152 +1821,289 @@ async fn load_project_file(
         .await
 }
 
-/// What a comparison of two blocks of cells inside one grid is made of.
-struct CellComparison {
-    title: SharedString,
-    left_title: SharedString,
-    right_title: SharedString,
-    left: CellComparisonSide,
-    right: CellComparisonSide,
-}
-
-/// One side of it: the values as they were read, and where they were read from
-/// so that "再比較" can read them again.
-struct CellComparisonSide {
+/// One thing a comparison of cells can put on either side: where it was read
+/// from, so that "再比較" can read it again, and the values it held then.
+struct CellCandidate {
+    /// What the pane's title and the pick list call it.
+    pane_title: SharedString,
+    /// What the tab calls it, which is shorter where it can be: the tab says
+    /// "セルの比較" and names both sides, so "列" would only crowd a column's
+    /// letter and a cell's address already says its row. A whole row has no
+    /// shorter name than "行 N".
+    tab_title: SharedString,
     block: CellBlock,
     rows: Vec<Vec<SharedString>>,
 }
 
-impl CellComparisonSide {
-    fn new(grid: &TabularDataPreviewPane, block: CellBlock, clipboard: &str) -> Self {
-        Self {
-            rows: read_cell_block(grid, block, clipboard),
-            block,
+/// What a comparison of cells inside one grid is made of: everything the
+/// selection offered to compare, and which two of those are side by side.
+struct CellComparison {
+    /// In the order the selection offered them, which is the order the pick
+    /// lists show them in.
+    candidates: Vec<CellCandidate>,
+    left: usize,
+    right: usize,
+}
+
+impl CellComparison {
+    fn picked(&self, side: PaneSide) -> usize {
+        match side {
+            PaneSide::Left => self.left,
+            PaneSide::Right => self.right,
         }
     }
 
-    fn rect(grid: &TabularDataPreviewPane, rect: GridRect) -> Self {
-        Self::new(grid, CellBlock::Rect(rect), "")
+    fn candidate(&self, side: PaneSide) -> Option<&CellCandidate> {
+        self.candidates.get(self.picked(side))
     }
 
-    /// One cell of the grid, which is a rectangle of one row and one column.
-    fn cell(grid: &TabularDataPreviewPane, row: usize, column: usize) -> Self {
-        Self::rect(
-            grid,
-            GridRect {
-                first_row: row,
-                last_row: row,
-                first_col: column,
-                last_col: column,
-            },
+    fn rows(&self, side: PaneSide) -> &[Vec<SharedString>] {
+        self.candidate(side)
+            .map(|candidate| candidate.rows.as_slice())
+            .unwrap_or_default()
+    }
+
+    fn pane_title(&self, side: PaneSide) -> SharedString {
+        self.candidate(side)
+            .map(|candidate| candidate.pane_title.clone())
+            .unwrap_or_default()
+    }
+
+    fn title(&self) -> SharedString {
+        let tab_title = |side| {
+            self.candidate(side)
+                .map(|candidate| candidate.tab_title.clone())
+                .unwrap_or_default()
+        };
+        format!(
+            "セルの比較 ({} ↔ {})",
+            tab_title(PaneSide::Left),
+            tab_title(PaneSide::Right)
         )
+        .into()
+    }
+
+    /// Puts the candidate at `index` on `side`, and says whether that changed
+    /// anything.
+    ///
+    /// Picking the one the other side already shows swaps the two: a block
+    /// compared against itself has nothing to show, and swapping is what
+    /// picking it there most likely meant.
+    fn pick(&mut self, side: PaneSide, index: usize) -> bool {
+        if index >= self.candidates.len() {
+            return false;
+        }
+        let (this_side, other_side) = match side {
+            PaneSide::Left => (&mut self.left, &mut self.right),
+            PaneSide::Right => (&mut self.right, &mut self.left),
+        };
+        if *this_side == index {
+            return false;
+        }
+        if *other_side == index {
+            *other_side = *this_side;
+        }
+        *this_side = index;
+        true
     }
 }
 
-/// Reads the grid's selection as two things to compare.
+/// Why a selection is not compared: it has nothing in it to compare, or more
+/// than is worth reading.
+#[derive(Debug, PartialEq, Eq)]
+enum CellComparisonRefusal {
+    /// A single cell, with nothing on the clipboard to hold it against.
+    EmptyClipboard,
+    /// More things than the pick lists can sensibly offer.
+    TooManyCandidates(usize),
+    /// More cells than can be read ahead for candidates that may never be
+    /// shown.
+    TooManyCells(usize),
+}
+
+impl CellComparisonRefusal {
+    fn message(&self) -> SharedString {
+        match self {
+            CellComparisonRefusal::EmptyClipboard => {
+                "1 つのセルはクリップボードと比べますが、クリップボードが空です \
+                 (Ctrl で複数の範囲を選ぶか、2 列以上か 2 行以上を選ぶと、その中で比べます)"
+                    .into()
+            }
+            CellComparisonRefusal::TooManyCandidates(count) => format!(
+                "比べる候補が {count} 個になります。{MAX_CELL_CANDIDATES} 個までになるように\
+                 選び直してください (Ctrl で選んだ範囲、行番号で選んだ行、2 列以上なら列、\
+                 1 列ならセルが候補です)"
+            )
+            .into(),
+            CellComparisonRefusal::TooManyCells(count) => format!(
+                "比べる候補のセルが合わせて {} 個になります。3 つ以上を比べるときは {} セルまでです \
+                 (範囲を小さくするか、比べる 2 列、2 行、2 つの範囲のどれかだけを選んでください)",
+                crate::grid::grouped_digits(*count),
+                crate::grid::grouped_digits(MAX_CELL_CANDIDATE_CELLS)
+            )
+            .into(),
+        }
+    }
+
+    /// Whether a selection offering `candidate_count` things to compare,
+    /// `cell_count` cells between them, is small enough to be read.
+    ///
+    /// Decided from the shape alone, so that a selection with too much in it is
+    /// turned away before any of it is read.
+    fn check(candidate_count: usize, cell_count: usize) -> Result<(), Self> {
+        if candidate_count > MAX_CELL_CANDIDATES {
+            return Err(CellComparisonRefusal::TooManyCandidates(candidate_count));
+        }
+        if candidate_count > 2 && cell_count > MAX_CELL_CANDIDATE_CELLS {
+            return Err(CellComparisonRefusal::TooManyCells(cell_count));
+        }
+        Ok(())
+    }
+}
+
+/// Reads the grid's selection as the things to compare.
 ///
 /// Kept a free function over the grid's public reads so that it can be tested
-/// without a window, and so that it is the one place to extend once a selection
-/// can hold more than one range.
-fn cell_comparison(grid: &TabularDataPreviewPane, clipboard: &str) -> Option<CellComparison> {
+/// without a window.
+fn cell_comparison(
+    grid: &TabularDataPreviewPane,
+    clipboard: &str,
+) -> Result<CellComparison, CellComparisonRefusal> {
     let rect = grid.selection_rect();
-    let single_column = rect.first_col == rect.last_col;
-    let column_pair = rect.first_col + 1 == rect.last_col;
+    let blocks = grid.selection_rects();
     // Rows are named the way the grid's own address in the toolbar names them,
     // which counts the header as line 1 so that the name is the line of the
     // file. A title pointing at a different line than the toolbar does would be
     // worse than no title at all.
     let row_offset = usize::from(grid.has_header_row());
+    // Rows picked by their numbers say that the rows are what is compared,
+    // which the shape cannot: a whole row is every column wide, and would
+    // otherwise be read as columns. A single one has nothing of its own to be
+    // compared with, so it is cut into columns like any other one row block.
+    let whole_rows = blocks.len() < 2
+        && grid.current_selection_range().kind == GridSelectionKind::Rows
+        && rect.row_count() >= 2;
 
-    // Two blocks picked with Ctrl say outright which two things to compare, so
-    // they win over every guess made from the shape of one block. Blocks of
-    // different shapes are compared as they are: the row matching below already
-    // pads whichever side runs out first.
-    let blocks = grid.selection_rects();
-    if let [left, right] = blocks.as_slice() {
-        let address_of = |block: &GridRect| {
-            SharedString::from(format!(
-                "{}{}:{}{}",
-                column_label(block.first_col),
-                block.first_row + row_offset,
-                column_label(block.last_col),
-                block.last_row + row_offset
-            ))
+    let candidate_count = if blocks.len() >= 2 {
+        blocks.len()
+    } else if whole_rows {
+        rect.row_count()
+    } else if rect.col_count() >= 2 {
+        rect.col_count()
+    } else {
+        rect.row_count()
+    };
+    // Every block is read whole, whichever way it is cut into candidates.
+    CellComparisonRefusal::check(candidate_count, grid.selection_area())?;
+
+    let candidate =
+        |block: CellBlock, pane_title: SharedString, tab_title: SharedString| CellCandidate {
+            rows: read_cell_block(grid, block, clipboard),
+            pane_title,
+            tab_title,
+            block,
         };
-        let (left_title, right_title) = (address_of(left), address_of(right));
-        return Some(CellComparison {
-            title: format!("セルの比較 ({left_title} ↔ {right_title})").into(),
-            left: CellComparisonSide::rect(grid, *left),
-            right: CellComparisonSide::rect(grid, *right),
-            left_title,
-            right_title,
-        });
-    }
 
-    let column_of = |column: usize| SharedString::from(format!("列 {}", column_label(column)));
-    let row_of = |row: usize| SharedString::from(format!("行 {row}"));
-    let column_down = |column: usize| GridRect {
-        first_row: rect.first_row,
-        last_row: rect.last_row,
-        first_col: column,
-        last_col: column,
+    // Blocks picked with Ctrl say outright which things to compare, so they
+    // win over every guess made from the shape of one block. Blocks of
+    // different shapes are compared as they are: the row matching already pads
+    // whichever side runs out first.
+    let candidates: Vec<CellCandidate> = if blocks.len() >= 2 {
+        blocks
+            .iter()
+            .map(|block| {
+                let first = format!(
+                    "{}{}",
+                    column_label(block.first_col),
+                    block.first_row + row_offset
+                );
+                let address =
+                    SharedString::from(if block.row_count() == 1 && block.col_count() == 1 {
+                        first
+                    } else {
+                        format!(
+                            "{first}:{}{}",
+                            column_label(block.last_col),
+                            block.last_row + row_offset
+                        )
+                    });
+                candidate(CellBlock::Rect(*block), address.clone(), address)
+            })
+            .collect()
+    } else if whole_rows {
+        rect.rows()
+            .map(|row| {
+                let name = SharedString::from(format!("行 {}", row + row_offset));
+                let row_across = GridRect {
+                    first_row: row,
+                    last_row: row,
+                    first_col: rect.first_col,
+                    last_col: rect.last_col,
+                };
+                candidate(CellBlock::Rect(row_across), name.clone(), name)
+            })
+            .collect()
+    } else if rect.col_count() >= 2 {
+        // Columns side by side are the comparison the user is most likely after
+        // in a spreadsheet, so a block that is both several columns wide and
+        // several rows tall is read as columns rather than as rows.
+        rect.cols()
+            .map(|column| {
+                let label = column_label(column);
+                let column_down = GridRect {
+                    first_row: rect.first_row,
+                    last_row: rect.last_row,
+                    first_col: column,
+                    last_col: column,
+                };
+                candidate(
+                    CellBlock::Rect(column_down),
+                    format!("列 {label}").into(),
+                    label.into(),
+                )
+            })
+            .collect()
+    } else if rect.row_count() >= 2 {
+        let column = rect.first_col;
+        rect.rows()
+            .map(|row| {
+                let number = row + row_offset;
+                let cell = GridRect {
+                    first_row: row,
+                    last_row: row,
+                    first_col: column,
+                    last_col: column,
+                };
+                candidate(
+                    CellBlock::Rect(cell),
+                    format!("行 {number}").into(),
+                    format!("{}{number}", column_label(column)).into(),
+                )
+            })
+            .collect()
+    } else {
+        if clipboard.is_empty() {
+            return Err(CellComparisonRefusal::EmptyClipboard);
+        }
+        let address = SharedString::from(grid.cursor_address());
+        vec![
+            candidate(
+                CellBlock::Clipboard,
+                "クリップボード".into(),
+                "クリップボード".into(),
+            ),
+            candidate(CellBlock::Rect(rect), address.clone(), address),
+        ]
     };
 
-    // Two columns side by side is the comparison the user is most likely after
-    // in a spreadsheet, so a block that is both two columns wide and two rows
-    // tall is read as two columns rather than as two rows.
-    if column_pair {
-        return Some(CellComparison {
-            title: format!(
-                "セルの比較 ({} ↔ {})",
-                column_label(rect.first_col),
-                column_label(rect.last_col)
-            )
-            .into(),
-            left_title: column_of(rect.first_col),
-            right_title: column_of(rect.last_col),
-            left: CellComparisonSide::rect(grid, column_down(rect.first_col)),
-            right: CellComparisonSide::rect(grid, column_down(rect.last_col)),
-        });
-    }
-
-    if single_column && rect.first_row != rect.last_row {
-        let column = rect.first_col;
-        let (first_number, last_number) = (rect.first_row + row_offset, rect.last_row + row_offset);
-        return Some(CellComparison {
-            title: format!(
-                "セルの比較 ({}{} ↔ {}{})",
-                column_label(column),
-                first_number,
-                column_label(column),
-                last_number
-            )
-            .into(),
-            left_title: row_of(first_number),
-            right_title: row_of(last_number),
-            left: CellComparisonSide::cell(grid, rect.first_row, column),
-            right: CellComparisonSide::cell(grid, rect.last_row, column),
-        });
-    }
-
-    if single_column && rect.first_row == rect.last_row {
-        if clipboard.is_empty() {
-            return None;
-        }
-        let address = grid.cursor_address();
-        return Some(CellComparison {
-            title: format!("セルの比較 (クリップボード ↔ {address})").into(),
-            left_title: "クリップボード".into(),
-            right_title: SharedString::from(address),
-            left: CellComparisonSide::new(grid, CellBlock::Clipboard, clipboard),
-            right: CellComparisonSide::cell(grid, rect.first_row, rect.first_col),
-        });
-    }
-
-    None
+    Ok(CellComparison {
+        candidates,
+        left: 0,
+        right: 1,
+    })
 }
 
-impl EventEmitter<()> for TableDiffView {}
+impl EventEmitter<ItemEvent> for TableDiffView {}
 
 impl Focusable for TableDiffView {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -1635,7 +2112,11 @@ impl Focusable for TableDiffView {
 }
 
 impl Item for TableDiffView {
-    type Event = ();
+    type Event = ItemEvent;
+
+    fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
+        f(*event)
+    }
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
         self.title.clone()
@@ -1725,6 +2206,8 @@ mod tests {
         table_diff::{DiffRowKind, DiffSide},
     };
     use gpui::{TestAppContext, VisualTestContext};
+    use settings::SettingsStore;
+    use std::{cell::Cell, rc::Rc};
     use workspace::SaveIntent;
 
     /// A comparison of two scratch files, which is the shape every comparison
@@ -1763,8 +2246,8 @@ mod tests {
 
     fn cell_diff(comparison: &CellComparison) -> TableDiff {
         TableDiff::compute(
-            &DiffSide::from_rows(comparison.left.rows.clone(), false),
-            &DiffSide::from_rows(comparison.right.rows.clone(), false),
+            &DiffSide::from_rows(comparison.rows(PaneSide::Left).to_vec(), false),
+            &DiffSide::from_rows(comparison.rows(PaneSide::Right).to_vec(), false),
         )
     }
 
@@ -1796,6 +2279,585 @@ mod tests {
             assert_eq!(view.diff.modified_rows, 1);
             assert_eq!(view.diff.added_rows, 1);
         });
+    }
+
+    /// A value holding line breaks is shown in full, so its row is as many lines
+    /// tall as the value has - in both panes, or the rows after it would stop
+    /// lining up. A row one line tall showed only the first line of the value,
+    /// and hid a change on any line after it.
+    #[gpui::test]
+    async fn a_value_of_several_lines_makes_its_row_that_many_lines_tall(cx: &mut TestAppContext) {
+        let (_workspace, _pane, view, cx) = open_head_comparison(
+            "name,note\na,\"one\ntwo\"\nb,x\nc,x",
+            "name,note\na,\"one\nTWO\"\nb,x\nc,\"x\ny\nz\"\nd,\"p\nq\"",
+            cx,
+        )
+        .await;
+
+        view.read_with(&cx, |view, _| {
+            let first = view.diff.rows.first().expect("the table has rows");
+            assert_eq!(first.kind, DiffRowKind::Modified);
+            assert_eq!(
+                first.changed_columns,
+                [1],
+                "only the second line of the note differs, and that has to count"
+            );
+            let kinds: Vec<DiffRowKind> = view.diff.rows.iter().map(|row| row.kind).collect();
+            assert_eq!(
+                kinds,
+                [
+                    DiffRowKind::Modified,
+                    DiffRowKind::Unchanged,
+                    DiffRowKind::Modified,
+                    DiffRowKind::Added,
+                ]
+            );
+
+            // The third row is tall on the right only and the fourth is on the
+            // right only, and both still size the row the two panes share.
+            let expected_lines = [2, 1, 3, 2];
+            let mut previous_bottom = None;
+            for (shown_index, lines) in expected_lines.into_iter().enumerate() {
+                let row = view
+                    .list_state
+                    .bounds_for_item(shown_index)
+                    .expect("every row of the table should have been drawn");
+                assert_eq!(
+                    row.size.height,
+                    view.row_height(lines),
+                    "row {shown_index} should be {lines} lines tall ({row:?})"
+                );
+                if let Some(previous_bottom) = previous_bottom {
+                    assert_eq!(
+                        row.top(),
+                        previous_bottom,
+                        "row {shown_index} should start where the row above it ends"
+                    );
+                }
+                previous_bottom = Some(row.bottom());
+            }
+        });
+    }
+
+    /// The header strip grows with a header value of several lines the way a
+    /// row does, and both of its panes grow together.
+    #[gpui::test]
+    async fn a_header_of_several_lines_makes_its_strip_that_many_lines_tall(
+        cx: &mut TestAppContext,
+    ) {
+        let (_workspace, _pane, view, mut cx) = open_head_comparison(
+            "name,\"first\nsecond\"\na,1",
+            "name,\"first\nsecond\"\na,2",
+            cx,
+        )
+        .await;
+
+        let left = cx
+            .debug_bounds(DIFF_LEFT_PANE_DEBUG_SELECTOR)
+            .expect("the left pane should have been drawn");
+        let right = cx
+            .debug_bounds(DIFF_RIGHT_PANE_DEBUG_SELECTOR)
+            .expect("the right pane should have been drawn");
+        let line_height = view.read_with(&cx, |view, _| view.line_height);
+
+        assert!(
+            left.size.height >= line_height * 2.,
+            "the header strip should hold both lines of the header ({left:?})"
+        );
+        assert_eq!(left.size.height, right.size.height);
+    }
+
+    /// The characters picked out in a changed value are measured over the whole
+    /// value, and each line of it is drawn on its own, so a change on a later
+    /// line has to be picked out on that line and at its place in it.
+    #[test]
+    fn a_change_on_a_later_line_of_a_value_is_picked_out_on_that_line() {
+        let left = DiffSide::from_rows(vec![vec!["one\ntwo".into()]], false);
+        let right = DiffSide::from_rows(vec![vec!["one\ntwO".into()]], false);
+        let diff = TableDiff::compute(&left, &right);
+        assert_eq!(diff.rows.len(), 1);
+        let row = diff.rows.first().expect("the two values make one row");
+        assert_eq!(row.kind, DiffRowKind::Modified);
+        assert_eq!(row.changed_columns, [0]);
+
+        let lines = |side: PaneSide, value: &str, other: &str| {
+            highlighted_lines(value, &changed_character_ranges(side, value, other))
+                .into_iter()
+                .map(|(line, ranges)| (line.to_owned(), ranges))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            lines(PaneSide::Left, "one\ntwo", "one\ntwO"),
+            [("one".to_owned(), vec![]), ("two".to_owned(), vec![2..3])]
+        );
+        assert_eq!(
+            lines(PaneSide::Right, "one\ntwO", "one\ntwo"),
+            [("one".to_owned(), vec![]), ("twO".to_owned(), vec![2..3])]
+        );
+        // A change that runs across a line break is picked out on both lines.
+        assert_eq!(
+            lines(PaneSide::Left, "ab\ncd", "a"),
+            [("ab".to_owned(), vec![1..2]), ("cd".to_owned(), vec![0..2])]
+        );
+        // A carriage return is part of the line break rather than of the line.
+        assert_eq!(
+            lines(PaneSide::Right, "one\r\ntwO", "one\r\ntwo"),
+            [("one".to_owned(), vec![]), ("twO".to_owned(), vec![2..3])]
+        );
+        assert_eq!(cell_line_count("one\r\ntwo\n"), 3);
+    }
+
+    /// Every range handed to a line has to sit on its characters and inside it,
+    /// since a line is drawn as a text of its own and a range off a character
+    /// boundary or past its end panics there.
+    #[test]
+    fn picked_out_ranges_stay_inside_their_lines() {
+        let lines = |value: &str, highlights: &[Range<usize>]| {
+            highlighted_lines(value, highlights)
+                .into_iter()
+                .map(|(line, ranges)| (line.to_owned(), ranges))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(lines("", &[]), [(String::new(), vec![])]);
+        assert_eq!(
+            lines("あい\nう", &[3..10]),
+            [
+                ("あい".to_owned(), vec![3..6]),
+                ("う".to_owned(), vec![0..3])
+            ]
+        );
+        // Nothing but a line break changed, and a line break is not drawn.
+        assert_eq!(
+            lines("a\r\nb", &[1..3]),
+            [("a".to_owned(), vec![]), ("b".to_owned(), vec![])]
+        );
+        assert_eq!(
+            highlighted_lines(
+                "あい\r\nう",
+                &changed_character_ranges(PaneSide::Left, "あい\r\nう", "あい\nう")
+            ),
+            [("あい", vec![]), ("う", vec![])]
+        );
+        // A value ending in a line break has an empty line at the end, which its
+        // row makes room for.
+        assert_eq!(
+            lines("a\n", &[0..2]),
+            [("a".to_owned(), vec![0..1]), (String::new(), vec![])]
+        );
+        assert_eq!(cell_line_count("a\n"), 2);
+        assert_eq!(lines("ab", &[1..9]), [("ab".to_owned(), vec![1..2])]);
+    }
+
+    /// "Next" puts the change in the middle of the view even when the rows
+    /// above it are taller than one line, which the list cannot know about rows
+    /// it has not drawn.
+    #[gpui::test]
+    async fn stepping_to_a_change_below_tall_rows_centers_it(cx: &mut TestAppContext) {
+        let mut committed = String::from("key,value");
+        for row in 0..100 {
+            if (50..70).contains(&row) {
+                committed.push_str(&format!("\nkey-{row},\"first\nsecond\nthird\""));
+            } else {
+                committed.push_str(&format!("\nkey-{row},value-{row}"));
+            }
+        }
+        let working_copy = committed.replace("value-70", "changed-70");
+        let (_workspace, _pane, view, mut cx) =
+            open_head_comparison(&committed, &working_copy, cx).await;
+
+        view.update(&mut cx, |view, cx| view.go_to_change(true, cx));
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert_eq!(view.diff.change_blocks(), [70]);
+            let viewport = view.list_state.viewport_bounds();
+            let row = view
+                .list_state
+                .bounds_for_item(70)
+                .expect("the change should have been drawn");
+            assert!(
+                viewport.size.height > view.row_height(3) * 4.,
+                "the view has to be taller than a few rows for this to be a test ({viewport:?})"
+            );
+            let off_center = (row.center().y - viewport.center().y).abs();
+            assert!(
+                off_center <= view.row_height(1),
+                "the change should be in the middle of the view \
+                 (row {row:?}, view {viewport:?})"
+            );
+        });
+    }
+
+    /// The scrollbar is sized by the whole table rather than by the rows drawn
+    /// so far. The list forgets the heights of the rows it has not drawn every
+    /// time it is laid out at a new width, its first layout included, which left
+    /// a thumb sized to the first screenful of rows and a wheel that stopped at
+    /// the last of them.
+    #[gpui::test]
+    async fn the_scrollbar_spans_the_whole_table(cx: &mut TestAppContext) {
+        let table = numbered_table(200, |_| false);
+        let (view, _buffer, cx) = comparison_in_a_window_of_its_own(&table, &table, cx).await;
+        draw_until_settled(cx);
+
+        let assert_spans_the_table = |when: &str, cx: &VisualTestContext| {
+            view.read_with(cx, |view, _| {
+                let viewport_height = view.list_state.viewport_bounds().size.height;
+                let table_height = view.row_height(1) * view.shown_row_count();
+                assert!(
+                    viewport_height > px(0.) && viewport_height < table_height,
+                    "the table has to reach past the view for this to be a test ({when})"
+                );
+                let scrollable_height =
+                    view.list_state.max_offset_for_scrollbar().y + viewport_height;
+                assert!(
+                    (scrollable_height - table_height).abs() < px(1.),
+                    "{when}, the scrollbar should span the {table_height:?} of the table \
+                     rather than {scrollable_height:?}"
+                );
+            });
+        };
+        assert_spans_the_table("once the comparison has opened", cx);
+
+        cx.simulate_resize(gpui::size(px(700.), px(500.)));
+        cx.run_until_parked();
+        draw_until_settled(cx);
+        assert_spans_the_table("after the window was resized", cx);
+    }
+
+    /// Once the comparison has settled it asks for no more frames. It asks for
+    /// one whenever the list has been laid out at a new width, to put the height
+    /// estimate back, and were that frame to ask for another in turn, an open
+    /// comparison would keep redrawing itself for as long as it stayed open.
+    #[gpui::test]
+    async fn a_settled_comparison_asks_for_no_more_frames(cx: &mut TestAppContext) {
+        let table = numbered_table(200, |_| false);
+        let (view, _buffer, cx) = comparison_in_a_window_of_its_own(&table, &table, cx).await;
+        let notifications = Rc::new(Cell::new(0_usize));
+        let _observation = cx.update(|_window, cx| {
+            let notifications = notifications.clone();
+            cx.observe(&view, move |_view, _cx| {
+                notifications.set(notifications.get() + 1)
+            })
+        });
+
+        let assert_settles = |when: &str, cx: &mut VisualTestContext| {
+            let frames = draw_until_settled(cx);
+            assert!(
+                frames <= 1,
+                "{when}, the comparison should settle within a frame rather than after {frames}"
+            );
+            let notified = notifications.get();
+            for _ in 0..3 {
+                let asked_for = cx.update(|window, cx| window.simulate_next_frame(cx));
+                assert_eq!(
+                    asked_for, 0,
+                    "{when}, a settled comparison should ask for no frames"
+                );
+                cx.run_until_parked();
+            }
+            assert_eq!(
+                notifications.get(),
+                notified,
+                "{when}, a settled comparison should not redraw itself"
+            );
+        };
+        assert_settles("once the comparison has opened", cx);
+
+        cx.simulate_resize(gpui::size(px(700.), px(500.)));
+        cx.run_until_parked();
+        assert_settles("after the window was resized", cx);
+    }
+
+    /// Showing only the differences and showing every row again keep the view on
+    /// the row it was showing, or, when the filter takes that row away, on the
+    /// first change after it: the same position stands for another row once the
+    /// filter changes.
+    #[gpui::test]
+    async fn filtering_the_rows_keeps_the_view_on_the_row_it_was_showing(cx: &mut TestAppContext) {
+        // Every third row changed, so that the changes alone still reach far
+        // past the view and nothing pulls the view back up to fill it.
+        let committed = numbered_table(900, |_| false);
+        let working_copy = numbered_table(900, |row| row % 3 == 0);
+        let (view, _buffer, cx) =
+            comparison_in_a_window_of_its_own(&committed, &working_copy, cx).await;
+        draw_until_settled(cx);
+        view.read_with(cx, |view, _| assert_eq!(view.diff.modified_rows, 300));
+
+        let scroll_to_row = |row: usize, offset_in_item: Pixels, cx: &mut VisualTestContext| {
+            view.update(cx, |view, cx| {
+                view.list_state.scroll_to(ListOffset {
+                    item_ix: view.shown_index_of(row),
+                    offset_in_item,
+                });
+                cx.notify();
+            });
+            cx.run_until_parked();
+        };
+        let toggle = |cx: &mut VisualTestContext| {
+            view.update(cx, |view, cx| view.toggle_only_differences(cx));
+            cx.run_until_parked();
+        };
+        let top_row = |cx: &VisualTestContext| {
+            view.read_with(cx, |view, _| {
+                let top = view.list_state.logical_scroll_top();
+                (view.row_at(top.item_ix), top.offset_in_item)
+            })
+        };
+
+        // Row 301 did not change, so the filter moves the view on to row 303.
+        scroll_to_row(301, px(5.), cx);
+        toggle(cx);
+        assert_eq!(top_row(cx), (Some(303), px(0.)));
+        toggle(cx);
+        assert_eq!(top_row(cx), (Some(303), px(0.)));
+
+        scroll_to_row(450, px(5.), cx);
+        toggle(cx);
+        assert_eq!(top_row(cx), (Some(450), px(5.)));
+        toggle(cx);
+        assert_eq!(top_row(cx), (Some(450), px(5.)));
+    }
+
+    /// An edit takes the comparison again, and the view stays where it was
+    /// whether or not the edit changed how many rows there are.
+    #[gpui::test]
+    async fn an_edit_keeps_the_view_where_it_was(cx: &mut TestAppContext) {
+        let table = numbered_table(300, |_| false);
+        let (view, buffer, cx) = comparison_in_a_window_of_its_own(&table, &table, cx).await;
+        draw_until_settled(cx);
+        view.update(cx, |view, cx| {
+            view.list_state.scroll_to(ListOffset {
+                item_ix: 150,
+                offset_in_item: px(5.),
+            });
+            cx.notify();
+        });
+        cx.run_until_parked();
+
+        let edit = |text: String, cx: &mut VisualTestContext| {
+            buffer.update(cx, |buffer, cx| buffer.set_text(text, cx));
+            cx.run_until_parked();
+            cx.executor().advance_clock(RECOMPUTE_DEBOUNCE * 2);
+            cx.run_until_parked();
+        };
+        let scroll_top = |cx: &VisualTestContext| {
+            view.read_with(cx, |view, _| {
+                let top = view.list_state.logical_scroll_top();
+                (top.item_ix, top.offset_in_item)
+            })
+        };
+
+        edit(numbered_table(300, |row| row == 10), cx);
+        view.read_with(cx, |view, _| assert_eq!(view.diff.modified_rows, 1));
+        assert_eq!(scroll_top(cx), (150, px(5.)), "with as many rows as before");
+
+        edit(numbered_table(301, |row| row == 10), cx);
+        view.read_with(cx, |view, _| assert_eq!(view.diff.added_rows, 1));
+        assert_eq!(scroll_top(cx), (150, px(5.)), "with a row more than before");
+    }
+
+    /// A new buffer font size changes the height of every row, including the
+    /// ones off screen that the list measured at the old size and would go on
+    /// believing.
+    #[gpui::test]
+    async fn a_new_font_size_measures_the_rows_again(cx: &mut TestAppContext) {
+        let table = numbered_table(200, |_| false);
+        let (view, _buffer, cx) = comparison_in_a_window_of_its_own(&table, &table, cx).await;
+        draw_until_settled(cx);
+        let measured_rows = |view: &TableDiffView| {
+            (0..view.shown_row_count())
+                .filter_map(|shown_index| view.list_state.bounds_for_item(shown_index))
+                .map(|bounds| bounds.size.height)
+                .collect::<Vec<_>>()
+        };
+        let old_row_height = view.read_with(cx, |view, _| {
+            let viewport = view.list_state.viewport_bounds();
+            let measured = measured_rows(view);
+            assert!(
+                view.row_height(1) * measured.len() > viewport.size.height,
+                "the list has to have measured rows past the view for this to be a test"
+            );
+            view.row_height(1)
+        });
+
+        cx.update(|window, cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |content| {
+                    content.theme.buffer_font_size = Some(30.0.into());
+                });
+            });
+            window.refresh();
+        });
+        cx.run_until_parked();
+
+        view.read_with(cx, |view, _| {
+            let new_row_height = view.row_height(1);
+            assert!(new_row_height > old_row_height);
+            for height in measured_rows(view) {
+                assert_eq!(
+                    height, new_row_height,
+                    "every row the list has a height for should have the new one"
+                );
+            }
+        });
+    }
+
+    /// A value is given a column as wide as the buffer font draws it, at the
+    /// size it is drawn at. The columns were sized at a guessed 8px a character,
+    /// narrower than the buffer font's, which cut "line TWO changed" short
+    /// behind an ellipsis - the part that changed with it - in a column the
+    /// comparison gives no way to widen.
+    #[gpui::test]
+    async fn a_changed_value_fits_its_column_at_any_font_size(cx: &mut TestAppContext) {
+        let value = "line TWO changed";
+        let (view, _buffer, cx) = comparison_in_a_window_of_its_own(
+            "key,note\na,line two",
+            &format!("key,note\na,{value}"),
+            cx,
+        )
+        .await;
+        draw_until_settled(cx);
+
+        let assert_fits = |when: &str, cx: &mut VisualTestContext| {
+            let text_width = cx.update(|window, cx| {
+                let settings = ThemeSettings::get_global(cx);
+                let run = gpui::TextRun {
+                    font: settings.buffer_font.clone(),
+                    ..window.text_style().to_run(value.len())
+                };
+                window
+                    .text_system()
+                    .shape_line(value.into(), settings.buffer_font_size(cx), &[run], None)
+                    .width
+            });
+            let cell = drawn_cell(PaneSide::Right, 0, 1, cx);
+            // What the cell leaves its text: the padding on either side, and
+            // the border on its right.
+            let room = cell.size.width - px(4.) * 2. - px(1.);
+            assert!(
+                text_width <= room,
+                "{when}, {value:?} is {text_width:?} wide and should fit the {room:?} its cell \
+                 leaves it"
+            );
+
+            for (side, element_index) in [
+                (PaneSide::Left, 0),
+                (PaneSide::Left, HEADER_ELEMENT_INDEX),
+                (PaneSide::Right, HEADER_ELEMENT_INDEX),
+            ] {
+                assert_eq!(
+                    drawn_cell(side, element_index, 1, cx).size.width,
+                    cell.size.width,
+                    "{when}, the column should be as wide in both panes and in the header strip"
+                );
+            }
+            let columns = drawn_cell(PaneSide::Right, 0, 0, cx).size.width + cell.size.width;
+            let scrolled_over = view.read_with(cx, |view, _| {
+                view.horizontal_scroll
+                    .bounds_for_item(0)
+                    .expect("the panes should have drawn their cells")
+                    .size
+                    .width
+            });
+            assert_eq!(
+                scrolled_over, columns,
+                "{when}, the panes should scroll over the columns as wide as they are drawn"
+            );
+        };
+        assert_fits("at the font size it opened at", cx);
+
+        // 15px is the size the app starts at. The test settings' 14px is one at
+        // which the old guess happened to be just wide enough.
+        for font_size in [15.0_f32, 30.0] {
+            cx.update(|window, cx| {
+                cx.update_global::<SettingsStore, _>(|store, cx| {
+                    store.update_user_settings(cx, |content| {
+                        content.theme.buffer_font_size = Some(font_size.into());
+                    });
+                });
+                window.refresh();
+            });
+            cx.run_until_parked();
+            draw_until_settled(cx);
+            assert_fits(&format!("at a {font_size}px buffer font"), cx);
+        }
+    }
+
+    /// The bounds one cell was drawn at. `debug_bounds` only takes a selector
+    /// that lives for good, so the handful a test asks for are leaked.
+    fn drawn_cell(
+        side: PaneSide,
+        element_index: usize,
+        column: usize,
+        cx: &mut VisualTestContext,
+    ) -> gpui::Bounds<Pixels> {
+        let selector: &'static str = cell_debug_selector(side, element_index, column).leak();
+        cx.debug_bounds(selector)
+            .unwrap_or_else(|| panic!("{selector} should have been drawn"))
+    }
+
+    /// A table of numbered rows under a header, with the rows `changed` picks
+    /// out holding a different value from the rest.
+    fn numbered_table(rows: usize, changed: impl Fn(usize) -> bool) -> String {
+        let mut table = String::from("key,value");
+        for row in 0..rows {
+            let value = if changed(row) { "changed" } else { "value" };
+            table.push_str(&format!("\nkey-{row},{value}-{row}"));
+        }
+        table
+    }
+
+    /// A comparison of two scratch files in a window of its own, so that the
+    /// frames it asks for are the only ones asked for there. Returns the buffer
+    /// of the right hand side, which an edit goes through.
+    async fn comparison_in_a_window_of_its_own<'a>(
+        left: &str,
+        right: &str,
+        cx: &'a mut TestAppContext,
+    ) -> (
+        Entity<TableDiffView>,
+        Entity<Buffer>,
+        &'a mut VisualTestContext,
+    ) {
+        // Only for the settings and the theme the view is drawn with.
+        open_grid_in_workspace("a,b", cx).await;
+        // The scrollbar's fade asks for frames of its own, and without motion
+        // it asks for none.
+        cx.update(|cx| cx.set_reduce_motion(true));
+        let left = left.to_owned();
+        let right = right.to_owned();
+        let mut right_buffer = None;
+        let (view, cx) = cx.add_window_view(|_window, cx| {
+            let left_buffer = cx.new(|cx| Buffer::local(left, cx));
+            let buffer = cx.new(|cx| Buffer::local(right, cx));
+            right_buffer = Some(buffer.clone());
+            TableDiffView::from_files(
+                "比較".into(),
+                "左".into(),
+                "右".into(),
+                LeftSource::File(left_buffer),
+                buffer,
+                ',',
+                ',',
+                true,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let right_buffer = right_buffer.expect("building the comparison made the buffer");
+        (view, right_buffer, cx)
+    }
+
+    /// Hands over the frames the comparison asks for - tests have no frame loop
+    /// to do it - until it asks for no more, and says how many that took. Gives
+    /// up after a handful, which only a comparison that never settles needs.
+    fn draw_until_settled(cx: &mut VisualTestContext) -> usize {
+        let mut frames = 0;
+        while frames < 10 && cx.update(|window, cx| window.simulate_next_frame(cx)) > 0 {
+            cx.run_until_parked();
+            frames += 1;
+        }
+        frames
     }
 
     /// The filter has to leave exactly the changed rows, and the positions it
@@ -1970,7 +3032,7 @@ mod tests {
                 px(0.),
                 "a wheel over the body should not drag the columns sideways"
             );
-            let rows_offset = view.list_scroll.0.borrow().base_handle.offset().y;
+            let rows_offset = view.list_state.scroll_px_offset_for_scrollbar().y;
             assert!(
                 rows_offset < px(-100.),
                 "the rows should have scrolled under the wheel ({rows_offset:?})"
@@ -2204,8 +3266,8 @@ mod tests {
             .read_with(&cx, |pane, _| cell_comparison(pane, ""))
             .expect("two columns should be comparable");
 
-        assert_eq!(comparison.left.rows.len(), 3);
-        assert_eq!(comparison.right.rows.len(), 3);
+        assert_eq!(comparison.rows(PaneSide::Left).len(), 3);
+        assert_eq!(comparison.rows(PaneSide::Right).len(), 3);
         let diff = cell_diff(&comparison);
         assert_eq!(diff.modified_rows, 1);
         assert_eq!(diff.change_count(), 1);
@@ -2230,9 +3292,9 @@ mod tests {
 
         assert_eq!(first_address, "A2");
         assert_eq!(last_address, "A3");
-        assert_eq!(comparison.left_title, "行 2");
-        assert_eq!(comparison.right_title, "行 3");
-        assert_eq!(comparison.title, "セルの比較 (A2 ↔ A3)");
+        assert_eq!(comparison.pane_title(PaneSide::Left), "行 2");
+        assert_eq!(comparison.pane_title(PaneSide::Right), "行 3");
+        assert_eq!(comparison.title(), "セルの比較 (A2 ↔ A3)");
     }
 
     /// The comparison holds both whole tables and the buffer of the file it
@@ -2266,13 +3328,13 @@ mod tests {
         let comparison = pane
             .read_with(&cx, |pane, _| cell_comparison(pane, "alpaca"))
             .expect("a single cell should be comparable against the clipboard");
-        assert_eq!(comparison.left_title, "クリップボード");
+        assert_eq!(comparison.pane_title(PaneSide::Left), "クリップボード");
         let diff = cell_diff(&comparison);
         assert_eq!(diff.modified_rows, 1);
 
         pane.read_with(&cx, |pane, _| {
             assert!(
-                cell_comparison(pane, "").is_none(),
+                cell_comparison(pane, "").is_err(),
                 "an empty clipboard leaves nothing to compare a single cell against"
             );
         });
@@ -2304,10 +3366,10 @@ mod tests {
             .read_with(&cx, |pane, _| cell_comparison(pane, ""))
             .expect("two ranges should be comparable");
 
-        assert_eq!(comparison.left_title, "A2:A4");
-        assert_eq!(comparison.right_title, "B2:B4");
-        assert_eq!(comparison.left.rows.len(), 3);
-        assert_eq!(comparison.right.rows.len(), 3);
+        assert_eq!(comparison.pane_title(PaneSide::Left), "A2:A4");
+        assert_eq!(comparison.pane_title(PaneSide::Right), "B2:B4");
+        assert_eq!(comparison.rows(PaneSide::Left).len(), 3);
+        assert_eq!(comparison.rows(PaneSide::Right).len(), 3);
         let diff = cell_diff(&comparison);
         assert_eq!(diff.change_count(), 1, "only the middle row differs");
     }
@@ -2335,8 +3397,900 @@ mod tests {
             .read_with(&cx, |pane, _| cell_comparison(pane, ""))
             .expect("two ranges of different heights should still be comparable");
 
-        assert_eq!(comparison.left.rows.len(), 3);
-        assert_eq!(comparison.right.rows.len(), 1);
+        assert_eq!(comparison.rows(PaneSide::Left).len(), 3);
+        assert_eq!(comparison.rows(PaneSide::Right).len(), 1);
+    }
+
+    /// Picks each of `columns` as a block of its own, from the first body row
+    /// down to `last_body_row`, the way Ctrl and a drag down each column would.
+    fn pick_columns_with_ctrl(
+        pane: &Entity<TabularDataPreviewPane>,
+        columns: Range<usize>,
+        last_body_row: usize,
+        cx: &mut VisualTestContext,
+    ) {
+        use crate::grid::{GridCell, SelectionChange};
+        use crate::types::DisplayRow;
+
+        pane.update(cx, |pane, cx| {
+            let cell = |row: usize, col: usize| {
+                GridCell::new(GridRow::Body(DisplayRow(row)), AnyColumn(col))
+            };
+            for column in columns.clone() {
+                let change = if column == columns.start {
+                    SelectionChange::Replace
+                } else {
+                    SelectionChange::Add
+                };
+                pane.change_cell_selection(cell(0, column), change, cx);
+                pane.change_cell_selection(
+                    cell(last_body_row, column),
+                    SelectionChange::Extend,
+                    cx,
+                );
+            }
+        });
+    }
+
+    fn pane_titles(comparison: &CellComparison) -> Vec<&str> {
+        comparison
+            .candidates
+            .iter()
+            .map(|candidate| candidate.pane_title.as_ref())
+            .collect()
+    }
+
+    /// Candidates holding the given values, standing in for cells whose grid is
+    /// gone.
+    fn clipboard_candidates(values: &[&str]) -> CellComparison {
+        CellComparison {
+            candidates: values
+                .iter()
+                .map(|value| CellCandidate {
+                    pane_title: format!("候補 {value}").into(),
+                    tab_title: SharedString::from(value.to_string()),
+                    block: CellBlock::Clipboard,
+                    rows: vec![vec![SharedString::from(value.to_string())]],
+                })
+                .collect(),
+            left: 0,
+            right: 1,
+        }
+    }
+
+    /// Opens a comparison of the three columns of a small table, each one
+    /// picked with Ctrl.
+    async fn open_comparison_of_three_columns(
+        cx: &mut TestAppContext,
+    ) -> (
+        Entity<Workspace>,
+        Entity<TabularDataPreviewPane>,
+        Entity<Buffer>,
+        Entity<TableDiffView>,
+        VisualTestContext,
+    ) {
+        let (workspace, pane, editor, mut cx) =
+            open_grid_in_workspace("l,m,r\na,a,x\nb,B,y\nc,c,z", cx).await;
+        let buffer = editor
+            .read_with(&cx, |editor, cx| editor.buffer().read(cx).as_singleton())
+            .expect("the fixture is a single file");
+        pick_columns_with_ctrl(&pane, 0..3, 2, &mut cx);
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            TableDiffView::diff_selected_cells(workspace, pane.clone(), window, cx);
+        });
+        cx.run_until_parked();
+        let view = workspace
+            .read_with(&cx, |workspace, cx| {
+                workspace.items_of_type::<TableDiffView>(cx).next()
+            })
+            .expect("the cell comparison should have opened as a tab");
+        (workspace, pane, buffer, view, cx)
+    }
+
+    /// Three blocks picked with Ctrl are three things to compare. Only exactly
+    /// two used to count, and a third sent the comparison off to the shape of
+    /// the last block alone.
+    #[gpui::test]
+    async fn three_ctrl_picked_ranges_are_all_offered(cx: &mut TestAppContext) {
+        let (_workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("l,m,r\na,a,x\nb,B,y\nc,c,z", cx).await;
+        pick_columns_with_ctrl(&pane, 0..3, 2, &mut cx);
+
+        // Something on the clipboard is what a single cell would be held
+        // against, which blocks picked with Ctrl leave out of it.
+        let comparison = pane
+            .read_with(&cx, |pane, _| cell_comparison(pane, "clipboard"))
+            .expect("three ranges should be comparable");
+
+        assert_eq!(pane_titles(&comparison), ["A2:A4", "B2:B4", "C2:C4"]);
+        assert_eq!(comparison.pane_title(PaneSide::Left), "A2:A4");
+        assert_eq!(comparison.pane_title(PaneSide::Right), "B2:B4");
+        assert_eq!(comparison.title(), "セルの比較 (A2:A4 ↔ B2:B4)");
+        assert_eq!(
+            cell_diff(&comparison).change_count(),
+            1,
+            "the first two blocks differ only in the middle row"
+        );
+    }
+
+    /// A drag down one column offers every cell in it, the ones in between as
+    /// much as the two at the ends.
+    #[gpui::test]
+    async fn a_column_of_three_cells_offers_every_cell(cx: &mut TestAppContext) {
+        let (_workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("name\nalpha\nbeta\ngamma", cx).await;
+        cx.simulate_keystrokes("down");
+        cx.simulate_keystrokes("shift-down shift-down");
+        cx.run_until_parked();
+
+        let comparison = pane
+            .read_with(&cx, |pane, _| cell_comparison(pane, ""))
+            .expect("three cells of one column should be comparable");
+
+        assert_eq!(pane_titles(&comparison), ["行 2", "行 3", "行 4"]);
+        let values: Vec<Vec<Vec<&str>>> = comparison
+            .candidates
+            .iter()
+            .map(|candidate| candidate.rows.iter().map(|row| cells(row)).collect())
+            .collect();
+        assert_eq!(values, [[["alpha"]], [["beta"]], [["gamma"]]]);
+        assert_eq!(comparison.title(), "セルの比較 (A2 ↔ A3)");
+    }
+
+    /// A block three columns wide is three columns to compare, where it used to
+    /// be turned away for not being exactly two.
+    #[gpui::test]
+    async fn a_range_three_columns_wide_offers_every_column(cx: &mut TestAppContext) {
+        use crate::grid::{GridCell, SelectionChange};
+        use crate::types::DisplayRow;
+
+        let (_workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("a,b,c\n1,1,2\n3,4,3", cx).await;
+        pane.update(&mut cx, |pane, cx| {
+            let cell = |row: usize, col: usize| {
+                GridCell::new(GridRow::Body(DisplayRow(row)), AnyColumn(col))
+            };
+            pane.change_cell_selection(cell(0, 0), SelectionChange::Replace, cx);
+            pane.change_cell_selection(cell(1, 2), SelectionChange::Extend, cx);
+        });
+
+        let comparison = pane
+            .read_with(&cx, |pane, _| cell_comparison(pane, ""))
+            .expect("three columns should be comparable");
+
+        assert_eq!(pane_titles(&comparison), ["列 A", "列 B", "列 C"]);
+        let columns: Vec<Vec<Vec<&str>>> = comparison
+            .candidates
+            .iter()
+            .map(|candidate| candidate.rows.iter().map(|row| cells(row)).collect())
+            .collect();
+        assert_eq!(columns, [[["1"], ["3"]], [["1"], ["4"]], [["2"], ["3"]]]);
+        assert_eq!(comparison.title(), "セルの比較 (A ↔ B)");
+    }
+
+    /// Picking the third block on the right compares it instead, and the tab
+    /// follows: a tab still naming the block that was swapped out would send
+    /// the user looking at the wrong cells.
+    #[gpui::test]
+    async fn picking_another_candidate_changes_the_comparison_and_the_tab(cx: &mut TestAppContext) {
+        use std::{cell::RefCell, rc::Rc};
+
+        let (_workspace, _pane, _buffer, view, mut cx) = open_comparison_of_three_columns(cx).await;
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let _subscription = cx.update(|_window, cx| {
+            let events = events.clone();
+            cx.subscribe(&view, move |_view, event: &ItemEvent, _cx| {
+                events.borrow_mut().push(*event);
+            })
+        });
+        view.read_with(&cx, |view, cx| {
+            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (A2:A4 ↔ B2:B4)");
+            assert_eq!(cells(view.right.row(0)), ["a"]);
+        });
+
+        view.update(&mut cx, |view, cx| {
+            view.pick_cell_candidate(PaneSide::Right, 2, cx)
+        });
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, cx| {
+            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (A2:A4 ↔ C2:C4)");
+            assert_eq!(
+                view.tab_tooltip_text(cx).as_deref(),
+                Some("A2:A4 と C2:C4 の差分")
+            );
+            assert_eq!(cells(view.left.row(0)), ["a"]);
+            assert_eq!(cells(view.right.row(0)), ["x"]);
+        });
+        assert_eq!(
+            *events.borrow(),
+            [ItemEvent::UpdateTab],
+            "the workspace redraws a tab's title only when it is told the title changed"
+        );
+
+        // The block already on the other side swaps places rather than being
+        // compared against itself.
+        view.update(&mut cx, |view, cx| {
+            view.pick_cell_candidate(PaneSide::Left, 2, cx)
+        });
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, cx| {
+            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (C2:C4 ↔ A2:A4)");
+            let left_title = view.left_pane_title();
+            assert!(left_title.starts_with("C2:C4 ("), "{left_title}");
+            assert_eq!(cells(view.left.row(0)), ["x"]);
+            assert_eq!(cells(view.right.row(0)), ["a"]);
+        });
+    }
+
+    /// "再比較" reads every candidate again, so one picked afterwards shows the
+    /// grid as it is now rather than as it was when the tab was opened.
+    #[gpui::test]
+    async fn taking_the_comparison_again_reads_every_candidate(cx: &mut TestAppContext) {
+        use crate::types::DisplayRow;
+
+        let (_workspace, pane, buffer, view, mut cx) = open_comparison_of_three_columns(cx).await;
+        buffer.update(&mut cx, |buffer, cx| {
+            buffer.set_text("l,m,r\na,a,x\nb,B,changed\nc,c,z", cx);
+        });
+        cx.executor()
+            .advance_clock(crate::parser::REPARSE_DEBOUNCE * 2);
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.cell_value(GridRow::Body(DisplayRow(1)), AnyColumn(2)),
+                "changed",
+                "the grid itself has to be showing the new value for this to be a test"
+            );
+        });
+
+        // Picked before the comparison is taken again, the third block is what
+        // was read when the tab was opened.
+        view.update(&mut cx, |view, cx| {
+            view.pick_cell_candidate(PaneSide::Right, 2, cx)
+        });
+        cx.run_until_parked();
+        view.read_with(&cx, |view, _| {
+            assert_eq!(cells(view.right.row(1)), ["y"]);
+        });
+
+        // Back to the second, so that the third is off screen while the
+        // comparison is taken again.
+        view.update(&mut cx, |view, cx| {
+            view.pick_cell_candidate(PaneSide::Right, 1, cx);
+            view.recompare(cx);
+        });
+        cx.run_until_parked();
+        view.update(&mut cx, |view, cx| {
+            view.pick_cell_candidate(PaneSide::Right, 2, cx)
+        });
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert_eq!(cells(view.right.row(1)), ["changed"]);
+        });
+    }
+
+    /// The pick works from what the comparison holds, so it goes on working
+    /// once the grid's tab is closed and nothing can be read again.
+    #[gpui::test]
+    async fn picking_works_without_the_grid(cx: &mut TestAppContext) {
+        let (_workspace, _pane, _editor, mut cx) = open_grid_in_workspace("a,b", cx).await;
+        let view = cx.update(|_window, cx| {
+            cx.new(|cx| {
+                TableDiffView::from_cells(
+                    WeakEntity::new_invalid(),
+                    clipboard_candidates(&["a", "b", "c"]),
+                    cx,
+                )
+            })
+        });
+        cx.run_until_parked();
+
+        view.update(&mut cx, |view, cx| {
+            view.pick_cell_candidate(PaneSide::Right, 2, cx)
+        });
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, cx| {
+            assert!(!view.can_recompare());
+            assert_eq!(cells(view.right.row(0)), ["c"]);
+            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (a ↔ c)");
+        });
+    }
+
+    #[test]
+    fn picking_the_other_sides_candidate_swaps_the_two() {
+        let mut comparison = clipboard_candidates(&["a", "b", "c"]);
+
+        assert!(comparison.pick(PaneSide::Right, 2));
+        assert_eq!((comparison.left, comparison.right), (0, 2));
+        assert!(comparison.pick(PaneSide::Left, 2));
+        assert_eq!((comparison.left, comparison.right), (2, 0));
+        assert!(
+            !comparison.pick(PaneSide::Left, 2),
+            "picking what is already there changes nothing"
+        );
+        assert!(
+            !comparison.pick(PaneSide::Right, 3),
+            "and neither does picking past the end"
+        );
+        assert_eq!((comparison.left, comparison.right), (2, 0));
+    }
+
+    /// The pane titles are lists to pick from only when there is something else
+    /// to pick: with two things to compare a list would offer nothing more than
+    /// swapping them.
+    #[gpui::test]
+    async fn the_pane_titles_are_pick_lists_only_with_more_than_two_candidates(
+        cx: &mut TestAppContext,
+    ) {
+        let (workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("l,m,r\na,a,x\nb,B,y\nc,c,z", cx).await;
+
+        pick_columns_with_ctrl(&pane, 0..2, 2, &mut cx);
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            TableDiffView::diff_selected_cells(workspace, pane.clone(), window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds(DIFF_LEFT_PANE_DEBUG_SELECTOR).is_some(),
+            "the comparison has to be on screen for this to be a test"
+        );
+        assert_eq!(cx.debug_bounds(DIFF_LEFT_PICK_DEBUG_SELECTOR), None);
+        assert_eq!(cx.debug_bounds(DIFF_RIGHT_PICK_DEBUG_SELECTOR), None);
+
+        pick_columns_with_ctrl(&pane, 0..3, 2, &mut cx);
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            TableDiffView::diff_selected_cells(workspace, pane.clone(), window, cx);
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds(DIFF_LEFT_PICK_DEBUG_SELECTOR).is_some());
+        assert!(cx.debug_bounds(DIFF_RIGHT_PICK_DEBUG_SELECTOR).is_some());
+    }
+
+    /// A selection with nothing in it to compare, or with too much, says which
+    /// of the two on the grid's status line rather than opening a tab.
+    #[gpui::test]
+    async fn a_selection_that_cannot_be_compared_says_why(cx: &mut TestAppContext) {
+        use crate::grid::{GridCell, SelectionChange};
+        use crate::types::DisplayRow;
+
+        let mut table = "value".to_owned();
+        for row in 0..MAX_CELL_CANDIDATES + 20 {
+            table.push_str(&format!("\n{row}"));
+        }
+        let (workspace, pane, _editor, mut cx) = open_grid_in_workspace(&table, cx).await;
+        let select_down_to = |last_body_row: usize, cx: &mut VisualTestContext| {
+            pane.update(cx, |pane, cx| {
+                let cell = |row: usize| GridCell::new(GridRow::Body(DisplayRow(row)), AnyColumn(0));
+                pane.change_cell_selection(cell(0), SelectionChange::Replace, cx);
+                pane.change_cell_selection(cell(last_body_row), SelectionChange::Extend, cx);
+            });
+        };
+        let open_comparisons = |cx: &mut VisualTestContext| {
+            workspace.update_in(cx, |workspace, window, cx| {
+                TableDiffView::diff_selected_cells(workspace, pane.clone(), window, cx);
+            });
+            cx.run_until_parked();
+            workspace.read_with(cx, |workspace, cx| {
+                workspace.items_of_type::<TableDiffView>(cx).count()
+            })
+        };
+        let status = |cx: &mut VisualTestContext| {
+            pane.read_with(cx, |pane, _| {
+                pane.grid.status_message.clone().unwrap_or_default()
+            })
+        };
+
+        select_down_to(MAX_CELL_CANDIDATES - 1, &mut cx);
+        let comparison = pane
+            .read_with(&cx, |pane, _| cell_comparison(pane, ""))
+            .expect("as many cells as the lists offer should be comparable");
+        assert_eq!(comparison.candidates.len(), MAX_CELL_CANDIDATES);
+
+        select_down_to(MAX_CELL_CANDIDATES, &mut cx);
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                cell_comparison(pane, "").err(),
+                Some(CellComparisonRefusal::TooManyCandidates(
+                    MAX_CELL_CANDIDATES + 1
+                ))
+            );
+        });
+        assert_eq!(open_comparisons(&mut cx), 0);
+        let message = status(&mut cx);
+        assert!(
+            message.contains(&(MAX_CELL_CANDIDATES + 1).to_string()),
+            "{message}"
+        );
+
+        // The test platform's clipboard starts out empty, which leaves one cell
+        // with nothing to be held against.
+        select_down_to(0, &mut cx);
+        assert_eq!(open_comparisons(&mut cx), 0);
+        let message = status(&mut cx);
+        assert!(message.contains("クリップボードが空"), "{message}");
+    }
+
+    #[test]
+    fn more_than_two_candidates_are_bounded_by_the_cells_they_read() {
+        let over = MAX_CELL_CANDIDATE_CELLS + 1;
+
+        assert_eq!(
+            CellComparisonRefusal::check(3, MAX_CELL_CANDIDATE_CELLS),
+            Ok(())
+        );
+        assert_eq!(
+            CellComparisonRefusal::check(3, over),
+            Err(CellComparisonRefusal::TooManyCells(over))
+        );
+        assert_eq!(
+            CellComparisonRefusal::check(2, over),
+            Ok(()),
+            "two candidates are the two sides, which a comparison of cells has always read"
+        );
+        assert_eq!(
+            CellComparisonRefusal::check(MAX_CELL_CANDIDATES + 1, 0),
+            Err(CellComparisonRefusal::TooManyCandidates(
+                MAX_CELL_CANDIDATES + 1
+            ))
+        );
+    }
+
+    /// Ctrl+A over a table as wide as the pick lists allow would read every
+    /// cell of it ahead of anything being picked, so it is turned away by the
+    /// cells it covers rather than let through by its columns.
+    #[gpui::test]
+    async fn selecting_all_of_a_big_wide_table_is_turned_away(cx: &mut TestAppContext) {
+        let columns = MAX_CELL_CANDIDATES;
+        let lines = MAX_CELL_CANDIDATE_CELLS / columns + 1;
+        let line = vec!["0"; columns].join(",");
+        let table = vec![line.as_str(); lines].join("\n");
+        let (workspace, pane, _editor, mut cx) = open_grid_in_workspace(&table, cx).await;
+
+        pane.update(&mut cx, |pane, cx| pane.select_all_cells(cx));
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                cell_comparison(pane, "").err(),
+                Some(CellComparisonRefusal::TooManyCells(columns * lines))
+            );
+        });
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            TableDiffView::diff_selected_cells(workspace, pane.clone(), window, cx);
+        });
+        cx.run_until_parked();
+
+        workspace.read_with(&cx, |workspace, cx| {
+            assert_eq!(workspace.items_of_type::<TableDiffView>(cx).count(), 0);
+        });
+        let message = pane.read_with(&cx, |pane, _| {
+            pane.grid.status_message.clone().unwrap_or_default()
+        });
+        assert!(
+            message.contains(&crate::grid::grouped_digits(columns * lines)),
+            "{message}"
+        );
+
+        // Every column picked with Ctrl by its letter is as much to read, and
+        // every block counts, not only the one the caret is in.
+        pane.update(&mut cx, |pane, cx| {
+            use crate::grid::SelectionChange;
+            pane.change_column_selection(AnyColumn(0), SelectionChange::Replace, cx);
+            for column in 1..columns {
+                pane.change_column_selection(AnyColumn(column), SelectionChange::Add, cx);
+            }
+        });
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.selection_rects().len(), columns);
+            assert_eq!(
+                cell_comparison(pane, "").err(),
+                Some(CellComparisonRefusal::TooManyCells(columns * lines))
+            );
+        });
+    }
+
+    /// A whole column picked by its letter offers every row of it, named the
+    /// way the toolbar's address names that row whether or not the first line
+    /// is read as a header.
+    #[gpui::test]
+    async fn a_whole_column_names_its_rows_the_way_the_toolbar_does(cx: &mut TestAppContext) {
+        use crate::grid::{GridCell, SelectionChange};
+
+        let (_workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("name\nalpha\nbeta", cx).await;
+        let check = |cx: &mut VisualTestContext| {
+            pane.update(cx, |pane, cx| pane.select_column(AnyColumn(0), false, cx));
+            let (comparison, rows) = pane.read_with(cx, |pane, _| {
+                (
+                    cell_comparison(pane, "")
+                        .expect("a column of three cells should be comparable"),
+                    pane.selection_rect().rows(),
+                )
+            });
+            assert_eq!(pane_titles(&comparison), ["行 1", "行 2", "行 3"]);
+            let values: Vec<Vec<Vec<&str>>> = comparison
+                .candidates
+                .iter()
+                .map(|candidate| candidate.rows.iter().map(|row| cells(row)).collect())
+                .collect();
+            assert_eq!(values, [[["name"]], [["alpha"]], [["beta"]]]);
+
+            let toolbar_addresses: Vec<String> = rows
+                .map(|row| {
+                    pane.update(cx, |pane, cx| {
+                        pane.change_cell_selection(
+                            GridCell::new(GridRow::from_index(row), AnyColumn(0)),
+                            SelectionChange::Replace,
+                            cx,
+                        );
+                        pane.cursor_address()
+                    })
+                })
+                .collect();
+            let tab_titles: Vec<&str> = comparison
+                .candidates
+                .iter()
+                .map(|candidate| candidate.tab_title.as_ref())
+                .collect();
+            assert_eq!(tab_titles, toolbar_addresses);
+        };
+
+        check(&mut cx);
+
+        pane.update(&mut cx, |pane, cx| pane.toggle_header_row(cx));
+        cx.run_until_parked();
+        assert!(
+            !pane.read_with(&cx, |pane, _| pane.has_header_row()),
+            "the first line has to be a data row for this half to be a test"
+        );
+        check(&mut cx);
+    }
+
+    /// Whole columns and whole rows picked with Ctrl among other blocks are
+    /// named by the cells they cover, the header's line included.
+    #[gpui::test]
+    async fn ctrl_picked_whole_columns_and_rows_are_named_by_what_they_cover(
+        cx: &mut TestAppContext,
+    ) {
+        use crate::grid::{GridCell, SelectionChange};
+        use crate::types::DisplayRow;
+
+        let (_workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("l,m,r\na,a,x\nb,B,y\nc,c,z", cx).await;
+        pane.update(&mut cx, |pane, cx| {
+            let cell = |row: usize, col: usize| {
+                GridCell::new(GridRow::Body(DisplayRow(row)), AnyColumn(col))
+            };
+            pane.change_cell_selection(cell(0, 0), SelectionChange::Replace, cx);
+            pane.change_cell_selection(cell(1, 0), SelectionChange::Extend, cx);
+            pane.change_column_selection(AnyColumn(2), SelectionChange::Add, cx);
+            pane.change_row_selection(GridRow::Body(DisplayRow(2)), SelectionChange::Add, cx);
+        });
+
+        let comparison = pane
+            .read_with(&cx, |pane, _| cell_comparison(pane, ""))
+            .expect("three ranges should be comparable");
+
+        assert_eq!(pane_titles(&comparison), ["A2:A3", "C1:C4", "A4:C4"]);
+        let values: Vec<Vec<Vec<&str>>> = comparison
+            .candidates
+            .iter()
+            .map(|candidate| candidate.rows.iter().map(|row| cells(row)).collect())
+            .collect();
+        assert_eq!(
+            values,
+            [
+                vec![vec!["a"], vec!["b"]],
+                vec![vec!["r"], vec!["x"], vec!["y"], vec!["z"]],
+                vec![vec!["c", "c", "z"]],
+            ]
+        );
+    }
+
+    /// A cell picked with Ctrl on its own is named by its one address. Named as
+    /// a block it read "B2:B2", the same cell twice over, in the pick lists and
+    /// on the tab alike.
+    #[gpui::test]
+    async fn a_single_ctrl_picked_cell_is_named_by_its_one_address(cx: &mut TestAppContext) {
+        use crate::grid::{GridCell, SelectionChange};
+        use crate::types::DisplayRow;
+
+        let (_workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("l,m,r\na,a,x\nb,B,y\nc,c,z", cx).await;
+        pane.update(&mut cx, |pane, cx| {
+            let cell = |row: usize, col: usize| {
+                GridCell::new(GridRow::Body(DisplayRow(row)), AnyColumn(col))
+            };
+            pane.change_cell_selection(cell(0, 1), SelectionChange::Replace, cx);
+            pane.change_cell_selection(cell(1, 1), SelectionChange::Add, cx);
+            pane.change_cell_selection(cell(2, 1), SelectionChange::Add, cx);
+            pane.change_cell_selection(cell(0, 2), SelectionChange::Add, cx);
+            pane.change_cell_selection(cell(2, 2), SelectionChange::Extend, cx);
+        });
+
+        let comparison = pane
+            .read_with(&cx, |pane, _| cell_comparison(pane, ""))
+            .expect("four ranges should be comparable");
+
+        assert_eq!(pane_titles(&comparison), ["B2", "B3", "B4", "C2:C4"]);
+        assert_eq!(comparison.title(), "セルの比較 (B2 ↔ B3)");
+    }
+
+    /// Selects every row from `first` to `last` by the row numbers.
+    fn select_whole_rows(
+        pane: &Entity<TabularDataPreviewPane>,
+        first: GridRow,
+        last: GridRow,
+        cx: &mut VisualTestContext,
+    ) {
+        pane.update(cx, |pane, cx| {
+            pane.select_row(first, false, cx);
+            pane.select_row(last, true, cx);
+        });
+    }
+
+    /// Every candidate's values, one row of cells per candidate.
+    fn candidate_rows(comparison: &CellComparison) -> Vec<Vec<&str>> {
+        comparison
+            .candidates
+            .iter()
+            .map(|candidate| candidate.rows.iter().flat_map(|row| cells(row)).collect())
+            .collect()
+    }
+
+    /// Rows picked by their numbers are compared row against row. The shape of
+    /// the block alone would have read them as its columns: a whole row is
+    /// every column wide.
+    #[gpui::test]
+    async fn whole_rows_picked_by_their_numbers_are_compared_row_by_row(cx: &mut TestAppContext) {
+        use crate::types::DisplayRow;
+
+        let (workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("l,m,r\na,b,x\na,B,x\nc,c,z", cx).await;
+
+        select_whole_rows(
+            &pane,
+            GridRow::Body(DisplayRow(0)),
+            GridRow::Body(DisplayRow(1)),
+            &mut cx,
+        );
+        let comparison = pane
+            .read_with(&cx, |pane, _| cell_comparison(pane, ""))
+            .expect("two whole rows should be comparable");
+        assert_eq!(pane_titles(&comparison), ["行 2", "行 3"]);
+        assert_eq!(
+            candidate_rows(&comparison),
+            [["a", "b", "x"], ["a", "B", "x"]]
+        );
+        assert_eq!(comparison.title(), "セルの比較 (行 2 ↔ 行 3)");
+        let diff = cell_diff(&comparison);
+        assert_eq!(diff.modified_rows, 1);
+        assert_eq!(
+            diff.rows.first().map(|row| row.changed_columns.clone()),
+            Some(vec![1])
+        );
+
+        select_whole_rows(
+            &pane,
+            GridRow::Body(DisplayRow(0)),
+            GridRow::Body(DisplayRow(2)),
+            &mut cx,
+        );
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            TableDiffView::diff_selected_cells(workspace, pane.clone(), window, cx);
+        });
+        cx.run_until_parked();
+        let view = workspace
+            .read_with(&cx, |workspace, cx| {
+                workspace.items_of_type::<TableDiffView>(cx).next()
+            })
+            .expect("the comparison of three rows should have opened as a tab");
+        view.read_with(&cx, |view, cx| {
+            let DiffSource::Cells { comparison, .. } = &view.source else {
+                panic!("a comparison of rows is a comparison of cells");
+            };
+            assert_eq!(pane_titles(comparison), ["行 2", "行 3", "行 4"]);
+            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (行 2 ↔ 行 3)");
+            assert_eq!(cells(view.left.row(0)), ["a", "b", "x"]);
+            assert_eq!(cells(view.right.row(0)), ["a", "B", "x"]);
+        });
+        assert!(cx.debug_bounds(DIFF_RIGHT_PICK_DEBUG_SELECTOR).is_some());
+    }
+
+    /// The rows are named the way the toolbar's address names them, with the
+    /// header's line among them or not.
+    #[gpui::test]
+    async fn whole_rows_are_named_the_way_the_toolbar_does(cx: &mut TestAppContext) {
+        use crate::grid::{GridCell, SelectionChange};
+        use crate::types::DisplayRow;
+
+        let (_workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("l,m,r\na,a,x\nb,B,y", cx).await;
+        let names_and_toolbar_names =
+            |first: GridRow, last: GridRow, cx: &mut VisualTestContext| {
+                select_whole_rows(&pane, first, last, cx);
+                let (comparison, rows) = pane.read_with(cx, |pane, _| {
+                    (
+                        cell_comparison(pane, "").expect("two whole rows should be comparable"),
+                        pane.selection_rect().rows(),
+                    )
+                });
+                let toolbar_names: Vec<String> = rows
+                    .map(|row| {
+                        let address = pane.update(cx, |pane, cx| {
+                            pane.change_cell_selection(
+                                GridCell::new(GridRow::from_index(row), AnyColumn(0)),
+                                SelectionChange::Replace,
+                                cx,
+                            );
+                            pane.cursor_address()
+                        });
+                        format!(
+                            "行 {}",
+                            address.trim_start_matches(
+                                |character: char| character.is_ascii_alphabetic()
+                            )
+                        )
+                    })
+                    .collect();
+                let names: Vec<String> = pane_titles(&comparison)
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect();
+                let values: Vec<Vec<String>> = candidate_rows(&comparison)
+                    .into_iter()
+                    .map(|row| row.into_iter().map(str::to_owned).collect())
+                    .collect();
+                (names, toolbar_names, values)
+            };
+
+        let (names, toolbar_names, values) =
+            names_and_toolbar_names(GridRow::Header, GridRow::Body(DisplayRow(0)), &mut cx);
+        assert_eq!(names, ["行 1", "行 2"]);
+        assert_eq!(names, toolbar_names);
+        assert_eq!(values, [["l", "m", "r"], ["a", "a", "x"]]);
+
+        pane.update(&mut cx, |pane, cx| pane.toggle_header_row(cx));
+        cx.run_until_parked();
+        assert!(
+            !pane.read_with(&cx, |pane, _| pane.has_header_row()),
+            "the first line has to be a data row for this half to be a test"
+        );
+        let (names, toolbar_names, values) = names_and_toolbar_names(
+            GridRow::Body(DisplayRow(0)),
+            GridRow::Body(DisplayRow(1)),
+            &mut cx,
+        );
+        assert_eq!(names, ["行 1", "行 2"]);
+        assert_eq!(names, toolbar_names);
+        assert_eq!(values, [["l", "m", "r"], ["a", "a", "x"]]);
+    }
+
+    /// One whole row has nothing of its own to be compared with, so it is cut
+    /// into its columns as any other block one row tall is.
+    #[gpui::test]
+    async fn a_single_whole_row_is_compared_column_by_column(cx: &mut TestAppContext) {
+        use crate::types::DisplayRow;
+
+        let (_workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("l,m,r\na,a,x\nb,B,y", cx).await;
+        pane.update(&mut cx, |pane, cx| {
+            pane.select_row(GridRow::Body(DisplayRow(1)), false, cx)
+        });
+
+        let comparison = pane
+            .read_with(&cx, |pane, _| cell_comparison(pane, ""))
+            .expect("a whole row of three cells should be comparable");
+        assert_eq!(pane_titles(&comparison), ["列 A", "列 B", "列 C"]);
+        assert_eq!(candidate_rows(&comparison), [["b"], ["B"], ["y"]]);
+    }
+
+    /// Whole rows are as many candidates as there are rows, and the pick lists
+    /// hold no more of them than of anything else.
+    #[gpui::test]
+    async fn whole_rows_past_the_limit_are_turned_away(cx: &mut TestAppContext) {
+        use crate::types::DisplayRow;
+
+        let mut table = "a,b".to_owned();
+        for row in 0..MAX_CELL_CANDIDATES + 10 {
+            table.push_str(&format!("\n{row},{row}"));
+        }
+        let (_workspace, pane, _editor, mut cx) = open_grid_in_workspace(&table, cx).await;
+
+        select_whole_rows(
+            &pane,
+            GridRow::Body(DisplayRow(0)),
+            GridRow::Body(DisplayRow(MAX_CELL_CANDIDATES - 1)),
+            &mut cx,
+        );
+        let comparison = pane
+            .read_with(&cx, |pane, _| cell_comparison(pane, ""))
+            .expect("as many rows as the lists offer should be comparable");
+        assert_eq!(comparison.candidates.len(), MAX_CELL_CANDIDATES);
+
+        select_whole_rows(
+            &pane,
+            GridRow::Body(DisplayRow(0)),
+            GridRow::Body(DisplayRow(MAX_CELL_CANDIDATES)),
+            &mut cx,
+        );
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                cell_comparison(pane, "").err(),
+                Some(CellComparisonRefusal::TooManyCandidates(
+                    MAX_CELL_CANDIDATES + 1
+                ))
+            );
+        });
+    }
+
+    /// Clicks the right pane's pick list open. The marked strip is the whole
+    /// title, and the button sits at its start.
+    fn open_the_right_pick_list(cx: &mut VisualTestContext) {
+        let title = cx
+            .debug_bounds(DIFF_RIGHT_PICK_DEBUG_SELECTOR)
+            .expect("with three candidates the right pane's title is a pick list");
+        cx.simulate_click(
+            gpui::point(title.origin.x + px(16.), title.center().y),
+            gpui::Modifiers::none(),
+        );
+        cx.run_until_parked();
+        // A popover menu takes the focus two frames after it opens, once it is
+        // in the dispatch tree, and a test has no frame loop to get there.
+        for _ in 0..2 {
+            cx.update(|window, cx| window.simulate_next_frame(cx));
+            cx.run_until_parked();
+        }
+    }
+
+    /// The pick list is wired to the comparison, not just drawn: choosing an
+    /// entry in it puts that candidate on its side.
+    #[gpui::test]
+    async fn choosing_from_the_pick_list_puts_that_candidate_on_its_side(cx: &mut TestAppContext) {
+        let (_workspace, _pane, _buffer, view, mut cx) = open_comparison_of_three_columns(cx).await;
+
+        // The list opens on the entry its side already shows, the second.
+        open_the_right_pick_list(&mut cx);
+        cx.simulate_keystrokes("down enter");
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, cx| {
+            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (A2:A4 ↔ C2:C4)");
+            assert_eq!(cells(view.right.row(0)), ["x"]);
+        });
+    }
+
+    /// A pick list left open as the tab closes must not keep the comparison
+    /// alive, which a menu holding the view it picks for would.
+    #[gpui::test]
+    async fn closing_a_comparison_with_its_pick_list_open_releases_it(cx: &mut TestAppContext) {
+        let (workspace, _pane, _buffer, view, mut cx) = open_comparison_of_three_columns(cx).await;
+
+        open_the_right_pick_list(&mut cx);
+        cx.update(|window, cx| {
+            let focus_handle = view.read(cx).focus_handle.clone();
+            assert!(
+                !focus_handle.is_focused(window) && focus_handle.contains_focused(window, cx),
+                "the pick list has to be open, holding the focus inside the comparison"
+            );
+        });
+
+        let item_id = view.entity_id();
+        let released = view.downgrade();
+        drop(view);
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.active_pane().update(cx, |pane, cx| {
+                    pane.close_item_by_id(item_id, SaveIntent::Skip, window, cx)
+                })
+            })
+            .await
+            .expect("closing the comparison tab should succeed");
+        cx.run_until_parked();
+
+        released.assert_released();
     }
 
     fn cells(row: &[SharedString]) -> Vec<&str> {
@@ -2581,19 +4535,11 @@ mod tests {
     #[gpui::test]
     async fn a_cell_comparison_cannot_be_taken_again_without_its_grid(cx: &mut TestAppContext) {
         let (_workspace, _pane, _editor, mut cx) = open_grid_in_workspace("a,b", cx).await;
-        let side = |value: &str| CellComparisonSide {
-            block: CellBlock::Clipboard,
-            rows: vec![vec![SharedString::from(value.to_owned())]],
-        };
         let view = cx.update(|_window, cx| {
             cx.new(|cx| {
                 TableDiffView::from_cells(
-                    "比較".into(),
-                    "左".into(),
-                    "右".into(),
                     WeakEntity::new_invalid(),
-                    side("a"),
-                    side("b"),
+                    clipboard_candidates(&["a", "b"]),
                     cx,
                 )
             })
@@ -2830,19 +4776,11 @@ mod tests {
     #[gpui::test]
     async fn a_comparison_of_nothing_but_headers_still_has_a_stop(cx: &mut TestAppContext) {
         let (_workspace, _pane, _editor, mut cx) = open_grid_in_workspace("a,b", cx).await;
-        let side = |value: &str| CellComparisonSide {
-            block: CellBlock::Clipboard,
-            rows: vec![vec![SharedString::from(value.to_owned())]],
-        };
         let view = cx.update(|_window, cx| {
             cx.new(|cx| {
                 TableDiffView::from_cells(
-                    "比較".into(),
-                    "左".into(),
-                    "右".into(),
                     WeakEntity::new_invalid(),
-                    side("a"),
-                    side("b"),
+                    clipboard_candidates(&["a", "b"]),
                     cx,
                 )
             })
@@ -2881,7 +4819,7 @@ mod tests {
         assert_eq!(long.rows.len(), 2);
         assert_eq!(long.last_row_number(), 202);
         assert!(
-            row_number_width(&long, &long) > row_number_width(&short, &short),
+            row_number_digits(&long, &long) > row_number_digits(&short, &short),
             "a comparison numbering a row 202 needs more room than one numbering it 2"
         );
     }

@@ -19,7 +19,7 @@ use workspace::{Pane, Workspace, searchable::SearchEvent};
 
 use crate::{
     parser::EditorState,
-    renderer::render_table::{APPEND_COLUMN_WIDTH, APPEND_ROWS},
+    renderer::render_table::{APPEND_ROWS, append_column_width},
     settings::TabularDataPreviewSettings,
     tabular_data_settings::TabularDataSettings,
     types::TableLikeContent,
@@ -151,7 +151,7 @@ impl TabularDataPreviewPane {
 
         let mut widths: Vec<AbsoluteLength> = self.calculate_data_column_widths();
         widths.insert(0, AbsoluteLength::Pixels(px(line_number_width)));
-        widths.push(AbsoluteLength::Pixels(px(APPEND_COLUMN_WIDTH)));
+        widths.push(append_column_width(cx));
 
         let mut resize_behaviors = vec![TableResizeBehavior::Resizable; cols];
         resize_behaviors[0] = TableResizeBehavior::None;

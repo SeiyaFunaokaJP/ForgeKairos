@@ -43,9 +43,46 @@ pub(crate) const APPEND_COLUMNS: usize = 1;
 /// may reach a row the file does not have.
 pub(crate) const APPEND_ROWS: usize = 1;
 
-/// How wide the "+" column is. Only as wide as its glyph needs, because it
-/// holds no value that could want more and cannot be dragged wider.
-pub(crate) const APPEND_COLUMN_WIDTH: f32 = 34.0;
+/// The words beside the "+" of the trailing column's heading, which pair it
+/// with the "行を追加" of the trailing row.
+const APPEND_COLUMN_LABEL: &str = "列を追加";
+
+/// The glyph of the "+" column's heading, the space after it and the size of
+/// the label. [`append_column_width`] works the column's width out from these,
+/// so the heading has to be drawn with exactly these.
+const APPEND_COLUMN_ICON_SIZE: IconSize = IconSize::Indicator;
+const APPEND_COLUMN_ICON_GAP: Rems = rems(0.25);
+const APPEND_COLUMN_LABEL_SIZE: TextSize = TextSize::Small;
+
+/// What the table pads every heading cell with, left and right together
+/// (`px_1` on each side), which the "+" column's width has to make room for.
+const HEADER_CELL_HORIZONTAL_PADDING: Rems = rems(0.5);
+
+/// How wide the "+" column is: wide enough for its heading's glyph and label
+/// side by side, and little wider, because it holds no value that could want
+/// more room and cannot be dragged wider.
+///
+/// In rems rather than in pixels, like everything the heading is drawn with,
+/// so that the column grows and shrinks with the UI font size together with
+/// its label, without anything having to notice that the setting changed.
+pub(crate) fn append_column_width(cx: &App) -> AbsoluteLength {
+    let label_size = APPEND_COLUMN_LABEL_SIZE.rems(cx);
+    // A whole em for every character, which is as wide as a CJK glyph gets in
+    // the fonts the label is drawn in.
+    let label_width = label_size * APPEND_COLUMN_LABEL.chars().count() as f32;
+    // Layout snaps each of these lengths to whole device pixels on its own and
+    // rounds the label's measured width up, so at a fractional scale factor the
+    // heading can come out a few device pixels short of the sum. A label of
+    // full-width glyphs has nothing to spare, and would be pushed out of it.
+    let snapping_allowance = label_size * 0.5;
+    AbsoluteLength::Rems(
+        HEADER_CELL_HORIZONTAL_PADDING
+            + APPEND_COLUMN_ICON_SIZE.rems()
+            + APPEND_COLUMN_ICON_GAP
+            + label_width
+            + snapping_allowance,
+    )
+}
 
 /// How thick the "+" that appears between two headings is. Enough for the
 /// glyph, and little enough to leave the heading itself clickable.
@@ -56,6 +93,9 @@ pub(crate) const APPEND_ROW_DEBUG_SELECTOR: &str = "tabular-grid-append-row";
 
 /// Marks the trailing "+" column's heading.
 pub(crate) const APPEND_COLUMN_DEBUG_SELECTOR: &str = "tabular-grid-append-column";
+
+/// Marks the label beside the "+" in that heading.
+const APPEND_COLUMN_LABEL_DEBUG_SELECTOR: &str = "tabular-grid-append-column-label";
 
 /// Marks the "+" on the top edge of a row heading, which inserts a row there.
 pub(crate) const INSERT_ROW_HANDLE_DEBUG_SELECTOR: &str = "tabular-grid-insert-row-handle";
@@ -337,13 +377,21 @@ impl TabularDataPreviewPane {
             .flex()
             .items_center()
             .justify_center()
+            .gap(APPEND_COLUMN_ICON_GAP)
             .cursor_pointer()
             .hover(|style| style.bg(colors.element_hover))
             .debug_selector(|| APPEND_COLUMN_DEBUG_SELECTOR.to_owned())
             .child(
                 Icon::new(IconName::Plus)
-                    .size(IconSize::Indicator)
+                    .size(APPEND_COLUMN_ICON_SIZE)
                     .color(Color::Accent),
+            )
+            .child(
+                div()
+                    .text_size(APPEND_COLUMN_LABEL_SIZE.rems(cx))
+                    .text_color(colors.text_muted)
+                    .debug_selector(|| APPEND_COLUMN_LABEL_DEBUG_SELECTOR.to_owned())
+                    .child(APPEND_COLUMN_LABEL),
             )
             .tooltip(Tooltip::text("末尾に 1 列追加"))
             .on_click(cx.listener(|this, _event, window, cx| {
@@ -914,6 +962,86 @@ mod tests {
         assert!(
             append_column.origin.x > append_row.origin.x,
             "the \"+\" column belongs to the right of the table ({append_column:?})"
+        );
+    }
+
+    /// The "+" column says what it does, as the "+" row does, and it is wide
+    /// enough to say it in full: a column only as wide as the glyph cuts the
+    /// label short. The column has to keep up with the UI font size, which
+    /// grows the label with it.
+    #[gpui::test]
+    async fn test_the_plus_column_heading_is_labelled_in_full(cx: &mut TestAppContext) {
+        let (_pane, _editor, mut cx) = open_grid("a,b\nc,d", cx).await;
+        cx.run_until_parked();
+        let default_rem_size = cx.update(|window, _| window.rem_size());
+        assert_the_plus_column_label_fits(&mut cx);
+
+        let larger_rem_size = default_rem_size * 2.;
+        cx.update(|_, cx| theme_settings::adjust_ui_font_size(cx, |_| larger_rem_size));
+        cx.run_until_parked();
+        assert_eq!(
+            cx.update(|window, _| window.rem_size()),
+            larger_rem_size,
+            "the UI font size should have reached the window"
+        );
+        assert_the_plus_column_label_fits(&mut cx);
+    }
+
+    fn assert_the_plus_column_label_fits(cx: &mut VisualTestContext) {
+        let heading = cx
+            .debug_bounds(APPEND_COLUMN_DEBUG_SELECTOR)
+            .expect("the table should draw the trailing \"+\" column");
+        let label = cx
+            .debug_bounds(APPEND_COLUMN_LABEL_DEBUG_SELECTOR)
+            .expect("the \"+\" column's heading should say what it does");
+        let (font_size, text_width) = cx.update(|window, cx| {
+            let font_size = APPEND_COLUMN_LABEL_SIZE
+                .rems(cx)
+                .to_pixels(window.rem_size());
+            let run = window.text_style().to_run(APPEND_COLUMN_LABEL.len());
+            let text_width = window
+                .text_system()
+                .shape_line(APPEND_COLUMN_LABEL.into(), font_size, &[run], None)
+                .width;
+            (font_size, text_width)
+        });
+
+        assert!(text_width > px(0.), "the label should have some width");
+        assert!(
+            label.size.width >= text_width,
+            "the label was cut short: {label:?} for text {text_width:?} wide"
+        );
+        // Layout rounds the label's width up to a whole pixel, and no further.
+        assert!(
+            label.size.width <= text_width + px(1.),
+            "the label is drawn larger than the size the column is made wide \
+             enough for: {label:?} for text {text_width:?} wide"
+        );
+        assert!(
+            heading.left() <= label.left() && label.right() <= heading.right(),
+            "the label should lie within the \"+\" column ({label:?} in {heading:?})"
+        );
+        assert!(
+            heading.top() <= label.top() && label.bottom() <= heading.bottom(),
+            "the label should lie within the heading row ({label:?} in {heading:?})"
+        );
+
+        // The test's text system shapes every character narrower than the
+        // full-width glyphs the label is drawn in on screen, so the label fits
+        // above with room to spare. What the column has to leave the label is a
+        // whole em for every character, and half of one more for the pixel
+        // snapping of a fractional scale factor, which the test's window does
+        // not have. The heading centers its contents, which puts as much room
+        // before the "+" as there is after the label.
+        let room_for_label = label.size.width + (heading.right() - label.right()) * 2.;
+        let characters = APPEND_COLUMN_LABEL.chars().count() as f32;
+        let room_needed = font_size * (characters + 0.5);
+        // Within a pixel, which is as far as snapping to the test window's own
+        // device pixels moves the edges this is measured between.
+        assert!(
+            room_for_label + px(1.) >= room_needed,
+            "the \"+\" column leaves the label {room_for_label:?}, short of the \
+             {room_needed:?} its characters take in a CJK font"
         );
     }
 

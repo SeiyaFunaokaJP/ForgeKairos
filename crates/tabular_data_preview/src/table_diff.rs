@@ -412,6 +412,10 @@ fn align_rows(left: &DiffSide, right: &DiffSide, column_count: usize) -> Vec<Dif
     // pair of files always lines up the same way.
     diff.postprocess_no_heuristic(&input);
 
+    // Two sides of one row each are two rows someone picked to hold against
+    // each other, such as two rows of a grid, and showing them as one taken out
+    // and another put in would leave nothing side by side to compare.
+    let always_pair = left.rows.len() == 1 && right.rows.len() == 1;
     let mut rows = Vec::with_capacity(left.rows.len().max(right.rows.len()));
     let mut left_row = 0usize;
     let mut right_row = 0usize;
@@ -428,6 +432,7 @@ fn align_rows(left: &DiffSide, right: &DiffSide, column_count: usize) -> Vec<Dif
             left_row..hunk.before.end as usize,
             right_row..hunk.after.end as usize,
             column_count,
+            always_pair,
             &mut rows,
         );
         left_row = hunk.before.end as usize;
@@ -455,6 +460,7 @@ fn pair_changed_rows(
     removed: Range<usize>,
     added: Range<usize>,
     column_count: usize,
+    always_pair: bool,
     rows: &mut Vec<DiffRow>,
 ) {
     let paired = removed.len().min(added.len());
@@ -465,7 +471,7 @@ fn pair_changed_rows(
         let right_row = added.start + offset;
         let changed_columns =
             changed_columns(left.row(left_row), right.row(right_row), column_count);
-        if rows_are_a_pair(changed_columns.len(), column_count) {
+        if always_pair || rows_are_a_pair(changed_columns.len(), column_count) {
             flush_unpaired_rows(&mut unpaired_left, &mut unpaired_right, rows);
             rows.push(DiffRow {
                 kind: DiffRowKind::Modified,
@@ -830,10 +836,24 @@ mod tests {
     /// that have nothing to do with each other.
     #[test]
     fn rows_that_share_too_little_are_not_paired() {
+        let diff = TableDiff::compute(
+            &side("a,b,c,d\n1,2,3,4\nk,k,k,k"),
+            &side("a,b,c,d\nw,x,y,z\nk,k,k,k"),
+        );
+
+        assert_eq!(alignment(&diff), ["-0|.", "+.|0", "=1|1"]);
+        assert_eq!(diff.modified_rows, 0);
+    }
+
+    /// Two sides of one row each are two rows picked to be compared, so they
+    /// are held side by side however little they share.
+    #[test]
+    fn two_single_rows_are_always_paired() {
         let diff = TableDiff::compute(&side("a,b,c,d\n1,2,3,4"), &side("a,b,c,d\nw,x,y,z"));
 
-        assert_eq!(alignment(&diff), ["-0|.", "+.|0"]);
-        assert_eq!(diff.modified_rows, 0);
+        assert_eq!(alignment(&diff), ["~0|0"]);
+        assert_eq!(diff.modified_rows, 1);
+        assert_eq!(diff.rows[0].changed_columns, [0, 1, 2, 3]);
     }
 
     /// With a single column there is nothing to measure similarity against, so
