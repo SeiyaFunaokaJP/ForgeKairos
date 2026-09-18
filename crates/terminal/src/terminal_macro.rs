@@ -89,10 +89,19 @@ pub enum MacroStep {
         #[serde(rename = "else", default, skip_serializing_if = "Vec::is_empty")]
         else_steps: Vec<MacroStep>,
     },
+    /// Store `value`, with `${name}` references already expanded, under `name`
+    /// for later steps. The only way to give a variable a value that did not
+    /// come off the terminal: a host name typed once at the top, or two
+    /// captures joined into one.
+    SetVariable {
+        name: String,
+        #[serde(default)]
+        value: String,
+    },
 }
 
-/// Which part of the terminal a [`MacroStep::If`] looks at.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// What a [`MacroStep::If`] looks at.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MatchScope {
     /// Only what arrived after the last 送信, the same window a
@@ -103,6 +112,10 @@ pub enum MatchScope {
     SinceLastSend,
     /// The trailing [`WAIT_SCAN_LINES`] lines of the grid, banner included.
     Screen,
+    /// The value of the named variable. A variable nothing has set yet
+    /// matches nothing, so the branch takes 「それ以外」; one set to the empty
+    /// string is still tested, so `^$` can ask whether it came back empty.
+    Variable(String),
 }
 
 impl MatchScope {
@@ -114,6 +127,7 @@ impl MatchScope {
         match self {
             MatchScope::SinceLastSend => "直前の出力",
             MatchScope::Screen => "画面全体",
+            MatchScope::Variable(_) => "変数",
         }
     }
 }
@@ -188,6 +202,7 @@ impl MacroStep {
             MacroStep::Clear => "画面を消去",
             MacroStep::Repeat { .. } => "繰り返し",
             MacroStep::If { .. } => "分岐",
+            MacroStep::SetVariable { .. } => "変数に設定",
         }
     }
 
@@ -227,9 +242,12 @@ impl MacroStep {
                 else_steps,
                 ..
             } => {
+                let target = match scope {
+                    MatchScope::Variable(name) => format!("${{{name}}}"),
+                    scope => scope.label().to_string(),
+                };
                 let mut summary = format!(
-                    "分岐: 『{pattern}』が{}にあれば {} ステップ、なければ {} ステップ",
-                    scope.label(),
+                    "分岐: 『{pattern}』が{target}にあれば {} ステップ、なければ {} ステップ",
                     then_steps.len(),
                     else_steps.len(),
                 );
@@ -238,6 +256,7 @@ impl MacroStep {
                 }
                 summary
             }
+            MacroStep::SetVariable { name, value } => format!("変数: ${{{name}}} に『{value}』"),
         }
     }
 }
@@ -884,9 +903,10 @@ struct MacroRunner {
     /// placed after a wait would otherwise be looking at an empty window and
     /// could never match the answer it was put there to inspect.
     send_baseline: Option<Vec<String>>,
-    /// Values captured by [`MacroStep::WaitFor`], expanded into later steps as
-    /// `${name}`. They live for the whole run, repetitions included, so a value
-    /// read on the first pass is still there on the second.
+    /// Values captured by [`MacroStep::WaitFor`] and [`MacroStep::If`] or set
+    /// by [`MacroStep::SetVariable`], expanded into later steps as `${name}`.
+    /// They live for the whole run, repetitions included, so a value read on
+    /// the first pass is still there on the second.
     variables: HashMap<String, String>,
     progress: MacroProgress,
     /// Position of the running step, outermost first, so a failure inside a
@@ -1037,16 +1057,23 @@ impl MacroRunner {
         }
     }
 
-    /// The lines a [`MacroStep::If`] decides on, which is either everything the
-    /// grid holds or only what arrived after the last 送信.
-    fn lines_in_scope(&mut self, scope: MatchScope) -> Vec<String> {
+    /// The lines a [`MacroStep::If`] decides on: everything the grid holds,
+    /// only what arrived after the last 送信, or a variable's value.
+    fn lines_in_scope(&mut self, scope: &MatchScope) -> Vec<String> {
+        let baseline = match scope {
+            MatchScope::Variable(name) => {
+                return self.variables.get(name).cloned().into_iter().collect();
+            }
+            MatchScope::Screen => None,
+            MatchScope::SinceLastSend => self.send_baseline.as_deref(),
+        };
         let current = scan_lines(&self.terminal, &mut self.cx);
-        match (scope, self.send_baseline.as_deref()) {
+        match baseline {
             // Before the first 送信 there is no window to narrow to, so the
             // branch decides on whatever the terminal was already showing —
             // the same rule a wait follows.
-            (MatchScope::Screen, _) | (MatchScope::SinceLastSend, None) => current,
-            (MatchScope::SinceLastSend, Some(baseline)) => new_output_since(baseline, &current),
+            None => current,
+            Some(baseline) => new_output_since(baseline, &current),
         }
     }
 
@@ -1153,13 +1180,17 @@ impl MacroRunner {
                         self.step_label()
                     )
                 })?;
-                let lines = self.lines_in_scope(*scope);
+                let lines = self.lines_in_scope(scope);
                 if let Some(matched) = matcher.find(&lines) {
                     self.store_captures(capture.as_ref(), &matched);
                     self.run_branch(MacroBranch::Then, then_steps).await?;
                 } else {
                     self.run_branch(MacroBranch::Else, else_steps).await?;
                 }
+            }
+            MacroStep::SetVariable { name, value } => {
+                let value = self.expand(value);
+                self.variables.insert(name.clone(), value);
             }
         }
         Ok(())
@@ -1197,7 +1228,9 @@ fn expand_variables_with(
         expanded.push_str(&rest[..dollar]);
         let after = &rest[dollar..];
         if let Some(escaped) = after.strip_prefix("$${") {
-            expanded.push_str("${");
+            // In a regular expression a bare `${` does not compile, so the
+            // escape has to come out as the two characters it stands for.
+            expanded.push_str(if escape_values { r"\$\{" } else { "${" });
             rest = escaped;
             continue;
         }
@@ -1211,15 +1244,61 @@ fn expand_variables_with(
             return expanded;
         };
         let name = &opened[..closed];
+        let written = &after[..closed + 3];
         match variables.get(name) {
             Some(value) if escape_values => expanded.push_str(&regex::escape(value)),
             Some(value) => expanded.push_str(value),
-            None => expanded.push_str(&after[..closed + 3]),
+            // Left as written means as the literal text in a regex too: a bare
+            // `${name}` does not compile, so a run that reaches the pattern
+            // before anything set the name (a capture on a branch side not
+            // taken) would stop on 「正規表現が不正です」 for a pattern the
+            // editor accepted, where a substring pattern just finds nothing.
+            None if escape_values => expanded.push_str(&regex::escape(written)),
+            None => expanded.push_str(written),
         }
         rest = &opened[closed + 1..];
     }
     expanded.push_str(rest);
     expanded
+}
+
+/// The names `text` refers to as `${name}`, in order of first appearance, with
+/// the `$${` escape skipped the same way [`expand_variables`] skips it.
+pub fn referenced_variables(text: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut rest = text;
+    while let Some(dollar) = rest.find('$') {
+        let after = &rest[dollar..];
+        if let Some(escaped) = after.strip_prefix("$${") {
+            rest = escaped;
+            continue;
+        }
+        let Some(opened) = after.strip_prefix("${") else {
+            rest = &after[1..];
+            continue;
+        };
+        let Some(closed) = opened.find('}') else {
+            break;
+        };
+        let name = &opened[..closed];
+        if !names.iter().any(|known| known == name) {
+            names.push(name.to_string());
+        }
+        rest = &opened[closed + 1..];
+    }
+    names
+}
+
+/// Compiles `pattern` the way a run would, with every `${name}` standing for
+/// a literal. What the variables will hold is unknown until the macro runs, so
+/// this is what the editor can check at save time: that the regular expression
+/// the user wrote around the references is valid.
+pub fn check_pattern_regex(pattern: &str) -> Result<regex::Regex, regex::Error> {
+    let placeholders = referenced_variables(pattern)
+        .into_iter()
+        .map(|name| (name, "x".to_string()))
+        .collect();
+    regex::Regex::new(&expand_variables_into_regex(pattern, &placeholders))
 }
 
 fn scan_lines(terminal: &Entity<Terminal>, cx: &mut AsyncApp) -> Vec<String> {
@@ -2114,6 +2193,99 @@ mod tests {
     }
 
     #[test]
+    fn a_set_variable_step_and_a_branch_on_a_variable_round_trip() {
+        let file = parse_sessions_file(
+            r#"{
+                "macros": [{
+                    "name": "m",
+                    "steps": [
+                        { "type": "set_variable", "name": "host", "value": "rt01" },
+                        {
+                            "type": "if",
+                            "pattern": "^15\\.",
+                            "regex": true,
+                            "scope": { "variable": "ver" },
+                            "then": [{ "type": "send", "text": "ping ${host}" }]
+                        }
+                    ]
+                }]
+            }"#,
+        );
+        assert_eq!(
+            file.macros[0].steps,
+            vec![
+                MacroStep::SetVariable {
+                    name: "host".to_string(),
+                    value: "rt01".to_string(),
+                },
+                MacroStep::If {
+                    pattern: r"^15\.".to_string(),
+                    regex: true,
+                    scope: MatchScope::Variable("ver".to_string()),
+                    capture: None,
+                    then_steps: vec![MacroStep::Send {
+                        text: "ping ${host}".to_string(),
+                        newline: true,
+                    }],
+                    else_steps: Vec::new(),
+                },
+            ]
+        );
+        assert_eq!(
+            file.macros[0].steps[1].summary(),
+            "分岐: 『^15\\.』が${ver}にあれば 1 ステップ、なければ 0 ステップ"
+        );
+        assert_eq!(
+            file.macros[0].steps[0].summary(),
+            "変数: ${host} に『rt01』"
+        );
+
+        let text = serialize_sessions_file(&file).expect("serializes");
+        assert!(text.contains(r#""type": "set_variable""#), "{text}");
+        assert!(text.contains(r#""variable": "ver""#), "{text}");
+        assert_eq!(parse_sessions_file(&text), file);
+    }
+
+    #[test]
+    fn referenced_variables_are_listed_once_and_skip_the_escape() {
+        assert_eq!(
+            referenced_variables("ping ${host} -c ${count} ${host} $${literal} ${open"),
+            vec!["host".to_string(), "count".to_string()]
+        );
+        assert!(referenced_variables("cost is $5").is_empty());
+    }
+
+    #[test]
+    fn a_regex_pattern_with_references_is_checked_around_them() {
+        // `${host}` on its own is not a valid regular expression (`$` followed
+        // by a repetition), which is what used to make the editor refuse to
+        // save any regex that used a variable. Held in a `String` because
+        // clippy's `invalid_regex` rejects the literal at compile time.
+        let raw_pattern = String::from(r"^From ${host}:");
+        assert!(regex::Regex::new(&raw_pattern).is_err());
+        assert!(check_pattern_regex(r"^From ${host}:").is_ok());
+        assert!(check_pattern_regex(r"^From ${host}:(").is_err());
+        assert!(
+            check_pattern_regex(r"cost $${x}").is_ok(),
+            "the escape has to stand for a literal `${{` inside a regex too"
+        );
+        let names = check_pattern_regex(r"Version (?<ver>[0-9.]+) on ${host}")
+            .expect("compiles")
+            .capture_names()
+            .flatten()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["ver".to_string()]);
+
+        let matcher = PatternMatcher::new(
+            &expand_variables_into_regex(r"cost $${x}", &HashMap::default()),
+            true,
+        )
+        .expect("compiles");
+        assert!(matcher.find(&["cost ${x}".to_string()]).is_some());
+    }
+
+    #[test]
     fn a_file_from_before_the_branch_capture_is_rewritten_without_one() {
         let file = parse_sessions_file(LEGACY_SESSIONS_FILE);
         let MacroStep::If { capture, .. } = &file.macros[0].steps[5] else {
@@ -2228,9 +2400,16 @@ mod tests {
         );
         assert_eq!(
             expand_variables_into_regex("${missing}", &variables),
-            "${missing}",
-            "an unknown name is still left visible rather than escaped away"
+            r"\$\{missing\}",
+            "an unknown name is left as the text it is, which in a regex has to be escaped"
         );
+        let unset = PatternMatcher::new(
+            &expand_variables_into_regex(r"^From ${missing}:", &variables),
+            true,
+        )
+        .expect("a reference nothing has set yet must not break the pattern");
+        assert!(unset.find(&lines(&["From ${missing}:"])).is_some());
+        assert!(unset.find(&lines(&["From rt01:"])).is_none());
 
         let matcher =
             PatternMatcher::new(&expand_variables_into_regex("${host}", &variables), true)
@@ -2836,6 +3015,147 @@ mod tests {
             assert!(
                 error.to_string().starts_with("ステップ 2: 『router#』"),
                 "unexpected error: {error}"
+            );
+        }
+
+        #[gpui::test]
+        async fn a_branch_on_a_variable_decides_on_its_value(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+            cx.run_until_parked();
+
+            let branch = |variable: &str| MacroStep::If {
+                pattern: r"^(?<major>\d+)\.".into(),
+                regex: true,
+                scope: MatchScope::Variable(variable.into()),
+                capture: None,
+                then_steps: vec![MacroStep::Send {
+                    text: format!("{variable} is ${{major}}"),
+                    newline: true,
+                }],
+                else_steps: vec![MacroStep::Send {
+                    text: format!("{variable} did not match"),
+                    newline: true,
+                }],
+            };
+
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::SetVariable {
+                                name: "host".into(),
+                                value: "rt01".into(),
+                            },
+                            MacroStep::SetVariable {
+                                name: "ver".into(),
+                                value: "15.2 on ${host}".into(),
+                            },
+                            MacroStep::SetVariable {
+                                name: "empty".into(),
+                                value: String::new(),
+                            },
+                            branch("ver"),
+                            branch("empty"),
+                            branch("never_set"),
+                            MacroStep::If {
+                                pattern: "^$".into(),
+                                regex: true,
+                                scope: MatchScope::Variable("empty".into()),
+                                capture: None,
+                                then_steps: vec![MacroStep::Send {
+                                    text: "empty is empty".into(),
+                                    newline: true,
+                                }],
+                                else_steps: Vec::new(),
+                            },
+                            MacroStep::Send {
+                                text: "${ver}".into(),
+                                newline: true,
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            run.await.expect("the macro should finish");
+
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec![
+                    // The named group of the matching branch became a variable
+                    // of its own, which is how part of a value is taken out.
+                    "ver is 15".to_string(),
+                    "empty did not match".to_string(),
+                    // Nothing set it, so it matches nothing rather than the
+                    // literal `${never_set}`.
+                    "never_set did not match".to_string(),
+                    "empty is empty".to_string(),
+                    // A set value is expanded when it is set.
+                    "15.2 on rt01".to_string(),
+                ]
+            );
+        }
+
+        #[gpui::test]
+        async fn a_regex_naming_a_variable_not_set_yet_finds_nothing_instead_of_failing(
+            cx: &mut TestAppContext,
+        ) {
+            let terminal = display_only_terminal(cx);
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"From 10.0.0.1: bytes=32\r\n", cx);
+            });
+            cx.run_until_parked();
+
+            let branch = MacroStep::If {
+                pattern: r"^From ${host}: bytes".into(),
+                regex: true,
+                scope: MatchScope::Screen,
+                capture: None,
+                then_steps: vec![MacroStep::Send {
+                    text: "reached ${host}".into(),
+                    newline: true,
+                }],
+                else_steps: vec![MacroStep::Send {
+                    text: "no answer from ${host}".into(),
+                    newline: true,
+                }],
+            };
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            branch.clone(),
+                            MacroStep::SetVariable {
+                                name: "host".into(),
+                                value: "10.0.0.1".into(),
+                            },
+                            branch,
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            run.await
+                .expect("an unset reference must not read as an invalid regex");
+
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec![
+                    "no answer from ${host}".to_string(),
+                    "reached 10.0.0.1".to_string(),
+                ]
             );
         }
 

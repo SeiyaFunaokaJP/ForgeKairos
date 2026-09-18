@@ -16,8 +16,9 @@ use editor::{Editor, EditorEvent};
 use futures::StreamExt as _;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
-    App, AsyncWindowContext, BackgroundExecutor, DismissEvent, Entity, EventEmitter, FocusHandle,
-    Focusable, FutureExt as _, Render, Subscription, Task, WeakEntity, Window, actions,
+    App, AsyncWindowContext, BackgroundExecutor, DismissEvent, ElementId, Entity, EventEmitter,
+    FocusHandle, Focusable, FutureExt as _, Render, ScrollHandle, Subscription, Task, WeakEntity,
+    Window, actions,
 };
 use picker::{Picker, PickerDelegate};
 use project::Fs;
@@ -30,14 +31,15 @@ use terminal::{
     terminal_macro::{
         ConnectionProtocol, MacroFolder, MacroKey, MacroStep, MacroStepList, MatchScope,
         SavedConnection, TerminalMacro, TerminalSessionStore, TerminalSessionsFile,
-        normalize_folder, normalize_tags,
+        check_pattern_regex, normalize_folder, normalize_tags, referenced_variables,
     },
     terminal_settings::TerminalSettings,
 };
 use ui::{
     Checkbox, ContextMenu, Disclosure, DropdownMenu, DropdownStyle, HighlightedLabel,
     InputFrameSize, ListItem, ListItemSpacing, Modal, ModalFooter, ModalHeader, Section,
-    ToggleState, Tooltip, input_frame, input_frame_sized, prelude::*, right_click_menu,
+    ToggleState, Tooltip, WithScrollbar, input_frame, input_frame_sized, prelude::*,
+    right_click_menu,
 };
 use util::ResultExt as _;
 use util::command::Stdio;
@@ -1471,6 +1473,7 @@ enum StepKind {
     Clear,
     Repeat,
     If,
+    SetVariable,
 }
 
 impl StepKind {
@@ -1482,13 +1485,45 @@ impl StepKind {
             StepKind::Clear => "画面を消去",
             StepKind::Repeat => "繰り返し",
             StepKind::If => "分岐",
+            StepKind::SetVariable => "変数に設定",
+        }
+    }
+
+    /// The tooltip of the kind's 「追加」 button.
+    fn description(&self) -> &'static str {
+        match self {
+            StepKind::Send => "端末へ文字列を送ります",
+            StepKind::WaitFor => "指定した文字が出力に出るまで待ちます",
+            StepKind::Sleep => "指定した秒数だけ待ちます",
+            StepKind::Clear => "画面とスクロールバックを消します",
+            StepKind::Repeat => "中のステップを指定した回数だけ繰り返します",
+            StepKind::If => "出力や変数に文字があるかどうかで、実行するステップを分けます",
+            StepKind::SetVariable => {
+                "変数に値を入れます。後のステップで ${変数名} と書いたところがその値になります"
+            }
+        }
+    }
+
+    /// Element id of the kind's 「追加」 button, unique within one row of them.
+    fn add_button_id(&self) -> &'static str {
+        match self {
+            StepKind::Send => "add-send",
+            StepKind::WaitFor => "add-wait-for",
+            StepKind::Sleep => "add-sleep",
+            StepKind::Clear => "add-clear",
+            StepKind::Repeat => "add-repeat",
+            StepKind::If => "add-if",
+            StepKind::SetVariable => "add-set-variable",
         }
     }
 
     /// Whether the row shows the text field (期待文字 / 送信する文字列 /
-    /// 判定する文字列).
+    /// 判定する文字列 / 入れる値).
     fn has_text(&self) -> bool {
-        matches!(self, StepKind::Send | StepKind::WaitFor | StepKind::If)
+        matches!(
+            self,
+            StepKind::Send | StepKind::WaitFor | StepKind::If | StepKind::SetVariable
+        )
     }
 
     /// Whether the row shows the seconds field.
@@ -1501,27 +1536,109 @@ impl StepKind {
         matches!(self, StepKind::WaitFor | StepKind::If)
     }
 
+    /// Whether the row's `capture` field names a variable the row gives a
+    /// value to.
+    fn names_a_variable(&self) -> bool {
+        matches!(
+            self,
+            StepKind::WaitFor | StepKind::If | StepKind::SetVariable
+        )
+    }
+
     /// The grey hint of the row's text field. It names the field and says that
-    /// captured values may be spliced in, which is the only place the syntax is
-    /// discoverable from the form.
+    /// variables may be spliced in.
     fn text_placeholder(&self) -> &'static str {
         match self {
             StepKind::Send => "送信する文字列 (${変数} が使えます)",
             StepKind::WaitFor => "期待文字 (${変数} が使えます)",
             StepKind::If => "判定する文字列 (${変数} が使えます)",
+            StepKind::SetVariable => "入れる値 (${変数} も使えます)",
             StepKind::Sleep | StepKind::Clear | StepKind::Repeat => "",
         }
     }
 
-    const ALL: [StepKind; 6] = [
+    /// The grey hint of the row's `capture` field, which a wait or a branch may
+    /// leave empty but a 変数に設定 cannot.
+    fn capture_placeholder(&self) -> &'static str {
+        match self {
+            StepKind::SetVariable => VARIABLE_NAME_PLACEHOLDER,
+            _ => CAPTURE_PLACEHOLDER,
+        }
+    }
+
+    const ALL: [StepKind; 7] = [
         StepKind::Send,
         StepKind::WaitFor,
         StepKind::Sleep,
         StepKind::Clear,
         StepKind::Repeat,
         StepKind::If,
+        StepKind::SetVariable,
     ];
 }
+
+/// The 対象 dropdown of a 分岐 row. [`MatchScope::Variable`] carries the
+/// variable's name, which the form keeps in a field of its own, so the dropdown
+/// needs a choice without one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ScopeChoice {
+    SinceLastSend,
+    Screen,
+    Variable,
+}
+
+impl ScopeChoice {
+    const ALL: [ScopeChoice; 3] = [
+        ScopeChoice::SinceLastSend,
+        ScopeChoice::Screen,
+        ScopeChoice::Variable,
+    ];
+
+    fn of(scope: &MatchScope) -> Self {
+        match scope {
+            MatchScope::SinceLastSend => ScopeChoice::SinceLastSend,
+            MatchScope::Screen => ScopeChoice::Screen,
+            MatchScope::Variable(_) => ScopeChoice::Variable,
+        }
+    }
+
+    fn scope(&self, variable: String) -> MatchScope {
+        match self {
+            ScopeChoice::SinceLastSend => MatchScope::SinceLastSend,
+            ScopeChoice::Screen => MatchScope::Screen,
+            ScopeChoice::Variable => MatchScope::Variable(variable),
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        self.scope(String::new()).label()
+    }
+}
+
+/// Reads a variable-name field. `${host}` is taken to mean `host`, because that
+/// is how the name is spelled everywhere else in the form; a name that would
+/// still break `${…}` expansion is refused.
+fn parse_variable_name(value: &str) -> Result<Option<String>, ()> {
+    let trimmed = value.trim();
+    let name = trimmed
+        .strip_prefix("${")
+        .and_then(|name| name.strip_suffix('}'))
+        .unwrap_or(trimmed)
+        .trim();
+    if name.contains(['$', '{', '}']) {
+        return Err(());
+    }
+    Ok((!name.is_empty()).then(|| name.to_string()))
+}
+
+/// The 「分岐と変数の使い方」 panel, one paragraph per entry.
+const MACRO_HELP: [&str; 5] = [
+    "分岐: 「対象」(直前の出力 / 画面全体 / 変数) に「判定する文字列」があれば「そのとき」、なければ「それ以外」のステップを実行します。待たずにその場で調べるので、応答を待ってから調べるときは前に「期待文字を待つ」を置きます。",
+    "変数に値を入れる: 「変数に設定」ステップ、または「期待文字を待つ」「分岐」の「取り込む変数名」(見つかった行、正規表現なら一致した部分が入ります)。正規表現の名前付きグループ (?<名前>…) は、一致した部分がその名前の変数に入ります。",
+    "変数を使う: 送信する文字列・期待文字・判定する文字列・入れる値に ${名前} と書くと、実行時にその値に置き換わります。${ を文字として送るときは $${ と書きます。",
+    "値で分ける: 分岐の「対象」を「変数」にすると、その変数の値を調べます。まだ値が入っていない変数は「それ以外」になります。正規表現の名前付きグループを使うと、値の一部を別の変数に取り出せます。",
+    "例: 送信「show version」→ 期待文字を待つ「Version (?<ver>[0-9.]+)」(正規表現) → 分岐 (対象: 変数 ver、判定する文字列「^15\\.」、正規表現) → そのとき: 送信「…」",
+];
 
 /// Which of a row's child lists a path descends into.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1621,13 +1738,17 @@ struct StepRow {
     /// Repetitions of a 繰り返し row. Separate from `number`, which is a
     /// duration in seconds.
     count: Entity<Editor>,
-    /// 取り込む変数名 of a 期待文字を待つ or a 分岐 row. Empty means "capture
-    /// nothing".
+    /// The variable the row gives a value to: 取り込む変数名 of a 期待文字を待つ
+    /// or a 分岐 row (empty means "capture nothing"), 変数名 of a 変数に設定
+    /// row.
     capture: Entity<Editor>,
     regex: bool,
     newline: bool,
-    /// Which part of the output a 分岐 row decides on.
-    scope: MatchScope,
+    /// What a 分岐 row decides on.
+    scope: ScopeChoice,
+    /// The variable a 分岐 row decides on when `scope` is
+    /// [`ScopeChoice::Variable`].
+    scope_variable: Entity<Editor>,
     /// Whether a 期待文字を待つ row runs `timeout_children` instead of stopping
     /// the macro. Kept apart from that list being empty, because 「何もせずに
     /// 次へ進む」 is a deliberate answer and has to survive a save.
@@ -1656,9 +1777,12 @@ impl StepRow {
             MacroStep::Clear => StepKind::Clear,
             MacroStep::Repeat { .. } => StepKind::Repeat,
             MacroStep::If { .. } => StepKind::If,
+            MacroStep::SetVariable { .. } => StepKind::SetVariable,
         };
         let text_value = match step {
-            MacroStep::Send { text, .. } => text.clone(),
+            MacroStep::Send { text, .. } | MacroStep::SetVariable { value: text, .. } => {
+                text.clone()
+            }
             MacroStep::WaitFor { pattern, .. } | MacroStep::If { pattern, .. } => pattern.clone(),
             _ => String::new(),
         };
@@ -1679,14 +1803,19 @@ impl StepRow {
             MacroStep::Send { newline, .. } => *newline,
             _ => true,
         };
-        let scope = match step {
-            MacroStep::If { scope, .. } => *scope,
-            _ => MatchScope::default(),
+        let (scope, scope_variable_value) = match step {
+            MacroStep::If {
+                scope: MatchScope::Variable(name),
+                ..
+            } => (ScopeChoice::Variable, name.clone()),
+            MacroStep::If { scope, .. } => (ScopeChoice::of(scope), String::new()),
+            _ => (ScopeChoice::of(&MatchScope::default()), String::new()),
         };
         let capture_value = match step {
             MacroStep::WaitFor { capture, .. } | MacroStep::If { capture, .. } => {
                 capture.clone().unwrap_or_default()
             }
+            MacroStep::SetVariable { name, .. } => name.clone(),
             _ => String::new(),
         };
         let continue_on_timeout = matches!(
@@ -1727,7 +1856,9 @@ impl StepRow {
         let text = single_line(text_value, kind.text_placeholder(), window, cx);
         let number = single_line(number_value, "", window, cx);
         let count = single_line(count_value, "", window, cx);
-        let capture = single_line(capture_value, CAPTURE_PLACEHOLDER, window, cx);
+        let capture = single_line(capture_value, kind.capture_placeholder(), window, cx);
+        let scope_variable =
+            single_line(scope_variable_value, VARIABLE_NAME_PLACEHOLDER, window, cx);
 
         Self {
             kind,
@@ -1738,6 +1869,7 @@ impl StepRow {
             regex,
             newline,
             scope,
+            scope_variable,
             continue_on_timeout,
             children,
             else_children,
@@ -1767,6 +1899,18 @@ impl StepRow {
         }
     }
 
+    /// The child lists the row draws and saves. A row switched to another kind
+    /// keeps its children in case it is switched back, but they are not part
+    /// of the macro meanwhile.
+    fn live_lists(&self) -> &'static [StepList] {
+        match self.kind {
+            StepKind::Repeat => &[StepList::Main],
+            StepKind::If => &[StepList::Main, StepList::Else],
+            StepKind::WaitFor if self.continue_on_timeout => &[StepList::Timeout],
+            _ => &[],
+        }
+    }
+
     fn to_step(&self, label: &str, cx: &App) -> Result<MacroStep, String> {
         let text = self.text.read(cx).text(cx);
         // `list` names which child list `rows` is, so a step inside 「それ以外」
@@ -1781,14 +1925,18 @@ impl StepRow {
             }
             Ok::<_, String>(steps)
         };
-        let capture = |field: &Entity<Editor>, cx: &App| -> Result<Option<String>, String> {
-            let capture = field.read(cx).text(cx).trim().to_string();
-            if capture.contains(['$', '{', '}']) {
-                return Err(format!(
-                    "ステップ {label}: 取り込む変数名に $ {{ }} は使えません。"
-                ));
+        let capture = |cx: &App| -> Result<Option<String>, String> {
+            parse_variable_name(&self.capture.read(cx).text(cx))
+                .map_err(|()| format!("ステップ {label}: 取り込む変数名に $ {{ }} は使えません。"))
+        };
+        // A `${name}` in the pattern is only known at run time, so the check
+        // compiles the pattern with each reference standing for a literal.
+        let check_pattern = |text: &str| {
+            if self.regex && check_pattern_regex(text).is_err() {
+                Err(format!("ステップ {label}: 正規表現が不正です。"))
+            } else {
+                Ok(())
             }
-            Ok((!capture.is_empty()).then_some(capture))
         };
         match self.kind {
             StepKind::Send => Ok(MacroStep::Send {
@@ -1799,15 +1947,13 @@ impl StepRow {
                 if text.trim().is_empty() {
                     return Err(format!("ステップ {label}: 期待文字を入力してください。"));
                 }
-                if self.regex && regex::Regex::new(&text).is_err() {
-                    return Err(format!("ステップ {label}: 正規表現が不正です。"));
-                }
+                check_pattern(&text)?;
                 Ok(MacroStep::WaitFor {
                     pattern: text,
                     regex: self.regex,
                     timeout_ms: parse_seconds(&self.number.read(cx).text(cx))
                         .ok_or_else(|| format!("ステップ {label}: 秒数が不正です。"))?,
-                    capture: capture(&self.capture, cx)?,
+                    capture: capture(cx)?,
                     on_timeout: self
                         .continue_on_timeout
                         .then(|| steps(&self.timeout_children, StepList::Timeout, cx))
@@ -1840,23 +1986,198 @@ impl StepRow {
                         "ステップ {label}: 判定する文字列を入力してください。"
                     ));
                 }
-                if self.regex && regex::Regex::new(&text).is_err() {
-                    return Err(format!("ステップ {label}: 正規表現が不正です。"));
-                }
+                check_pattern(&text)?;
+                let variable = match self.scope {
+                    ScopeChoice::Variable => {
+                        parse_variable_name(&self.scope_variable.read(cx).text(cx))
+                            .map_err(|()| {
+                                format!("ステップ {label}: 調べる変数名に $ {{ }} は使えません。")
+                            })?
+                            .ok_or_else(|| {
+                                format!("ステップ {label}: 調べる変数名を入力してください。")
+                            })?
+                    }
+                    ScopeChoice::SinceLastSend | ScopeChoice::Screen => String::new(),
+                };
                 Ok(MacroStep::If {
                     pattern: text,
                     regex: self.regex,
-                    scope: self.scope,
-                    capture: capture(&self.capture, cx)?,
+                    scope: self.scope.scope(variable),
+                    capture: capture(cx)?,
                     then_steps: steps(&self.children, StepList::Main, cx)?,
                     else_steps: steps(&self.else_children, StepList::Else, cx)?,
                 })
             }
+            StepKind::SetVariable => {
+                let name = parse_variable_name(&self.capture.read(cx).text(cx))
+                    .map_err(|()| format!("ステップ {label}: 変数名に $ {{ }} は使えません。"))?
+                    .ok_or_else(|| format!("ステップ {label}: 変数名を入力してください。"))?;
+                Ok(MacroStep::SetVariable { name, value: text })
+            }
         }
+    }
+
+    /// One sentence on what the row will do with the values it holds now, for
+    /// the kinds whose behaviour the fields alone do not spell out.
+    fn describe(&self, cx: &App) -> Option<String> {
+        let text = self.text.read(cx).text(cx);
+        let quoted = |fallback: &str| {
+            if text.trim().is_empty() {
+                format!("「{fallback}」")
+            } else {
+                format!("『{text}』")
+            }
+        };
+        let variable =
+            |field: &Entity<Editor>| parse_variable_name(&field.read(cx).text(cx)).ok().flatten();
+        let captured = |sentence: &mut String, when: &str| {
+            if let Some(name) = variable(&self.capture) {
+                let what = if self.regex { "部分" } else { "行" };
+                sentence.push_str(&format!(
+                    "{when}見つかった{what}を ${{{name}}} に入れます。"
+                ));
+            }
+        };
+        match self.kind {
+            StepKind::WaitFor => {
+                // What a wait looks at moves forward with every 送信 and
+                // every wait that succeeds, so "new output" is the honest
+                // description; "since the last 送信" is not, after a wait.
+                let seconds = self.number.read(cx).text(cx);
+                let seconds = match seconds.trim() {
+                    "" => "?",
+                    seconds => seconds,
+                };
+                let mut sentence = format!(
+                    "{}が新しく出力されるまで、最大 {seconds} 秒待ちます。{}",
+                    quoted("期待文字"),
+                    if self.continue_on_timeout {
+                        "出なければ「タイムアウト時」を実行して次へ進みます。"
+                    } else {
+                        "出なければマクロを中止します。"
+                    }
+                );
+                captured(&mut sentence, "");
+                Some(sentence)
+            }
+            StepKind::If => {
+                let target = match self.scope {
+                    ScopeChoice::SinceLastSend => "直前の送信のあとの出力".to_string(),
+                    ScopeChoice::Screen => "画面全体".to_string(),
+                    ScopeChoice::Variable => match variable(&self.scope_variable) {
+                        Some(name) => format!("変数 ${{{name}}} の値"),
+                        None => "変数の値".to_string(),
+                    },
+                };
+                let mut sentence = if self.regex {
+                    format!(
+                        "{target}が正規表現{}に一致すれば「そのとき」を、一致しなければ「それ以外」を実行します。",
+                        quoted("判定する文字列")
+                    )
+                } else {
+                    format!(
+                        "{target}に{}が含まれていれば「そのとき」を、含まれていなければ「それ以外」を実行します。",
+                        quoted("判定する文字列")
+                    )
+                };
+                if self.scope != ScopeChoice::Variable {
+                    sentence.push_str("待たずにその場で調べます。");
+                }
+                captured(&mut sentence, "一致したときは");
+                Some(sentence)
+            }
+            StepKind::SetVariable => Some(match variable(&self.capture) {
+                Some(name) => format!(
+                    "${{{name}}} に{}を入れます。後のステップで ${{{name}}} と書いたところがこの値になります。",
+                    if text.is_empty() {
+                        "空の文字列".to_string()
+                    } else {
+                        format!("『{text}』")
+                    }
+                ),
+                None => {
+                    "変数名と値を入れると、後のステップで ${変数名} と書いたところがその値になります。"
+                        .to_string()
+                }
+            }),
+            StepKind::Send | StepKind::Sleep | StepKind::Clear | StepKind::Repeat => None,
+        }
+    }
+
+    /// The variables this row itself gives a value to, children left out.
+    fn own_variables(&self, cx: &App) -> Vec<String> {
+        let mut names = Vec::new();
+        if self.kind.names_a_variable()
+            && let Ok(Some(name)) = parse_variable_name(&self.capture.read(cx).text(cx))
+        {
+            names.push(name);
+        }
+        if self.kind.has_pattern()
+            && self.regex
+            && let Ok(regex) = check_pattern_regex(&self.text.read(cx).text(cx))
+        {
+            names.extend(regex.capture_names().flatten().map(str::to_string));
+        }
+        names
+    }
+
+    /// Adds every variable this row and the rows under it give a value to,
+    /// with the row that does, to `defined`. A name given a value in more than
+    /// one place keeps the first.
+    fn collect_variables(&self, path: &StepPath, defined: &mut Vec<(String, StepPath)>, cx: &App) {
+        for name in self.own_variables(cx) {
+            if !defined.iter().any(|(known, _)| *known == name) {
+                defined.push((name, path.clone()));
+            }
+        }
+        for list in self.live_lists() {
+            for (index, child) in self.list(*list).iter().enumerate() {
+                child.collect_variables(&path.child(*list, index), defined, cx);
+            }
+        }
+    }
+
+    /// `${name}` references in the row's text that no step of the form gives a
+    /// value to. A run leaves them as written, which is rarely what was meant.
+    fn undefined_references(&self, known: &HashSet<String>, cx: &App) -> Vec<String> {
+        if !self.kind.has_text() {
+            return Vec::new();
+        }
+        referenced_variables(&self.text.read(cx).text(cx))
+            .into_iter()
+            .filter(|name| !known.contains(name))
+            .collect()
+    }
+
+    /// The 調べる変数名 of a 分岐 on a variable when no step of the form gives
+    /// it a value. Unlike a stray `${name}` in a text field, which at least
+    /// shows up as written, such a branch quietly takes 「それ以外」 every time.
+    fn undefined_scope_variable(&self, known: &HashSet<String>, cx: &App) -> Option<String> {
+        if self.kind != StepKind::If || self.scope != ScopeChoice::Variable {
+            return None;
+        }
+        parse_variable_name(&self.scope_variable.read(cx).text(cx))
+            .ok()
+            .flatten()
+            .filter(|name| !known.contains(name))
+    }
+
+    /// Puts the cursor where a new row of this kind is filled in first.
+    fn focus_first_field(&self, window: &mut Window, cx: &mut App) {
+        let field = match self.kind {
+            StepKind::SetVariable => &self.capture,
+            StepKind::Send | StepKind::WaitFor | StepKind::If => &self.text,
+            StepKind::Repeat => &self.count,
+            StepKind::Sleep => &self.number,
+            StepKind::Clear => return,
+        };
+        window.focus(&field.focus_handle(cx), cx);
     }
 }
 
 const CAPTURE_PLACEHOLDER: &str = "省略可";
+
+const VARIABLE_NAME_PLACEHOLDER: &str = "変数名";
 
 fn format_seconds(milliseconds: u64) -> String {
     let seconds = milliseconds as f64 / 1000.0;
@@ -2000,7 +2321,8 @@ struct StepSnapshot {
     capture: String,
     regex: bool,
     newline: bool,
-    scope: MatchScope,
+    scope: ScopeChoice,
+    scope_variable: String,
     continue_on_timeout: bool,
     children: Vec<StepSnapshot>,
     else_children: Vec<StepSnapshot>,
@@ -2019,6 +2341,7 @@ impl StepRow {
             regex: self.regex,
             newline: self.newline,
             scope: self.scope,
+            scope_variable: self.scope_variable.read(cx).text(cx),
             continue_on_timeout: self.continue_on_timeout,
             children: snapshots(&self.children),
             else_children: snapshots(&self.else_children),
@@ -2065,6 +2388,11 @@ pub struct MacroEditor {
     renaming_folder: Option<(String, Entity<Editor>)>,
     new_folder: Option<NewFolderEntry>,
     steps: Vec<StepRow>,
+    /// The form's scroll position, so a step added at the bottom of a long
+    /// macro can be brought into view.
+    form_scroll: ScrollHandle,
+    /// Whether the 「分岐と変数の使い方」 panel is open.
+    show_help: bool,
     error: Option<SharedString>,
     /// Macro whose 削除 has been asked for but not yet confirmed.
     pending_delete: Option<MacroKey>,
@@ -2129,6 +2457,8 @@ impl MacroEditor {
             renaming_folder: None,
             new_folder: None,
             steps: Vec::new(),
+            form_scroll: ScrollHandle::new(),
+            show_help: false,
             error: None,
             pending_delete: None,
             pending_folder_delete: None,
@@ -2178,6 +2508,9 @@ impl MacroEditor {
         self.pending_folder_delete = None;
         self.pending_selection = None;
         self.saved_snapshot = Some(self.snapshot(cx));
+        // The handle outlives the macro it scrolled, so a macro opened after
+        // one that was scrolled to its end would otherwise open at its end.
+        self.form_scroll.set_offset(gpui::Point::default());
         window.focus(&self.name.focus_handle(cx), cx);
         cx.notify();
     }
@@ -2426,12 +2759,21 @@ impl MacroEditor {
                 then_steps: Vec::new(),
                 else_steps: Vec::new(),
             },
+            StepKind::SetVariable => MacroStep::SetVariable {
+                name: String::new(),
+                value: String::new(),
+            },
         }
     }
 
     fn add_step(&mut self, kind: StepKind, window: &mut Window, cx: &mut Context<Self>) {
         let step = Self::blank_step(kind);
-        self.steps.push(StepRow::new(&step, window, cx));
+        let row = StepRow::new(&step, window, cx);
+        row.focus_first_field(window, cx);
+        self.steps.push(row);
+        // The new row lands under everything else, which on a long macro is
+        // below the part of the form that is showing.
+        self.form_scroll.scroll_to_bottom();
         cx.notify();
     }
 
@@ -2449,8 +2791,19 @@ impl MacroEditor {
         let Some(parent_row) = self.row_mut(parent) else {
             return;
         };
+        row.focus_first_field(window, cx);
         parent_row.list_mut(list).push(row);
         cx.notify();
+    }
+
+    /// Every variable the form gives a value to, with the first row that does,
+    /// in step order.
+    fn defined_variables(&self, cx: &App) -> Vec<(String, StepPath)> {
+        let mut defined = Vec::new();
+        for (index, row) in self.steps.iter().enumerate() {
+            row.collect_variables(&StepPath::top(index), &mut defined, cx);
+        }
+        defined
     }
 
     fn row(&self, path: &StepPath) -> Option<&StepRow> {
@@ -3570,6 +3923,7 @@ impl MacroEditor {
         path: &StepPath,
         list: StepList,
         heading: &'static str,
+        known: &HashSet<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -3596,14 +3950,13 @@ impl MacroEditor {
         }
 
         let child_rows = (0..child_count)
-            .map(|index| self.render_step(&path.child(list, index), window, cx))
+            .map(|index| self.render_step(&path.child(list, index), known, window, cx))
             .collect::<Vec<_>>();
         let add_id = match list {
             StepList::Main => "add-main-step",
             StepList::Else => "add-else-step",
             StepList::Timeout => "add-timeout-step",
         };
-        let parent = path.clone();
         v_flex()
             .w_full()
             .gap_1()
@@ -3614,13 +3967,123 @@ impl MacroEditor {
                     .color(Color::Muted),
             )
             .children(child_rows)
+            .child(self.render_add_buttons(
+                Some((path.clone(), list)),
+                (add_id, element_id).into(),
+                cx,
+            ))
+            .into_any_element()
+    }
+
+    /// One button per step kind under every step list, so that 分岐 and
+    /// 変数に設定 are in plain view rather than behind the kind dropdown of a
+    /// step that already exists. `parent` is `None` for the macro's own list.
+    fn render_add_buttons(
+        &self,
+        parent: Option<(StepPath, StepList)>,
+        id: ElementId,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        h_flex()
+            .id(id)
+            .w_full()
+            .flex_wrap()
+            .gap_1()
             .child(
-                Button::new((add_id, element_id), "子ステップを追加")
+                Label::new("追加:")
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
+            .children(StepKind::ALL.map(|kind| {
+                let parent = parent.clone();
+                Button::new(kind.add_button_id(), kind.label())
                     .label_size(LabelSize::Small)
-                    .start_icon(Icon::new(IconName::Plus))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.add_child_step(&parent, list, StepKind::Send, window, cx);
-                    })),
+                    .style(ButtonStyle::Outlined)
+                    .start_icon(Icon::new(IconName::Plus).size(IconSize::XSmall))
+                    .tooltip(Tooltip::text(kind.description()))
+                    .on_click(cx.listener(move |this, _, window, cx| match &parent {
+                        Some((path, list)) => this.add_child_step(path, *list, kind, window, cx),
+                        None => this.add_step(kind, window, cx),
+                    }))
+            }))
+            .into_any_element()
+    }
+
+    /// The heading over the step list: the 「分岐と変数の使い方」 toggle, the
+    /// panel it opens, and the variables the macro has so far.
+    fn render_steps_header(
+        &self,
+        defined: &[(String, StepPath)],
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let variables = if defined.is_empty() {
+            "変数: まだありません (「変数に設定」か「取り込む変数名」で作れます)".to_string()
+        } else {
+            let listed = defined
+                .iter()
+                .map(|(name, path)| format!("${{{name}}} (ステップ {})", path.label()))
+                .collect::<Vec<_>>()
+                .join("、");
+            format!("変数: {listed}")
+        };
+        let colors = cx.theme().colors();
+        let (border, background) = (colors.border_variant, colors.surface_background);
+        v_flex()
+            .w_full()
+            .gap_1()
+            .pt_1()
+            .border_t_1()
+            .border_color(border)
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .justify_between()
+                    .child(
+                        Label::new(format!("ステップ ({} 個)", self.steps.len()))
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .child(
+                        Button::new(
+                            "macro-help",
+                            if self.show_help {
+                                "使い方を閉じる"
+                            } else {
+                                "分岐と変数の使い方"
+                            },
+                        )
+                        .label_size(LabelSize::Small)
+                        .start_icon(Icon::new(IconName::Info).size(IconSize::XSmall))
+                        .toggle_state(self.show_help)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.show_help = !this.show_help;
+                            cx.notify();
+                        })),
+                    ),
+            )
+            .when(self.show_help, |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .p_2()
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(border)
+                        .bg(background)
+                        .debug_selector(|| "macro-help-panel".into())
+                        .children(
+                            MACRO_HELP
+                                .iter()
+                                .map(|paragraph| Label::new(*paragraph).size(LabelSize::Small)),
+                        ),
+                )
+            })
+            .child(
+                Label::new(variables)
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
             )
             .into_any_element()
     }
@@ -3628,6 +4091,7 @@ impl MacroEditor {
     fn render_step(
         &self,
         path: &StepPath,
+        known: &HashSet<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -3680,10 +4144,14 @@ impl MacroEditor {
                                         editor.set_text(seconds, window, cx)
                                     });
                                 }
-                                // The hint names the field, so it follows the
+                                // The hints name the fields, so they follow the
                                 // kind the row was just switched to.
                                 let placeholder = candidate.text_placeholder();
                                 row.text.update(cx, |editor, cx| {
+                                    editor.set_placeholder_text(placeholder, window, cx);
+                                });
+                                let placeholder = candidate.capture_placeholder();
+                                row.capture.update(cx, |editor, cx| {
                                     editor.set_placeholder_text(placeholder, window, cx);
                                 });
                                 cx.notify();
@@ -3701,7 +4169,7 @@ impl MacroEditor {
             let path = path.clone();
             let selected = row.scope;
             ContextMenu::build(window, cx, move |mut menu, _, _| {
-                for candidate in [MatchScope::SinceLastSend, MatchScope::Screen] {
+                for candidate in ScopeChoice::ALL {
                     let view = view.clone();
                     let path = path.clone();
                     menu = menu.toggleable_entry(
@@ -3752,16 +4220,21 @@ impl MacroEditor {
             })
         });
 
-        let repeat_children = (kind == StepKind::Repeat)
-            .then(|| self.render_child_list(path, StepList::Main, "繰り返す内容", window, cx));
+        let repeat_children = (kind == StepKind::Repeat).then(|| {
+            self.render_child_list(path, StepList::Main, "繰り返す内容", known, window, cx)
+        });
         let branch_children = (kind == StepKind::If).then(|| {
             [
-                self.render_child_list(path, StepList::Main, "そのとき", window, cx),
-                self.render_child_list(path, StepList::Else, "それ以外", window, cx),
+                self.render_child_list(path, StepList::Main, "そのとき", known, window, cx),
+                self.render_child_list(path, StepList::Else, "それ以外", known, window, cx),
             ]
         });
-        let timeout_children = (kind == StepKind::WaitFor && row.continue_on_timeout)
-            .then(|| self.render_child_list(path, StepList::Timeout, "タイムアウト時", window, cx));
+        let timeout_children = (kind == StepKind::WaitFor && row.continue_on_timeout).then(|| {
+            self.render_child_list(path, StepList::Timeout, "タイムアウト時", known, window, cx)
+        });
+        let description = row.describe(cx);
+        let undefined = row.undefined_references(known, cx);
+        let undefined_scope = row.undefined_scope_variable(known, cx);
 
         let move_up = path.clone();
         let move_down = path.clone();
@@ -3769,6 +4242,15 @@ impl MacroEditor {
         let newline_path = path.clone();
         let regex_path = path.clone();
         let selector = path.debug_selector();
+        let small_field = |editor: &Entity<Editor>, width: Rems, window: &mut Window, cx: &App| {
+            input_frame_sized(
+                InputFrameSize::Compact,
+                editor.focus_handle(cx).contains_focused(window, cx),
+                cx,
+            )
+            .w(width)
+            .child(editor.clone())
+        };
         v_flex()
             .w_full()
             .gap_1()
@@ -3848,7 +4330,42 @@ impl MacroEditor {
                             ),
                     ),
             )
-            .when(kind.has_text(), |this| {
+            .when_some(description, |this, description| {
+                this.child(
+                    Label::new(description)
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+            })
+            .when(kind == StepKind::SetVariable, |this| {
+                this.child(
+                    h_flex()
+                        .w_full()
+                        .gap_2()
+                        .child(
+                            Label::new("変数名")
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
+                        .child(small_field(&row.capture, rems(10.), window, cx))
+                        .child(
+                            Label::new("値")
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
+                        .child(
+                            input_frame_sized(
+                                InputFrameSize::Compact,
+                                row.text.focus_handle(cx).contains_focused(window, cx),
+                                cx,
+                            )
+                            .flex_1()
+                            .min_w_0()
+                            .child(row.text.clone()),
+                        ),
+                )
+            })
+            .when(kind.has_text() && kind != StepKind::SetVariable, |this| {
                 this.child(
                     input_frame_sized(
                         InputFrameSize::Compact,
@@ -3883,15 +4400,7 @@ impl MacroEditor {
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
-                        .child(
-                            input_frame_sized(
-                                InputFrameSize::Compact,
-                                row.count.focus_handle(cx).contains_focused(window, cx),
-                                cx,
-                            )
-                            .w(rems(4.))
-                            .child(row.count.clone()),
-                        )
+                        .child(small_field(&row.count, rems(4.), window, cx))
                         .child(
                             Label::new("(0 回は中止まで繰り返します)")
                                 .size(LabelSize::Small)
@@ -3912,20 +4421,13 @@ impl MacroEditor {
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                         )
-                        .child(
-                            input_frame_sized(
-                                InputFrameSize::Compact,
-                                row.number.focus_handle(cx).contains_focused(window, cx),
-                                cx,
-                            )
-                            .w(rems(6.))
-                            .child(row.number.clone()),
-                        ),
+                        .child(small_field(&row.number, rems(6.), window, cx)),
                 )
             })
             .when(kind.has_pattern(), |this| {
                 this.child(
                     h_flex()
+                        .flex_wrap()
                         .gap_2()
                         .child(
                             Checkbox::new(("step-regex", element_id), row.regex.into())
@@ -3955,27 +4457,31 @@ impl MacroEditor {
                                 )
                                 .style(DropdownStyle::Outlined),
                             )
-                        }),
+                        })
+                        .when(
+                            kind == StepKind::If && row.scope == ScopeChoice::Variable,
+                            |this| {
+                                this.child(
+                                    Label::new("調べる変数名")
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                )
+                                .child(small_field(&row.scope_variable, rems(8.), window, cx))
+                            },
+                        ),
                 )
             })
             .when(kind == StepKind::WaitFor || kind == StepKind::If, |this| {
                 this.child(
                     h_flex()
+                        .flex_wrap()
                         .gap_2()
                         .child(
                             Label::new("取り込む変数名")
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
-                        .child(
-                            input_frame_sized(
-                                InputFrameSize::Compact,
-                                row.capture.focus_handle(cx).contains_focused(window, cx),
-                                cx,
-                            )
-                            .w(rems(8.))
-                            .child(row.capture.clone()),
-                        )
+                        .child(small_field(&row.capture, rems(8.), window, cx))
                         .when(kind == StepKind::WaitFor, |this| {
                             this.child(
                                 Label::new("タイムアウト時")
@@ -3993,6 +4499,29 @@ impl MacroEditor {
                                 )
                             })
                         }),
+                )
+            })
+            .when(!undefined.is_empty(), |this| {
+                let names = undefined
+                    .iter()
+                    .map(|name| format!("${{{name}}}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                this.child(
+                    Label::new(format!(
+                        "{names} に値を入れるステップがありません。実行時は書いたままの文字になります。"
+                    ))
+                    .size(LabelSize::Small)
+                    .color(Color::Warning),
+                )
+            })
+            .when_some(undefined_scope, |this, name| {
+                this.child(
+                    Label::new(format!(
+                        "${{{name}}} に値を入れるステップがないため、この分岐は常に「それ以外」を実行します。"
+                    ))
+                    .size(LabelSize::Small)
+                    .color(Color::Warning),
                 )
             })
             .children(timeout_children)
@@ -4023,9 +4552,16 @@ fn timeout_choice_label(continue_on_timeout: bool) -> &'static str {
 
 impl Render for MacroEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let defined = self.defined_variables(cx);
+        let known = defined
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect::<HashSet<_>>();
         let steps = (0..self.steps.len())
-            .map(|index| self.render_step(&StepPath::top(index), window, cx))
+            .map(|index| self.render_step(&StepPath::top(index), &known, window, cx))
             .collect::<Vec<_>>();
+        let steps_header = self.render_steps_header(&defined, cx);
+        let add_buttons = self.render_add_buttons(None, "add-top-step".into(), cx);
         let tree = self.render_macro_tree(window, cx);
         let listed = self.listed_macros(cx).len();
         let total = self.store.read(cx).macros().len();
@@ -4087,6 +4623,7 @@ impl Render for MacroEditor {
             .overflow_hidden()
             .elevation_3(cx)
             .key_context("TerminalMacroEditor")
+            .debug_selector(|| "macro-editor".into())
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(|_, _: &menu::Cancel, _, cx| cx.emit(DismissEvent)))
             .child(
@@ -4218,64 +4755,63 @@ impl Render for MacroEditor {
                                             }),
                                     )
                                     .child(
-                                        v_flex()
-                                            .id("macro-form")
+                                        // The frame is what the column bounds; the form
+                                        // inside fills it and scrolls, with a bar that
+                                        // shows there is more below.
+                                        div()
+                                            .id("macro-form-frame")
                                             .flex_1()
                                             .min_h_0()
-                                            .overflow_y_scroll()
-                                            .gap_2()
-                                            .pr_1()
-                                            .child(name_field)
                                             .child(
-                                                h_flex()
+                                                v_flex()
+                                                    .id("macro-form")
+                                                    .debug_selector(|| "macro-form".into())
+                                                    .size_full()
+                                                    .overflow_y_scroll()
+                                                    .track_scroll(&self.form_scroll)
                                                     .gap_2()
+                                                    .pr_3()
+                                                    .child(name_field)
                                                     .child(
-                                                        Label::new("フォルダー")
-                                                            .size(LabelSize::Small)
-                                                            .color(Color::Muted),
+                                                        h_flex()
+                                                            .gap_2()
+                                                            .child(
+                                                                Label::new("フォルダー")
+                                                                    .size(LabelSize::Small)
+                                                                    .color(Color::Muted),
+                                                            )
+                                                            .child(folder_menu),
                                                     )
-                                                    .child(folder_menu),
+                                                    .children(new_folder_in_form)
+                                                    .child(tags_field)
+                                                    .child(description_field)
+                                                    .child(
+                                                        h_flex()
+                                                            .gap_2()
+                                                            .child(
+                                                                Label::new("繰り返し回数")
+                                                                    .size(LabelSize::Small)
+                                                                    .color(Color::Muted),
+                                                            )
+                                                            .child(repeat_field)
+                                                            .child(
+                                                                Label::new("間隔 (秒)")
+                                                                    .size(LabelSize::Small)
+                                                                    .color(Color::Muted),
+                                                            )
+                                                            .child(repeat_interval_field)
+                                                            .child(
+                                                                Label::new("(0 回は中止まで繰り返します)")
+                                                                    .size(LabelSize::Small)
+                                                                    .color(Color::Muted),
+                                                            ),
+                                                    )
+
+                                                    .child(steps_header)
+                                                    .children(steps)
+                                                    .child(add_buttons),
                                             )
-                                            .children(new_folder_in_form)
-                                            .child(tags_field)
-                                            .child(description_field)
-                                            .child(
-                                                h_flex()
-                                                    .gap_2()
-                                                    .child(
-                                                        Label::new("繰り返し回数")
-                                                            .size(LabelSize::Small)
-                                                            .color(Color::Muted),
-                                                    )
-                                                    .child(repeat_field)
-                                                    .child(
-                                                        Label::new("間隔 (秒)")
-                                                            .size(LabelSize::Small)
-                                                            .color(Color::Muted),
-                                                    )
-                                                    .child(repeat_interval_field)
-                                                    .child(
-                                                        Label::new("(0 回は中止まで繰り返します)")
-                                                            .size(LabelSize::Small)
-                                                            .color(Color::Muted),
-                                                    ),
-                                            )
-                                            .children(steps)
-                                            .child(
-                                                h_flex().gap_1().child(
-                                                    Button::new("add-step", "ステップを追加")
-                                                        .start_icon(Icon::new(IconName::Plus))
-                                                        .on_click(cx.listener(
-                                                            |this, _, window, cx| {
-                                                                this.add_step(
-                                                                    StepKind::Send,
-                                                                    window,
-                                                                    cx,
-                                                                );
-                                                            },
-                                                        )),
-                                                ),
-                                            ),
+                                            .vertical_scrollbar_for(&self.form_scroll, window, cx),
                                     )
                                     .when_some(pending_selection, |this, edited| {
                                         let prompt = match edited
@@ -4445,6 +4981,7 @@ impl Render for MacroEditor {
                         ModalFooter::new().end_slot(
                             h_flex()
                                 .gap_1()
+                                .debug_selector(|| "macro-editor-buttons".into())
                                 .child(Button::new("cancel", "キャンセル").on_click(
                                     cx.listener(|_, _, _, cx| cx.emit(DismissEvent)),
                                 ))
@@ -6482,7 +7019,7 @@ mod tests {
         editor.read_with(cx, |editor, cx| {
             let branch = &editor.steps[1];
             assert_eq!(branch.kind, StepKind::If);
-            assert_eq!(branch.scope, MatchScope::Screen);
+            assert_eq!(branch.scope, ScopeChoice::Screen);
             assert_eq!(branch.capture.read(cx).text(cx), "reason");
             assert_eq!(branch.children.len(), 1, "「そのとき」 keeps its repeat");
             assert_eq!(branch.else_children.len(), 1, "「それ以外」 keeps its send");
@@ -6549,6 +7086,474 @@ mod tests {
                 regex: false,
                 timeout_ms: 1_000,
                 capture: None,
+                on_timeout: None,
+            }]
+        );
+    }
+
+    #[gpui::test]
+    async fn a_long_macro_scrolls_inside_the_form(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(long_macro()), window, cx);
+        });
+        cx.run_until_parked();
+
+        let modal = cx
+            .debug_bounds("macro-editor")
+            .expect("the editor should have been drawn");
+        let form = cx
+            .debug_bounds("macro-form")
+            .expect("the form should have been drawn");
+        let buttons = cx
+            .debug_bounds("macro-editor-buttons")
+            .expect("the 保存 / キャンセル buttons should have been drawn");
+        assert!(
+            form.bottom() <= modal.bottom(),
+            "the form ends at {} but the modal at {}, so its tail is clipped instead of scrolled",
+            form.bottom(),
+            modal.bottom()
+        );
+        assert!(
+            buttons.bottom() <= modal.bottom(),
+            "保存 ends at {} but the modal at {}, so it cannot be clicked",
+            buttons.bottom(),
+            modal.bottom()
+        );
+    }
+
+    fn long_macro() -> TerminalMacro {
+        TerminalMacro {
+            name: "長い".to_string(),
+            steps: (0..60)
+                .map(|index| MacroStep::Send {
+                    text: format!("echo {index}"),
+                    newline: true,
+                })
+                .collect(),
+            ..TerminalMacro::default()
+        }
+    }
+
+    #[gpui::test]
+    async fn adding_a_step_to_a_long_macro_brings_it_into_view(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(long_macro()), window, cx);
+        });
+        cx.run_until_parked();
+        editor.update_in(cx, |editor, window, cx| {
+            editor.add_step(StepKind::If, window, cx);
+        });
+        cx.run_until_parked();
+
+        let form = cx
+            .debug_bounds("macro-form")
+            .expect("the form should have been drawn");
+        let added = cx
+            .debug_bounds("macro-step-61")
+            .expect("the added step should have been drawn");
+        assert!(
+            added.top() >= form.top() && added.bottom() <= form.bottom(),
+            "the added step spans {}..{} but the form shows {}..{}",
+            added.top(),
+            added.bottom(),
+            form.top(),
+            form.bottom()
+        );
+        editor.update_in(cx, |editor, window, cx| {
+            assert!(
+                editor.steps[60]
+                    .text
+                    .focus_handle(cx)
+                    .contains_focused(window, cx),
+                "the new 分岐 should be ready to type its 判定する文字列 into"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn opening_another_macro_starts_at_the_top_of_the_form(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(long_macro()), window, cx);
+        });
+        cx.run_until_parked();
+        editor.update_in(cx, |editor, window, cx| {
+            editor.add_step(StepKind::Send, window, cx);
+        });
+        cx.run_until_parked();
+        let form = cx
+            .debug_bounds("macro-form")
+            .expect("the form should have been drawn");
+        let first = cx
+            .debug_bounds("macro-step-1")
+            .expect("the first step should have been drawn");
+        assert!(
+            first.bottom() < form.top(),
+            "adding a step should have scrolled the first one out of view"
+        );
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(long_macro()), window, cx);
+        });
+        cx.run_until_parked();
+        let form = cx
+            .debug_bounds("macro-form")
+            .expect("the form should have been drawn");
+        let first = cx
+            .debug_bounds("macro-step-1")
+            .expect("the first step should have been drawn");
+        assert!(
+            first.top() >= form.top() && first.bottom() <= form.bottom(),
+            "the first step spans {}..{} but the form shows {}..{}",
+            first.top(),
+            first.bottom(),
+            form.top(),
+            form.bottom()
+        );
+    }
+
+    #[gpui::test]
+    async fn a_regex_that_uses_a_variable_can_be_saved(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("ping", window, cx);
+            });
+            editor.add_step(StepKind::WaitFor, window, cx);
+            editor.steps[0].text.update(cx, |text, cx| {
+                text.set_text(r"^From ${host}: bytes", window, cx);
+            });
+            editor.steps[0].regex = true;
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(editor.error, None);
+        });
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        let saved = parse_sessions_file(&contents);
+        assert_eq!(
+            saved.macros[0].steps,
+            vec![MacroStep::WaitFor {
+                pattern: r"^From ${host}: bytes".to_string(),
+                regex: true,
+                timeout_ms: terminal::terminal_macro::DEFAULT_WAIT_TIMEOUT_MS,
+                capture: None,
+                on_timeout: None,
+            }]
+        );
+    }
+
+    #[gpui::test]
+    async fn a_set_variable_and_a_branch_on_it_are_saved(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("変数", window, cx);
+            });
+            editor.add_step(StepKind::SetVariable, window, cx);
+            editor.steps[0].capture.update(cx, |capture, cx| {
+                capture.set_text("host", window, cx);
+            });
+            editor.steps[0].text.update(cx, |text, cx| {
+                text.set_text("rt01", window, cx);
+            });
+            editor.add_step(StepKind::If, window, cx);
+            editor.steps[1].text.update(cx, |text, cx| {
+                text.set_text("^rt", window, cx);
+            });
+            editor.steps[1].regex = true;
+            editor.steps[1].scope = ScopeChoice::Variable;
+            // Written the way the name is used everywhere else in the form.
+            editor.steps[1].scope_variable.update(cx, |variable, cx| {
+                variable.set_text("${host}", window, cx);
+            });
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(editor.error, None);
+        });
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        let saved = parse_sessions_file(&contents);
+        assert_eq!(
+            saved.macros[0].steps,
+            vec![
+                MacroStep::SetVariable {
+                    name: "host".to_string(),
+                    value: "rt01".to_string(),
+                },
+                MacroStep::If {
+                    pattern: "^rt".to_string(),
+                    regex: true,
+                    scope: MatchScope::Variable("host".to_string()),
+                    capture: None,
+                    then_steps: Vec::new(),
+                    else_steps: Vec::new(),
+                },
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn a_variable_step_or_branch_needs_a_name(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("名前なし", window, cx);
+            });
+            editor.add_step(StepKind::SetVariable, window, cx);
+            editor.save(cx);
+            assert_eq!(
+                editor.error.as_deref(),
+                Some("ステップ 1: 変数名を入力してください。")
+            );
+
+            editor.steps[0].capture.update(cx, |capture, cx| {
+                capture.set_text("host", window, cx);
+            });
+            editor.add_step(StepKind::If, window, cx);
+            editor.steps[1].text.update(cx, |text, cx| {
+                text.set_text("rt", window, cx);
+            });
+            editor.steps[1].scope = ScopeChoice::Variable;
+            editor.save(cx);
+            assert_eq!(
+                editor.error.as_deref(),
+                Some("ステップ 2: 調べる変数名を入力してください。")
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn the_form_lists_its_variables_and_flags_unknown_references(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            let terminal_macro = TerminalMacro {
+                name: "変数".to_string(),
+                steps: vec![
+                    MacroStep::SetVariable {
+                        name: "host".to_string(),
+                        value: "rt01".to_string(),
+                    },
+                    MacroStep::If {
+                        pattern: r"Version (?<ver>\S+)".to_string(),
+                        regex: true,
+                        scope: MatchScope::Screen,
+                        capture: Some("banner".to_string()),
+                        then_steps: vec![MacroStep::SetVariable {
+                            name: "host".to_string(),
+                            value: "again".to_string(),
+                        }],
+                        else_steps: vec![MacroStep::SetVariable {
+                            name: "fallback".to_string(),
+                            value: String::new(),
+                        }],
+                    },
+                    MacroStep::Send {
+                        text: "ping ${host} ${ver} ${typo} $${literal}".to_string(),
+                        newline: true,
+                    },
+                ],
+                ..TerminalMacro::default()
+            };
+            editor.load_macro(Some(terminal_macro), window, cx);
+        });
+        cx.run_until_parked();
+
+        editor.read_with(cx, |editor, cx| {
+            let defined = editor
+                .defined_variables(cx)
+                .into_iter()
+                .map(|(name, path)| (name, path.label()))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                defined,
+                vec![
+                    ("host".to_string(), "1".to_string()),
+                    ("banner".to_string(), "2".to_string()),
+                    ("ver".to_string(), "2".to_string()),
+                    ("fallback".to_string(), "2-e1".to_string()),
+                ]
+            );
+            let known = defined
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect::<HashSet<_>>();
+            assert_eq!(
+                editor.steps[2].undefined_references(&known, cx),
+                vec!["typo".to_string()]
+            );
+            assert_eq!(
+                editor.steps[1].describe(cx).as_deref(),
+                Some(
+                    "画面全体が正規表現『Version (?<ver>\\S+)』に一致すれば「そのとき」を、一致しなければ「それ以外」を実行します。待たずにその場で調べます。一致したときは見つかった部分を ${banner} に入れます。"
+                )
+            );
+        });
+
+        // Switching the 分岐 to another kind takes its lists out of the macro,
+        // and the variables they set with them.
+        editor.update(cx, |editor, cx| {
+            editor.steps[1].kind = StepKind::Send;
+            cx.notify();
+        });
+        editor.read_with(cx, |editor, cx| {
+            let names = editor
+                .defined_variables(cx)
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect::<Vec<_>>();
+            assert_eq!(names, vec!["host".to_string()]);
+        });
+
+        assert!(cx.debug_bounds("macro-help-panel").is_none());
+        editor.update(cx, |editor, cx| {
+            editor.show_help = true;
+            cx.notify();
+        });
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("macro-help-panel").is_some(),
+            "「分岐と変数の使い方」 should open its panel"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_branch_on_a_variable_nothing_sets_is_flagged(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let branch_on = |scope: MatchScope| MacroStep::If {
+            pattern: "rt".to_string(),
+            regex: false,
+            scope,
+            capture: None,
+            then_steps: Vec::new(),
+            else_steps: Vec::new(),
+        };
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            let terminal_macro = TerminalMacro {
+                name: "綴り".to_string(),
+                steps: vec![
+                    MacroStep::SetVariable {
+                        name: "host".to_string(),
+                        value: "rt01".to_string(),
+                    },
+                    branch_on(MatchScope::Variable("hots".to_string())),
+                    branch_on(MatchScope::Variable("host".to_string())),
+                    branch_on(MatchScope::Screen),
+                ],
+                ..TerminalMacro::default()
+            };
+            editor.load_macro(Some(terminal_macro), window, cx);
+        });
+        cx.run_until_parked();
+
+        editor.update_in(cx, |editor, window, cx| {
+            // A 対象 switched away from 変数 keeps the name it had, which must
+            // not be taken for a variable the branch reads.
+            editor.steps[3].scope_variable.update(cx, |variable, cx| {
+                variable.set_text("hots", window, cx);
+            });
+            let known = editor
+                .defined_variables(cx)
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect::<HashSet<_>>();
+            assert_eq!(
+                editor.steps[1].undefined_scope_variable(&known, cx),
+                Some("hots".to_string()),
+                "a misspelt 調べる変数名 would take 「それ以外」 every time without a word"
+            );
+            assert_eq!(editor.steps[2].undefined_scope_variable(&known, cx), None);
+            assert_eq!(editor.steps[3].undefined_scope_variable(&known, cx), None);
+        });
+    }
+
+    #[gpui::test]
+    async fn a_capture_name_written_as_a_reference_is_read_as_the_name(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("取り込み", window, cx);
+            });
+            editor.add_step(StepKind::WaitFor, window, cx);
+            editor.steps[0].text.update(cx, |text, cx| {
+                text.set_text("router#", window, cx);
+            });
+            editor.steps[0].capture.update(cx, |capture, cx| {
+                capture.set_text(" ${host} ", window, cx);
+            });
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        let saved = parse_sessions_file(&contents);
+        assert_eq!(
+            saved.macros[0].steps,
+            vec![MacroStep::WaitFor {
+                pattern: "router#".to_string(),
+                regex: false,
+                timeout_ms: terminal::terminal_macro::DEFAULT_WAIT_TIMEOUT_MS,
+                capture: Some("host".to_string()),
                 on_timeout: None,
             }]
         );
@@ -6828,7 +7833,7 @@ mod tests {
                 text.set_text("router#", window, cx);
             });
             editor.steps[0].capture.update(cx, |capture, cx| {
-                capture.set_text("${host}", window, cx);
+                capture.set_text("ho}st", window, cx);
             });
             editor.save(cx);
         });
@@ -6858,7 +7863,7 @@ mod tests {
                 text.set_text("Invalid input", window, cx);
             });
             editor.steps[0].capture.update(cx, |capture, cx| {
-                capture.set_text("${host}", window, cx);
+                capture.set_text("${ho$st}", window, cx);
             });
             editor.save(cx);
         });
@@ -6901,7 +7906,7 @@ mod tests {
                                 pattern: "rt01#".to_string(),
                                 regex: false,
                                 timeout_ms: 1_000,
-                                capture: Some("${host}".to_string()),
+                                capture: Some("ho}st".to_string()),
                                 on_timeout: None,
                             }]),
                         }],
