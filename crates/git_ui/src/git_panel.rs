@@ -10,6 +10,7 @@ use crate::commit_view::CommitView;
 use crate::git_panel_settings::GitPanelScrollbarAccessor;
 use crate::project_diff::{DeployBranchDiff, Diff, ProjectDiff};
 use crate::remote_output::{self, RemoteAction, SuccessMessage};
+use crate::rewrite_range_modal;
 use crate::solo_diff_view::SoloDiffView;
 use crate::staged_diff::StagedDiff;
 use crate::unstaged_diff::UnstagedDiff;
@@ -1146,6 +1147,9 @@ pub struct GitPanel {
     active_tab: GitPanelTab,
     /// A cherry-pick / revert / rebase that stopped part-way, shown as a banner above the changes.
     sequencer_state: Option<SequencerState>,
+    /// Set while that stop happened on a history rewrite's scratch branch, so that the banner can
+    /// say where "中止" leads and actually take the user back there.
+    rewrite_scratch_origin: Option<RewriteScratchOrigin>,
     sequencer_state_task: Task<()>,
     commit_history_scroll_handle: UniformListScrollHandle,
     commit_history: CommitHistory,
@@ -1164,6 +1168,17 @@ pub struct GitPanel {
 struct BulkStaging {
     repo_id: RepositoryId,
     anchor: RepoPath,
+}
+
+/// A history rewrite that stopped on its scratch branch, with the branch it started from.
+///
+/// `origin_branch` is `None` when nothing was remembered (a rewrite from before this was recorded,
+/// or a database that lost it): the banner then says it cannot take the user back rather than
+/// guessing a branch to switch to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RewriteScratchOrigin {
+    scratch_branch: String,
+    origin_branch: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1428,6 +1443,7 @@ impl GitPanel {
                 changes_count: 0,
                 diff_stat_total: DiffStat::default(),
                 sequencer_state: None,
+                rewrite_scratch_origin: None,
                 sequencer_state_task: Task::ready(()),
                 pending_commit: None,
                 pending_remote_operation: None,
@@ -4259,11 +4275,16 @@ impl GitPanel {
                 )
             });
 
-            let remote_output = push.await?;
+            let push_output = push.await?;
 
             let action = RemoteAction::Push(branch.name().to_owned().into(), remote);
-            this.update(cx, |this, cx| match remote_output {
-                Ok(remote_message) => this.show_remote_output(action, remote_message, cx),
+            this.update(cx, |this, cx| match push_output {
+                Ok(push_output) => {
+                    if push_output.kept_lease_against_request {
+                        this.show_old_server_push_warning(cx);
+                    }
+                    this.show_remote_output(action, push_output.output, cx)
+                }
                 Err(e) => {
                     log::error!("Error while pushing {:?}", e);
                     this.show_error_toast(action.name(), e, cx)
@@ -6159,6 +6180,25 @@ impl GitPanel {
         show_error_toast(workspace, action, e, cx)
     }
 
+    /// The peer's server was too old to be told to drop the lease, so the push kept it. Said out
+    /// loud because the push may then have refused the very commits it was meant to overwrite.
+    fn show_old_server_push_warning(&self, cx: &mut App) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        workspace.update(cx, |workspace, cx| {
+            struct OldServerForcePushToast;
+            workspace.show_toast(
+                workspace::Toast::new(
+                    NotificationId::unique::<OldServerForcePushToast>(),
+                    "接続先の Zed のサーバーが古いため、lease 付きの強制プッシュとして実行しました。\
+                     接続し直してサーバーを更新してください。",
+                ),
+                cx,
+            );
+        });
+    }
+
     // `dev::ShowGitJobQueue` は開発者向けの生データビューなので、F1-1 / F1-2 の
     // 方針どおりトーストとバッファのタイトルは英語のまま。
     fn show_git_job_queue(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -7927,15 +7967,71 @@ impl GitPanel {
         )
     }
 
+    /// What the sequencer banner says about `state`.
+    ///
+    /// A state the probes only guessed at has to say so, because it is all that stands between the
+    /// user and treating leftover conflicts of some other origin as a rebase to be aborted.
+    fn sequencer_banner_text(state: &SequencerState) -> (String, &'static str) {
+        if !state.certain {
+            return (
+                git::repository::uncertain_rebase_message(),
+                "未解決のコンフリクトが残っていますが、原因がリベースだとは確かめられません。\
+                 「中止」は消える変更を確認してから実行してください。",
+            );
+        }
+        (
+            format!("{}が途中で止まっています", state.kind.label()),
+            Self::sequencer_resolve_text(state.conflicted),
+        )
+    }
+
+    /// The way out of a sequencer that stopped, once it is settled that one did.
+    ///
+    /// Split out because the rewrite banner says the same thing inside a longer explanation, and
+    /// the two must not drift apart.
+    fn sequencer_resolve_text(conflicted: bool) -> &'static str {
+        if conflicted {
+            "コンフリクトを解決してステージしてから「続行」を押してください。"
+        } else {
+            "「続行」で残りを進めるか、「中止」で元の状態に戻します。"
+        }
+    }
+
     /// The banner above the changes list for a `cherry-pick` / `revert` / `rebase` that stopped
     /// part-way, with the three ways out git offers.
     fn render_sequencer_banner(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let state = self.sequencer_state.clone()?;
         let kind = state.kind;
-        let description = if state.conflicted {
-            "コンフリクトを解決してステージしてから「続行」を押してください。"
+        let (title, description) = Self::sequencer_banner_text(&state);
+        let resolve = Self::sequencer_resolve_text(state.conflicted);
+        // A rewrite stops on the scratch branch it was building, which is a branch the user never
+        // asked to be on; saying only "続行 / 中止" here would leave them there without a word.
+        // When nothing confirmed that a rebase is what stopped, that doubt leads, so the scratch
+        // branch is not asserted as the reason for conflicts that may have another one.
+        let hedge = if state.certain {
+            String::new()
         } else {
-            "「続行」で残りを進めるか、「中止」で元の状態に戻します。"
+            format!("{description}\n")
+        };
+        let description = match &self.rewrite_scratch_origin {
+            None => SharedString::from(description),
+            Some(RewriteScratchOrigin {
+                scratch_branch,
+                origin_branch: Some(origin_branch),
+            }) => format!(
+                "{hedge}コミットの書き換えが一時ブランチ「{scratch_branch}」の上で止まっています。{resolve}\n\
+                 「中止」を押すと元のブランチ「{origin_branch}」に戻り、この一時ブランチは削除されます (途中まで書き換えたコミットは git reflog にだけ残ります)。\n\
+                 「続行」で残りを進めた場合は、元のブランチへの付け替え (git rebase --onto) を自分で行う必要があります。"
+            )
+            .into(),
+            Some(RewriteScratchOrigin {
+                scratch_branch,
+                origin_branch: None,
+            }) => format!(
+                "{hedge}コミットの書き換えが一時ブランチ「{scratch_branch}」の上で止まっています。{resolve}\n\
+                 元のブランチが分からないため、「中止」を押しても元のブランチには戻りません。中止した後に自分で切り替えてください。"
+            )
+            .into(),
         };
         let step_button =
             |id: &'static str, label: &'static str, step: SequencerStep, cx: &mut Context<Self>| {
@@ -7949,7 +8045,7 @@ impl GitPanel {
                     .severity(Severity::Warning)
                     .icon(IconName::Warning)
                     .border_position(CalloutBorderPosition::Bottom)
-                    .title(format!("{}が途中で止まっています", kind.label()))
+                    .title(title)
                     .description(description)
                     .actions_slot(
                         h_flex()
@@ -7981,6 +8077,47 @@ impl GitPanel {
         &mut self,
         kind: SequencerKind,
         step: SequencerStep,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Aborting what was only guessed at would throw away conflicts the user is in the middle
+        // of resolving for some other reason, so the guess has to be confirmed first.
+        let is_uncertain = self
+            .sequencer_state
+            .as_ref()
+            .is_some_and(|state| !state.certain);
+        if step == SequencerStep::Abort && is_uncertain {
+            let prompt = window.prompt(
+                PromptLevel::Warning,
+                &format!("{}を中止しますか?", kind.label()),
+                Some(&format!(
+                    "{}\ngit {} --abort を実行します。リベースが動いていなければ git が断り、\
+                     動いていれば解決しかけた内容は失われます。",
+                    git::repository::uncertain_rebase_message(),
+                    kind.subcommand()
+                )),
+                &["中止する", "やめる"],
+                cx,
+            );
+            cx.spawn_in(window, async move |this, cx| {
+                if prompt.await.ok() != Some(0) {
+                    return;
+                }
+                this.update_in(cx, |this, window, cx| {
+                    this.dispatch_sequencer_step(kind, step, window, cx);
+                })
+                .ok();
+            })
+            .detach();
+            return;
+        }
+        self.dispatch_sequencer_step(kind, step, window, cx);
+    }
+
+    fn dispatch_sequencer_step(
+        &mut self,
+        kind: SequencerKind,
+        step: SequencerStep,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -7994,8 +8131,28 @@ impl GitPanel {
         });
         let operation = kind.subcommand();
         let success = format!("{}を{}しました。", kind.label(), step.label());
+        // Aborting only undoes the stopped pick; on a rewrite's scratch branch that still leaves
+        // the user on a branch they never asked for, so the way back goes with it.
+        let (checked_out_branch, work_directory_abs_path) = {
+            let repository = repository.read(cx);
+            (
+                repository
+                    .branch
+                    .as_ref()
+                    .map(|branch| branch.name().to_string()),
+                repository.work_directory_abs_path.clone(),
+            )
+        };
+        let leave_scratch_branch = (step == SequencerStep::Abort)
+            .then(|| self.rewrite_scratch_origin.clone())
+            .flatten()
+            // The banner's state is as old as the last status scan, and `branch -D` is final, so
+            // the branch that is actually checked out has the last word.
+            .filter(|origin| checked_out_branch.as_deref() == Some(origin.scratch_branch.as_str()))
+            .and_then(|origin| Some((origin.scratch_branch, origin.origin_branch?)));
         cx.spawn(async move |this, cx| {
             let output = receiver.await;
+            let aborted = matches!(&output, Ok(Ok(output)) if output.succeeded());
             this.update(cx, |this, cx| {
                 match output {
                     Ok(Ok(output)) if output.succeeded() => {
@@ -8016,6 +8173,53 @@ impl GitPanel {
                 this.refresh_sequencer_state(cx);
             })
             .ok();
+            let Some((scratch_branch, origin_branch)) = leave_scratch_branch.filter(|_| aborted)
+            else {
+                return;
+            };
+            let receiver = repository.update(cx, |repository, cx| {
+                repository.leave_rewrite_scratch_branch(
+                    origin_branch.clone(),
+                    scratch_branch.clone(),
+                    cx,
+                )
+            });
+            let result = receiver.await;
+            let returned = matches!(&result, Ok(Ok(output)) if output.succeeded());
+            if returned {
+                cx.update(|cx| {
+                    rewrite_range_modal::forget_rewrite_origin(
+                        &work_directory_abs_path,
+                        &scratch_branch,
+                        cx,
+                    )
+                })
+                .await;
+            }
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(Ok(output)) if output.succeeded() => this.show_git_output_toast(
+                        "switch",
+                        format!(
+                            "{origin_branch} に戻り、一時ブランチ「{scratch_branch}」を削除しました。"
+                        ),
+                        &output,
+                        cx,
+                    ),
+                    Ok(Ok(output)) => this.show_error_toast(
+                        "switch",
+                        anyhow::anyhow!(
+                            "{origin_branch} に戻れませんでした。一時ブランチ「{scratch_branch}」の上に残っています。\n{}",
+                            output.failure_message()
+                        ),
+                        cx,
+                    ),
+                    Ok(Err(error)) => this.show_error_toast("switch", error, cx),
+                    Err(_) => {}
+                }
+                this.refresh_sequencer_state(cx);
+            })
+            .ok();
         })
         .detach();
     }
@@ -8027,10 +8231,22 @@ impl GitPanel {
     /// (a conflicted cherry-pick leaves HEAD where it was).
     pub(crate) fn refresh_sequencer_state(&mut self, cx: &mut Context<Self>) {
         let Some(repository) = self.active_repository.clone() else {
-            if self.sequencer_state.take().is_some() {
+            if self.sequencer_state.take().is_some() || self.rewrite_scratch_origin.take().is_some()
+            {
                 cx.notify();
             }
             return;
+        };
+        let (scratch_branch, work_directory_abs_path) = {
+            let repository = repository.read(cx);
+            (
+                repository
+                    .branch
+                    .as_ref()
+                    .map(|branch| branch.name().to_string())
+                    .filter(|branch| git::repository::is_rewrite_scratch_branch(branch)),
+                repository.work_directory_abs_path.clone(),
+            )
         };
         let receiver = repository.update(cx, |repository, _| repository.sequencer_state());
         self.sequencer_state_task = cx.spawn(async move |this, cx| {
@@ -8038,9 +8254,30 @@ impl GitPanel {
                 return;
             };
             let state = state.log_err().flatten();
+            // Only while something is actually stopped: on a scratch branch with nothing in
+            // progress there is no banner to explain, and no reason to touch the database.
+            let scratch_origin = match scratch_branch.filter(|_| state.is_some()) {
+                Some(scratch_branch) => {
+                    let origin_branch = cx
+                        .update(|cx| {
+                            rewrite_range_modal::read_rewrite_origin(
+                                &work_directory_abs_path,
+                                &scratch_branch,
+                                cx,
+                            )
+                        })
+                        .await;
+                    Some(RewriteScratchOrigin {
+                        scratch_branch,
+                        origin_branch,
+                    })
+                }
+                None => None,
+            };
             this.update(cx, |this, cx| {
-                if this.sequencer_state != state {
+                if this.sequencer_state != state || this.rewrite_scratch_origin != scratch_origin {
                     this.sequencer_state = state;
+                    this.rewrite_scratch_origin = scratch_origin;
                     cx.notify();
                 }
             })
@@ -10478,7 +10715,10 @@ mod tests {
 
     fn is_sequencer_probe(args: &[String]) -> bool {
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        if args == ["diff", "--name-only", "--diff-filter=U"] {
+        if args == ["diff", "--name-only", "--diff-filter=U"]
+            || args == ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"]
+            || args == ["rev-parse", "--abbrev-ref", "HEAD"]
+        {
             return true;
         }
         SequencerKind::all()
@@ -10534,6 +10774,7 @@ mod tests {
         let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
 
         set_fake_git_command_result(&fs, "rev-parse --verify --quiet HEAD", HEAD_SHA, "", 0);
+        set_fake_git_command_result(&fs, &format!("log --format=%H HEAD..{OLD_SHA}"), "", "", 0);
         set_fake_git_command_result(
             &fs,
             &format!("log --merges --format=%H {OLD_SHA}..HEAD"),
@@ -10596,6 +10837,7 @@ mod tests {
             commands,
             vec![
                 "rev-parse --verify --quiet HEAD".to_string(),
+                format!("log --format=%H HEAD..{OLD_SHA}"),
                 format!("log --merges --format=%H {OLD_SHA}..HEAD"),
                 format!("log -1 --format=%an%x00%ae%x00%ad --date=raw {OLD_SHA}"),
                 format!("rev-parse --verify --quiet {OLD_SHA}^"),
@@ -10644,6 +10886,7 @@ mod tests {
         let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
 
         set_fake_git_command_result(&fs, "rev-parse --verify --quiet HEAD", HEAD_SHA, "", 0);
+        set_fake_git_command_result(&fs, &format!("log --format=%H HEAD..{OLD_SHA}"), "", "", 0);
         set_fake_git_command_result(
             &fs,
             &format!("log --merges --format=%H {OLD_SHA}..HEAD"),
@@ -10673,6 +10916,94 @@ mod tests {
         );
     }
 
+    /// The graph lists every branch, so the reword item can land on a commit the current branch
+    /// never sees. `rebase --onto <new> <sha> <branch>` would then replay `<sha>..<branch>` —
+    /// the whole current branch — onto an unrelated commit, so the commit is refused first.
+    #[gpui::test]
+    async fn test_reword_commit_refuses_a_commit_head_cannot_reach(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+
+        set_fake_git_command_result(&fs, "rev-parse --verify --quiet HEAD", HEAD_SHA, "", 0);
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --format=%H HEAD..{OLD_SHA}"),
+            &format!("{OLD_SHA}\n"),
+            "",
+            0,
+        );
+
+        let repository = active_repository(&panel, &mut cx);
+        let reword = repository.update(&mut cx, |repository, cx| {
+            repository.reword_commit(OLD_SHA.to_string(), "書き換え後".to_string(), cx)
+        });
+        let error = reword
+            .await
+            .unwrap()
+            .expect_err("a commit off the current branch must be refused");
+        assert!(
+            error.to_string().contains("現在のブランチの履歴に無い"),
+            "unexpected error: {error:#}"
+        );
+
+        let log = fake_git_command_log(&fs);
+        assert!(
+            log.iter()
+                .all(|(args, _)| args[0] != "commit-tree" && args[0] != "rebase"),
+            "nothing may be rewritten once the commit is refused: {log:?}"
+        );
+    }
+
+    /// Squashing ends in the same `rebase --onto`, so a range the current branch cannot reach is
+    /// refused there too — before `parent_of` picks a parent off some other branch.
+    #[gpui::test]
+    async fn test_squash_range_refuses_a_range_head_cannot_reach(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+
+        const OTHER_OLDEST: &str = "6666666666666666666666666666666666666666";
+        const OTHER_NEWEST: &str = "7777777777777777777777777777777777777777";
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --format=%H HEAD..{OTHER_NEWEST}"),
+            &format!("{OTHER_NEWEST}\n"),
+            "",
+            0,
+        );
+
+        let repository = active_repository(&panel, &mut cx);
+        let squash = repository.update(&mut cx, |repository, cx| {
+            repository.squash_range(
+                OTHER_OLDEST.to_string(),
+                OTHER_NEWEST.to_string(),
+                "まとめました".to_string(),
+                cx,
+            )
+        });
+        let error = squash
+            .await
+            .unwrap()
+            .expect_err("a range off the current branch must be refused");
+        assert!(
+            error.to_string().contains("現在のブランチの履歴に無い"),
+            "unexpected error: {error:#}"
+        );
+
+        let log = fake_git_command_log(&fs);
+        assert!(
+            log.iter()
+                .all(|(args, _)| args[0] != "commit-tree" && args[0] != "rebase"),
+            "nothing may be rewritten once the range is refused: {log:?}"
+        );
+        // The newest end is what the final rebase replays from, so it is the one checked first:
+        // the oldest end's parent must not have been resolved yet.
+        let oldest_parent = format!("{OTHER_OLDEST}^");
+        assert!(
+            log.iter().all(|(args, _)| !args.contains(&oldest_parent)),
+            "the oldest end must not be resolved before the range is accepted: {log:?}"
+        );
+    }
+
     /// A rewrite whose rebase stops on a conflict is git refusing, not an error, and the banner
     /// has to name the rebase: a stopped rebase leaves `CHERRY_PICK_HEAD` behind as well, and
     /// `git cherry-pick --continue` cannot finish one.
@@ -10688,6 +11019,7 @@ mod tests {
         cx.run_until_parked();
 
         set_fake_git_command_result(&fs, "rev-parse --verify --quiet HEAD", HEAD_SHA, "", 0);
+        set_fake_git_command_result(&fs, &format!("log --format=%H HEAD..{OLD_SHA}"), "", "", 0);
         set_fake_git_command_result(
             &fs,
             &format!("log --merges --format=%H {OLD_SHA}..HEAD"),
@@ -10775,9 +11107,161 @@ mod tests {
             Some(git::repository::SequencerState {
                 kind: SequencerKind::Rebase,
                 conflicted: true,
+                certain: true,
             })
         );
         assert!(sequencer_banner_is_rendered(&panel, &mut cx));
+    }
+
+    /// Before git 2.13 a stopped rebase leaves no `REBASE_HEAD` behind, so the only trace of it
+    /// is conflicts nothing else accounts for. The banner has to offer a way out of those, while
+    /// saying that it is a guess.
+    #[gpui::test]
+    async fn test_a_stopped_rebase_is_guessed_when_no_ref_names_it(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            workspace.focus_panel::<GitPanel>(window, cx);
+        });
+        cx.run_until_parked();
+
+        let sequencer_state = |panel: &Entity<GitPanel>, cx: &mut VisualTestContext| {
+            panel.update(cx, |panel, cx| panel.refresh_sequencer_state(cx));
+            cx.run_until_parked();
+            panel.read_with(cx, |panel, _| panel.sequencer_state.clone())
+        };
+
+        assert_eq!(
+            sequencer_state(&panel, &mut cx),
+            None,
+            "a repository with no conflicts has nothing to report"
+        );
+
+        set_fake_git_command_result(&fs, "diff --name-only --diff-filter=U", "file.txt\n", "", 0);
+        set_fake_git_command_result(&fs, "rev-parse --verify --quiet MERGE_HEAD", OLD_SHA, "", 0);
+        assert_eq!(
+            sequencer_state(&panel, &mut cx),
+            None,
+            "an ordinary merge accounts for its own conflicts"
+        );
+
+        set_fake_git_command_result(&fs, "rev-parse --verify --quiet MERGE_HEAD", "", "", 1);
+        assert_eq!(
+            sequencer_state(&panel, &mut cx),
+            None,
+            "the same conflicts on a branch are a `stash pop` / `am` / `merge --squash`, none of \
+             which a rebase step could finish"
+        );
+
+        // A rebase detaches HEAD for as long as it runs, in every version of git.
+        set_fake_git_command_result(&fs, "rev-parse --abbrev-ref HEAD", "HEAD\n", "", 0);
+        assert_eq!(
+            sequencer_state(&panel, &mut cx),
+            Some(git::repository::SequencerState {
+                kind: SequencerKind::Rebase,
+                conflicted: true,
+                certain: false,
+            })
+        );
+        assert!(sequencer_banner_is_rendered(&panel, &mut cx));
+
+        // A repository with no first commit prints `HEAD` while failing, which is not an answer.
+        set_fake_git_command_result(&fs, "rev-parse --abbrev-ref HEAD", "HEAD\n", "fatal", 128);
+        assert_eq!(sequencer_state(&panel, &mut cx), None);
+        set_fake_git_command_result(&fs, "rev-parse --abbrev-ref HEAD", "HEAD\n", "", 0);
+        assert!(sequencer_state(&panel, &mut cx).is_some());
+
+        // Aborting a guess would throw away conflicts the user may be resolving for some quite
+        // different reason, so it asks first.
+        set_fake_git_command_result(&fs, "rebase --abort", "", "", 0);
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.run_sequencer_step(SequencerKind::Rebase, SequencerStep::Abort, window, cx);
+        });
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt());
+        assert!(
+            !fake_git_command_log(&fs)
+                .iter()
+                .any(|(args, _)| args == &["rebase".to_string(), "--abort".to_string()]),
+            "nothing may run before the prompt is answered"
+        );
+
+        cx.simulate_prompt_answer("やめる");
+        cx.run_until_parked();
+        assert!(
+            !fake_git_command_log(&fs)
+                .iter()
+                .any(|(args, _)| args == &["rebase".to_string(), "--abort".to_string()]),
+            "declining the prompt leaves the repository alone"
+        );
+
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.run_sequencer_step(SequencerKind::Rebase, SequencerStep::Abort, window, cx);
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("中止する");
+        cx.run_until_parked();
+        assert!(
+            fake_git_command_log(&fs)
+                .iter()
+                .any(|(args, _)| args == &["rebase".to_string(), "--abort".to_string()]),
+            "accepting it runs the abort"
+        );
+
+        // A git that does write REBASE_HEAD settles it, and then the abort needs no prompt.
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet REBASE_HEAD",
+            OLD_SHA,
+            "",
+            0,
+        );
+        assert_eq!(
+            sequencer_state(&panel, &mut cx),
+            Some(git::repository::SequencerState {
+                kind: SequencerKind::Rebase,
+                conflicted: true,
+                certain: true,
+            })
+        );
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.run_sequencer_step(SequencerKind::Rebase, SequencerStep::Abort, window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            !cx.has_pending_prompt(),
+            "a rebase git itself reports is aborted without asking twice"
+        );
+    }
+
+    /// The wording is all that separates a guess from a fact on screen, so both halves of the
+    /// switch are pinned here.
+    #[test]
+    fn test_sequencer_banner_text() {
+        let state = |certain: bool, conflicted: bool| git::repository::SequencerState {
+            kind: SequencerKind::Rebase,
+            conflicted,
+            certain,
+        };
+
+        let (title, description) = GitPanel::sequencer_banner_text(&state(true, true));
+        assert_eq!(title, "リベース (rebase)が途中で止まっています");
+        assert!(
+            description.starts_with("コンフリクトを解決"),
+            "{description}"
+        );
+
+        let (title, description) = GitPanel::sequencer_banner_text(&state(true, false));
+        assert_eq!(title, "リベース (rebase)が途中で止まっています");
+        assert!(description.starts_with("「続行」で"), "{description}");
+
+        let (title, description) = GitPanel::sequencer_banner_text(&state(false, true));
+        assert_eq!(title, git::repository::uncertain_rebase_message());
+        assert!(
+            title.contains("可能性があります"),
+            "a guess may not be stated as a fact: {title}"
+        );
+        assert!(description.contains("確かめられません"), "{description}");
     }
 
     /// The merge-request helper: branch off the base, apply the commits without committing, then
@@ -10845,6 +11329,505 @@ mod tests {
         assert!(!output.succeeded());
         assert!(output.stderr.contains("already exists"));
         assert_eq!(fake_git_command_log(&fs).len(), 1);
+    }
+
+    const REWRITE_BASE: &str = "0000000000000000000000000000000000000000";
+    const REWRITE_FIRST: &str = "1111111111111111111111111111111111111111";
+    const REWRITE_SECOND: &str = "2222222222222222222222222222222222222222";
+    const REWRITE_THIRD: &str = "3333333333333333333333333333333333333333";
+    const REWRITE_LAST: &str = "4444444444444444444444444444444444444444";
+
+    /// What every rewrite test starts from: a branch to move, and the answers to the questions
+    /// `rewrite_range` asks before it writes anything. Returns the scratch branch's name.
+    fn prepare_rewrite_range(fs: &FakeFs) -> String {
+        let scratch = git::repository::rewrite_scratch_branch_name(REWRITE_LAST);
+        fs.set_branch_name(path!("/project/.git").as_ref(), Some("main"));
+        set_fake_git_command_result(
+            fs,
+            &format!("rev-parse --verify --quiet {REWRITE_FIRST}^"),
+            REWRITE_BASE,
+            "",
+            0,
+        );
+        // Nothing in the range that HEAD cannot reach: the range is on the branch being rewritten.
+        set_fake_git_command_result(
+            fs,
+            &format!("log --format=%H HEAD..{REWRITE_LAST}"),
+            "",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            fs,
+            &format!("log --merges --format=%H {REWRITE_BASE}..{REWRITE_LAST}"),
+            "",
+            "",
+            0,
+        );
+        // The scratch branch is not there yet, which is what lets the rewrite start.
+        set_fake_git_command_result(
+            fs,
+            &format!("rev-parse --verify --quiet refs/heads/{scratch}"),
+            "",
+            "",
+            1,
+        );
+        set_fake_git_command_result(
+            fs,
+            &format!("switch -c {scratch} {REWRITE_BASE}"),
+            "",
+            "",
+            0,
+        );
+        scratch
+    }
+
+    /// The commands run before the first commit is applied, in order.
+    fn rewrite_prelude(scratch: &str) -> Vec<String> {
+        vec![
+            format!("rev-parse --verify --quiet {REWRITE_FIRST}^"),
+            format!("log --format=%H HEAD..{REWRITE_LAST}"),
+            format!("log --merges --format=%H {REWRITE_BASE}..{REWRITE_LAST}"),
+            format!("rev-parse --verify --quiet refs/heads/{scratch}"),
+            format!("switch -c {scratch} {REWRITE_BASE}"),
+        ]
+    }
+
+    /// The third commit moved ahead of the first, the second folded into the first, and the
+    /// fourth dropped.
+    fn rewrite_groups() -> Vec<git::repository::RewriteGroup> {
+        vec![
+            git::repository::RewriteGroup {
+                shas: vec![REWRITE_THIRD.to_string()],
+                message: None,
+            },
+            git::repository::RewriteGroup {
+                shas: vec![REWRITE_FIRST.to_string(), REWRITE_SECOND.to_string()],
+                message: Some("A と B".to_string()),
+            },
+        ]
+    }
+
+    fn run_rewrite_range(
+        repository: &Entity<Repository>,
+        cx: &mut VisualTestContext,
+    ) -> futures::channel::oneshot::Receiver<anyhow::Result<git::repository::GitCommandOutput>>
+    {
+        repository.update(cx, |repository, cx| {
+            repository.rewrite_range(
+                REWRITE_FIRST.to_string(),
+                REWRITE_LAST.to_string(),
+                rewrite_groups(),
+                cx,
+            )
+        })
+    }
+
+    /// The todo editor's plan against a repository: the picked commits are replayed onto a
+    /// scratch branch in the order the list gave, the folded ones become a single `commit`, the
+    /// dropped one is never applied, and the branch only moves at the closing `rebase --onto`.
+    #[gpui::test]
+    async fn test_rewrite_range_replays_the_range_onto_a_scratch_branch(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        let scratch = prepare_rewrite_range(&fs);
+        cx.run_until_parked();
+
+        set_fake_git_command_result(&fs, &format!("cherry-pick {REWRITE_THIRD}"), "", "", 0);
+        set_fake_git_command_result(
+            &fs,
+            &format!("cherry-pick -n {REWRITE_FIRST} {REWRITE_SECOND}"),
+            "",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("log -1 --format=%an%x00%ae%x00%ad --date=raw {REWRITE_FIRST}"),
+            "Ada\u{0}ada@example.com\u{0}1700000000 +0900\n",
+            "",
+            0,
+        );
+        set_fake_git_command_result(&fs, "commit -m A と B", "", "", 0);
+        set_fake_git_command_result(
+            &fs,
+            &format!("rebase --autostash --onto {scratch} {REWRITE_LAST} main"),
+            "",
+            "",
+            0,
+        );
+        set_fake_git_command_result(&fs, "switch main", "", "", 0);
+        set_fake_git_command_result(&fs, &format!("branch -D {scratch}"), "", "", 0);
+
+        let repository = active_repository(&panel, &mut cx);
+        assert_eq!(
+            repository.read_with(&cx, |repository, _| repository
+                .branch
+                .as_ref()
+                .map(|branch| branch.name().to_string())),
+            Some("main".to_string()),
+            "the rewrite needs a branch to move"
+        );
+
+        let output = run_rewrite_range(&repository, &mut cx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(output.succeeded(), "{}", output.failure_message());
+
+        let commands: Vec<String> = fake_git_command_log(&fs)
+            .into_iter()
+            .map(|(args, _)| args.join(" "))
+            .collect();
+        let mut expected = rewrite_prelude(&scratch);
+        expected.extend([
+            format!("cherry-pick {REWRITE_THIRD}"),
+            format!("cherry-pick -n {REWRITE_FIRST} {REWRITE_SECOND}"),
+            format!("log -1 --format=%an%x00%ae%x00%ad --date=raw {REWRITE_FIRST}"),
+            "commit -m A と B".to_string(),
+            format!("rebase --autostash --onto {scratch} {REWRITE_LAST} main"),
+            "switch main".to_string(),
+            format!("branch -D {scratch}"),
+        ]);
+        assert_eq!(commands, expected);
+
+        // The commit the user dropped may not be applied by any of them.
+        assert!(
+            commands
+                .iter()
+                .filter(|command| command.starts_with("cherry-pick"))
+                .all(|command| !command.contains(REWRITE_LAST)),
+            "the dropped commit was cherry-picked: {commands:?}"
+        );
+        // One commit per fold, not one per picked commit.
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|command| command.starts_with("commit "))
+                .count(),
+            1
+        );
+
+        // The folded commit has to keep the author of the oldest commit it is made of, which only
+        // that one command's environment can carry.
+        let envs = fs
+            .with_git_state(path!("/project/.git").as_ref(), false, |state| {
+                state
+                    .run_command_log
+                    .iter()
+                    .zip(state.run_command_envs.iter())
+                    .filter(|((args, _), _)| args.first().map(String::as_str) == Some("commit"))
+                    .map(|(_, env)| env.clone())
+                    .collect::<Vec<_>>()
+            })
+            .expect("fake repository should exist");
+        assert_eq!(envs.len(), 1);
+        assert_eq!(
+            envs[0].get("GIT_AUTHOR_EMAIL").map(String::as_str),
+            Some("ada@example.com")
+        );
+    }
+
+    /// A step git refuses leaves the branch where it was, so the way back is to leave the scratch
+    /// branch and delete it.
+    #[gpui::test]
+    async fn test_rewrite_range_returns_to_the_branch_when_a_step_fails(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        let scratch = prepare_rewrite_range(&fs);
+        cx.run_until_parked();
+
+        set_fake_git_command_result(
+            &fs,
+            &format!("cherry-pick {REWRITE_THIRD}"),
+            "",
+            "error: could not apply 3333333\n",
+            1,
+        );
+        set_fake_git_command_result(&fs, "switch main", "", "", 0);
+        set_fake_git_command_result(&fs, &format!("branch -D {scratch}"), "", "", 0);
+
+        let repository = active_repository(&panel, &mut cx);
+        let output = run_rewrite_range(&repository, &mut cx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!output.succeeded());
+        assert!(
+            output.stderr.contains("could not apply"),
+            "the failing step's own output is what the user needs: {output:?}"
+        );
+
+        let commands: Vec<String> = fake_git_command_log(&fs)
+            .into_iter()
+            .map(|(args, _)| args.join(" "))
+            .collect();
+        let mut expected = rewrite_prelude(&scratch);
+        expected.extend([
+            format!("cherry-pick {REWRITE_THIRD}"),
+            "switch main".to_string(),
+            format!("branch -D {scratch}"),
+        ]);
+        assert_eq!(commands, expected);
+    }
+
+    /// A conflict is git stopping, not failing: `switch` cannot leave the scratch branch then, and
+    /// deleting it anyway would take the stopped cherry-pick with it, so the state is left for the
+    /// panel's banner to continue or abort.
+    #[gpui::test]
+    async fn test_rewrite_range_leaves_a_stopped_cherry_pick_alone(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        let scratch = prepare_rewrite_range(&fs);
+        cx.run_until_parked();
+
+        set_fake_git_command_result(
+            &fs,
+            &format!("cherry-pick {REWRITE_THIRD}"),
+            "",
+            "error: could not apply 3333333\n",
+            1,
+        );
+        set_fake_git_command_result(
+            &fs,
+            "switch main",
+            "",
+            "error: you need to resolve your current index first\n",
+            1,
+        );
+
+        let repository = active_repository(&panel, &mut cx);
+        let output = run_rewrite_range(&repository, &mut cx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!output.succeeded());
+        assert!(output.stderr.contains("could not apply"));
+
+        let commands: Vec<String> = fake_git_command_log(&fs)
+            .into_iter()
+            .map(|(args, _)| args.join(" "))
+            .collect();
+        assert!(
+            !commands
+                .iter()
+                .any(|command| command == &format!("branch -D {scratch}")),
+            "the scratch branch must survive a stopped cherry-pick: {commands:?}"
+        );
+    }
+
+    /// A scratch branch left behind by an earlier rewrite may hold work nobody has looked at, so
+    /// it is never reused or overwritten.
+    #[gpui::test]
+    async fn test_rewrite_range_refuses_a_leftover_scratch_branch(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        let scratch = prepare_rewrite_range(&fs);
+        set_fake_git_command_result(
+            &fs,
+            &format!("rev-parse --verify --quiet refs/heads/{scratch}"),
+            "5555555555555555555555555555555555555555\n",
+            "",
+            0,
+        );
+        cx.run_until_parked();
+
+        let repository = active_repository(&panel, &mut cx);
+        let error = run_rewrite_range(&repository, &mut cx)
+            .await
+            .unwrap()
+            .expect_err("a leftover scratch branch must stop the rewrite");
+        assert!(
+            error.to_string().contains(&scratch),
+            "the error has to name the branch: {error:#}"
+        );
+
+        let commands: Vec<String> = fake_git_command_log(&fs)
+            .into_iter()
+            .map(|(args, _)| args.join(" "))
+            .collect();
+        assert!(
+            !commands.iter().any(|command| command.starts_with("switch")),
+            "nothing may be written once the rewrite is refused: {commands:?}"
+        );
+    }
+
+    /// On a detached HEAD there is no branch for the closing `rebase --onto` to move, and the
+    /// scratch branch would take HEAD's place with nothing to give it back.
+    #[gpui::test]
+    async fn test_rewrite_range_refuses_a_detached_head(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        fs.set_branch_name(path!("/project/.git").as_ref(), None::<String>);
+        cx.run_until_parked();
+
+        let repository = active_repository(&panel, &mut cx);
+        let error = run_rewrite_range(&repository, &mut cx)
+            .await
+            .unwrap()
+            .expect_err("a detached HEAD must stop the rewrite");
+        assert!(
+            error.to_string().contains("detached HEAD"),
+            "unexpected error: {error:#}"
+        );
+        assert!(
+            fake_git_command_log(&fs).is_empty(),
+            "nothing may run before the branch is known"
+        );
+    }
+
+    /// Dropping a single commit is one `rebase --onto` onto its parent, with the same refusal of a
+    /// range containing a merge that the other rewrites make.
+    #[gpui::test]
+    async fn test_drop_commit_replays_the_rest_onto_its_parent(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        fs.set_branch_name(path!("/project/.git").as_ref(), Some("main"));
+        cx.run_until_parked();
+
+        set_fake_git_command_result(
+            &fs,
+            &format!("rev-parse --verify --quiet {REWRITE_THIRD}^"),
+            REWRITE_SECOND,
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --format=%H HEAD..{REWRITE_THIRD}"),
+            "",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --merges --format=%H {REWRITE_THIRD}..HEAD"),
+            "",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("rebase --autostash --onto {REWRITE_SECOND} {REWRITE_THIRD} main"),
+            "",
+            "",
+            0,
+        );
+
+        let repository = active_repository(&panel, &mut cx);
+        let dropped = repository.update(&mut cx, |repository, cx| {
+            repository.drop_commit(REWRITE_THIRD.to_string(), cx)
+        });
+        assert!(dropped.await.unwrap().unwrap().succeeded());
+
+        assert_eq!(
+            fake_git_command_log(&fs)
+                .into_iter()
+                .map(|(args, _)| args.join(" "))
+                .collect::<Vec<_>>(),
+            vec![
+                format!("rev-parse --verify --quiet {REWRITE_THIRD}^"),
+                format!("log --format=%H HEAD..{REWRITE_THIRD}"),
+                format!("log --merges --format=%H {REWRITE_THIRD}..HEAD"),
+                format!("rebase --autostash --onto {REWRITE_SECOND} {REWRITE_THIRD} main"),
+            ]
+        );
+    }
+
+    /// A commit on some other branch is not this branch's to drop: `rebase --onto` would replay
+    /// every commit of the current branch onto an unrelated parent.
+    #[gpui::test]
+    async fn test_drop_commit_refuses_a_commit_head_cannot_reach(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        fs.set_branch_name(path!("/project/.git").as_ref(), Some("main"));
+        cx.run_until_parked();
+
+        set_fake_git_command_result(
+            &fs,
+            &format!("rev-parse --verify --quiet {REWRITE_THIRD}^"),
+            REWRITE_SECOND,
+            "",
+            0,
+        );
+        // The commit has something HEAD cannot reach, so it is not on this branch.
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --format=%H HEAD..{REWRITE_THIRD}"),
+            &format!("{REWRITE_THIRD}\n"),
+            "",
+            0,
+        );
+
+        let repository = active_repository(&panel, &mut cx);
+        let dropped = repository.update(&mut cx, |repository, cx| {
+            repository.drop_commit(REWRITE_THIRD.to_string(), cx)
+        });
+        let error = dropped
+            .await
+            .unwrap()
+            .expect_err("a commit off the current branch must be refused");
+        assert!(
+            error.to_string().contains("現在のブランチの履歴に無い"),
+            "unexpected error: {error:#}"
+        );
+        assert!(
+            fake_git_command_log(&fs)
+                .iter()
+                .all(|(args, _)| args[0] != "rebase"),
+            "nothing may be rewritten once the commit is refused"
+        );
+    }
+
+    /// Replaying a range that contains a merge with `rebase --onto` would flatten the merged-in
+    /// history without saying so.
+    #[gpui::test]
+    async fn test_drop_commit_refuses_a_range_containing_a_merge(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        fs.set_branch_name(path!("/project/.git").as_ref(), Some("main"));
+        cx.run_until_parked();
+
+        set_fake_git_command_result(
+            &fs,
+            &format!("rev-parse --verify --quiet {REWRITE_THIRD}^"),
+            REWRITE_SECOND,
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --format=%H HEAD..{REWRITE_THIRD}"),
+            "",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --merges --format=%H {REWRITE_THIRD}..HEAD"),
+            "5555555555555555555555555555555555555555\n",
+            "",
+            0,
+        );
+
+        let repository = active_repository(&panel, &mut cx);
+        let dropped = repository.update(&mut cx, |repository, cx| {
+            repository.drop_commit(REWRITE_THIRD.to_string(), cx)
+        });
+        let error = dropped
+            .await
+            .unwrap()
+            .expect_err("a range with a merge commit must be refused");
+        assert!(
+            error.to_string().contains("マージコミット"),
+            "unexpected error: {error:#}"
+        );
+        assert!(
+            fake_git_command_log(&fs)
+                .iter()
+                .all(|(args, _)| args[0] != "rebase"),
+            "nothing may be rewritten once the range is refused"
+        );
     }
 
     /// Reading a file as of a ref goes through the same escape hatch, as a `show <ref>:<path>`
@@ -10924,6 +11907,7 @@ mod tests {
             Some(git::repository::SequencerState {
                 kind: SequencerKind::CherryPick,
                 conflicted: true,
+                certain: true,
             })
         );
         assert!(
@@ -10931,7 +11915,7 @@ mod tests {
             "the banner has to be on screen once a cherry-pick is stopped"
         );
 
-        // Aborting clears it again.
+        // Aborting clears it again, along with the conflicts it left in the index.
         set_fake_git_command_result(&fs, "cherry-pick --abort", "", "", 0);
         set_fake_git_command_result(
             &fs,
@@ -10940,6 +11924,7 @@ mod tests {
             "",
             1,
         );
+        set_fake_git_command_result(&fs, "diff --name-only --diff-filter=U", "", "", 0);
         panel.update_in(&mut cx, |panel, window, cx| {
             panel.run_sequencer_step(SequencerKind::CherryPick, SequencerStep::Abort, window, cx);
         });
@@ -10949,6 +11934,121 @@ mod tests {
             None
         );
         assert!(!sequencer_banner_is_rendered(&panel, &mut cx));
+    }
+
+    /// A rewrite that stops on a conflict parks the user on its scratch branch. Aborting there
+    /// only undoes the pick, so the panel has to walk them back to the branch they started from
+    /// and take the scratch branch with it.
+    #[gpui::test]
+    async fn test_aborting_on_a_scratch_branch_returns_to_the_original(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        let scratch = git::repository::rewrite_scratch_branch_name(REWRITE_LAST);
+        fs.set_branch_name(path!("/project/.git").as_ref(), Some(scratch.clone()));
+        cx.run_until_parked();
+
+        let work_directory_abs_path = active_repository(&panel, &mut cx)
+            .read_with(&cx, |repository, _| {
+                repository.work_directory_abs_path.clone()
+            });
+        cx.update(|_, cx| {
+            rewrite_range_modal::remember_rewrite_origin(
+                &work_directory_abs_path,
+                &scratch,
+                "main",
+                cx,
+            )
+        })
+        .await;
+
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet CHERRY_PICK_HEAD",
+            REWRITE_THIRD,
+            "",
+            0,
+        );
+        set_fake_git_command_result(&fs, "diff --name-only --diff-filter=U", "file.txt\n", "", 0);
+        panel.update(&mut cx, |panel, cx| panel.refresh_sequencer_state(cx));
+        cx.run_until_parked();
+        assert_eq!(
+            panel.read_with(&cx, |panel, _| panel.rewrite_scratch_origin.clone()),
+            Some(RewriteScratchOrigin {
+                scratch_branch: scratch.clone(),
+                origin_branch: Some("main".to_string()),
+            }),
+            "the banner can only offer the way back once it knows where back is"
+        );
+
+        set_fake_git_command_result(&fs, "cherry-pick --abort", "", "", 0);
+        set_fake_git_command_result(&fs, "switch main", "", "", 0);
+        set_fake_git_command_result(&fs, &format!("branch -D {scratch}"), "", "", 0);
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.run_sequencer_step(SequencerKind::CherryPick, SequencerStep::Abort, window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            fake_git_command_log(&fs)
+                .into_iter()
+                .map(|(args, _)| args.join(" "))
+                .collect::<Vec<_>>(),
+            vec![
+                "cherry-pick --abort".to_string(),
+                "switch main".to_string(),
+                format!("branch -D {scratch}"),
+            ],
+            "aborting has to be followed by the way back, in that order"
+        );
+        assert_eq!(
+            cx.update(|_, cx| rewrite_range_modal::read_rewrite_origin(
+                &work_directory_abs_path,
+                &scratch,
+                cx
+            ))
+            .await,
+            None,
+            "the scratch branch is gone, so the way back to it must be too"
+        );
+    }
+
+    /// Nothing is walked back when the stop happened on an ordinary branch: `switch` and
+    /// `branch -D` there would be this fork moving a user's branch of its own accord.
+    #[gpui::test]
+    async fn test_aborting_on_an_ordinary_branch_only_aborts(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        fs.set_branch_name(path!("/project/.git").as_ref(), Some("main"));
+        cx.run_until_parked();
+
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet CHERRY_PICK_HEAD",
+            REWRITE_THIRD,
+            "",
+            0,
+        );
+        set_fake_git_command_result(&fs, "diff --name-only --diff-filter=U", "file.txt\n", "", 0);
+        panel.update(&mut cx, |panel, cx| panel.refresh_sequencer_state(cx));
+        cx.run_until_parked();
+        assert_eq!(
+            panel.read_with(&cx, |panel, _| panel.rewrite_scratch_origin.clone()),
+            None
+        );
+
+        set_fake_git_command_result(&fs, "cherry-pick --abort", "", "", 0);
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.run_sequencer_step(SequencerKind::CherryPick, SequencerStep::Abort, window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            fake_git_command_log(&fs)
+                .into_iter()
+                .map(|(args, _)| args.join(" "))
+                .collect::<Vec<_>>(),
+            vec!["cherry-pick --abort".to_string()]
+        );
     }
 
     /// The commit actions also arrive from the command palette and from a keybinding, where

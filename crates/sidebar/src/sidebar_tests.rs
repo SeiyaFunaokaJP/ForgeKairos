@@ -1758,6 +1758,44 @@ fn setup_sidebar_with_agent_panel(
     (sidebar, panel)
 }
 
+/// ADR-F36 Phase B 以降、パネルのペインのタブに載ったスレッドは
+/// `retained_threads` に入らない。診断 (`Workspace Info`) がそこだけを数えると、
+/// 裏で走っているスレッドを 1 本も居ないことにしてしまう。
+#[gpui::test]
+async fn test_workspace_info_counts_threads_parked_in_panel_tabs(cx: &mut TestAppContext) {
+    let project = init_test_project_with_agent_panel("/my-project", cx).await;
+    let (multi_workspace, cx) =
+        cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let (_sidebar, panel) = setup_sidebar_with_agent_panel(&multi_workspace, cx);
+    let workspace = multi_workspace.read_with(cx, |mw, _cx| mw.workspace().clone());
+
+    open_thread_with_connection(&panel, StubAgentConnection::new(), cx);
+    open_thread_with_connection(&panel, StubAgentConnection::new(), cx);
+    cx.run_until_parked();
+
+    panel.read_with(cx, |panel, _cx| {
+        assert!(
+            panel.retained_threads().is_empty(),
+            "タブに載ったスレッドは保持枠へは預けられない"
+        );
+        assert_eq!(
+            panel.background_threads().count(),
+            1,
+            "表に出していないタブが 1 枚"
+        );
+    });
+
+    let dump = workspace.read_with(cx, |workspace, cx| {
+        let mut output = String::new();
+        dump_single_workspace(workspace, &mut output, cx);
+        output
+    });
+    assert!(
+        dump.contains("Background threads (1)"),
+        "診断がタブのスレッドを数える:\n{dump}"
+    );
+}
+
 #[gpui::test]
 async fn test_agent_panel_terminals_appear_in_sidebar_and_search(cx: &mut TestAppContext) {
     let project = init_test_project_with_agent_panel("/my-project", cx).await;

@@ -9,18 +9,21 @@
 //! The shell is the same for every diagram kind: the header, the preview, the
 //! Tab order, the validation line and the single write back. Only the middle of
 //! the form changes, and each kind's half of it lives in a module of its own
-//! ([`pie`], [`state`], [`sequence`], [`er`]); the flowchart's stayed here
-//! because it was here first.
+//! ([`pie`], [`state`], [`sequence`], [`er`], [`class`], [`gantt`]); the flowchart's
+//! stayed here because it was here first.
 //!
 //! Like the table editor, the buffer stays the single source of truth: the
 //! modal reads one fence, edits a copy, and writes the whole body back with one
 //! `Buffer::edit` so that undo takes the diagram back in one step (ADR-F51).
 
+mod class;
 mod er;
+mod gantt;
 mod pie;
 mod sequence;
 mod state;
 
+use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -33,8 +36,9 @@ use gpui::{
     TextStyleRefinement, WeakEntity, Window, img, px, size,
 };
 use mermaid_render::flowchart_model::{
-    ArrowKind, EDGE_STYLE_PRESETS, FlowDirection, FlowchartDocument, FlowchartEdge, FlowchartNode,
-    FlowchartSubgraph, NodeShape, StrokeKind, is_valid_node_id,
+    ArrowKind, CLICK_CLASS, EDGE_STYLE_PRESETS, FlowDirection, FlowchartDocument, FlowchartEdge,
+    FlowchartNode, FlowchartSubgraph, NodeShape, StrokeKind, declared_class_names,
+    is_valid_class_name, is_valid_node_id, shape_data_target,
 };
 use mermaid_render::mermaid_model::{MermaidDiagramKind, MermaidDocument, parse_document};
 use settings::Settings as _;
@@ -145,6 +149,17 @@ struct SubgraphRow {
     title: Entity<Editor>,
 }
 
+/// What the diagram addressed when the editor opened it.
+///
+/// A statement that came through verbatim is only dropped when the element it
+/// named is one this form answers for. A `style` or `click` line whose second
+/// word was never an id of this diagram is left exactly as it was found rather
+/// than read as a statement about a node that has gone.
+struct OriginalTargets {
+    ids: Vec<String>,
+    edge_ids: Vec<String>,
+}
+
 /// Everything the flowchart form holds: the structure that is not typed into a
 /// text field, and one field per editable string.
 struct FlowchartForm {
@@ -152,6 +167,18 @@ struct FlowchartForm {
     nodes: Vec<NodeRow>,
     edge_labels: Vec<Entity<Editor>>,
     subgraphs: Vec<SubgraphRow>,
+    /// A class name typed by hand, offered beside the `classDef` names in every
+    /// row's class menu. There is no UI for writing a `classDef` line, so
+    /// without it only classes the document already declares could be assigned.
+    class_input: Entity<Editor>,
+    original: OriginalTargets,
+    /// For each edge now in the form, the position it had when the diagram was
+    /// opened, or `None` for one added since. `linkStyle` addresses an edge by
+    /// that position, so this is what those statements are renumbered from.
+    edge_origins: Vec<Option<usize>>,
+    /// How many edges the diagram had when it was opened. A `linkStyle` number
+    /// beyond it is one this form cannot account for, and is left alone.
+    original_edge_count: usize,
 }
 
 /// The half of the form that depends on which diagram is being edited.
@@ -163,6 +190,8 @@ enum Form {
     State(state::StateForm),
     Sequence(sequence::SequenceForm),
     Er(er::ErForm),
+    Class(class::ClassForm),
+    Gantt(gantt::GanttForm),
 }
 
 /// The drawing of the source the form currently describes.
@@ -232,6 +261,12 @@ impl MermaidEditor {
                 Form::Sequence(self.new_sequence_form(document, window, cx))
             }
             MermaidDocument::Er(document) => Form::Er(self.new_er_form(document, window, cx)),
+            MermaidDocument::Class(document) => {
+                Form::Class(self.new_class_form(document, window, cx))
+            }
+            MermaidDocument::Gantt(document) => {
+                Form::Gantt(self.new_gantt_form(document, window, cx))
+            }
         };
         self.message = None;
         self.schedule_preview(cx);
@@ -265,11 +300,30 @@ impl MermaidEditor {
                 title: self.new_field(&title, window, cx),
             });
         }
+        let class_input = self.new_field("", window, cx);
+        let original = OriginalTargets {
+            ids: document
+                .nodes
+                .iter()
+                .map(|node| node.id.clone())
+                .chain(document.subgraphs.iter().map(|group| group.id.clone()))
+                .collect(),
+            edge_ids: document
+                .edges
+                .iter()
+                .filter_map(|edge| edge.user_id.clone())
+                .collect(),
+        };
+        let original_edge_count = document.edges.len();
         FlowchartForm {
             document,
             nodes,
             edge_labels,
             subgraphs,
+            class_input,
+            original,
+            edge_origins: (0..original_edge_count).map(Some).collect(),
+            original_edge_count,
         }
     }
 
@@ -349,6 +403,8 @@ impl MermaidEditor {
             Form::State(form) => Some(MermaidDocument::State(form.current_document(cx))),
             Form::Sequence(form) => Some(MermaidDocument::Sequence(form.current_document(cx))),
             Form::Er(form) => Some(MermaidDocument::Er(form.current_document(cx))),
+            Form::Class(form) => Some(MermaidDocument::Class(form.current_document(cx))),
+            Form::Gantt(form) => Some(MermaidDocument::Gantt(form.current_document(cx))),
         }
     }
 
@@ -403,8 +459,70 @@ impl MermaidEditor {
                 }
             }
         }
-        retarget_preserved_lines(&mut document, &renames);
+        renumber_link_styles(&mut document, &form.edge_origins, form.original_edge_count);
+        retarget_preserved_lines(&mut document, &renames, &form.original);
         document
+    }
+
+    /// The class names the class menus offer: the ones the document declares,
+    /// the ones it already assigns, and whatever is being typed into the class
+    /// field.
+    fn class_candidates(&self, cx: &App) -> Vec<String> {
+        let Some(form) = self.flowchart() else {
+            return Vec::new();
+        };
+        let mut names = declared_class_names(&form.document);
+        let assigned = form
+            .document
+            .nodes
+            .iter()
+            .map(|node| &node.classes)
+            .chain(form.document.subgraphs.iter().map(|group| &group.classes));
+        for name in assigned.flatten() {
+            if name != CLICK_CLASS && !names.iter().any(|known| known == name) {
+                names.push(name.clone());
+            }
+        }
+        let typed = form.class_input.read(cx).text(cx).trim().to_string();
+        if is_valid_class_name(&typed) && typed != CLICK_CLASS && !names.contains(&typed) {
+            names.push(typed);
+        }
+        names
+    }
+
+    fn toggle_class(
+        &mut self,
+        target: ClassTarget,
+        index: usize,
+        class: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        let classes = match target {
+            ClassTarget::Node => form
+                .document
+                .nodes
+                .get_mut(index)
+                .map(|node| &mut node.classes),
+            ClassTarget::Subgraph => form
+                .document
+                .subgraphs
+                .get_mut(index)
+                .map(|group| &mut group.classes),
+        };
+        let Some(classes) = classes else {
+            return;
+        };
+        match classes.iter().position(|name| name == class) {
+            Some(position) => {
+                classes.remove(position);
+            }
+            None => classes.push(class.to_string()),
+        }
+        self.schedule_preview(cx);
+        cx.notify();
     }
 
     /// The first thing wrong with what the user typed, in the words shown above
@@ -416,6 +534,8 @@ impl MermaidEditor {
             MermaidDocument::State(document) => state::problem(document),
             MermaidDocument::Sequence(document) => sequence::problem(document),
             MermaidDocument::Er(document) => er::problem(document),
+            MermaidDocument::Class(document) => class::problem(document),
+            MermaidDocument::Gantt(document) => gantt::problem(document),
         };
         field_problem.or_else(|| document.structure_error().map(SharedString::from))
     }
@@ -568,6 +688,9 @@ impl MermaidEditor {
             if index < form.edge_labels.len() {
                 form.edge_labels.remove(index);
             }
+            if index < form.edge_origins.len() {
+                form.edge_origins.remove(index);
+            }
         }
         for group in &mut form.document.subgraphs {
             group.node_ids.retain(|node_id| *node_id != removed);
@@ -611,6 +734,7 @@ impl MermaidEditor {
         form.document.edges.push(FlowchartEdge {
             from: first,
             to: second,
+            user_id: None,
             label: None,
             markdown_label: false,
             arrow: ArrowKind::Arrow,
@@ -618,6 +742,7 @@ impl MermaidEditor {
             length: 1,
         });
         form.edge_labels.push(field);
+        form.edge_origins.push(None);
         self.schedule_preview(cx);
         cx.notify();
     }
@@ -633,6 +758,9 @@ impl MermaidEditor {
         if index < form.edge_labels.len() {
             form.edge_labels.remove(index);
         }
+        if index < form.edge_origins.len() {
+            form.edge_origins.remove(index);
+        }
         self.schedule_preview(cx);
         cx.notify();
     }
@@ -647,6 +775,9 @@ impl MermaidEditor {
         form.document.edges.swap(index, other);
         if other < form.edge_labels.len() && index < form.edge_labels.len() {
             form.edge_labels.swap(index, other);
+        }
+        if other < form.edge_origins.len() && index < form.edge_origins.len() {
+            form.edge_origins.swap(index, other);
         }
         self.schedule_preview(cx);
         cx.notify();
@@ -792,6 +923,7 @@ impl MermaidEditor {
                     .iter()
                     .flat_map(|row| [row.id.clone(), row.title.clone()]);
                 nodes
+                    .chain([form.class_input.clone()])
                     .chain(form.edge_labels.iter().cloned())
                     .chain(subgraphs)
                     .collect()
@@ -800,6 +932,8 @@ impl MermaidEditor {
             Form::State(form) => form.fields(),
             Form::Sequence(form) => form.fields(),
             Form::Er(form) => form.fields(),
+            Form::Class(form) => form.fields(),
+            Form::Gantt(form) => form.fields(),
         }
     }
 
@@ -910,6 +1044,7 @@ impl MermaidEditor {
             return div().into_any_element();
         };
         let last = form.nodes.len().saturating_sub(1);
+        let candidates = self.class_candidates(cx);
         let mut section = v_flex().w_full().gap_1().child(section_title("ノード"));
         for index in 0..form.nodes.len() {
             let Some(row) = form.nodes.get(index) else {
@@ -933,6 +1068,14 @@ impl MermaidEditor {
                             .child(row.label.clone()),
                     )
                     .child(self.render_shape_menu(index, node.shape.clone(), window, cx))
+                    .child(self.render_class_menu(
+                        ClassTarget::Node,
+                        index,
+                        &node.classes,
+                        &candidates,
+                        window,
+                        cx,
+                    ))
                     .child(row_controls(
                         "mermaid-node",
                         index,
@@ -944,6 +1087,8 @@ impl MermaidEditor {
                     )),
             );
         }
+        let typed = form.class_input.read(cx).text(cx);
+        let typed_is_valid = typed.trim().is_empty() || is_valid_class_name(typed.trim());
         section
             .child(
                 Button::new("mermaid-add-node", "ノードを追加")
@@ -951,7 +1096,79 @@ impl MermaidEditor {
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, _, window, cx| this.add_node(window, cx))),
             )
+            // Mermaid declares a class with a `classDef` line, which the form
+            // keeps verbatim but cannot write; this is where a name that has no
+            // `classDef` yet is typed so that the class menus can offer it.
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_1()
+                    .child(section_title("クラス名"))
+                    .child(
+                        field_frame(
+                            &form.class_input,
+                            ID_FIELD_WIDTH,
+                            typed_is_valid,
+                            window,
+                            cx,
+                        )
+                        .child(form.class_input.clone()),
+                    )
+                    .child(section_title(
+                        "classDef の名前と、ここに入力した名前が「クラス」の候補になります。",
+                    )),
+            )
             .into_any_element()
+    }
+
+    /// The classes assigned to one node or group, as a menu of the names on
+    /// offer. Mermaid writes them as a `class <id> <names>` statement, which the
+    /// model carries, so ticking one here is all there is to it.
+    fn render_class_menu(
+        &self,
+        target: ClassTarget,
+        index: usize,
+        classes: &[String],
+        candidates: &[String],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let this = cx.entity().downgrade();
+        let assigned = classes.to_vec();
+        let candidates = candidates.to_vec();
+        let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
+            if candidates.is_empty() {
+                return menu.label("classDef を書くか、「クラス名」に入力してください。");
+            }
+            for name in candidates.clone() {
+                let this = this.clone();
+                let is_selected = assigned.contains(&name);
+                let chosen = name.clone();
+                menu = menu.toggleable_entry(
+                    name,
+                    is_selected,
+                    IconPosition::Start,
+                    None,
+                    move |_window, cx| {
+                        let chosen = chosen.clone();
+                        this.update(cx, |this, cx| {
+                            this.toggle_class(target, index, &chosen, cx);
+                        })
+                        .log_err();
+                    },
+                );
+            }
+            menu
+        });
+
+        DropdownMenu::new(
+            (target.element_id(), index),
+            class_menu_label(classes),
+            menu,
+        )
+        .style(DropdownStyle::Outlined)
+        .trigger_size(ButtonSize::Compact)
+        .into_any_element()
     }
 
     fn render_shape_menu(
@@ -1152,6 +1369,7 @@ impl MermaidEditor {
             return div().into_any_element();
         };
         let node_ids = self.node_ids(cx);
+        let candidates = self.class_candidates(cx);
         let mut section = v_flex().w_full().gap_1().child(section_title("グループ"));
         for index in 0..form.subgraphs.len() {
             let Some(row) = form.subgraphs.get(index) else {
@@ -1199,6 +1417,14 @@ impl MermaidEditor {
                             .child(self.render_subgraph_direction_menu(
                                 index,
                                 group.direction,
+                                window,
+                                cx,
+                            ))
+                            .child(self.render_class_menu(
+                                ClassTarget::Subgraph,
+                                index,
+                                &group.classes,
+                                &candidates,
                                 window,
                                 cx,
                             ))
@@ -1282,6 +1508,8 @@ impl MermaidEditor {
             Form::State(_) => self.render_state(window, cx),
             Form::Sequence(_) => self.render_sequence(window, cx),
             Form::Er(_) => self.render_er(window, cx),
+            Form::Class(_) => self.render_class(window, cx),
+            Form::Gantt(_) => self.render_gantt(window, cx),
         }
     }
 
@@ -1291,7 +1519,10 @@ impl MermaidEditor {
             Form::Flowchart(_) => self.render_direction(window, cx),
             Form::State(_) => self.render_state_toolbar(window, cx),
             Form::Er(_) => self.render_er_toolbar(window, cx),
-            Form::Choosing | Form::Pie(_) | Form::Sequence(_) => div().into_any_element(),
+            Form::Class(_) => self.render_class_toolbar(window, cx),
+            Form::Choosing | Form::Pie(_) | Form::Sequence(_) | Form::Gantt(_) => {
+                div().into_any_element()
+            }
         }
     }
 
@@ -1479,13 +1710,146 @@ fn add_button(
         .on_click(on_click)
 }
 
+/// Which list a class menu is attached to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClassTarget {
+    Node,
+    Subgraph,
+}
+
+impl ClassTarget {
+    fn element_id(self) -> &'static str {
+        match self {
+            Self::Node => "mermaid-node-class",
+            Self::Subgraph => "mermaid-group-class",
+        }
+    }
+}
+
+/// What a class menu's trigger says. A long list would push the row's fields
+/// off the form, so it is cut short rather than shown in full.
+fn class_menu_label(classes: &[String]) -> SharedString {
+    if classes.is_empty() {
+        return "クラス".into();
+    }
+    let joined = classes.join(",");
+    let mut cut = joined.chars().take(CLASS_LABEL_CHARS).collect::<String>();
+    if cut.chars().count() < joined.chars().count() {
+        cut.push('…');
+    }
+    cut.into()
+}
+
+/// How many characters of a row's class list its menu trigger shows.
+const CLASS_LABEL_CHARS: usize = 12;
+
+/// Points the `linkStyle` statements back at the edges they meant.
+///
+/// `linkStyle` addresses an edge by its position in the diagram, and nothing
+/// else in the source repeats that number, so adding, removing or moving an
+/// edge silently hands the styling to a different link. `origins` says where
+/// each edge now in the form came from, which is the mapping those numbers need.
+///
+/// A number this form cannot account for — one that was never a position, or a
+/// list that is not numbers at all, such as `linkStyle default` — leaves the
+/// statement untouched: rewriting what it does not understand would be worse
+/// than leaving it as the user wrote it.
+fn renumber_link_styles(
+    document: &mut FlowchartDocument,
+    origins: &[Option<usize>],
+    original_count: usize,
+) {
+    document.preserved_lines.retain_mut(|line| {
+        let Some(span) = number_list_span(&line.text) else {
+            return true;
+        };
+        let Some(list) = line.text.get(span.clone()).map(str::to_string) else {
+            return true;
+        };
+        let mut kept: Vec<String> = Vec::new();
+        for entry in list.split(',') {
+            let Ok(number) = entry.trim().parse::<usize>() else {
+                return true;
+            };
+            if number >= original_count {
+                return true;
+            }
+            if let Some(position) = origins.iter().position(|origin| *origin == Some(number)) {
+                kept.push(position.to_string());
+            }
+        }
+        let rewritten = kept.join(",");
+        if rewritten == list {
+            return true;
+        }
+        // Every edge the statement styled has been deleted, so there is nothing
+        // left for it to be about.
+        if kept.is_empty() {
+            return false;
+        }
+        line.text.replace_range(span, &rewritten);
+        true
+    });
+}
+
+/// Where in `line` a `linkStyle` statement writes the edges it addresses.
+fn number_list_span(line: &str) -> Option<Range<usize>> {
+    let indent = line.len() - line.trim_start().len();
+    let trimmed = line.get(indent..)?;
+    let rest = trimmed.strip_prefix("linkStyle")?;
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let leading = rest.len() - rest.trim_start().len();
+    let start = indent + "linkStyle".len() + leading;
+    let length = comma_list_length(rest.trim_start());
+    (length > 0 && line.is_char_boundary(start) && line.is_char_boundary(start + length))
+        .then_some(start..start + length)
+}
+
+/// How much of `rest` is the comma separated list it opens with: an entry, then
+/// a comma and the entry after it for as long as one follows. The whitespace
+/// after the last entry is left out, so the span covers the list and nothing
+/// else.
+fn comma_list_length(rest: &str) -> usize {
+    let mut end = 0;
+    let mut cursor = 0;
+    while let Some(remainder) = rest.get(cursor..) {
+        let entry_length = remainder
+            .find(|character: char| character.is_whitespace() || character == ',')
+            .unwrap_or(remainder.len());
+        if entry_length == 0 {
+            break;
+        }
+        cursor += entry_length;
+        end = cursor;
+        let after_entry = rest.get(cursor..).unwrap_or_default();
+        let spaces = after_entry.len() - after_entry.trim_start().len();
+        let Some(after_comma) = after_entry.trim_start().strip_prefix(',') else {
+            break;
+        };
+        cursor += spaces + 1 + after_comma.len() - after_comma.trim_start().len();
+    }
+    end
+}
+
 /// Keeps the statements that came through verbatim pointing at the elements
 /// they address, and drops the ones whose element is gone.
 ///
 /// `style A …` declares `A` as a side effect, so a statement left behind after
 /// its node was deleted would bring the node back as an empty box on the next
 /// parse. A renamed element keeps its statement, rewritten onto the new id.
-fn retarget_preserved_lines(document: &mut FlowchartDocument, renames: &[(String, String)]) {
+///
+/// A statement whose second word never named anything in this diagram — a
+/// `style` line the user wrote for a node they have not added yet, say — is
+/// neither rewritten nor dropped. Reading it as a reference to a node that has
+/// gone would delete a line the editor does not understand, which is the one
+/// outcome the user cannot undo from inside the form.
+fn retarget_preserved_lines(
+    document: &mut FlowchartDocument,
+    renames: &[(String, String)],
+    original: &OriginalTargets,
+) {
     const TARGETED: [&str; 2] = ["style", "click"];
     let known = document
         .nodes
@@ -1493,37 +1857,60 @@ fn retarget_preserved_lines(document: &mut FlowchartDocument, renames: &[(String
         .map(|node| node.id.clone())
         .chain(document.subgraphs.iter().map(|group| group.id.clone()))
         .collect::<Vec<_>>();
+    let live_edge_ids = document
+        .edges
+        .iter()
+        .filter_map(|edge| edge.user_id.clone())
+        .collect::<Vec<_>>();
 
     document.preserved_lines.retain_mut(|line| {
-        let indent = line.text.len() - line.text.trim_start().len();
-        let Some(trimmed) = line.text.get(indent..).map(str::to_string) else {
-            return true;
-        };
-        let mut words = trimmed.split_whitespace();
-        let (Some(keyword), Some(target)) = (words.next(), words.next()) else {
-            return true;
-        };
-        if !TARGETED.contains(&keyword) {
-            return true;
+        // `e1@{ … }` addresses an edge by the id the source gave it. There is no
+        // UI for renaming one, so the only question is whether it is still here.
+        if let Some(target) = shape_data_target(&line.text) {
+            return live_edge_ids.iter().any(|id| id == target)
+                || !original.edge_ids.iter().any(|id| id == target);
         }
+        let Some(span) = targeted_span(&line.text, &TARGETED) else {
+            return true;
+        };
+        let Some(target) = line.text.get(span.clone()).map(str::to_string) else {
+            return true;
+        };
         let renamed = renames
             .iter()
-            .find(|(old, _)| old == target)
-            .map(|(_, new)| new.as_str());
-        if !known.iter().any(|id| id == renamed.unwrap_or(target)) {
-            return false;
+            .find(|(old, _)| *old == target)
+            .map(|(_, new)| new.clone());
+        let current = renamed.clone().unwrap_or_else(|| target.clone());
+        if known.contains(&current) || live_edge_ids.contains(&current) {
+            if let Some(renamed) = renamed {
+                line.text.replace_range(span, &renamed);
+            }
+            return true;
         }
-        if let Some(renamed) = renamed {
-            let Some(after_keyword) = trimmed.get(keyword.len()..) else {
-                return true;
-            };
-            let start =
-                indent + keyword.len() + after_keyword.len() - after_keyword.trim_start().len();
-            line.text
-                .replace_range(start..start + target.len(), renamed);
-        }
-        true
+        !(original.ids.contains(&target) || original.edge_ids.contains(&target))
     });
+}
+
+/// Where in `line` a kept statement writes the element it addresses.
+///
+/// The span is returned rather than the word so that a rename can be written
+/// into the line without disturbing the rest of it. Mermaid separates words
+/// with any whitespace, a full width space included, so the offsets are counted
+/// in bytes off the line itself rather than assumed to be one byte per space,
+/// and are checked against the character boundaries before they are used.
+fn targeted_span(line: &str, keywords: &[&str]) -> Option<Range<usize>> {
+    let indent = line.len() - line.trim_start().len();
+    let trimmed = line.get(indent..)?;
+    let keyword = trimmed.split_whitespace().next()?;
+    if !keywords.contains(&keyword) {
+        return None;
+    }
+    let after_keyword = trimmed.get(keyword.len()..)?;
+    let target = after_keyword.split_whitespace().next()?;
+    let leading = after_keyword.len() - after_keyword.trim_start().len();
+    let start = indent + keyword.len() + leading;
+    let end = start + target.len();
+    (line.is_char_boundary(start) && line.is_char_boundary(end)).then_some(start..end)
 }
 
 /// The index `index` swaps with when it moves, or `None` at the end it is

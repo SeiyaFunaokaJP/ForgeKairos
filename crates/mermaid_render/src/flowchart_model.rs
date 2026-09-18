@@ -19,9 +19,10 @@
 //!   any amount of re-spelling.
 //!
 //! Known losses, all of which concern constructs the editor does not expose:
-//! user defined edge ids (`A e1@--> B`) and therefore any `class` statement that
-//! names an edge rather than a node or subgraph; per-node `style` is kept as a
-//! preserved statement but is not attached to the node it styles.
+//! a `class` statement that names an edge rather than a node or a subgraph —
+//! the parser refuses such a diagram rather than dropping the class — and
+//! per-node `style`, which is kept as a preserved statement but is not attached
+//! to the node it styles.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -345,6 +346,11 @@ pub struct FlowchartNode {
 pub struct FlowchartEdge {
     pub from: String,
     pub to: String,
+    /// The id the source gave the edge (`A e1@--> B`), which is what an
+    /// `e1@{ … }` statement addresses. `None` for an edge `merman` numbered
+    /// itself: those ids are derived from the endpoints and would move onto
+    /// another edge as soon as one is added beside it.
+    pub user_id: Option<String>,
     pub label: Option<String>,
     pub markdown_label: bool,
     pub arrow: ArrowKind,
@@ -471,8 +477,8 @@ pub fn parse_flowchart(source: &str) -> Result<FlowchartDocument> {
         });
     };
 
-    let document = document_from_model(model, scan.keyword, scan.preserved);
-    if let Some(problem) = unsupported_construct(&scan.statements, &document) {
+    let document = document_from_model(model, scan.keyword, scan.preserved, &scan.edge_ids);
+    if let Some(problem) = unsupported_construct(&scan.statements, &document, &scan.edge_ids) {
         bail!("{problem}");
     }
     Ok(document)
@@ -482,6 +488,7 @@ fn document_from_model(
     model: FlowchartV2Model,
     keyword: FlowchartKeyword,
     preserved: Vec<PreservedLine>,
+    edge_ids: &[String],
 ) -> FlowchartDocument {
     let direction = FlowDirection::from_model(model.direction.as_deref());
     let clicked = click_targets(&preserved);
@@ -502,6 +509,10 @@ fn document_from_model(
         .edges
         .into_iter()
         .map(|edge| FlowchartEdge {
+            // `merman` puts a user's own id in the same field as the one it
+            // generates and does not say which happened, so the spellings the
+            // source actually contains decide.
+            user_id: edge_ids.contains(&edge.id).then(|| edge.id.clone()),
             from: edge.from,
             to: edge.to,
             markdown_label: edge.label_type.as_deref() == Some("markdown"),
@@ -733,7 +744,12 @@ fn node_declaration(node: &FlowchartNode) -> String {
 }
 
 fn edge_statement(edge: &FlowchartEdge) -> String {
-    let operator = edge_operator(edge.arrow, edge.stroke, edge.length);
+    let mut operator = edge_operator(edge.arrow, edge.stroke, edge.length);
+    // Mermaid writes a user defined edge id between the source node and the
+    // link operator, which is also where the parser looks for it.
+    if let Some(id) = &edge.user_id {
+        operator = format!("{id}@{operator}");
+    }
     match &edge.label {
         Some(label) => format!(
             "{} {operator}|{}| {}",
@@ -837,6 +853,84 @@ fn escape_quoted(label: &str) -> String {
         .replace(['\n', '\r'], "<br/>")
 }
 
+/// The class `merman` puts on the target of a `click` statement.
+///
+/// It is not spelled anywhere in the source — the statement itself puts it back
+/// on every parse — so the editor neither offers it nor writes it out.
+pub const CLICK_CLASS: &str = "clickable";
+
+/// The class names the document's `classDef` statements declare, in the order
+/// they were written, which is what the editor offers when a class is assigned.
+///
+/// `classDef` takes a comma separated list of names, and the statements
+/// themselves are kept verbatim, so the names are read back off those lines.
+pub fn declared_class_names(document: &FlowchartDocument) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for preserved in &document.preserved_lines {
+        for line in preserved.text.lines() {
+            let Some(rest) = line.trim().strip_prefix("classDef") else {
+                continue;
+            };
+            if !rest.starts_with(char::is_whitespace) {
+                continue;
+            }
+            let Some(list) = rest.split_whitespace().next() else {
+                continue;
+            };
+            for name in list.trim_end_matches(';').split(',') {
+                let name = name.trim();
+                if is_valid_class_name(name)
+                    && name != CLICK_CLASS
+                    && !names.iter().any(|known| known == name)
+                {
+                    names.push(name.to_string());
+                }
+            }
+        }
+    }
+    names
+}
+
+/// Whether `name` can be written as a bare Mermaid class name, i.e. whether a
+/// `class A <name>` statement built from it would say what it looks like.
+///
+/// Mermaid reads a class name up to the first separator and never quotes it, so
+/// the test is about what would end the name early rather than about which
+/// alphabet it is in: a Japanese class name is as good as an ASCII one.
+pub fn is_valid_class_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.chars().any(|character| {
+            character.is_whitespace()
+                || matches!(
+                    character,
+                    ',' | ';'
+                        | ':'
+                        | '#'
+                        | '%'
+                        | '"'
+                        | '\''
+                        | '|'
+                        | '['
+                        | ']'
+                        | '('
+                        | ')'
+                        | '{'
+                        | '}'
+                )
+        })
+}
+
+/// The id in a `foo@{ … }` statement, which addresses a node's shape when `foo`
+/// names a node and an edge's metadata when it names an edge.
+pub fn shape_data_target(line: &str) -> Option<&str> {
+    let (id, rest) = line.trim().split_once('@')?;
+    if !rest.trim_start().starts_with('{') {
+        return None;
+    }
+    let id = id.trim();
+    is_valid_node_id(id).then_some(id)
+}
+
 /// Whether `id` can be written as a bare Mermaid node id.
 pub fn is_valid_node_id(id: &str) -> bool {
     !id.is_empty()
@@ -848,8 +942,12 @@ pub fn is_valid_node_id(id: &str) -> bool {
 
 /// Keywords that start a statement of their own. Mermaid's best known trap is a
 /// node called `end`, which closes the enclosing subgraph instead.
+///
+/// `callback` is not one of them: it starts no statement, and treating it as a
+/// reserved id left a diagram that spells `callback A myFn` — which `merman`
+/// reads as three node declarations — unconfirmable from the form.
 fn is_reserved_id(id: &str) -> bool {
-    const RESERVED: [&str; 12] = [
+    const RESERVED: [&str; 11] = [
         "end",
         "graph",
         "flowchart",
@@ -860,7 +958,6 @@ fn is_reserved_id(id: &str) -> bool {
         "style",
         "linkStyle",
         "click",
-        "callback",
         "default",
     ];
     RESERVED.iter().any(|reserved| reserved == &id)
@@ -875,6 +972,50 @@ struct SourceScan {
     /// neither a header nor preserved. Only the model speaks for these, so they
     /// are where a construct the model drops has to be caught.
     statements: Vec<String>,
+    /// The edge ids the source spells out, in the order they appear, including
+    /// any it repeats.
+    edge_ids: Vec<String>,
+}
+
+/// The ids the source gives its links, as in `A e1@--> B`.
+///
+/// The model cannot answer this: `merman` writes a user's id into the same
+/// field as the `L_from_to_n` it invents for the rest. What the source contains
+/// can, so the ids are read off the text and matched against the model
+/// afterwards.
+///
+/// `lines` is the statement region, i.e. what follows the header. Nothing
+/// before it declares a link, and an arrow spelled in the front matter or a
+/// directive would otherwise be read as one.
+fn declared_edge_ids(lines: &[&str]) -> Vec<String> {
+    let mut ids = Vec::new();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with("%%") || preserved_keyword(trimmed) {
+            continue;
+        }
+        let outside = outside_labels(trimmed);
+        for (at, _) in outside.match_indices('@') {
+            // `@{` opens shape data, whose id may well be a node's.
+            let starts_a_link = outside
+                .get(at + 1..)
+                .and_then(|rest| rest.chars().next())
+                .is_some_and(|character| matches!(character, '-' | '=' | '~' | '<' | 'o' | 'x'));
+            if !starts_a_link {
+                continue;
+            }
+            let Some(id) = outside
+                .get(..at)
+                .and_then(|before| before.split_whitespace().next_back())
+            else {
+                continue;
+            };
+            if is_valid_node_id(id) {
+                ids.push(id.to_string());
+            }
+        }
+    }
+    ids
 }
 
 fn first_statement_line(source: &str) -> Option<&str> {
@@ -938,14 +1079,16 @@ fn header_keyword(line: &str) -> Option<FlowchartKeyword> {
 ///
 /// `class` is deliberately absent: the model does carry class membership, so
 /// keeping the statement as well as re-emitting it from the model would apply
-/// it twice.
+/// it twice. `callback` is absent for the opposite reason: Mermaid has no
+/// statement of that name — the word only appears inside `click A callback fn`
+/// — so `merman` reads a line that opens with it as bare node declarations,
+/// which the model does carry.
 fn preserved_keyword(line: &str) -> bool {
-    const KEYWORDS: [&str; 7] = [
+    const KEYWORDS: [&str; 6] = [
         "classDef",
         "style",
         "linkStyle",
         "click",
-        "callback",
         "accTitle",
         "accDescr",
     ];
@@ -1015,6 +1158,12 @@ fn scan_source(source: &str) -> Result<SourceScan> {
         break;
     }
 
+    // Only the statements after the header declare a link. Front matter, a
+    // comment and a `%%{ … }%%` directive can all spell something that reads
+    // like `id@-->`, and taking one for an edge id would refuse a diagram that
+    // has no edge id at all.
+    let edge_ids = declared_edge_ids(lines.get(index..).unwrap_or_default());
+
     let Some(keyword) = keyword else {
         // An empty fence: the editor opens on a blank flowchart, and whatever
         // comments the user left keep their place.
@@ -1022,6 +1171,7 @@ fn scan_source(source: &str) -> Result<SourceScan> {
             keyword: FlowchartKeyword::Flowchart,
             preserved,
             statements: Vec::new(),
+            edge_ids,
         });
     };
 
@@ -1051,7 +1201,12 @@ fn scan_source(source: &str) -> Result<SourceScan> {
             });
             continue;
         }
-        if preserved_keyword(trimmed) {
+        // `e1@{ animate: true }` addresses an edge, and the model carries
+        // nothing of it but the id, so the statement is kept verbatim. The same
+        // spelling on a node is its shape, which the model does carry.
+        let addresses_an_edge =
+            shape_data_target(trimmed).is_some_and(|target| edge_ids.iter().any(|id| id == target));
+        if preserved_keyword(trimmed) || addresses_an_edge {
             let start = index - 1;
             if trimmed.ends_with('{') {
                 while index < lines.len() && lines[index].trim() != "}" {
@@ -1076,6 +1231,7 @@ fn scan_source(source: &str) -> Result<SourceScan> {
         keyword,
         preserved,
         statements,
+        edge_ids,
     })
 }
 
@@ -1093,7 +1249,24 @@ fn join_lines(lines: &[&str]) -> String {
 /// the editor would write the diagram back without the part it dropped. Rather
 /// than silently rewriting such a fence, the editor declines to open it and
 /// says which spelling is in the way.
-fn unsupported_construct(statements: &[String], document: &FlowchartDocument) -> Option<String> {
+fn unsupported_construct(
+    statements: &[String],
+    document: &FlowchartDocument,
+    edge_ids: &[String],
+) -> Option<String> {
+    // A repeated edge id is the one the model silently drops: `merman` keeps
+    // the first and numbers the rest itself, so writing the diagram back would
+    // move an `e1@{ … }` statement onto a different link.
+    let mut seen: Vec<&str> = Vec::new();
+    for id in edge_ids {
+        if seen.contains(&id.as_str()) {
+            return Some(format!(
+                "エッジ ID「{id}」が重複している図は構造化編集に対応していません。テキストのまま編集してください。"
+            ));
+        }
+        seen.push(id);
+    }
+
     for statement in statements {
         let outside = outside_labels(statement);
         if outside.contains("%%") {
@@ -1101,26 +1274,42 @@ fn unsupported_construct(statements: &[String], document: &FlowchartDocument) ->
                 "文の末尾のコメントは構造化編集で失われます ({statement})。コメントを独立した行に移すか、テキストのまま編集してください。"
             ));
         }
-        let Some(at) = outside.find('@') else {
-            continue;
-        };
-        let target = outside
-            .get(..at)
-            .unwrap_or_default()
-            .split_whitespace()
-            .next_back()
-            .unwrap_or_default();
-        // `id@{ … }` on a node is the Mermaid 11 shape spelling, which the
-        // model carries. On anything else — an edge — it is metadata that only
-        // the edge id it names can address, and the id itself does not survive.
-        if outside.get(at + 1..).is_some_and(|rest| {
-            rest.trim_start().starts_with('{') && document.node_index(target).is_some()
-        }) {
-            continue;
+        // Classes are carried per node and per subgraph; Mermaid also lets a
+        // `class` statement name an edge, and that the model has nowhere to put.
+        if let Some(rest) = statement.strip_prefix("class")
+            && rest.starts_with(char::is_whitespace)
+            && let Some(targets) = rest.split_whitespace().next()
+            && let Some(edge) = targets
+                .split(',')
+                .find(|target| edge_ids.iter().any(|id| id == target.trim()))
+        {
+            return Some(format!(
+                "エッジ ({edge}) にクラスを付けた図は構造化編集に対応していません。テキストのまま編集してください。"
+            ));
         }
-        return Some(format!(
-            "エッジ ID (`{target}@`) を使った図は構造化編集に対応していません ({statement})。テキストのまま編集してください。"
-        ));
+        for (at, _) in outside.match_indices('@') {
+            let target = outside
+                .get(..at)
+                .unwrap_or_default()
+                .split_whitespace()
+                .next_back()
+                .unwrap_or_default();
+            let after = outside.get(at + 1..).unwrap_or_default();
+            // `id@{ … }` on a node is the Mermaid 11 shape spelling, which the
+            // model carries. On an edge it is metadata the scanner keeps
+            // verbatim, and the line scanner has already taken it out of the
+            // statements, so reaching one here means the id names neither.
+            if after.trim_start().starts_with('{') && document.node_index(target).is_some() {
+                continue;
+            }
+            // `A e1@--> B` names the link that follows it, which is carried.
+            if !after.trim_start().starts_with('{') && edge_ids.iter().any(|id| id == target) {
+                continue;
+            }
+            return Some(format!(
+                "エッジ ID (`{target}@`) を使った図は構造化編集に対応していません ({statement})。テキストのまま編集してください。"
+            ));
+        }
     }
     None
 }
@@ -1360,6 +1549,7 @@ mod tests {
         let edge = FlowchartEdge {
             from: "A".into(),
             to: "B".into(),
+            user_id: None,
             label: Some("は い | いいえ".into()),
             markdown_label: false,
             arrow: ArrowKind::Arrow,
@@ -1465,9 +1655,11 @@ mod tests {
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
         for source in [
-            "flowchart TD\n  A e1@--> B",
-            "flowchart TD\n  A e1@--> B\n  e1@{ animate: true }",
             "flowchart TD\n  A --> B %% 行末のメモ",
+            // The second `e1` is not the user's any more: `merman` numbers it
+            // itself, so `e1@{ … }` would land on the first link alone.
+            "flowchart TD\n  A e1@--> B\n  B e1@--> C",
+            "flowchart TD\n  A e1@--> B\n  class e1 warn\n  classDef warn stroke:#f96",
         ] {
             let error = parse_flowchart(source)
                 .err()
@@ -1491,6 +1683,200 @@ mod tests {
                 parse_flowchart(source).is_ok(),
                 "`{source}` should still open"
             );
+        }
+    }
+
+    /// A user's own edge id is the only handle an `e1@{ … }` statement has, so
+    /// both the id and the statement have to come back out.
+    #[test]
+    fn a_user_defined_edge_id_and_its_metadata_survive() {
+        let source = "flowchart TD\n  A e1@--> B\n  e1@{ animate: true }";
+        let emitted = assert_stable(source);
+        assert!(
+            emitted.contains("A e1@--> B"),
+            "the edge id should be written back:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("e1@{ animate: true }"),
+            "the edge metadata should be kept verbatim:\n{emitted}"
+        );
+
+        let document = parse_flowchart(source).expect("source should parse");
+        assert_eq!(
+            document.edges.first().and_then(|edge| edge.user_id.clone()),
+            Some("e1".to_string())
+        );
+        // The node the statement resembles must not have been declared by it.
+        assert_eq!(
+            document
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A", "B"]
+        );
+        assert_renders(&emitted);
+    }
+
+    /// An id `merman` generated is derived from the endpoints and would follow
+    /// the wrong link as soon as one is added, so it is not written back.
+    #[test]
+    fn a_generated_edge_id_is_not_written_back() {
+        let document =
+            parse_flowchart("flowchart TD\n  A --> B\n  B --> C").expect("source should parse");
+        assert!(
+            document.edges.iter().all(|edge| edge.user_id.is_none()),
+            "no edge here has an id of its own: {:?}",
+            document.edges
+        );
+        let emitted = emit_flowchart(&document);
+        assert!(
+            !emitted.contains('@'),
+            "an invented id must not reach the source:\n{emitted}"
+        );
+    }
+
+    /// A labelled link takes its id in the same place, and the label has to stay
+    /// on the far side of it.
+    #[test]
+    fn an_edge_id_and_a_label_can_share_a_link() {
+        let emitted = assert_stable("flowchart LR\n  A e1@-. 途中 .-> B");
+        assert!(
+            emitted.contains("A e1@-.->|途中| B"),
+            "the id and the label should both survive:\n{emitted}"
+        );
+        assert_renders(&emitted);
+    }
+
+    #[test]
+    fn the_class_names_on_offer_come_from_the_class_def_lines() {
+        let document = parse_flowchart(
+            "flowchart TD\n  A --> B\n  classDef warn fill:#f96\n  classDef ok,done stroke:#3f3;\n  classDef 強調 stroke-width:2px\n  classDef clickable fill:#eee",
+        )
+        .expect("source should parse");
+        assert_eq!(
+            declared_class_names(&document),
+            vec![
+                "warn".to_string(),
+                "ok".to_string(),
+                "done".to_string(),
+                "強調".to_string()
+            ],
+            "the synthetic class of a `click` statement is never offered"
+        );
+    }
+
+    /// A class name is written into the statement as it stands, so a name that
+    /// would end early there cannot be offered.
+    #[test]
+    fn a_class_name_may_be_japanese_but_not_a_separator() {
+        for name in ["warn", "warn-1", "強調", "_a"] {
+            assert!(is_valid_class_name(name), "`{name}` should be offered");
+        }
+        for name in ["", "two words", "a,b", "a;", "a:b", "#quot;"] {
+            assert!(!is_valid_class_name(name), "`{name}` should be refused");
+        }
+    }
+
+    /// Mermaid has no statement that opens with `callback` — the word only
+    /// appears inside `click A callback fn` — and `merman` reads such a line as
+    /// bare node declarations. Treating it as a statement of its own left the
+    /// diagram unopenable: `callback` came back as a node whose id the editor
+    /// called reserved.
+    #[test]
+    fn a_line_that_opens_with_callback_is_read_as_node_declarations() {
+        let source = "flowchart TD\n  A --> B\n  callback A myFn";
+        let document = parse_flowchart(source).expect("source should parse");
+        assert_eq!(
+            document
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A", "B", "callback", "myFn"],
+            "`merman` declares the words as nodes, and the editor has to agree"
+        );
+        assert!(
+            document.preserved_lines.is_empty(),
+            "keeping the line as well would declare the nodes twice: {:?}",
+            document.preserved_lines
+        );
+        assert!(
+            is_valid_node_id("callback"),
+            "a node the parser produces has to be one the editor can write back"
+        );
+        let emitted = assert_stable(source);
+        assert_renders(&emitted);
+    }
+
+    /// An `@` only opens an edge id where a link operator follows it. Anywhere
+    /// else — a label, a node's shape data, a comment, the front matter — it is
+    /// part of the text, and reading one as an id would divert a node's shape
+    /// statement into the kept lines or refuse the diagram outright.
+    #[test]
+    fn an_at_that_opens_no_link_is_not_an_edge_id() {
+        for source in [
+            "flowchart TD\n  A -->|mail@x| B",
+            "flowchart TD\n  A --> B\n  A@{ shape: circle }",
+            "flowchart TD\n  A[\"e1@--> B\"] --> B",
+            "flowchart TD\n  %% 迂回路は e1@--> C で書く\n  A --> B",
+        ] {
+            let document = parse_flowchart(source).expect("source should parse");
+            assert!(
+                document.edges.iter().all(|edge| edge.user_id.is_none()),
+                "no link here is named: {:?}\n{source}",
+                document.edges
+            );
+            assert_renders(&assert_stable(source));
+        }
+
+        // The shape has to reach the node rather than be kept as a line about
+        // an edge that does not exist.
+        let document = parse_flowchart("flowchart TD\n  A --> B\n  A@{ shape: circle }")
+            .expect("source should parse");
+        assert_eq!(
+            document.nodes.first().map(|node| node.shape.clone()),
+            Some(NodeShape::Circle)
+        );
+    }
+
+    /// The front matter and the header are not statements, so an arrow spelled
+    /// in one names no link — and must not make `class a …` look as though it
+    /// were putting a class on an edge, which the parser refuses.
+    #[test]
+    fn an_arrow_in_the_front_matter_does_not_name_a_link() {
+        let source = "---\ntitle: a@-->b\n---\nflowchart TD\n  a --> c\n  class a warn\n  classDef warn fill:#f96";
+        let document = parse_flowchart(source).expect("source should parse");
+        assert_eq!(
+            document
+                .nodes
+                .iter()
+                .find(|node| node.id == "a")
+                .map(|node| node.classes.clone()),
+            Some(vec!["warn".to_string()])
+        );
+        assert_renders(&assert_stable(source));
+    }
+
+    /// An id sits in front of the link operator whatever the operator is, so
+    /// every spelling of a link has to be recognised as one.
+    #[test]
+    fn an_edge_id_survives_on_every_kind_of_link() {
+        for operator in ["-->", "==>", "-.->", "--o", "--x", "<-->", "~~~"] {
+            let source = format!("flowchart TD\n  A e1@{operator} B");
+            let document = parse_flowchart(&source)
+                .unwrap_or_else(|error| panic!("`{operator}` should parse: {error}"));
+            assert_eq!(
+                document.edges.first().and_then(|edge| edge.user_id.clone()),
+                Some("e1".to_string()),
+                "`{operator}` should keep the id the source gave it"
+            );
+            let emitted = assert_stable(&source);
+            assert!(
+                emitted.contains("A e1@"),
+                "`{operator}` should be written back with its id:\n{emitted}"
+            );
+            assert_renders(&emitted);
         }
     }
 

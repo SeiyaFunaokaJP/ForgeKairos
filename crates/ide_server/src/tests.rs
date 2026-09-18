@@ -1593,6 +1593,549 @@ async fn sandbox_session_opens_diffs_only_inside_the_worktree(cx: &mut TestAppCo
     assert!(open_diff_tabs(&fixture.workspace, cx).is_empty());
 }
 
+// ---------------------------------------------------------------------------
+// ADR-F53: SSH リモートのプロジェクト (パスの確認は接続先で)
+// ---------------------------------------------------------------------------
+
+/// ローカルの `FakeFs` のプロジェクトを、接続先で確かめる経路に通す。
+///
+/// `Project::verify_agent_read` はローカルのワークツリーでは `Fs::verify_read` に降りるので、
+/// 「ルート直下から 1 段もリンクを通らずに開ける」の判定そのものは本物のまま (接続先では
+/// 同じ判定を proto 506 の先で行う。往復は `remote_server` の
+/// `test_remote_verified_read` が押さえている)。
+async fn remote_request<'a>(
+    paths: &'a SandboxPaths,
+    project: &Entity<Project>,
+    cx: &mut TestAppContext,
+) -> tools::SandboxRequest<'a> {
+    let project = project.clone();
+    let mut async_cx = cx.to_async();
+    tools::SandboxRequest::with_kind(
+        paths,
+        &project,
+        tools::SandboxChecksKind::OnTheRemoteHost,
+        &mut async_cx,
+    )
+    .await
+}
+
+fn session_paths() -> SandboxPaths {
+    SandboxPaths::new(sandbox_mapper(), vec![PathBuf::from(path!("/test"))])
+}
+
+/// ADR-F53 の要: リモートのプロジェクトでは、リンクを通るパスかどうかを接続先に判定させる。
+/// ワークツリーの中に置かれたリンクも、リンクを通った先のファイルも断り、正規のパスは通す。
+#[gpui::test]
+async fn a_remote_sandbox_request_lets_the_host_refuse_links(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_tree(path!("/test/src"), json!({ "deep.rs": "fn deep() {}\n" }))
+        .await;
+    fixture
+        .fs
+        .insert_symlink(
+            path!("/test/link.rs"),
+            PathBuf::from(path!("/outside/secret.rs")),
+        )
+        .await;
+    fixture
+        .fs
+        .insert_symlink(path!("/test/through"), PathBuf::from(path!("/outside")))
+        .await;
+    cx.run_until_parked();
+
+    let paths = session_paths();
+    let request = remote_request(&paths, &fixture.project, cx).await;
+    assert_eq!(
+        request.checks_kind(),
+        tools::SandboxChecksKind::OnTheRemoteHost
+    );
+
+    let mut async_cx = cx.to_async();
+    let resolved = request
+        .resolve(&format!("{CLIENT_ROOT}/src/deep.rs"), &mut async_cx)
+        .await
+        .expect("a plain file inside the worktree is allowed");
+    assert_eq!(resolved, PathBuf::from(path!("/test/src/deep.rs")));
+
+    for path in [
+        format!("{CLIENT_ROOT}/link.rs"),
+        format!("{CLIENT_ROOT}/through/secret.rs"),
+        format!("{CLIENT_OUTSIDE}/secret.rs"),
+        format!("{CLIENT_ROOT}/../outside/secret.rs"),
+    ] {
+        request
+            .resolve(&path, &mut async_cx)
+            .await
+            .expect_err(&format!("{path} leaves the worktree and is refused"));
+    }
+}
+
+/// ADR-F53: まだ無いパス (新規の `openDiff`) は接続先に判定させられないので、走査が知っている
+/// 祖先で判断する。ワークツリーの**中**を指すリンクも、外を指すリンクも祖先にあれば断る。
+/// 日本語のパスも同じ経路を通る。
+#[gpui::test]
+async fn a_remote_sandbox_request_refuses_a_new_path_under_a_link(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_tree(
+            path!("/test/src"),
+            json!({ "deep.rs": "fn deep() {}\n", "日本語.rs": "// あ\n" }),
+        )
+        .await;
+    fixture
+        .fs
+        .insert_symlink(path!("/test/through"), PathBuf::from(path!("/outside")))
+        .await;
+    // ワークツリーの中を指すリンク: `is_external` は立たないので、`canonical_path` だけが
+    // これをリンクだと言える。
+    fixture
+        .fs
+        .insert_symlink(path!("/test/inner"), PathBuf::from(path!("/test/src")))
+        .await;
+    fixture
+        .fs
+        .insert_symlink(
+            path!("/test/alias.rs"),
+            PathBuf::from(path!("/test/src/deep.rs")),
+        )
+        .await;
+    cx.run_until_parked();
+
+    let paths = session_paths();
+    let request = remote_request(&paths, &fixture.project, cx).await;
+    let mut async_cx = cx.to_async();
+
+    for path in [
+        // ワークツリーの中を指すリンクそのもの。
+        format!("{CLIENT_ROOT}/alias.rs"),
+        // 祖先がリンク (中を指すもの・外を指すもの) の、まだ無いパス。
+        format!("{CLIENT_ROOT}/inner/new.rs"),
+        format!("{CLIENT_ROOT}/through/new.rs"),
+    ] {
+        request
+            .resolve(&path, &mut async_cx)
+            .await
+            .expect_err(&format!("{path} goes through a link and is refused"));
+        request
+            .read_old_contents(
+                &paths.to_host(&path).unwrap_or_default(),
+                &path,
+                &mut async_cx,
+            )
+            .await
+            .expect_err(&format!("{path} is not read either"));
+    }
+
+    // 日本語のパス: 既にあるものは読め、まだ無いものは新規として空。
+    let japanese = format!("{CLIENT_ROOT}/src/日本語.rs");
+    let host_path = paths
+        .to_host(&japanese)
+        .expect("a path inside the worktree");
+    assert_eq!(
+        request
+            .read_old_contents(&host_path, &japanese, &mut async_cx)
+            .await
+            .expect("a plain file with a Japanese name is allowed"),
+        "// あ\n"
+    );
+    let new_japanese = format!("{CLIENT_ROOT}/src/新しい ファイル.rs");
+    let host_path = paths
+        .to_host(&new_japanese)
+        .expect("a path inside the worktree");
+    assert_eq!(
+        request
+            .read_old_contents(&host_path, &new_japanese, &mut async_cx)
+            .await
+            .expect("a new file with a Japanese name is a new file"),
+        ""
+    );
+}
+
+/// ADR-F53: ワークツリーの走査に出ないパス (`.git` 配下や `file_scan_exclusions` に当たる
+/// もの・走査が届いていないもの) は、接続先に実体があるかを確かめる。実体があるなら
+/// **断る** —— 旧側を空で出すと既にあるファイルが「新規ファイル」として人の確認を通って
+/// しまい、かといって大きさが分からないまま開くと接続先のファイルを丸ごと読み込むため。
+#[gpui::test]
+async fn a_remote_sandbox_request_refuses_paths_the_worktree_scan_leaves_out(
+    cx: &mut TestAppContext,
+) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_tree(
+            path!("/test/.git"),
+            json!({ "config": "[core]\n\tbare = false\n" }),
+        )
+        .await;
+    cx.run_until_parked();
+    // 走査には出ない。
+    fixture.project.read_with(cx, |project, cx| {
+        let worktree = project
+            .visible_worktrees(cx)
+            .next()
+            .expect("the fixture opens one worktree");
+        assert!(
+            worktree
+                .read(cx)
+                .entry_for_path(util::rel_path::rel_path(".git/config"))
+                .is_none(),
+            "`.git` is excluded from the scan, which is what this test is about"
+        );
+    });
+
+    let paths = session_paths();
+    let request = remote_request(&paths, &fixture.project, cx).await;
+    let mut async_cx = cx.to_async();
+    let text = format!("{CLIENT_ROOT}/.git/config");
+    let host_path = paths.to_host(&text).expect("a path inside the worktree");
+    let error = request
+        .read_old_contents(&host_path, &text, &mut async_cx)
+        .await
+        .expect_err("the host can open it, so it is not a new file and not shown as one");
+    assert!(
+        format!("{error:#}").contains("previous contents cannot be shown"),
+        "{error:#}"
+    );
+    request
+        .resolve(&text, &mut async_cx)
+        .await
+        .expect_err("the same refusal reaches openDiff before anything is read");
+
+    // 走査も接続先も知らないパスは、これまでどおり新規ファイル (旧側は空)。
+    let text = format!("{CLIENT_ROOT}/.git/not-there");
+    let host_path = paths.to_host(&text).expect("a path inside the worktree");
+    assert_eq!(
+        request
+            .read_old_contents(&host_path, &text, &mut async_cx)
+            .await
+            .expect("nothing is there, so it is a new file"),
+        ""
+    );
+}
+
+/// ADR-F53: 大きすぎるファイルは、接続先から**開く前**に断る (開いてしまうと接続先の
+/// ファイルを丸ごと読み込むので、サンドボックスの中の CLI にメモリを使い切らせられる)。
+#[gpui::test]
+async fn a_remote_sandbox_request_refuses_an_oversized_file_before_opening_it(
+    cx: &mut TestAppContext,
+) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_file(path!("/test/huge.txt"), vec![b'a'; 9 * 1024 * 1024])
+        .await;
+    cx.run_until_parked();
+
+    let paths = session_paths();
+    let request = remote_request(&paths, &fixture.project, cx).await;
+    let mut async_cx = cx.to_async();
+    let text = format!("{CLIENT_ROOT}/huge.txt");
+    let host_path = paths.to_host(&text).expect("a path inside the worktree");
+    let error = request
+        .read_old_contents(&host_path, &text, &mut async_cx)
+        .await
+        .expect_err("a file over the limit is refused");
+    assert!(format!("{error:#}").contains("larger than"), "{error:#}");
+    // 同じ大きさの判定が、上限に収まるファイルを巻き込まないこと。
+    let text = format!("{CLIENT_ROOT}/main.rs");
+    let host_path = paths.to_host(&text).expect("a path inside the worktree");
+    assert_eq!(
+        request
+            .read_old_contents(&host_path, &text, &mut async_cx)
+            .await
+            .expect("a file inside the limit is read"),
+        "fn main() {\n    println!(\"hi\");\n}\n"
+    );
+}
+
+/// ADR-F53: ワークツリーが 2 つあるときも、それぞれのルートを基点に接続先が判定する
+/// (2 つ目のルートの中のリンクも断る)。
+#[gpui::test]
+async fn a_remote_sandbox_request_checks_every_worktree(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_tree(path!("/second"), json!({ "other.rs": "fn other() {}\n" }))
+        .await;
+    fixture
+        .fs
+        .insert_symlink(
+            path!("/second/away.rs"),
+            PathBuf::from(path!("/outside/secret.rs")),
+        )
+        .await;
+    fixture
+        .project
+        .update(cx, |project, cx| {
+            project.create_worktree(path!("/second"), true, cx)
+        })
+        .await
+        .expect("the second folder opens");
+    cx.run_until_parked();
+
+    let paths = SandboxPaths::new(
+        sandbox_mapper(),
+        vec![
+            PathBuf::from(path!("/test")),
+            PathBuf::from(path!("/second")),
+        ],
+    );
+    let request = remote_request(&paths, &fixture.project, cx).await;
+    let mut async_cx = cx.to_async();
+    let second_root = if cfg!(windows) {
+        "/mnt/c/second"
+    } else {
+        "/second"
+    };
+    assert_eq!(
+        request
+            .resolve(&format!("{second_root}/other.rs"), &mut async_cx)
+            .await
+            .expect("a plain file in the second worktree is allowed"),
+        PathBuf::from(path!("/second/other.rs"))
+    );
+    request
+        .resolve(&format!("{second_root}/away.rs"), &mut async_cx)
+        .await
+        .expect_err("a link in the second worktree is refused too");
+    // 1 つ目のワークツリーはそのまま。
+    assert_eq!(
+        request
+            .resolve(&format!("{CLIENT_ROOT}/main.rs"), &mut async_cx)
+            .await
+            .expect("the first worktree still works"),
+        PathBuf::from(path!("/test/main.rs"))
+    );
+}
+
+/// ADR-F53: 接続先に辿らせる基点はセッションのルートだけ。セッションのルートの**中**に
+/// 別のワークツリーが開かれていると、`find_project_path` がそちらを返しうる —— その場合
+/// 「ルートの中に置かれたリンクをたどらない」がそのフォルダーまでの分だけ確かめられなく
+/// なるので、基点がセッションのルートでなければ断る (ローカルの経路はセッションのルートから
+/// 辿るので、同じ基点に揃える)。
+#[gpui::test]
+async fn a_remote_sandbox_request_roots_its_checks_at_the_sessions_own_folders(
+    cx: &mut TestAppContext,
+) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_tree(
+            path!("/test/nested"),
+            json!({ "inner.rs": "fn inner() {}\n" }),
+        )
+        .await;
+    cx.run_until_parked();
+    // セッションのルートは `/test` のまま。そのあとでワークスペースの側だけが変わる。
+    let paths = session_paths();
+    fixture
+        .project
+        .update(cx, |project, cx| {
+            project.create_worktree(path!("/test/nested"), true, cx)
+        })
+        .await
+        .expect("the nested folder opens");
+    let outer = fixture.project.read_with(cx, |project, cx| {
+        project
+            .visible_worktrees(cx)
+            .find(|worktree| worktree.read(cx).abs_path().as_ref() == Path::new(path!("/test")))
+            .map(|worktree| worktree.read(cx).id())
+            .expect("the session's own folder is open")
+    });
+    fixture.project.update(cx, |project, cx| {
+        project.remove_worktree(outer, cx);
+    });
+    cx.run_until_parked();
+
+    let request = remote_request(&paths, &fixture.project, cx).await;
+    let mut async_cx = cx.to_async();
+    request
+        .resolve(&format!("{CLIENT_ROOT}/nested/inner.rs"), &mut async_cx)
+        .await
+        .expect_err("the only folder left is not the session's, so nothing is rooted at it");
+}
+
+/// `openDiff` の旧本文: 接続先の確認を通ったファイルは (未保存の変更を含めて) バッファーから
+/// 読み、まだ無いファイルは空、リンクを通るものは断る。
+#[gpui::test]
+async fn a_remote_sandbox_request_reads_old_contents_through_the_host(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_symlink(
+            path!("/test/link.rs"),
+            PathBuf::from(path!("/outside/secret.rs")),
+        )
+        .await;
+    cx.run_until_parked();
+
+    let paths = session_paths();
+    let request = remote_request(&paths, &fixture.project, cx).await;
+    let mut async_cx = cx.to_async();
+
+    let contents = request
+        .read_old_contents(
+            Path::new(path!("/test/main.rs")),
+            &format!("{CLIENT_ROOT}/main.rs"),
+            &mut async_cx,
+        )
+        .await
+        .expect("the host allows the plain file");
+    assert_eq!(contents, "fn main() {\n    println!(\"hi\");\n}\n");
+
+    let contents = request
+        .read_old_contents(
+            Path::new(path!("/test/brand-new.rs")),
+            &format!("{CLIENT_ROOT}/brand-new.rs"),
+            &mut async_cx,
+        )
+        .await
+        .expect("a file that is not there yet is a new file, not a refusal");
+    assert_eq!(contents, "", "a new file's old side is empty");
+
+    request
+        .read_old_contents(
+            Path::new(path!("/test/link.rs")),
+            &format!("{CLIENT_ROOT}/link.rs"),
+            &mut async_cx,
+        )
+        .await
+        .expect_err("a link is refused instead of read");
+}
+
+/// 差分の旧本文は、ホストの経路と同じく開いているバッファーから来るので、未保存の変更も見える
+/// (ADR-F53 の親の決定 (a))。
+#[gpui::test]
+async fn a_remote_sandbox_request_sees_unsaved_changes(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    cx.run_until_parked();
+    let buffer = fixture
+        .project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/test/main.rs"), cx)
+        })
+        .await
+        .expect("the file opens");
+    buffer.update(cx, |buffer, cx| buffer.set_text("fn edited() {}\n", cx));
+    cx.run_until_parked();
+
+    let paths = session_paths();
+    let request = remote_request(&paths, &fixture.project, cx).await;
+    let mut async_cx = cx.to_async();
+    let contents = request
+        .read_old_contents(
+            Path::new(path!("/test/main.rs")),
+            &format!("{CLIENT_ROOT}/main.rs"),
+            &mut async_cx,
+        )
+        .await
+        .expect("the host allows the plain file");
+    assert_eq!(contents, "fn edited() {}\n");
+}
+
+/// 診断は開いているバッファーだけを返す。リモートでも、リンク越しに開かれたバッファーは
+/// 接続先の判定で落ちる。ワークツリーの**中**を指すリンクは `is_external` が立たないので、
+/// これを断れるのは接続先の `verify_agent_read` だけ。
+#[gpui::test]
+async fn a_remote_sandbox_request_verifies_open_buffers_on_the_host(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_symlink(
+            path!("/test/link.rs"),
+            PathBuf::from(path!("/outside/secret.rs")),
+        )
+        .await;
+    fixture
+        .fs
+        .insert_symlink(
+            path!("/test/alias.rs"),
+            PathBuf::from(path!("/test/main.rs")),
+        )
+        .await;
+    cx.run_until_parked();
+
+    let plain = fixture
+        .project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/test/main.rs"), cx)
+        })
+        .await
+        .expect("the file opens");
+    let linked = fixture
+        .project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/test/link.rs"), cx)
+        })
+        .await
+        .expect("the link opens");
+    let aliased = fixture
+        .project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/test/alias.rs"), cx)
+        })
+        .await
+        .expect("the alias opens");
+    cx.run_until_parked();
+
+    let paths = session_paths();
+    let request = remote_request(&paths, &fixture.project, cx).await;
+    let mut async_cx = cx.to_async();
+    let abs_path = request
+        .verify_open_buffer(&plain, &mut async_cx)
+        .await
+        .expect("a plain file in the worktree is shown");
+    assert_eq!(abs_path, PathBuf::from(path!("/test/main.rs")));
+    request
+        .verify_open_buffer(&linked, &mut async_cx)
+        .await
+        .expect_err("a buffer reached through a link is left out");
+    request
+        .verify_open_buffer(&aliased, &mut async_cx)
+        .await
+        .expect_err("a link that stays inside the worktree is a link all the same");
+}
+
+/// ローカルのプロジェクトはこれまでどおりクライアントの FS で確かめる。
+#[gpui::test]
+async fn a_local_sandbox_request_still_checks_this_machine(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    cx.run_until_parked();
+    let paths = session_paths();
+    let project = fixture.project.clone();
+    let mut async_cx = cx.to_async();
+    let request = tools::SandboxRequest::new(&paths, &project, &mut async_cx).await;
+    assert_eq!(
+        request.checks_kind(),
+        tools::SandboxChecksKind::OnThisMachine,
+        "a project whose files are this machine's is checked here"
+    );
+}
+
+/// ADR-F53: セッションを受けるプロジェクトの条件。ローカルと SSH リモートは受け、collab は
+/// どちらの向きでも断る。
+#[test]
+fn a_sandbox_session_refuses_collab_projects() {
+    let refusal = sandbox_client::session_project_refusal;
+    assert_eq!(refusal(true, false, false), None, "a local project");
+    assert_eq!(refusal(false, true, false), None, "an SSH-remote project");
+    assert!(
+        refusal(false, false, false).is_some(),
+        "a project opened over collab"
+    );
+    assert!(
+        refusal(true, false, true).is_some(),
+        "a local project shared over collab"
+    );
+    assert!(
+        refusal(false, true, true).is_some(),
+        "an SSH-remote project shared over collab"
+    );
+}
+
 #[gpui::test]
 async fn sandbox_session_sends_notifications_in_the_client_form(cx: &mut TestAppContext) {
     let fixture = start_sandbox_fixture(cx).await;

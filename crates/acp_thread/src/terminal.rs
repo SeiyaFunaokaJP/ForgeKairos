@@ -400,6 +400,11 @@ pub(crate) fn wsl_sandbox_timeout_message() -> String {
 /// agent's own process is given one; a one-off command is followed by its
 /// turn, which outlives it.
 ///
+/// ADR-F53: `ide_forward` is the IDE channel the helper opens inside the
+/// command's own network namespace and splices to the bridge's rendezvous
+/// socket on the host — the SSH form of what the WSL backend passes through
+/// `WslHelperOptions::ide_forward`. `None` runs the command with no IDE.
+///
 /// ADR-F17: `network_ceiling` is the editor-wide allowlist (see
 /// [`SandboxCeiling`]) that the helper's proxy nests `wrap.network`
 /// inside, so that what the user granted one command can only narrow what the
@@ -418,6 +423,7 @@ pub fn build_remote_sandbox_command(
     environment: &HashMap<String, String>,
     readable_paths: &[String],
     interactive: bool,
+    ide_forward: Option<&sandbox::IdeForward>,
     session_id: Option<&str>,
     inner_command: String,
     inner_args: Vec<String>,
@@ -472,6 +478,11 @@ pub fn build_remote_sandbox_command(
     let separator = args.pop_if(|arg| arg == "--");
     if interactive {
         args.push("--interactive".to_string());
+    }
+    // ADR-F53: as in WSL, independent of `--interactive` — a one-shot ACP agent
+    // with an IDE channel is not interactive.
+    if let Some(forward) = ide_forward {
+        args.extend(sandbox::ide_forward_argv(forward));
     }
     if let Some(session_id) = session_id {
         args.extend([
@@ -1112,6 +1123,8 @@ pub(crate) fn remote_sandboxed_spawn(
         environment,
         &[],
         false,
+        // A one-off command has no IDE channel of its own.
+        None,
         // A one-off command is followed by the turn that started it, which
         // does not end before it does.
         None,
@@ -2322,6 +2335,7 @@ mod sandboxed_spawn_tests {
                 &[],
                 false,
                 None,
+                None,
                 "/bin/sh".to_string(),
                 vec!["-c".to_string(), "curl https://example.com".to_string()],
             );
@@ -2527,6 +2541,7 @@ mod sandboxed_spawn_tests {
             &[],
             false,
             None,
+            None,
             "/bin/sh".to_string(),
             vec!["-c".to_string(), "make".to_string()],
         );
@@ -2570,6 +2585,76 @@ mod sandboxed_spawn_tests {
             [("LD_PRELOAD", "/project/evil.so"), ("PATH", "/usr/bin")],
             "the environment reaches the command through the helper, sorted, and a name \
              `setenv(3)` refuses is left out"
+        );
+    }
+
+    /// ADR-F53: a session with an IDE channel asks the host's helper to open it
+    /// inside the command's own network namespace, next to `--interactive` and
+    /// the session id; a command without one says nothing about an IDE, so the
+    /// helper builds no forward at all.
+    #[test]
+    fn the_ide_channel_reaches_the_remote_helper_only_when_there_is_one() {
+        let wrap = SandboxWrap {
+            writable_paths: vec![PathBuf::from("/home/user/project")],
+            ..Default::default()
+        };
+        let helper = RelPath::from_unix_str(".zed_server/zed-remote-server-stable-1.17.2")
+            .expect("a valid relative path");
+        let policy_of = |forward: Option<&sandbox::IdeForward>| {
+            let (_, args) = build_remote_sandbox_command(
+                helper,
+                &wrap,
+                None,
+                None,
+                &HashMap::default(),
+                &[],
+                true,
+                forward,
+                Some("claude-1"),
+                "/bin/sh".to_string(),
+                vec!["-c".to_string(), "claude".to_string()],
+            );
+            let [_, payload] = args.as_slice() else {
+                panic!("the argv travels as one hex-encoded argument: {args:?}");
+            };
+            sandbox::decode_remote_sandbox_helper_argv(payload).expect("the packed argv decodes")
+        };
+
+        let forward = sandbox::IdeForward {
+            inner_port: 45123,
+            rendezvous_path: "/home/user/.cache/zed-jp-enhance/ide/claude-1/bridge.sock"
+                .to_string(),
+        };
+        let with_ide = policy_of(Some(&forward));
+        let tail = with_ide
+            .iter()
+            .position(|arg| arg == "--interactive")
+            .map(|start| &with_ide[start..])
+            .expect("an interactive session says so");
+        assert_eq!(
+            tail.iter().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "--interactive",
+                "--ide-listen",
+                "45123",
+                "--ide-rendezvous",
+                "/home/user/.cache/zed-jp-enhance/ide/claude-1/bridge.sock",
+                "--session",
+                "claude-1",
+                "--",
+                "/bin/sh",
+                "-c",
+                "claude",
+            ],
+            "the IDE flags sit where the WSL backend puts them, before the session id"
+        );
+
+        let without_ide = policy_of(None);
+        assert!(
+            !without_ide
+                .iter()
+                .any(|arg| arg == "--ide-listen" || arg == "--ide-rendezvous"),
+            "a command with no IDE channel asks for none: {without_ide:?}"
         );
     }
 

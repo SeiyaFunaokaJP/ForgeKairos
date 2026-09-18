@@ -23,11 +23,13 @@
 //! - `A ->> B: x` followed by `deactivate A` is written back as `A ->>- B: x`.
 //!   Mermaid turns both into the same pair of model entries.
 //!
+//! - A `create`d participant keeps its declaration where the `create`
+//!   statement stood, because that position is what decides when its column
+//!   starts. It is the one participant that is not re-declared at the top.
+//!
 //! Sources the parser refuses rather than rewrite, because writing them back
-//! would drop something: `create` / `destroy` participants (their column
-//! position depends on where the statement sits between messages), participant
-//! config objects (`A@{ … }`), the central-connection spellings (`A ->>() B`)
-//! and end-of-line comments.
+//! would drop something: participant config objects (`A@{ … }`), the
+//! central-connection spellings (`A ->>() B`) and end-of-line comments.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -220,6 +222,34 @@ pub struct SequenceGroupBox {
     /// `transparent`.
     pub fill: Option<String>,
     pub wrap: bool,
+}
+
+/// The fills the editor offers for a `box`, as `(value, label)`.
+///
+/// Mermaid reads the first word of a `box` header as the group's color when it
+/// is a CSS color keyword, so a free-text fill and a free-text name share one
+/// ambiguous slot. Offering a fixed list of keywords keeps the two apart: the
+/// fill is always a word [`header_starts_with_color`] knows, so a name that
+/// happens to start with a color word still round-trips through the
+/// `transparent` [`box_header`] writes in front of it.
+pub const BOX_FILL_PRESETS: [(Option<&str>, &str); 7] = [
+    (None, "なし (透明)"),
+    (Some("lightblue"), "薄い青"),
+    (Some("lightgreen"), "薄い緑"),
+    (Some("lightyellow"), "薄い黄"),
+    (Some("lightpink"), "薄い桃"),
+    (Some("lavender"), "藤色"),
+    (Some("gainsboro"), "薄い灰"),
+];
+
+/// What the fill menu shows for `fill`, which is the preset's label for a
+/// color the editor offers and the color itself for one written by hand.
+pub fn box_fill_label(fill: Option<&str>) -> String {
+    BOX_FILL_PRESETS
+        .iter()
+        .find(|(value, _)| *value == fill)
+        .map(|(_, label)| (*label).to_string())
+        .unwrap_or_else(|| fill.unwrap_or_default().to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -448,6 +478,12 @@ pub enum SequenceItem {
     Activate(String),
     /// `deactivate <participant>`
     Deactivate(String),
+    /// `create participant <participant>`. The declaration itself is written
+    /// here rather than at the top of the diagram, because where the statement
+    /// sits is what decides when the column appears.
+    Create(String),
+    /// `destroy <participant>`
+    Destroy(String),
     Autonumber(SequenceAutonumber),
 }
 
@@ -479,6 +515,24 @@ impl SequenceDocument {
             .position(|participant| participant.id == id)
     }
 
+    /// Whether `id` is declared by a `create` statement in the item list
+    /// rather than with the other participants at the top.
+    pub fn is_created(&self, id: &str) -> bool {
+        self.created_ids().contains(&id)
+    }
+
+    /// The participants a `create` statement declares, in the order the
+    /// statements appear.
+    fn created_ids(&self) -> Vec<&str> {
+        self.items
+            .iter()
+            .filter_map(|item| match item {
+                SequenceItem::Create(id) => Some(id.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// An id no participant is using, based on `prefix`.
     pub fn unused_participant_id(&self, prefix: &str) -> String {
         if self.participant_index(prefix).is_none() {
@@ -500,6 +554,13 @@ impl SequenceDocument {
         let mut blocks: Vec<SequenceBlockKind> = Vec::new();
         let mut activations: HashMap<&str, i64> = HashMap::new();
 
+        let created = self.created_ids();
+        for (index, id) in created.iter().enumerate() {
+            if created.get(..index).unwrap_or_default().contains(id) {
+                return Some(format!("参加者 `{id}` が二重に `create` されています。"));
+            }
+        }
+
         for (index, participant) in self.participants.iter().enumerate() {
             if !is_writable_participant_id(&participant.id) {
                 return Some(format!(
@@ -520,6 +581,39 @@ impl SequenceDocument {
                 ));
             }
         }
+        // A `create`d participant is declared where its statement stands, so
+        // the top of the diagram can only reproduce the column order when
+        // every other participant is already declared by then.
+        let mut seen_created = false;
+        for participant in &self.participants {
+            if created.contains(&participant.id.as_str()) {
+                seen_created = true;
+                if participant.box_index.is_some() {
+                    return Some(format!(
+                        "`create` で作られる参加者 `{}` は box に入れられません。",
+                        participant.id
+                    ));
+                }
+            } else if seen_created {
+                return Some(format!(
+                    "`create` で作られる参加者より後ろに `{}` を並べることはできません。",
+                    participant.id
+                ));
+            }
+        }
+        let declared_created = self
+            .participants
+            .iter()
+            .map(|participant| participant.id.as_str())
+            .filter(|id| created.contains(id))
+            .collect::<Vec<_>>();
+        if declared_created != created {
+            return Some(
+                "`create` の順番と参加者の並び順が食い違っています。`create` した順に並べてください。"
+                    .to_string(),
+            );
+        }
+
         // `box … end` wraps a run of declarations, so a box whose participants
         // are not neighbours cannot be written back without moving a column.
         let mut closed_boxes: Vec<usize> = Vec::new();
@@ -541,13 +635,37 @@ impl SequenceDocument {
             previous_box = participant.box_index;
         }
 
+        // Mermaid refuses a `create` for a column that already exists, so a
+        // statement that names the participant first would make the diagram
+        // unopenable rather than merely misordered.
+        let mut used: Vec<&str> = Vec::new();
+        // Mermaid checks that the message right after a `create` / `destroy` is
+        // the one that draws the column's start or its cross, and refuses the
+        // whole diagram when it is not. The editor has to say so before it
+        // writes a fence its own preview could only report an error about.
+        let mut last_created: Option<&str> = None;
+        let mut last_destroyed: Option<&str> = None;
         for item in &self.items {
             match item {
                 SequenceItem::Message(message) => {
+                    if let Some(created) = last_created.take() {
+                        if message.to != created {
+                            return Some(format!(
+                                "`create {created}` の次のメッセージは `{created}` 宛てでなければなりません。"
+                            ));
+                        }
+                    } else if let Some(destroyed) = last_destroyed.take() {
+                        if message.from != destroyed && message.to != destroyed {
+                            return Some(format!(
+                                "`destroy {destroyed}` の次のメッセージは `{destroyed}` が関わるものでなければなりません。"
+                            ));
+                        }
+                    }
                     for id in [&message.from, &message.to] {
                         if self.participant_index(id).is_none() {
                             return Some(format!("参加者 `{id}` が宣言されていません。"));
                         }
+                        used.push(id.as_str());
                     }
                     if message.activate {
                         *activations.entry(message.to.as_str()).or_default() += 1;
@@ -568,18 +686,40 @@ impl SequenceDocument {
                         if self.participant_index(id).is_none() {
                             return Some(format!("参加者 `{id}` が宣言されていません。"));
                         }
+                        used.push(id.as_str());
                     }
+                }
+                SequenceItem::Create(id) => {
+                    if self.participant_index(id).is_none() {
+                        return Some(format!("参加者 `{id}` が宣言されていません。"));
+                    }
+                    if used.contains(&id.as_str()) {
+                        return Some(format!(
+                            "`{id}` は `create` より前に登場しています。`create` を先に置いてください。"
+                        ));
+                    }
+                    used.push(id.as_str());
+                    last_created = Some(id.as_str());
+                }
+                SequenceItem::Destroy(id) => {
+                    if self.participant_index(id).is_none() {
+                        return Some(format!("参加者 `{id}` が宣言されていません。"));
+                    }
+                    used.push(id.as_str());
+                    last_destroyed = Some(id.as_str());
                 }
                 SequenceItem::Activate(id) => {
                     if self.participant_index(id).is_none() {
                         return Some(format!("参加者 `{id}` が宣言されていません。"));
                     }
+                    used.push(id.as_str());
                     *activations.entry(id.as_str()).or_default() += 1;
                 }
                 SequenceItem::Deactivate(id) => {
                     if self.participant_index(id).is_none() {
                         return Some(format!("参加者 `{id}` が宣言されていません。"));
                     }
+                    used.push(id.as_str());
                     let count = activations.entry(id.as_str()).or_default();
                     if *count < 1 {
                         return Some(format!("`{id}` は活性化していないので終了できません。"));
@@ -676,12 +816,6 @@ fn document_from_model(
     model: SequenceDiagramRenderModel,
     preserved: Vec<PreservedLine>,
 ) -> Result<SequenceDocument> {
-    if !model.created_actors.is_empty() || !model.destroyed_actors.is_empty() {
-        bail!(
-            "`create` / `destroy` を使った図は構造化編集に対応していません (参加者の並び順を保てません)。テキストのまま編集してください。"
-        );
-    }
-
     let mut box_of_participant: HashMap<&str, usize> = HashMap::new();
     for (index, group) in model.boxes.iter().enumerate() {
         for id in &group.actor_keys {
@@ -746,12 +880,53 @@ fn document_from_model(
     })
 }
 
+/// `create` and `destroy` are the two statements `merman` reports beside the
+/// message list rather than inside it, as "how many messages came before me".
+/// Turning that back into rows means merging the two streams.
+fn lifecycle_items(model: &SequenceDiagramRenderModel) -> Vec<(usize, SequenceItem)> {
+    let mut lifecycle = model
+        .created_actors
+        .iter()
+        .map(|(id, position)| (*position, SequenceItem::Create(id.clone())))
+        .chain(
+            model
+                .destroyed_actors
+                .iter()
+                .map(|(id, position)| (*position, SequenceItem::Destroy(id.clone()))),
+        )
+        .collect::<Vec<_>>();
+    lifecycle.sort_by_key(|(position, _)| *position);
+    lifecycle
+}
+
+/// Moves every `create` / `destroy` that belongs before the message about to be
+/// read into `items`.
+fn push_lifecycle(
+    items: &mut Vec<SequenceItem>,
+    lifecycle: &[(usize, SequenceItem)],
+    cursor: &mut usize,
+    consumed: usize,
+) {
+    while let Some((position, item)) = lifecycle.get(*cursor) {
+        if *position > consumed {
+            return;
+        }
+        items.push(item.clone());
+        *cursor += 1;
+    }
+}
+
 fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceItem>> {
     let messages = &model.messages;
-    let mut items = Vec::with_capacity(messages.len());
+    let lifecycle = lifecycle_items(model);
+    let mut cursor = 0usize;
+    let mut items = Vec::with_capacity(messages.len() + lifecycle.len());
     let mut index = 0;
 
     while let Some(message) = messages.get(index) {
+        // `index` is the number of messages read so far, which is the position
+        // `merman` records a `create` / `destroy` at.
+        push_lifecycle(&mut items, &lifecycle, &mut cursor, index);
         index += 1;
         if message.central_connection != 0 {
             bail!(
@@ -784,7 +959,14 @@ fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceIt
             } else if messages.get(index).is_some_and(|next| {
                 next.message_type == LINETYPE_ACTIVE_END
                     && next.from.as_deref() == Some(from.as_str())
-            }) {
+            }) && !lifecycle
+                .get(cursor)
+                .is_some_and(|(position, _)| *position == index)
+            {
+                // A `create` / `destroy` recorded at this very position stood
+                // between the arrow and the `deactivate` in the source, and
+                // folding the two together would write the `deactivate` back
+                // on the other side of a statement whose place is its meaning.
                 deactivate = true;
                 index += 1;
             }
@@ -877,6 +1059,7 @@ fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceIt
             ),
         }
     }
+    push_lifecycle(&mut items, &lifecycle, &mut cursor, messages.len());
 
     Ok(items)
 }
@@ -965,6 +1148,21 @@ pub fn emit_sequence(document: &SequenceDocument) -> String {
             SequenceItem::Deactivate(id) => {
                 let _ = writeln!(out, "{}deactivate {id}", INDENT.repeat(depth + 1));
             }
+            SequenceItem::Create(id) => {
+                let declaration = document
+                    .participants
+                    .iter()
+                    .find(|participant| participant.id == *id)
+                    .map(|participant| participant_declaration(participant, explicit_wrap))
+                    // A `create` for an id no participant carries is reported
+                    // by `structure_error`; the bare declaration at least keeps
+                    // the statement readable instead of dropping it.
+                    .unwrap_or_else(|| format!("participant {id}"));
+                let _ = writeln!(out, "{}create {declaration}", INDENT.repeat(depth + 1));
+            }
+            SequenceItem::Destroy(id) => {
+                let _ = writeln!(out, "{}destroy {id}", INDENT.repeat(depth + 1));
+            }
             SequenceItem::Autonumber(autonumber) => {
                 let _ = writeln!(
                     out,
@@ -1000,8 +1198,14 @@ fn preserved_at(
 
 fn emit_participants(document: &SequenceDocument, explicit_wrap: bool, out: &mut String) {
     let mut emitted_boxes = vec![false; document.boxes.len()];
+    // A `create`d participant is declared by its own statement further down;
+    // declaring it here as well is the one error Mermaid refuses outright.
+    let created = document.created_ids();
 
     for participant in &document.participants {
+        if created.contains(&participant.id.as_str()) {
+            continue;
+        }
         let Some(box_index) = participant.box_index else {
             let _ = writeln!(
                 out,
@@ -1029,7 +1233,7 @@ fn emit_participants(document: &SequenceDocument, explicit_wrap: bool, out: &mut
 
         let _ = writeln!(out, "{INDENT}{}", box_header(group, explicit_wrap));
         for member in &document.participants {
-            if member.box_index == Some(box_index) {
+            if member.box_index == Some(box_index) && !created.contains(&member.id.as_str()) {
                 let _ = writeln!(
                     out,
                     "{}{}",
@@ -1604,6 +1808,30 @@ fn join_lines(lines: &[&str]) -> String {
 /// A statement the model carries only in part is worse than one it refuses:
 /// the editor would write the diagram back without the part it dropped.
 fn unsupported_construct(statements: &[String]) -> Option<String> {
+    // `merman` reports one position per destroyed column, so a column that is
+    // destroyed twice would come back with only the second statement.
+    let mut destroyed: Vec<&str> = Vec::new();
+    // Mermaid's lexer ends a statement at `;` as well as at a line break, so a
+    // line holding two of them has to be read as two statements here too.
+    for statement in statements.iter().flat_map(|statement| statement.split(';')) {
+        let mut words = statement.split_whitespace();
+        if !words
+            .next()
+            .is_some_and(|word| word.eq_ignore_ascii_case("destroy"))
+        {
+            continue;
+        }
+        let Some(id) = words.next() else {
+            continue;
+        };
+        if destroyed.contains(&id) {
+            return Some(format!(
+                "`destroy {id}` が 2 回書かれているため、構造化編集に対応していません。テキストのまま編集してください。"
+            ));
+        }
+        destroyed.push(id);
+    }
+
     for statement in statements {
         if let Some(offset) = comment_start(statement) {
             let comment = statement.get(offset..).unwrap_or_default();
@@ -2289,8 +2517,14 @@ mod tests {
             "sequenceDiagram\n  A->>B: x %% 行末のメモ",
             "sequenceDiagram\n  A->>B: x # 行末のメモ",
             "sequenceDiagram\n  participant A@{ \"type\": \"actor\" }\n  A->>B: x",
+            // `create` declares its column where the statement stands, so the
+            // top of the diagram can no longer declare `A` after it.
             "sequenceDiagram\n  create participant C\n  A->>C: x",
-            "sequenceDiagram\n  participant A\n  participant B\n  destroy B\n  A->>B: x",
+            // Only the second of the two `destroy` statements would survive.
+            "sequenceDiagram\n  A->>B: x\n  destroy B\n  A->>B: y\n  destroy B\n  A->>B: z",
+            // `;` ends a statement too, so the same two `destroy`s fit on one
+            // line and have to be found there as well.
+            "sequenceDiagram\n  A->>B: x;destroy B;A->>B: y;destroy B;A->>B: z",
         ] {
             let error = parse_sequence(source)
                 .err()
@@ -2738,6 +2972,410 @@ mod tests {
                     panic!("`{source}` emitted source Mermaid rejects: {error}")
                 });
             }
+        }
+    }
+
+    fn participant(id: &str, box_index: Option<usize>) -> SequenceParticipant {
+        SequenceParticipant {
+            id: id.to_string(),
+            alias: None,
+            kind: SequenceParticipantKind::Participant,
+            wrap: false,
+            box_index,
+        }
+    }
+
+    fn message(from: &str, to: &str, text: &str) -> SequenceItem {
+        SequenceItem::Message(SequenceMessage {
+            from: from.to_string(),
+            to: to.to_string(),
+            arrow: SequenceArrow::Solid,
+            activate: false,
+            deactivate: false,
+            text: text.to_string(),
+            wrap: false,
+        })
+    }
+
+    /// Where a `create` / `destroy` sits between the messages is the whole
+    /// point of the statement, so the item list has to carry it in place.
+    #[test]
+    fn create_and_destroy_keep_their_place() {
+        let source = "sequenceDiagram\n    アリス->>ボブ: こんにちは\n    create participant カール\n    アリス->>カール: はじめまして\n    create actor D as ドナルド\n    カール->>D: どうも\n    destroy カール\n    アリス-xカール: 人が多すぎます\n    destroy ボブ\n    ボブ->>アリス: 賛成です";
+        let document = parse_sequence(source).expect("source should parse");
+        let lifecycle = document
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| match item {
+                SequenceItem::Create(id) => Some((index, "create", id.as_str())),
+                SequenceItem::Destroy(id) => Some((index, "destroy", id.as_str())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            lifecycle,
+            vec![
+                (1, "create", "カール"),
+                (3, "create", "D"),
+                (5, "destroy", "カール"),
+                (7, "destroy", "ボブ"),
+            ],
+            "a `create` belongs between the messages it sat between"
+        );
+        assert_eq!(
+            document
+                .participants
+                .iter()
+                .map(|participant| participant.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["アリス", "ボブ", "カール", "D"]
+        );
+
+        let emitted = assert_stable(source);
+        assert!(emitted.contains("create participant カール"), "{emitted}");
+        assert!(emitted.contains("create actor D as ドナルド"), "{emitted}");
+        assert!(emitted.contains("destroy ボブ"), "{emitted}");
+        // A `create`d column is declared by its own statement, and Mermaid
+        // refuses a second declaration of the same id outright.
+        assert!(
+            !emitted.contains("\n    participant カール"),
+            "the created column was declared twice:\n{emitted}"
+        );
+        assert_renders(&emitted);
+    }
+
+    /// Opening a diagram that already holds `create` and confirming it without
+    /// touching anything must leave the fence byte for byte as it was.
+    #[test]
+    fn a_create_diagram_confirmed_unchanged_is_left_alone() {
+        let source = "sequenceDiagram\n  アリス->>ボブ: 依頼\n  create participant カール\n  アリス->>カール: 追加\n  destroy ボブ\n  ボブ->>アリス: 退出";
+        let canonical = emit_sequence(&parse_sequence(source).expect("source should parse"));
+        assert_eq!(
+            canonical,
+            "sequenceDiagram\n    participant アリス\n    participant ボブ\n    アリス->>ボブ: 依頼\n    create participant カール\n    アリス->>カール: 追加\n    destroy ボブ\n    ボブ->>アリス: 退出"
+        );
+        let again = emit_sequence(&parse_sequence(&canonical).expect("the fence should reopen"));
+        assert_eq!(
+            again, canonical,
+            "confirming an unedited diagram rewrote it"
+        );
+        assert_renders(&canonical);
+    }
+
+    /// The editor's "参加者の作成" button writes the statement before there is
+    /// a message for it, so the half-finished diagram still has to draw.
+    #[test]
+    fn a_create_with_no_message_yet_still_draws() {
+        let source = "sequenceDiagram\n    participant A\n    A->>A: x\n    create participant C";
+        let document = parse_sequence(source).expect("source should parse");
+        assert_eq!(document.structure_error(), None);
+        let emitted = assert_stable(source);
+        assert!(emitted.contains("create participant C"), "{emitted}");
+        assert_renders(&emitted);
+    }
+
+    /// `merman` reports the two lifecycle statements as two tables keyed by
+    /// participant, so the row order says nothing about which came first and
+    /// only the positions do.
+    #[test]
+    fn a_destroy_before_a_create_keeps_the_two_in_order() {
+        let source = "sequenceDiagram\n    participant A\n    participant B\n    A->>B: 依頼\n    destroy B\n    A-xB: 終了\n    create participant C\n    A->>C: 開始";
+        let document = parse_sequence(source).expect("source should parse");
+        assert_eq!(
+            document
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    SequenceItem::Create(id) => Some(("create", id.as_str())),
+                    SequenceItem::Destroy(id) => Some(("destroy", id.as_str())),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+            vec![("destroy", "B"), ("create", "C")]
+        );
+        let emitted = assert_stable(source);
+        assert_eq!(emitted, source);
+        assert_renders(&emitted);
+    }
+
+    /// A `deactivate` right after a message is normally written back as the
+    /// arrow's own `-`. A `create` standing between the two is what says when
+    /// the new column appears, so the fold would move the `deactivate` past it.
+    #[test]
+    fn a_lifecycle_statement_stops_a_deactivate_folding_into_the_arrow() {
+        for source in [
+            "sequenceDiagram\n    participant A\n    participant B\n    activate A\n    A->>B: x\n    create participant C\n    deactivate A\n    A->>C: y",
+            "sequenceDiagram\n    participant A\n    participant B\n    activate A\n    A->>B: x\n    destroy B\n    deactivate A\n    A-xB: y",
+        ] {
+            let emitted = assert_stable(source);
+            assert_eq!(emitted, source, "the fold moved a statement");
+            assert_renders(&emitted);
+        }
+
+        // With nothing in between, the fold is still what the item list wants.
+        let folded = assert_stable(
+            "sequenceDiagram\n    participant A\n    participant B\n    activate A\n    A->>B: x\n    deactivate A",
+        );
+        assert!(folded.contains("A->>-B: x"), "{folded}");
+    }
+
+    /// The top of the diagram is written before any statement, so a column that
+    /// only appears after a `create` cannot be declared there without changing
+    /// which column is where.
+    #[test]
+    fn a_column_first_used_after_a_create_is_refused() {
+        for source in [
+            "sequenceDiagram\n  create participant C\n  A->>C: x",
+            "sequenceDiagram\n  A->>B: x\n  create participant C\n  B->>C: y\n  B->>D: z",
+        ] {
+            let error = parse_sequence(source)
+                .err()
+                .unwrap_or_else(|| panic!("`{source}` should be refused"));
+            let message = format!("{error}");
+            assert!(
+                message.contains("create"),
+                "unexpected message for `{source}`: {message}"
+            );
+        }
+    }
+
+    /// The rules Mermaid itself enforces around `create` / `destroy`, which the
+    /// editor has to apply before it writes rather than after.
+    #[test]
+    fn structure_error_catches_create_and_destroy_mermaid_would_reject() {
+        let base = |items: Vec<SequenceItem>| SequenceDocument {
+            title: None,
+            participants: vec![participant("A", None), participant("C", None)],
+            boxes: Vec::new(),
+            items,
+            preserved_lines: Vec::new(),
+        };
+
+        assert_eq!(
+            base(vec![
+                SequenceItem::Create("C".into()),
+                message("A", "C", "作成"),
+            ])
+            .structure_error(),
+            None,
+            "the documented shape of a `create` should be accepted"
+        );
+
+        for (items, expected) in [
+            (
+                vec![SequenceItem::Create("C".into()), message("A", "A", "別件")],
+                "`create C` の次のメッセージは `C` 宛てでなければなりません。",
+            ),
+            (
+                vec![
+                    SequenceItem::Create("C".into()),
+                    message("A", "C", "作成"),
+                    SequenceItem::Destroy("C".into()),
+                    message("A", "A", "別件"),
+                ],
+                "`destroy C` の次のメッセージは `C` が関わるものでなければなりません。",
+            ),
+            (
+                vec![
+                    message("A", "C", "先に登場"),
+                    SequenceItem::Create("C".into()),
+                ],
+                "`C` は `create` より前に登場しています。`create` を先に置いてください。",
+            ),
+            (
+                vec![
+                    SequenceItem::Create("C".into()),
+                    message("A", "C", "作成"),
+                    SequenceItem::Create("C".into()),
+                ],
+                "参加者 `C` が二重に `create` されています。",
+            ),
+            (
+                vec![SequenceItem::Destroy("X".into())],
+                "参加者 `X` が宣言されていません。",
+            ),
+        ] {
+            assert_eq!(
+                base(items).structure_error().as_deref(),
+                Some(expected),
+                "unexpected reason"
+            );
+        }
+
+        // A created column may not come before a declared one, and it may not
+        // sit in a `box` either: both would need a second declaration.
+        let document = base(vec![
+            SequenceItem::Create("A".into()),
+            message("C", "A", "作成"),
+        ]);
+        assert_eq!(
+            document.structure_error().as_deref(),
+            Some("`create` で作られる参加者より後ろに `C` を並べることはできません。")
+        );
+
+        let mut document = base(vec![
+            SequenceItem::Create("C".into()),
+            message("A", "C", "作成"),
+        ]);
+        document.boxes.push(SequenceGroupBox {
+            name: Some("業務".into()),
+            fill: None,
+            wrap: false,
+        });
+        if let Some(created) = document.participants.get_mut(1) {
+            created.box_index = Some(0);
+        }
+        assert_eq!(
+            document.structure_error().as_deref(),
+            Some("`create` で作られる参加者 `C` は box に入れられません。")
+        );
+    }
+
+    /// Two `create`s whose columns are ordered the other way round would swap
+    /// the columns when they are written back.
+    #[test]
+    fn the_order_of_created_columns_has_to_match_the_statements() {
+        let mut document = SequenceDocument {
+            title: None,
+            participants: vec![
+                participant("A", None),
+                participant("C", None),
+                participant("D", None),
+            ],
+            boxes: Vec::new(),
+            items: vec![
+                SequenceItem::Create("C".into()),
+                message("A", "C", "先"),
+                SequenceItem::Create("D".into()),
+                message("A", "D", "後"),
+            ],
+            preserved_lines: Vec::new(),
+        };
+        assert_eq!(document.structure_error(), None);
+        document.participants.swap(1, 2);
+        assert_eq!(
+            document.structure_error().as_deref(),
+            Some(
+                "`create` の順番と参加者の並び順が食い違っています。`create` した順に並べてください。"
+            )
+        );
+    }
+
+    /// A column that joins a `box` joins the run of declarations the box is
+    /// written as, and everybody else keeps their place.
+    #[test]
+    fn a_box_keeps_its_members_and_their_order() {
+        let source = "sequenceDiagram\n  box 業務システム\n    participant アプリ\n  end\n  participant 利用者\n  利用者->>アプリ: 要求";
+        let mut document = parse_sequence(source).expect("source should parse");
+        // Where the editor puts a column whose group changed: next to the
+        // member the box already has.
+        document
+            .participants
+            .insert(1, participant("台帳", Some(0)));
+        document.items.push(message("アプリ", "台帳", "問い合わせ"));
+        assert_eq!(document.structure_error(), None);
+
+        let emitted = emit_sequence(&document);
+        let reopened = parse_sequence(&emitted).expect("emitted source should parse");
+        assert_eq!(
+            reopened
+                .participants
+                .iter()
+                .map(|participant| (participant.id.as_str(), participant.box_index))
+                .collect::<Vec<_>>(),
+            vec![("アプリ", Some(0)), ("台帳", Some(0)), ("利用者", None)],
+            "{emitted}"
+        );
+        assert_eq!(
+            reopened
+                .boxes
+                .first()
+                .and_then(|group| group.name.as_deref()),
+            Some("業務システム"),
+            "{emitted}"
+        );
+        assert_eq!(emit_sequence(&reopened), emitted);
+        assert_renders(&emitted);
+    }
+
+    /// A `box` the editor emptied still draws a group of its own, so it stays
+    /// in the source instead of vanishing under the user.
+    #[test]
+    fn a_box_emptied_by_the_editor_stays_in_the_source() {
+        let source = "sequenceDiagram\n  box 業務システム\n    participant アプリ\n  end\n  participant 利用者\n  利用者->>アプリ: 要求";
+        let mut document = parse_sequence(source).expect("source should parse");
+        for participant in &mut document.participants {
+            participant.box_index = None;
+        }
+        assert_eq!(document.structure_error(), None);
+
+        let emitted = emit_sequence(&document);
+        assert!(emitted.contains("box 業務システム"), "{emitted}");
+        let reopened = parse_sequence(&emitted).expect("emitted source should parse");
+        assert_eq!(reopened.boxes.len(), 1, "{emitted}");
+        assert!(
+            reopened
+                .participants
+                .iter()
+                .all(|participant| participant.box_index.is_none()),
+            "{emitted}"
+        );
+        assert_renders(&emitted);
+    }
+
+    /// Mermaid reads the first word of a `box` header as the group's color, so
+    /// a group called "Gold" has to survive every fill the editor offers.
+    #[test]
+    fn a_box_named_after_a_colour_survives_every_fill() {
+        for (fill, label) in BOX_FILL_PRESETS {
+            assert_eq!(box_fill_label(fill), label);
+            let mut document = SequenceDocument {
+                title: None,
+                participants: vec![participant("A", Some(0)), participant("B", Some(0))],
+                boxes: vec![SequenceGroupBox {
+                    name: Some("Gold".into()),
+                    fill: fill.map(str::to_string),
+                    wrap: false,
+                }],
+                items: vec![message("A", "B", "x")],
+                preserved_lines: Vec::new(),
+            };
+            assert_eq!(document.structure_error(), None);
+            let emitted = emit_sequence(&document);
+            let reopened = parse_sequence(&emitted)
+                .unwrap_or_else(|error| panic!("`{emitted}` should parse: {error}"));
+            let group = reopened
+                .boxes
+                .first()
+                .unwrap_or_else(|| panic!("the box should survive:\n{emitted}"));
+            assert_eq!(group.name.as_deref(), Some("Gold"), "{emitted}");
+            assert_eq!(group.fill.as_deref(), fill, "{emitted}");
+            assert_renders(&emitted);
+
+            // A fill written by hand is not one of the presets, and the label
+            // falls back to the color itself rather than to an empty menu row.
+            document.boxes.clear();
+            document.boxes.push(SequenceGroupBox {
+                name: Some("Gold".into()),
+                fill: Some("rgb(200, 200, 255)".into()),
+                wrap: false,
+            });
+            assert_eq!(
+                box_fill_label(Some("rgb(200, 200, 255)")),
+                "rgb(200, 200, 255)"
+            );
+            let emitted = emit_sequence(&document);
+            let reopened = parse_sequence(&emitted)
+                .unwrap_or_else(|error| panic!("`{emitted}` should parse: {error}"));
+            assert_eq!(
+                reopened
+                    .boxes
+                    .first()
+                    .and_then(|group| group.name.as_deref()),
+                Some("Gold"),
+                "{emitted}"
+            );
         }
     }
 }

@@ -618,6 +618,12 @@ impl ToolbarItemView for BufferSearchBar {
                     return self.deployed_toolbar_location(cx);
                 }
             }
+        } else {
+            // 検索できないアイテムに切り替わった。ここで消さないと
+            // `WithResultsOrExternalQuery` が前のアイテムの結果を見て
+            // `SelectNextMatch` などを握り潰し、ワークスペース既定の
+            // ハンドラーへ渡らなくなる。
+            self.active_match_index = None;
         }
         ToolbarItemLocation::Hidden
     }
@@ -3744,6 +3750,59 @@ mod tests {
                 "Items reporting ItemBufferKind::None must not get the expand/collapse button"
             );
         });
+    }
+
+    /// 検索できないアイテム (エージェントパネルのスレッドのタブなど) へ
+    /// 切り替わったら、前のアイテムの結果は忘れる。忘れないと
+    /// `WithResultsOrExternalQuery` が「まだ結果がある」と見て
+    /// `SelectNextMatch` などをここで握り潰し、ワークスペース既定の
+    /// ハンドラーへ渡らなくなる。
+    #[gpui::test]
+    async fn test_switching_to_an_unsearchable_item_releases_the_match_actions(
+        cx: &mut TestAppContext,
+    ) {
+        use super::registrar::ActionExecutor as _;
+
+        let (_editor, search_bar, cx) = init_test(cx);
+        search_bar
+            .update_in(cx, |search_bar, window, cx| {
+                search_bar.search("us", None, true, window, cx)
+            })
+            .await
+            .unwrap();
+
+        let takes_select_next_match = |cx: &mut VisualTestContext| {
+            search_bar.update_in(cx, |search_bar, window, cx| {
+                WithResultsOrExternalQuery(|_, _: &SelectNextMatch, _, _| {}).execute(
+                    search_bar,
+                    &SelectNextMatch,
+                    window,
+                    cx,
+                )
+            })
+        };
+        assert!(
+            search_bar.read_with(cx, |search_bar, _| search_bar.has_active_match()),
+            "the search finds matches in the editor"
+        );
+        assert!(
+            takes_select_next_match(cx),
+            "with matches, the search bar takes the action"
+        );
+
+        let unsearchable = cx.new(|cx| workspace::item::test::TestItem::new(cx));
+        let location = search_bar.update_in(cx, |search_bar, window, cx| {
+            search_bar.set_active_pane_item(Some(&unsearchable), window, cx)
+        });
+        assert_eq!(location, ToolbarItemLocation::Hidden);
+        assert!(
+            !search_bar.read_with(cx, |search_bar, _| search_bar.has_active_match()),
+            "the matches of the item that went away are forgotten"
+        );
+        assert!(
+            !takes_select_next_match(cx),
+            "the action falls through to the workspace"
+        );
     }
 
     #[perf]

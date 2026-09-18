@@ -1128,8 +1128,24 @@ fn find_logical_line_start(grid: &Grid<AlacCell>, current: i32, topmost: i32) ->
 fn row_to_string(row: &Row<AlacCell>) -> String {
     row[..Column(row.len())]
         .iter()
+        .filter(|cell| !is_wide_char_spacer(cell))
         .map(|cell| cell.c)
         .collect::<String>()
+}
+
+/// Whether a cell only holds a place rather than a character: the second half
+/// of a double-width character, or the tail of a row too narrow to fit one (the
+/// character itself then starts the wrapped row).
+///
+/// Both carry `' '` as their character, so reading a row cell by cell turns
+/// 「認証」 into 「認 証」. Everything downstream of
+/// [`last_non_empty_lines`] compares that text against something the user or a
+/// device wrote — a macro's 期待文字 or 分岐, the Telnet prompt scan, the
+/// startup marker, the lines handed to the inline assistant — so the spaces
+/// have to go before the comparison, not after.
+fn is_wide_char_spacer(cell: &AlacCell) -> bool {
+    cell.flags
+        .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
 }
 
 fn process_line(line: String) -> Option<String> {

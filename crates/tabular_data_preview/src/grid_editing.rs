@@ -45,7 +45,10 @@ use crate::{
     grid_fill::{FillDown, FillRight},
     grid_styles::{CellColor, StyleField, StyleShift, extend_with_color_palette},
     renderer::table_diff_view::DiffSelectedCells,
-    table_data_engine::sorting_by_column::{AppliedSorting, SortDirection},
+    table_data_engine::{
+        ColumnShift,
+        sorting_by_column::{AppliedSorting, SortDirection},
+    },
     types::AnyColumn,
 };
 use text::TransactionId;
@@ -324,6 +327,13 @@ impl TabularDataPreviewPane {
     /// A single line editor would hide everything past the first line of a cell
     /// that holds quoted line breaks, so such a cell is edited in an auto
     /// height editor instead.
+    ///
+    /// That editor folds its lines at the width of the cell whatever the soft
+    /// wrap setting says, because `calculate_wrap_width` clamps every mode's
+    /// answer to the editor's own width, and `max_lines` counts the lines as
+    /// they are drawn, folded ones included. A long value therefore stops
+    /// growing at the same height as a value of as many quoted lines, and
+    /// nothing has to be said here about soft wrap.
     fn sync_cell_editor_mode(&mut self, cx: &mut Context<Self>) {
         let editor = self.grid.cell_editor.clone();
         editor.update(cx, |editor, cx| {
@@ -464,6 +474,11 @@ impl TabularDataPreviewPane {
             return;
         };
         let transaction_id = buffer.update(cx, |buffer, cx| buffer.undo(cx));
+        // Ahead of the reparse, which narrows the filters to the width the
+        // table had *before* the undo brought a deleted column back.
+        if let Some(transaction_id) = transaction_id {
+            self.engine.undo_column_shift(transaction_id);
+        }
         self.reparse_now(cx);
         if let Some(transaction_id) = transaction_id {
             self.undo_style_shift(transaction_id, cx);
@@ -483,6 +498,10 @@ impl TabularDataPreviewPane {
             return;
         };
         let transaction_id = buffer.update(cx, |buffer, cx| buffer.redo(cx));
+        // Ahead of the reparse, as in [`Self::undo_buffer`].
+        if let Some(transaction_id) = transaction_id {
+            self.engine.redo_column_shift(transaction_id);
+        }
         self.reparse_now(cx);
         if let Some(transaction_id) = transaction_id {
             self.redo_style_shift(transaction_id, cx);
@@ -686,7 +705,13 @@ impl TabularDataPreviewPane {
         let edits = self
             .with_edit_engine(cx, |engine| engine.insert_columns(index, count))
             .unwrap_or_default();
+        // Moved before the edit: the reparse that edit triggers drops the
+        // filters of every column the new width does not reach, so one left on
+        // its old index would be forgotten there rather than moved.
+        let mut shift = ColumnShift::Insert { at: index, count };
+        self.engine.apply_column_shift(&mut shift);
         let transaction_id = self.apply_buffer_edits(edits, cx);
+        self.engine.record_column_shift(transaction_id, shift);
         self.record_style_shift(
             transaction_id,
             StyleShift::InsertColumns { at: index, count },
@@ -711,8 +736,12 @@ impl TabularDataPreviewPane {
         let edits = self
             .with_edit_engine(cx, |engine| engine.delete_columns(&cols))
             .unwrap_or_default();
-        let physical_cols = cols.iter().map(|col| col.get()).collect();
+        let physical_cols: Vec<usize> = cols.iter().map(|col| col.get()).collect();
+        // Before the edit, for the same reason as in [`Self::insert_columns`].
+        let mut shift = ColumnShift::delete(physical_cols.clone());
+        self.engine.apply_column_shift(&mut shift);
         let transaction_id = self.apply_buffer_edits(edits, cx);
+        self.engine.record_column_shift(transaction_id, shift);
         self.record_style_shift(
             transaction_id,
             StyleShift::delete_columns(physical_cols),
@@ -1188,7 +1217,11 @@ impl TabularDataPreviewPane {
                 cx.stop_propagation();
             }))
             .capture_action(cx.listener(|this, _: &Cancel, window, cx| {
-                if this.cancel_editing(window, cx) {
+                // Escape drops whatever the pointer had in flight as well as an
+                // open cell; a fill preview left painted behind it would claim
+                // the fill was still armed.
+                let dropped_a_drag = this.cancel_drag(cx);
+                if this.cancel_editing(window, cx) || dropped_a_drag {
                     cx.stop_propagation();
                 } else {
                     cx.propagate();

@@ -242,6 +242,11 @@ fn commit_rewrite_entries(
             Some(git::RewordCommit { sha: sha.clone() }.boxed_clone()),
             commit_action_handler(&repository, &workspace, &sha, reword_commit),
         )
+        .entry(
+            "このコミットを捨てる…",
+            Some(git::DropCommit { sha: sha.clone() }.boxed_clone()),
+            commit_action_handler(&repository, &workspace, &sha, drop_commit),
+        )
         .separator()
         .entry(
             "このコミットまで戻す (soft: 変更をステージに残す)",
@@ -397,6 +402,9 @@ pub(crate) fn register_commit_actions(workspace: &mut Workspace) {
     });
     workspace.register_action(|workspace, action: &git::RewordCommit, window, cx| {
         run(workspace, &action.sha, reword_commit, window, cx);
+    });
+    workspace.register_action(|workspace, action: &git::DropCommit, window, cx| {
+        run(workspace, &action.sha, drop_commit, window, cx);
     });
     workspace.register_action(|workspace, action: &git::CopyTagDistance, window, cx| {
         run(workspace, &action.sha, copy_tag_distance, window, cx);
@@ -661,6 +669,45 @@ fn reword_commit(
         })
         .detach();
     });
+}
+
+/// Takes one commit out of the branch's history by replaying everything after it onto its parent.
+/// The commits that follow it get new SHAs, so this asks first.
+fn drop_commit(
+    repository: Entity<Repository>,
+    workspace: Entity<Workspace>,
+    sha: String,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let short = short_sha(&sha);
+    let prompt = window.prompt(
+        PromptLevel::Warning,
+        &format!("{short} を履歴から取り除きますか?"),
+        Some(&format!(
+            "{short} の変更が無かったことになり、その後のコミットの SHA はすべて変わります。\nプッシュ済みのブランチなら、この後に強制プッシュが必要です。"
+        )),
+        &["取り除く", "キャンセル"],
+        cx,
+    );
+    cx.spawn(async move |cx| {
+        if prompt.await.ok() != Some(0) {
+            return;
+        }
+        cx.update(move |cx| {
+            let receiver =
+                repository.update(cx, |repository, cx| repository.drop_commit(sha.clone(), cx));
+            report_command(
+                workspace,
+                "rebase",
+                format!("{} を履歴から取り除きました。", short_sha(&sha)),
+                receiver,
+                Some(ForcePushHint),
+                cx,
+            );
+        });
+    })
+    .detach();
 }
 
 fn reset_to_commit(

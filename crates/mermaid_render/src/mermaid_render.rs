@@ -63,8 +63,10 @@
 //! 3. `postprocess::inject_css` injects CSS rules for the classes applied by
 //!    `accent_colors`
 
+pub mod class_model;
 pub mod er_model;
 pub mod flowchart_model;
+pub mod gantt_model;
 pub mod mermaid_model;
 pub mod pie_model;
 mod postprocess;
@@ -180,13 +182,13 @@ pub(crate) fn css_color(color: Hsla) -> String {
 
 pub use postprocess::util::text_color_for_background;
 
-/// Where a flowchart's nodes and edge labels ended up in the rendered SVG.
+/// Where a diagram's nodes and edge labels ended up in the rendered SVG.
 ///
 /// All rectangles are `[x, y, width, height]` in the SVG's `viewBox`
 /// coordinate system, with every enclosing `transform` already folded in, so a
 /// consumer only has to map from displayed pixels into `viewBox` units to
-/// hit-test the diagram. Only flowcharts are mapped; every other diagram kind
-/// yields an empty geometry.
+/// hit-test the diagram. Flowcharts, ER diagrams and state diagrams are mapped;
+/// every other diagram kind yields an empty geometry.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DiagramGeometry {
     /// The SVG's `viewBox`: `[min-x, min-y, width, height]`.
@@ -203,12 +205,13 @@ impl DiagramGeometry {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeGeometry {
-    /// The node's id as written in the mermaid source, with the
-    /// `{diagram id}-flowchart-` prefix and the `-{n}` suffix that merman adds
-    /// in the SVG stripped off.
+    /// The node's id as written in the mermaid source (a flowchart node id, an
+    /// ER entity name or a state id), with the prefix and the `-{n}` suffix
+    /// that merman adds in the SVG stripped off.
     pub node_id: String,
     /// The label as rendered, with each line of a multi-line label on its own
-    /// line. Empty when the node has no label of its own.
+    /// line. Empty when the node has no label of its own, and when the one it
+    /// has could not be told apart from another element's.
     pub label: String,
     /// The node's shape, in `viewBox` coordinates.
     pub rect: [f32; 4],
@@ -216,13 +219,24 @@ pub struct NodeGeometry {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EdgeGeometry {
-    /// merman's own edge id, `L_{from}_{to}_{n}`.
+    /// merman's own edge id: `L_{from}_{to}_{n}` for a flowchart,
+    /// `id_{from}_{to}_{n}` for an ER relationship, `edge{n}` for a state
+    /// transition.
     pub edge_id: String,
+    /// The id of the node the edge leaves, empty for the kinds whose SVG does
+    /// not name it (state diagrams, which number their transitions instead).
     pub from: String,
+    /// The id of the node the edge enters, empty under the same condition as
+    /// [`Self::from`].
     pub to: String,
     /// Which edge this is among those sharing the same `from` and `to`, in
     /// source order.
     pub occurrence: usize,
+    /// Which connection this is among all of the diagram's, counting the
+    /// statements that wrote them in document order, for the kinds that
+    /// identify an edge by position rather than by its ends. `None` whenever
+    /// `from` and `to` are the identity instead.
+    pub statement_index: Option<usize>,
     /// The label as rendered, or `None` for an unlabelled edge.
     pub label: Option<String>,
     /// The label's background box, in `viewBox` coordinates.
@@ -535,16 +549,166 @@ mod geometry_tests {
         assert_eq!(occurrences, vec![(0, Some("first")), (1, Some("second"))]);
     }
 
-    /// Only flowcharts are mapped. Other diagram kinds still render, they just
-    /// come back without geometry rather than with boxes keyed by ids whose
-    /// source syntax the editing UI cannot rewrite.
+    /// An ER diagram names both ends of a relationship in the edge's id, using
+    /// the entities' element ids, which carry an index of their own and may
+    /// hold any character an entity name may — including the `_` the id is
+    /// split on.
+    #[test]
+    fn er_entities_and_relationships_are_mapped() {
+        let geometry = geometry_of(concat!(
+            "erDiagram\n",
+            "  \u{9867}\u{5ba2} ||--o{ \u{6ce8}\u{6587} : \"\u{6ce8}\u{6587}\u{3059}\u{308b}\"\n",
+            "  \u{9867}\u{5ba2}[\u{304a}\u{5ba2}\u{69d8}] {\n",
+            "    string \u{540d}\u{524d}\n",
+            "  }\n",
+        ));
+        // The entity's box is the whole table, attributes included, and its
+        // label is the alias rather than the name the source keys it by.
+        let entity = node(&geometry, "\u{9867}\u{5ba2}");
+        assert_eq!(entity.label, "\u{304a}\u{5ba2}\u{69d8}");
+        assert!(
+            contains(geometry.view_box, entity.rect),
+            "{:?} should be inside {:?}",
+            entity.rect,
+            geometry.view_box
+        );
+        let plain = node(&geometry, "\u{6ce8}\u{6587}");
+        assert_eq!(plain.label, "\u{6ce8}\u{6587}");
+        assert!(!overlaps(entity.rect, plain.rect));
+
+        let relationship = geometry.edges.first().expect("one relationship");
+        assert_eq!(relationship.from, "\u{9867}\u{5ba2}");
+        assert_eq!(relationship.to, "\u{6ce8}\u{6587}");
+        assert_eq!(relationship.occurrence, 0);
+        assert_eq!(relationship.statement_index, None);
+        assert_eq!(
+            relationship.label.as_deref(),
+            Some("\u{6ce8}\u{6587}\u{3059}\u{308b}")
+        );
+        assert!(
+            relationship
+                .label_rect
+                .is_some_and(|rect| rect[2] > 0.0 && rect[3] > 0.0)
+        );
+
+        let underscored = geometry_of("erDiagram\n  A_1 ||--o{ B : x\n  A_1 ||--o{ B : y\n");
+        let pairs: Vec<_> = underscored
+            .edges
+            .iter()
+            .map(|edge| {
+                (
+                    edge.from.as_str(),
+                    edge.to.as_str(),
+                    edge.occurrence,
+                    edge.label.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![("A_1", "B", 0, Some("x")), ("A_1", "B", 1, Some("y"))]
+        );
+    }
+
+    /// A state diagram's SVG does not name a transition's ends at all: it
+    /// numbers the transitions in the order the statements were written, and a
+    /// composite state's body is written where the composite stands. Getting
+    /// that order wrong would rewrite a different transition's label than the
+    /// one that was double-clicked.
+    #[test]
+    fn state_states_and_transitions_are_mapped() {
+        let geometry = geometry_of(concat!(
+            "stateDiagram-v2\n",
+            "  [*] --> \u{5f85}\u{6a5f}\n",
+            "  \u{5f85}\u{6a5f} --> \u{5b9f}\u{884c} : \u{958b}\u{59cb}\n",
+            "  state \u{8907}\u{5408} {\n",
+            "    a --> b : go\n",
+            "  }\n",
+            "  \u{5b9f}\u{884c} --> [*]\n",
+            "  note right of \u{5f85}\u{6a5f} : \u{6700}\u{521d}\u{306e}\u{72b6}\u{614b}\n",
+        ));
+        // A note's box, and the start and end markers, are nodes in the SVG
+        // too, but no statement declares them as states, so they are not
+        // offered for editing.
+        let mut ids: Vec<&str> = geometry
+            .nodes
+            .iter()
+            .map(|node| node.node_id.as_str())
+            .collect();
+        ids.sort_unstable();
+        assert_eq!(ids, vec!["a", "b", "\u{5b9f}\u{884c}", "\u{5f85}\u{6a5f}"]);
+        assert_eq!(
+            node(&geometry, "\u{5f85}\u{6a5f}").label,
+            "\u{5f85}\u{6a5f}"
+        );
+        for node in &geometry.nodes {
+            assert!(
+                contains(geometry.view_box, node.rect),
+                "{} {:?} should be inside {:?}",
+                node.node_id,
+                node.rect,
+                geometry.view_box
+            );
+        }
+
+        let mut transitions: Vec<_> = geometry
+            .edges
+            .iter()
+            .map(|edge| {
+                (
+                    edge.statement_index.expect("a numbered transition"),
+                    edge.label.as_deref(),
+                )
+            })
+            .collect();
+        transitions.sort_by_key(|(index, _)| *index);
+        assert_eq!(
+            transitions,
+            vec![
+                (0, None),
+                (1, Some("\u{958b}\u{59cb}")),
+                (2, Some("go")),
+                (3, None)
+            ],
+            "the composite's transition is the third statement, not the last"
+        );
+        // Every labelled transition has a box to hit-test, even though merman
+        // draws a state diagram's edge labels outside the group that names them.
+        for edge in &geometry.edges {
+            assert_eq!(
+                edge.label.is_some(),
+                edge.label_rect.is_some(),
+                "{:?} has a label without a box, or the other way round",
+                edge.edge_id
+            );
+            assert_eq!((&edge.from[..], &edge.to[..]), ("", ""));
+        }
+    }
+
+    /// A described state is drawn with its description, while its id keeps
+    /// keying it.
+    #[test]
+    fn a_state_description_is_the_label() {
+        let geometry = geometry_of(concat!(
+            "stateDiagram-v2\n",
+            "  state \"\u{8aac}\u{660e}\" as s1\n",
+            "  [*] --> s1\n",
+            "  s1 --> s2 : go\n",
+        ));
+        assert_eq!(node(&geometry, "s1").label, "\u{8aac}\u{660e}");
+        assert_eq!(node(&geometry, "s2").label, "s2");
+    }
+
+    /// Only the kinds whose ids and source syntax the editing UI can follow are
+    /// mapped. The others still render, they just come back without geometry
+    /// rather than with boxes that cannot be rewritten.
     #[test]
     fn other_diagram_kinds_have_no_geometry() {
         let mut rendered = 0;
         for source in [
             "sequenceDiagram\n  Alice->>Bob: Hi",
             "classDiagram\n  Animal <|-- Duck",
-            "stateDiagram-v2\n  [*] --> Still",
+            "gantt\n  title A\n  section S\n  Task :a1, 2014-01-01, 30d",
             "pie title Pets\n  \"Dogs\" : 386",
             "mindmap\n  root\n    child",
         ] {

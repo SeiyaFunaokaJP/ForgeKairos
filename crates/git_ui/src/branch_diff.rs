@@ -8,6 +8,7 @@ use crate::{
 };
 use agent_settings::AgentSettings;
 use anyhow::{Context as _, Result, anyhow};
+use collections::HashSet;
 use editor::{
     Addon, Editor, EditorEvent, RestoreOnlyDiffHunkDelegate, SplittableEditor,
     actions::SendReviewToAgent,
@@ -81,6 +82,7 @@ impl BranchDiff {
         });
         workspace.register_action(Self::compare_with_branch);
         workspace::register_serializable_item::<Self>(cx);
+        workspace::register_serializable_item::<RefComparison>(cx);
     }
 
     pub(crate) fn deploy_branch_diff(
@@ -1365,10 +1367,14 @@ mod tests {
         });
         cx.run_until_parked();
         comparison.read_with(cx, |comparison, _| match &comparison.state {
-            RefComparisonState::Changed(entries) => {
+            RefComparisonState::Changed {
+                entries,
+                omitted_count,
+            } => {
                 assert_eq!(entries.len(), 1);
                 assert_eq!(entries[0].path.as_unix_str(), "a.txt");
                 assert!(matches!(entries[0].status, TreeDiffStatus::Modified { .. }));
+                assert_eq!(*omitted_count, 0);
             }
             _ => panic!("a file that differs between the refs must be listed"),
         });
@@ -1460,10 +1466,620 @@ mod tests {
             })
         });
         close.await.expect("closing the comparison tab should work");
+        // Picking a file asks the workspace to serialize the tab, and its
+        // serialization loop keeps a handle to the item until it drains.
+        cx.executor()
+            .advance_clock(workspace::SERIALIZATION_THROTTLE_TIME);
         cx.run_until_parked();
 
         released_comparison.assert_released();
         released_editor.assert_released();
+    }
+
+    #[gpui::test]
+    async fn test_ref_comparison_deserialize_restores_repository_refs_and_selection(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".git": {},
+                "a.txt": "base\n",
+            }),
+        )
+        .await;
+        fs.set_head_and_index_for_repo(
+            path!("/project/.git").as_ref(),
+            &[("a.txt", "base\n".to_string())],
+        );
+        fs.set_merge_base_content_for_repo(
+            path!("/project/.git").as_ref(),
+            &[("a.txt", "different\n".to_string())],
+        );
+        for (args, stdout) in [("show base:a.txt", "base\n"), ("show head:a.txt", "head\n")] {
+            fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
+                state.command_outputs.insert(
+                    args.to_owned(),
+                    git::repository::GitCommandOutput {
+                        stdout: stdout.to_owned(),
+                        stderr: String::new(),
+                        exit_code: Some(0),
+                    },
+                );
+            })
+            .expect("fake repository should exist");
+        }
+
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.run_until_parked();
+        let expected_repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(&*cx, |multi, _| multi.workspace().clone());
+        let workspace_weak = workspace.downgrade();
+
+        let item_id = workspace::ItemId::from(9001_u64);
+        let workspace_db = cx.read(|cx| workspace::WorkspaceDb::global(cx));
+        let workspace_id = workspace_db
+            .next_id()
+            .await
+            .expect("should create workspace id");
+        let db = cx.read(|cx| persistence::RefComparisonsDb::global(cx));
+        db.save_ref_comparison(
+            item_id,
+            workspace_id,
+            path!("/project").to_string(),
+            "base".to_string(),
+            "head".to_string(),
+            Some("a.txt".to_string()),
+        )
+        .await
+        .expect("save should succeed");
+
+        let restored = cx
+            .update(|window, cx| {
+                <RefComparison as SerializableItem>::deserialize(
+                    project.clone(),
+                    workspace_weak,
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("deserialization should succeed");
+        cx.run_until_parked();
+
+        restored.read_with(cx, |comparison, _| {
+            assert_eq!(
+                comparison.repository.entity_id(),
+                expected_repository.entity_id(),
+                "the repository must be resolved back from its working path"
+            );
+            assert_eq!(comparison.base.as_ref(), "base");
+            assert_eq!(comparison.head.as_ref(), "head");
+            assert_eq!(
+                comparison
+                    .selected_path
+                    .as_ref()
+                    .map(|path| path.as_unix_str().to_string()),
+                Some("a.txt".to_string())
+            );
+        });
+
+        let file_diff_editor =
+            restored.read_with(cx, |comparison, _| comparison.file_diff_editor.clone());
+        assert!(
+            file_diff_editor.is_some(),
+            "the previously selected file should have reopened its diff"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_ref_comparison_caps_the_file_list_and_reports_the_omitted_count(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".git": {},
+                "unrelated.txt": "kept out of the merge-base/head fakes below\n",
+            }),
+        )
+        .await;
+
+        // One past the cap, so an off-by-one in the cutoff (`>` vs `>=`, or the
+        // truncate length) shows up as a wrong `entries.len()` or `omitted_count`.
+        let file_count = MAX_REF_COMPARISON_ENTRIES + 1;
+        let paths: Vec<String> = (0..file_count)
+            .map(|index| format!("file-{index:05}.txt"))
+            .collect();
+        let base_entries: Vec<(&str, String)> = paths
+            .iter()
+            .map(|path| (path.as_str(), "old\n".to_string()))
+            .collect();
+        let head_entries: Vec<(&str, String)> = paths
+            .iter()
+            .map(|path| (path.as_str(), "new\n".to_string()))
+            .collect();
+        fs.set_merge_base_content_for_repo(path!("/project/.git").as_ref(), &base_entries);
+        fs.set_head_and_index_for_repo(path!("/project/.git").as_ref(), &head_entries);
+
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+
+        let comparison = cx.new(|cx| {
+            RefComparison::new(
+                repository.clone(),
+                project.clone(),
+                "base".into(),
+                "head".into(),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        comparison.read_with(cx, |comparison, _| match &comparison.state {
+            RefComparisonState::Changed {
+                entries,
+                omitted_count,
+            } => {
+                assert_eq!(entries.len(), MAX_REF_COMPARISON_ENTRIES);
+                assert_eq!(*omitted_count, file_count - MAX_REF_COMPARISON_ENTRIES);
+            }
+            _ => panic!("a large ref comparison must still report a changed-files list"),
+        });
+    }
+
+    #[gpui::test]
+    async fn test_ref_comparison_refuses_a_file_diff_over_the_size_guard(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".git": {},
+                "big.txt": "base\n",
+            }),
+        )
+        .await;
+        fs.set_head_and_index_for_repo(
+            path!("/project/.git").as_ref(),
+            &[("big.txt", "base\n".to_string())],
+        );
+        fs.set_merge_base_content_for_repo(
+            path!("/project/.git").as_ref(),
+            &[("big.txt", "different\n".to_string())],
+        );
+        let oversized_head_text = "a".repeat(MAX_REF_COMPARISON_FILE_BYTES + 1);
+        for (args, stdout) in [
+            ("show base:big.txt", "base\n".to_string()),
+            ("show head:big.txt", oversized_head_text),
+        ] {
+            fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
+                state.command_outputs.insert(
+                    args.to_owned(),
+                    git::repository::GitCommandOutput {
+                        stdout,
+                        stderr: String::new(),
+                        exit_code: Some(0),
+                    },
+                );
+            })
+            .expect("fake repository should exist");
+        }
+
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(&*cx, |multi, _| multi.workspace().clone());
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            RefComparison::open(
+                workspace,
+                repository.clone(),
+                "base".into(),
+                "head".into(),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let comparison = workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .items_of_type::<RefComparison>(cx)
+                .next()
+                .expect("the comparison should have opened as an item")
+        });
+        let big_file_path = RepoPath::from_rel_path(rel_path("big.txt"));
+        comparison.update_in(cx, |comparison, window, cx| {
+            comparison.open_file_diff(big_file_path.clone(), window, cx);
+        });
+        cx.run_until_parked();
+
+        comparison.read_with(cx, |comparison, _| {
+            assert_eq!(
+                comparison.file_diff_error.as_deref(),
+                Some("大きすぎるため表示できません。")
+            );
+            assert!(
+                comparison.file_diff_editor.is_none(),
+                "an oversized file must not build a diff editor"
+            );
+            assert!(
+                comparison.unavailable_paths.contains(&big_file_path),
+                "the file list should be able to mark the row once it's known to be unavailable"
+            );
+        });
+    }
+
+    /// The write side of the round trip: the previous test starts from rows a
+    /// test wrote itself, so it cannot see `serialize` putting `head` in the
+    /// `base` column, nor a picked file that never reaches the database.
+    #[gpui::test]
+    async fn test_ref_comparison_serialization_round_trips_the_picked_file(
+        cx: &mut TestAppContext,
+    ) {
+        use std::{cell::RefCell, rc::Rc};
+
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".git": {},
+                // A multi-byte name under a directory: it goes through the
+                // database as a unix path and comes back as a `RepoPath`.
+                "資料": {
+                    "設計メモ.txt": "base\n",
+                },
+            }),
+        )
+        .await;
+        fs.set_head_and_index_for_repo(
+            path!("/project/.git").as_ref(),
+            &[("資料/設計メモ.txt", "head\n".to_string())],
+        );
+        fs.set_merge_base_content_for_repo(
+            path!("/project/.git").as_ref(),
+            &[("資料/設計メモ.txt", "base\n".to_string())],
+        );
+        for (args, stdout) in [
+            ("show release-1.0:資料/設計メモ.txt", "base\n"),
+            ("show topic:資料/設計メモ.txt", "head\n"),
+        ] {
+            fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
+                state.command_outputs.insert(
+                    args.to_owned(),
+                    git::repository::GitCommandOutput {
+                        stdout: stdout.to_owned(),
+                        stderr: String::new(),
+                        exit_code: Some(0),
+                    },
+                );
+            })
+            .expect("fake repository should exist");
+        }
+
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(&*cx, |multi, _| multi.workspace().clone());
+        let workspace_weak = workspace.downgrade();
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            RefComparison::open(
+                workspace,
+                repository.clone(),
+                "release-1.0".into(),
+                "topic".into(),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let comparison = workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .items_of_type::<RefComparison>(cx)
+                .next()
+                .expect("the comparison should have opened as an item")
+        });
+
+        let events: Rc<RefCell<Vec<ItemEvent>>> = Rc::new(RefCell::new(Vec::new()));
+        let event_subscription = cx.update(|_, cx| {
+            cx.subscribe(&comparison, {
+                let events = events.clone();
+                move |_, event: &ItemEvent, _| events.borrow_mut().push(*event)
+            })
+        });
+        comparison.update_in(cx, |comparison, window, cx| {
+            comparison.open_file_diff(
+                RepoPath::from_rel_path(rel_path("資料/設計メモ.txt")),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let emitted_events = events.borrow().clone();
+        let asks_for_serialization = emitted_events.iter().any(|event| {
+            comparison.read_with(cx, |comparison, _| comparison.should_serialize(event))
+        });
+        assert!(
+            asks_for_serialization,
+            "picking a file has to emit an event the workspace serializes on, or the pick is never saved"
+        );
+        drop(event_subscription);
+
+        let item_id = workspace::ItemId::from(9101_u64);
+        let workspace_db = cx.read(|cx| workspace::WorkspaceDb::global(cx));
+        let workspace_id = workspace_db
+            .next_id()
+            .await
+            .expect("should create workspace id");
+        comparison
+            .read_with(cx, |comparison, cx| {
+                comparison.write_to_db(item_id, workspace_id, cx)
+            })
+            .await
+            .expect("saving the comparison should succeed");
+
+        let restored = cx
+            .update(|window, cx| {
+                <RefComparison as SerializableItem>::deserialize(
+                    project.clone(),
+                    workspace_weak,
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("deserialization should succeed");
+        cx.run_until_parked();
+
+        restored.read_with(cx, |restored, _| {
+            assert_eq!(
+                restored.base.as_ref(),
+                "release-1.0",
+                "the base ref must come back as the base ref, not as the head"
+            );
+            assert_eq!(restored.head.as_ref(), "topic");
+            assert_eq!(
+                restored
+                    .selected_path
+                    .as_ref()
+                    .map(|path| path.as_unix_str().to_string()),
+                Some("資料/設計メモ.txt".to_string()),
+                "the file that was picked after the tab opened has to be saved too"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_ref_comparison_reports_a_file_whose_contents_cannot_be_read(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".git": {},
+                "modified.txt": "base\n",
+            }),
+        )
+        .await;
+        fs.set_merge_base_content_for_repo(
+            path!("/project/.git").as_ref(),
+            &[("modified.txt", "base\n".to_string())],
+        );
+        fs.set_head_and_index_for_repo(
+            path!("/project/.git").as_ref(),
+            &[
+                ("modified.txt", "head\n".to_string()),
+                ("added.txt", "added\n".to_string()),
+            ],
+        );
+        // `show base:added.txt` stays unanswered on purpose: an added file has no
+        // base side, and that must keep reading as an empty side.
+        fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
+            state.command_outputs.insert(
+                "show head:added.txt".to_owned(),
+                git::repository::GitCommandOutput {
+                    stdout: "added\n".to_owned(),
+                    stderr: String::new(),
+                    exit_code: Some(0),
+                },
+            );
+        })
+        .expect("fake repository should exist");
+
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+
+        let (_multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let comparison = cx.new(|cx| {
+            RefComparison::new(
+                repository.clone(),
+                project.clone(),
+                "base".into(),
+                "head".into(),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        let modified_path = RepoPath::from_rel_path(rel_path("modified.txt"));
+        comparison.update_in(cx, |comparison, window, cx| {
+            comparison.open_file_diff(modified_path.clone(), window, cx);
+        });
+        cx.run_until_parked();
+        comparison.read_with(cx, |comparison, _| {
+            assert_eq!(
+                comparison.file_diff_error.as_deref(),
+                Some("ファイルの中身を取得できませんでした。"),
+                "a side git refused to print must not be shown as an empty file"
+            );
+            assert!(comparison.file_diff_editor.is_none());
+            assert!(comparison.unavailable_paths.contains(&modified_path));
+        });
+
+        comparison.update_in(cx, |comparison, window, cx| {
+            comparison.open_file_diff(RepoPath::from_rel_path(rel_path("added.txt")), window, cx);
+        });
+        cx.run_until_parked();
+        comparison.read_with(cx, |comparison, _| {
+            assert_eq!(comparison.file_diff_error, None);
+            assert!(
+                comparison.file_diff_editor.is_some(),
+                "an added file still has to open with an empty base side"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_ref_comparison_opens_one_tab_per_repository(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/first"),
+            json!({
+                ".git": {},
+                "a.txt": "first\n",
+            }),
+        )
+        .await;
+        fs.insert_tree(
+            path!("/second"),
+            json!({
+                ".git": {},
+                "a.txt": "second\n",
+            }),
+        )
+        .await;
+        for (dot_git, head) in [
+            (path!("/first/.git"), "first head\n"),
+            (path!("/second/.git"), "second head\n"),
+        ] {
+            fs.set_head_and_index_for_repo(dot_git.as_ref(), &[("a.txt", head.to_string())]);
+            fs.set_merge_base_content_for_repo(
+                dot_git.as_ref(),
+                &[("a.txt", "base\n".to_string())],
+            );
+        }
+
+        let project = Project::test(
+            fs.clone(),
+            [path!("/first").as_ref(), path!("/second").as_ref()],
+            cx,
+        )
+        .await;
+        cx.run_until_parked();
+        let repositories = project.read_with(cx, |project, cx| {
+            project
+                .git_store()
+                .read(cx)
+                .repositories()
+                .values()
+                .cloned()
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            repositories.len(),
+            2,
+            "the project should hold one repository per worktree"
+        );
+
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(&*cx, |multi, _| multi.workspace().clone());
+
+        for repository in &repositories {
+            workspace.update_in(cx, |workspace, window, cx| {
+                RefComparison::open(
+                    workspace,
+                    repository.clone(),
+                    "base".into(),
+                    "head".into(),
+                    window,
+                    cx,
+                );
+            });
+            cx.run_until_parked();
+        }
+        let repositories_of_open_tabs = workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .items_of_type::<RefComparison>(cx)
+                .map(|item| item.read(cx).repository.entity_id())
+                .collect::<HashSet<_>>()
+        });
+        assert_eq!(
+            repositories_of_open_tabs.len(),
+            2,
+            "the same pair of ref names in another repository must open its own tab"
+        );
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            RefComparison::open(
+                workspace,
+                repositories[0].clone(),
+                "base".into(),
+                "head".into(),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let tab_count = workspace.read_with(cx, |workspace, cx| {
+            workspace.items_of_type::<RefComparison>(cx).count()
+        });
+        assert_eq!(
+            tab_count, 2,
+            "asking for a comparison that is already open must reuse its tab"
+        );
     }
 }
 
@@ -1491,12 +2107,27 @@ impl RefComparisonEntry {
     }
 }
 
+/// Above this many changed files, the list is truncated: rendering every row
+/// (no virtualization) would otherwise stall the UI on a huge comparison.
+const MAX_REF_COMPARISON_ENTRIES: usize = 2_000;
+
+/// Above this size, a side of a file diff is not read into a buffer: both
+/// sides are read whole into a `String`, so an unbounded file would stall
+/// the UI thread building its diff.
+const MAX_REF_COMPARISON_FILE_BYTES: usize = 2 * 1024 * 1024;
+
 enum RefComparisonState {
     Loading,
     /// The two refs have the same tree, which is the answer the user is
     /// usually after: everything was ported.
     Identical,
-    Changed(Vec<RefComparisonEntry>),
+    Changed {
+        entries: Vec<RefComparisonEntry>,
+        /// How many additional changed files were left out past
+        /// [`MAX_REF_COMPARISON_ENTRIES`], so the list can say so instead of
+        /// silently truncating.
+        omitted_count: usize,
+    },
     Failed(SharedString),
 }
 
@@ -1518,6 +2149,10 @@ pub struct RefComparison {
     /// Why the picked file could not be shown. Kept apart from `state` so that
     /// one unshowable file does not take the whole file list down with it.
     file_diff_error: Option<SharedString>,
+    /// Files found (only once opened — `diff-tree` doesn't report size or
+    /// binary-ness up front) to be binary or too large to show, so their row
+    /// in the list can carry a marker.
+    unavailable_paths: HashSet<RepoPath>,
     _load_task: Task<()>,
     _file_task: Option<Task<()>>,
 }
@@ -1534,9 +2169,12 @@ impl RefComparison {
         if base == head {
             return;
         }
+        // The repository has to match too: a workspace with two repositories can
+        // hold the same pair of ref names twice, and reusing the other
+        // repository's tab would show its contents under this repository's name.
         let existing = workspace.items_of_type::<RefComparison>(cx).find(|item| {
             let item = item.read(cx);
-            item.base == base && item.head == head
+            item.repository == repository && item.base == base && item.head == head
         });
         if let Some(existing) = existing {
             workspace.activate_item(&existing, true, true, window, cx);
@@ -1573,7 +2211,12 @@ impl RefComparison {
                         .map(|(path, status)| RefComparisonEntry { path, status })
                         .collect::<Vec<_>>();
                     entries.sort_by(|left, right| left.path.cmp(&right.path));
-                    RefComparisonState::Changed(entries)
+                    let omitted_count = entries.len().saturating_sub(MAX_REF_COMPARISON_ENTRIES);
+                    entries.truncate(MAX_REF_COMPARISON_ENTRIES);
+                    RefComparisonState::Changed {
+                        entries,
+                        omitted_count,
+                    }
                 }
                 Ok(Err(error)) => RefComparisonState::Failed(format!("{error:#}").into()),
                 Err(_) => return,
@@ -1595,6 +2238,7 @@ impl RefComparison {
             selected_path: None,
             file_diff_editor: None,
             file_diff_error: None,
+            unavailable_paths: HashSet::default(),
             _load_task: load_task,
             _file_task: None,
         }
@@ -1607,8 +2251,23 @@ impl RefComparison {
         self.selected_path = Some(path.clone());
         self.file_diff_editor = None;
         self.file_diff_error = None;
+        self.unavailable_paths.remove(&path);
         cx.notify();
+        // The pick is part of what gets serialized, and the workspace only asks
+        // for that on an item event.
+        cx.emit(ItemEvent::UpdateTab);
 
+        // `git show <ref>:<path>` exits non-zero both for the side an added or a
+        // deleted file is missing from and for a ref or a blob that cannot be
+        // read at all. Only the file list says which of the two it is, so the
+        // status is taken here rather than guessed from an empty side.
+        let listed_status = match &self.state {
+            RefComparisonState::Changed { entries, .. } => entries
+                .iter()
+                .find(|entry| entry.path == path)
+                .map(|entry| entry.status.clone()),
+            _ => None,
+        };
         let path_text = path.as_unix_str().to_string();
         let (base_text, head_text) = self.repository.update(cx, |repository, _cx| {
             (
@@ -1619,15 +2278,51 @@ impl RefComparison {
         let project = self.project.clone();
         self._file_task = Some(cx.spawn_in(window, async move |this, cx| {
             let side = |output: Result<Result<git::repository::GitCommandOutput>, _>| match output {
-                Ok(Ok(output)) if output.succeeded() => output.stdout,
-                _ => String::new(),
+                Ok(Ok(output)) if output.succeeded() => Some(output.stdout),
+                _ => None,
             };
-            let base_text = side(base_text.await);
-            let head_text = side(head_text.await);
+            let base_output = side(base_text.await);
+            let head_output = side(head_text.await);
+            let base_may_be_missing =
+                listed_status.is_none() || listed_status == Some(TreeDiffStatus::Added);
+            let head_may_be_missing = listed_status.is_none()
+                || matches!(listed_status, Some(TreeDiffStatus::Deleted { .. }));
+            if (base_output.is_none() && !base_may_be_missing)
+                || (head_output.is_none() && !head_may_be_missing)
+                // Whatever the status is, a file that is listed as changed has
+                // contents on at least one of the two sides.
+                || (base_output.is_none() && head_output.is_none())
+            {
+                this.update(cx, |this, cx| {
+                    this.file_diff_editor = None;
+                    this.file_diff_error = Some("ファイルの中身を取得できませんでした。".into());
+                    this.unavailable_paths.insert(path);
+                    cx.notify();
+                })
+                .ok();
+                return;
+            }
+            let base_text = base_output.unwrap_or_default();
+            let head_text = head_output.unwrap_or_default();
+            if base_text.len() > MAX_REF_COMPARISON_FILE_BYTES
+                || head_text.len() > MAX_REF_COMPARISON_FILE_BYTES
+            {
+                let path = path.clone();
+                this.update(cx, |this, cx| {
+                    this.file_diff_editor = None;
+                    this.file_diff_error = Some("大きすぎるため表示できません。".into());
+                    this.unavailable_paths.insert(path);
+                    cx.notify();
+                })
+                .ok();
+                return;
+            }
             if base_text.contains('\0') || head_text.contains('\0') {
+                let path = path.clone();
                 this.update(cx, |this, cx| {
                     this.file_diff_editor = None;
                     this.file_diff_error = Some("バイナリファイルは並べて表示できません。".into());
+                    this.unavailable_paths.insert(path);
                     cx.notify();
                 })
                 .ok();
@@ -1696,8 +2391,49 @@ impl RefComparison {
         }));
     }
 
+    /// The write behind [`SerializableItem::serialize`], split out so that a
+    /// test can drive the real column mapping with a workspace id of its own
+    /// (a test workspace has no database id, so `serialize` would do nothing).
+    fn write_to_db(
+        &self,
+        item_id: workspace::ItemId,
+        workspace_id: workspace::WorkspaceId,
+        cx: &App,
+    ) -> Task<Result<()>> {
+        let repo_working_path = self
+            .repository
+            .read(cx)
+            .snapshot()
+            .work_directory_abs_path
+            .to_string_lossy()
+            .to_string();
+        let base = self.base.to_string();
+        let head = self.head.to_string();
+        let selected_path = self
+            .selected_path
+            .as_ref()
+            .map(|path| path.as_unix_str().to_string());
+
+        let db = persistence::RefComparisonsDb::global(cx);
+        cx.background_spawn(async move {
+            db.save_ref_comparison(
+                item_id,
+                workspace_id,
+                repo_working_path,
+                base,
+                head,
+                selected_path,
+            )
+            .await
+        })
+    }
+
     fn render_file_list(&self, cx: &mut Context<Self>) -> AnyElement {
-        let RefComparisonState::Changed(entries) = &self.state else {
+        let RefComparisonState::Changed {
+            entries,
+            omitted_count,
+        } = &self.state
+        else {
             return Empty.into_any_element();
         };
         v_flex()
@@ -1711,6 +2447,7 @@ impl RefComparison {
             .children(entries.iter().enumerate().map(|(index, entry)| {
                 let path = entry.path.clone();
                 let is_selected = self.selected_path.as_ref() == Some(&entry.path);
+                let is_unavailable = self.unavailable_paths.contains(&entry.path);
                 let label = entry
                     .path
                     .file_name()
@@ -1725,14 +2462,34 @@ impl RefComparison {
                     })
                     .child(Label::new(label).truncate())
                     .end_slot(
-                        Label::new(entry.status_label())
-                            .size(LabelSize::XSmall)
-                            .color(entry.status_color()),
+                        h_flex()
+                            .gap_1()
+                            .when(is_unavailable, |this| {
+                                this.child(
+                                    Icon::new(IconName::Warning)
+                                        .size(IconSize::XSmall)
+                                        .color(Color::Muted),
+                                )
+                            })
+                            .child(
+                                Label::new(entry.status_label())
+                                    .size(LabelSize::XSmall)
+                                    .color(entry.status_color()),
+                            ),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.open_file_diff(path.clone(), window, cx);
                     }))
             }))
+            .when(*omitted_count > 0, |this| {
+                this.child(
+                    div().px_2().py_1().child(
+                        Label::new(format!("ほか {omitted_count} 件は省略しました"))
+                            .size(LabelSize::XSmall)
+                            .color(Color::Muted),
+                    ),
+                )
+            })
             .into_any_element()
     }
 }
@@ -1827,8 +2584,11 @@ impl Render for RefComparison {
                         .size(LabelSize::Small),
                 )
                 .into_any_element(),
-            RefComparisonState::Changed(entries) => {
-                let count = entries.len();
+            RefComparisonState::Changed {
+                entries,
+                omitted_count,
+            } => {
+                let count = entries.len() + omitted_count;
                 h_flex()
                     .size_full()
                     .child(self.render_file_list(cx))
@@ -1876,5 +2636,168 @@ impl Render for RefComparison {
             .bg(cx.theme().colors().editor_background)
             .child(header)
             .child(div().flex_1().min_h_0().child(body))
+    }
+}
+
+impl SerializableItem for RefComparison {
+    fn serialized_item_kind() -> &'static str {
+        "RefComparison"
+    }
+
+    fn cleanup(
+        workspace_id: workspace::WorkspaceId,
+        alive_items: Vec<workspace::ItemId>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Task<Result<()>> {
+        workspace::delete_unloaded_items(
+            alive_items,
+            workspace_id,
+            "ref_comparisons",
+            &persistence::RefComparisonsDb::global(cx),
+            cx,
+        )
+    }
+
+    fn deserialize(
+        project: Entity<Project>,
+        _workspace: WeakEntity<Workspace>,
+        workspace_id: workspace::WorkspaceId,
+        item_id: workspace::ItemId,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<Result<Entity<Self>>> {
+        let db = persistence::RefComparisonsDb::global(cx);
+        let Some((repo_working_path, base, head, selected_path)) =
+            db.get_ref_comparison(item_id, workspace_id).ok().flatten()
+        else {
+            return Task::ready(Err(anyhow!("復元する比較タブが見つかりませんでした。")));
+        };
+
+        let window_handle = window.window_handle();
+        let project_snapshot = project.read(cx);
+        let git_store = project_snapshot.git_store().clone();
+        let wait = project_snapshot.wait_for_initial_scan(cx);
+
+        cx.spawn(async move |cx| {
+            wait.await;
+
+            cx.update_window(window_handle, |_, window, cx| {
+                let path = repo_working_path.as_path();
+                let repository = git_store
+                    .read(cx)
+                    .repositories()
+                    .values()
+                    .find(|repository| {
+                        repository
+                            .read(cx)
+                            .snapshot()
+                            .work_directory_abs_path
+                            .as_ref()
+                            == path
+                    })
+                    .cloned();
+                let Some(repository) = repository else {
+                    anyhow::bail!("リポジトリが見つかりませんでした: {path:?}");
+                };
+
+                let comparison = cx.new(|cx| {
+                    RefComparison::new(repository, project.clone(), base.into(), head.into(), cx)
+                });
+
+                if let Some(selected_path) =
+                    selected_path.and_then(|value| RepoPath::new(&value).ok())
+                {
+                    comparison.update(cx, |comparison, cx| {
+                        comparison.open_file_diff(selected_path, window, cx);
+                    });
+                }
+
+                Ok(comparison)
+            })?
+        })
+    }
+
+    fn serialize(
+        &mut self,
+        workspace: &mut Workspace,
+        item_id: workspace::ItemId,
+        _closing: bool,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<Result<()>>> {
+        Some(self.write_to_db(item_id, workspace.database_id()?, cx))
+    }
+
+    fn should_serialize(&self, event: &Self::Event) -> bool {
+        matches!(event, ItemEvent::UpdateTab | ItemEvent::Edit)
+    }
+}
+
+/// Persistence for [`RefComparison`]. Kept apart from [`project_diff::persistence`]
+/// because a ref comparison identifies its repository and selection directly
+/// (`repo_working_path` / `base` / `head` / `selected_path`), which doesn't fit
+/// the `DiffBase`-shaped `project_diffs` table BranchDiff uses.
+mod persistence {
+    use std::path::PathBuf;
+
+    use db::{
+        query,
+        sqlez::{domain::Domain, thread_safe_connection::ThreadSafeConnection},
+        sqlez_macros::sql,
+    };
+    use workspace::WorkspaceDb;
+
+    pub struct RefComparisonsDb(ThreadSafeConnection);
+
+    impl Domain for RefComparisonsDb {
+        const NAME: &str = stringify!(RefComparisonsDb);
+
+        const MIGRATIONS: &[&str] = &[sql!(
+            CREATE TABLE ref_comparisons(
+                workspace_id INTEGER,
+                item_id INTEGER UNIQUE,
+
+                repo_working_path TEXT,
+                base TEXT,
+                head TEXT,
+                selected_path TEXT,
+
+                PRIMARY KEY(workspace_id, item_id),
+                FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id)
+                ON DELETE CASCADE
+            ) STRICT;
+        )];
+    }
+
+    db::static_connection!(RefComparisonsDb, [WorkspaceDb]);
+
+    impl RefComparisonsDb {
+        query! {
+            pub async fn save_ref_comparison(
+                item_id: workspace::ItemId,
+                workspace_id: workspace::WorkspaceId,
+                repo_working_path: String,
+                base: String,
+                head: String,
+                selected_path: Option<String>
+            ) -> Result<()> {
+                INSERT OR REPLACE INTO ref_comparisons(
+                    item_id, workspace_id, repo_working_path, base, head, selected_path
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+            }
+        }
+
+        query! {
+            pub fn get_ref_comparison(
+                item_id: workspace::ItemId,
+                workspace_id: workspace::WorkspaceId
+            ) -> Result<Option<(PathBuf, String, String, Option<String>)>> {
+                SELECT repo_working_path, base, head, selected_path
+                FROM ref_comparisons
+                WHERE item_id = ? AND workspace_id = ?
+            }
+        }
     }
 }

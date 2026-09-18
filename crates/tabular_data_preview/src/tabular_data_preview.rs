@@ -324,10 +324,12 @@ impl TabularDataPreviewPane {
                     | EditorEvent::DirtyChanged => {
                         this.parse_from_active_editor(true, cx);
                     }
-                    // "Save as" gave the buffer a new path, and the colors are
-                    // stored under the path rather than in the file.
+                    // "Save as" gave the buffer a new path, and the colors and
+                    // the filters are stored under the path rather than in the
+                    // file.
                     EditorEvent::FileHandleChanged => {
                         this.on_file_path_changed(cx);
+                        this.on_filters_path_changed(cx);
                     }
                     _ => {}
                 };
@@ -402,6 +404,10 @@ impl TabularDataPreviewPane {
     /// Spawns a background task to recompute the display-to-data mapping after a filter or sort
     /// change. Storing the task cancels any previous in-flight computation automatically.
     pub(crate) fn apply_filter_sort(&mut self, cx: &mut Context<Self>) {
+        // The one place every change to the filters and the sorting - and every
+        // reparse that may have brought a stored one back - passes through.
+        self.on_view_changed(cx);
+
         let contents = self.engine.contents.clone();
         let filter_stack = self.engine.filter_stack.clone();
         let sorting = self.engine.applied_sorting;

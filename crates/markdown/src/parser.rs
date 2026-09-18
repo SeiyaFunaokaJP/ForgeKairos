@@ -851,7 +851,10 @@ fn html_details_body_events(
 /// The inline HTML tags a plain paragraph may carry that the preview can style
 /// instead of dropping. `<b>text</b>` reaches the renderer as two empty
 /// substitutions around the text, which used to leave the text unstyled.
-fn inline_html_style_tag(html: &str) -> Option<(&'static str, bool)> {
+///
+/// An opening `<a>` also hands back the destination it links to, since that is
+/// the one tag whose rewritten events need more than its name.
+fn inline_html_style_tag(html: &str) -> Option<(&'static str, Option<String>, bool)> {
     let inner = html
         .trim()
         .strip_prefix('<')
@@ -873,10 +876,202 @@ fn inline_html_style_tag(html: &str) -> Option<(&'static str, bool)> {
         "code" | "kbd" | "samp" | "tt" | "var" => "code",
         "sub" => "sub",
         "sup" => "sup",
+        "a" => "a",
         _ => return None,
     };
 
-    Some((name, closing))
+    let destination = if name == "a" && !closing {
+        let destination = inline_html_attribute(inner, "href")?;
+        // A link with nothing to open, or one that would run a script instead
+        // of opening anything, keeps being dropped the way it always was.
+        if !is_openable_link_destination(&destination) {
+            return None;
+        }
+        // Whatever opens the destination reads a path, so the surrounding
+        // whitespace of `href=" x "` has to go before it is stored.
+        Some(destination.trim().to_string())
+    } else {
+        None
+    };
+
+    Some((name, destination, closing))
+}
+
+/// The value of the `name` attribute of an opening tag, `inner` being the text
+/// between its `<` and `>`. Only the spellings HTML written by hand uses are
+/// understood; anything else hands back `None` so the tag is left alone.
+fn inline_html_attribute(inner: &str, name: &str) -> Option<String> {
+    let tag_name_end = inner.find(char::is_whitespace)?;
+    let mut rest = inner.get(tag_name_end..)?;
+
+    loop {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            return None;
+        }
+
+        let attribute_name_end = rest
+            .find(|character: char| character == '=' || character.is_whitespace())
+            .unwrap_or(rest.len());
+        let attribute_name = rest.get(..attribute_name_end)?;
+        rest = rest.get(attribute_name_end..)?.trim_start();
+
+        let mut value = None;
+        if let Some(after_equals) = rest.strip_prefix('=') {
+            let after_equals = after_equals.trim_start();
+            let (attribute_value, remainder) = match after_equals.chars().next() {
+                Some(quote @ ('"' | '\'')) => {
+                    let after_quote = after_equals.get(quote.len_utf8()..)?;
+                    let closing_quote = after_quote.find(quote)?;
+                    (
+                        after_quote.get(..closing_quote)?,
+                        after_quote.get(closing_quote + quote.len_utf8()..)?,
+                    )
+                }
+                Some(_) => {
+                    let value_end = after_equals
+                        .find(char::is_whitespace)
+                        .unwrap_or(after_equals.len());
+                    (
+                        after_equals.get(..value_end)?,
+                        after_equals.get(value_end..)?,
+                    )
+                }
+                None => return None,
+            };
+            value = Some(attribute_value);
+            rest = remainder;
+        }
+
+        if attribute_name.eq_ignore_ascii_case(name) {
+            return value.map(decode_html_entities);
+        }
+    }
+}
+
+/// The longest entity name this understands, so a bare `&` in a URL does not
+/// send the scan to the end of the text looking for a `;`.
+const MAX_HTML_ENTITY_LENGTH: usize = 10;
+
+/// Expands the HTML entities an attribute is written with. An entity this does
+/// not know is left exactly as it was written rather than guessed at.
+fn decode_html_entities(text: &str) -> String {
+    let mut decoded = String::with_capacity(text.len());
+    let mut rest = text;
+
+    while let Some(ampersand) = rest.find('&') {
+        let (Some(before), Some(after)) = (rest.get(..ampersand), rest.get(ampersand + 1..)) else {
+            break;
+        };
+        decoded.push_str(before);
+
+        let entity = after
+            .find(';')
+            .filter(|semicolon| *semicolon <= MAX_HTML_ENTITY_LENGTH)
+            .and_then(|semicolon| Some((after.get(..semicolon)?, after.get(semicolon + 1..)?)));
+        let Some((entity, remainder)) = entity else {
+            decoded.push('&');
+            rest = after;
+            continue;
+        };
+
+        let character = match entity {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            "nbsp" => Some('\u{a0}'),
+            _ => entity
+                .strip_prefix('#')
+                .and_then(|number| match number.strip_prefix(['x', 'X']) {
+                    Some(hexadecimal) => u32::from_str_radix(hexadecimal, 16).ok(),
+                    None => number.parse().ok(),
+                })
+                .and_then(char::from_u32),
+        };
+
+        match character {
+            Some(character) => {
+                decoded.push(character);
+                rest = remainder;
+            }
+            None => {
+                decoded.push('&');
+                rest = after;
+            }
+        }
+    }
+
+    decoded.push_str(rest);
+    decoded
+}
+
+/// The schemes a click must never hand to the system opener: they run what the
+/// document wrote instead of opening something. Checked twice — here, when a
+/// link is built out of inline HTML, and again in the preview when one is
+/// clicked, since a Markdown link carries whatever destination it was written
+/// with.
+pub const SCHEMES_THAT_RUN_CODE: &[&str] = &["javascript", "data", "vbscript"];
+
+/// Whether a destination is one the preview may turn into a link. A scheme that
+/// runs code rather than opening something would fire on a plain click, so an
+/// `<a>` carrying one keeps being dropped instead of becoming a link.
+fn is_openable_link_destination(destination: &str) -> bool {
+    if destination
+        .chars()
+        .all(|character| character.is_whitespace() || character.is_control())
+    {
+        return false;
+    }
+
+    match link_destination_scheme(destination) {
+        Some(scheme) => !SCHEMES_THAT_RUN_CODE.contains(&scheme.as_str()),
+        None => true,
+    }
+}
+
+/// The scheme whatever opens the destination would act on, or `None` when the
+/// destination has none. Everything before the first `:` is a scheme only while
+/// it stays within the first path-less segment: `a:b` is a scheme, `./a:b` and
+/// `a/b:c` are relative paths.
+///
+/// The spellings that hide a scheme from a plain `find(':')` are undone first,
+/// because what finally opens the destination undoes them too:
+/// `open_preview_url` percent-decodes before it looks at the URL, and
+/// `Url::parse` drops tabs and newlines before it reads the scheme.
+pub fn link_destination_scheme(destination: &str) -> Option<String> {
+    let mut scheme = String::new();
+    let mut rest = destination;
+
+    loop {
+        let mut characters = rest.chars();
+        let character = characters.next()?;
+        rest = characters.as_str();
+
+        let character = if character == '%' {
+            match rest
+                .get(..2)
+                .filter(|digits| digits.bytes().all(|digit| digit.is_ascii_hexdigit()))
+                .and_then(|digits| u8::from_str_radix(digits, 16).ok())
+            {
+                Some(decoded) => {
+                    rest = rest.get(2..)?;
+                    char::from(decoded)
+                }
+                None => '%',
+            }
+        } else {
+            character
+        };
+
+        match character {
+            ':' => return Some(scheme.to_ascii_lowercase()),
+            '/' | '?' | '#' => return None,
+            _ if character.is_whitespace() || character.is_control() => {}
+            _ => scheme.push(character),
+        }
+    }
 }
 
 fn inline_html_style_events(name: &str) -> Option<(MarkdownEvent, MarkdownEvent)> {
@@ -910,9 +1105,18 @@ fn inline_html_style_events(name: &str) -> Option<(MarkdownEvent, MarkdownEvent)
 /// nested pairs are rewritten: an unmatched tag keeps being dropped, so the
 /// events stay balanced and the renderer's style stack cannot drift.
 fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &str) {
-    let mut open: Vec<(&'static str, usize, usize)> = Vec::new();
+    struct OpenInlineTag {
+        name: &'static str,
+        /// The destination of an `<a>`; every other tag carries `None`.
+        destination: Option<String>,
+        index: usize,
+        depth: usize,
+    }
+
+    let mut open: Vec<OpenInlineTag> = Vec::new();
     let mut pairs = Vec::new();
     let mut depth = 0usize;
+    let mut link_depth = 0usize;
 
     for index in 0..events.len() {
         let Some((range, event)) = events.get(index) else {
@@ -922,13 +1126,19 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
         let is_dropped_tag = match event {
             MarkdownEvent::SubstitutedText(substituted) => substituted.is_empty(),
             MarkdownEvent::InlineHtml => true,
-            MarkdownEvent::Start(_) => {
+            MarkdownEvent::Start(tag) => {
                 depth += 1;
+                if matches!(tag, MarkdownTag::Link { .. }) {
+                    link_depth += 1;
+                }
                 false
             }
-            MarkdownEvent::End(_) => {
+            MarkdownEvent::End(tag) => {
                 depth = depth.saturating_sub(1);
-                open.retain(|(_, _, tag_depth)| *tag_depth <= depth);
+                if matches!(tag, MarkdownTagEnd::Link) {
+                    link_depth = link_depth.saturating_sub(1);
+                }
+                open.retain(|open| open.depth <= depth);
                 false
             }
             _ => false,
@@ -938,26 +1148,41 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
             continue;
         }
 
-        let Some((name, closing)) = text
+        let Some((name, destination, closing)) = text
             .get(range.clone())
             .and_then(|html| inline_html_style_tag(html))
         else {
             continue;
         };
 
+        // A link inside a link has no rendering. Inside a Markdown link both
+        // ends of an `<a>` keep being dropped; inside another `<a>` only the
+        // inner opening tag is, so the first `</a>` still closes the outer one.
+        if name == "a" && (link_depth > 0 || (!closing && open.iter().any(|open| open.name == "a")))
+        {
+            continue;
+        }
+
         if closing {
-            if open.last().is_some_and(|(open_name, _, open_depth)| {
-                *open_name == name && *open_depth == depth
-            }) && let Some((name, open_index, _)) = open.pop()
+            if open
+                .last()
+                .is_some_and(|open| open.name == name && open.depth == depth)
+                && let Some(open) = open.pop()
             {
-                pairs.push((name, open_index, index));
+                pairs.push((open, index));
             }
         } else {
-            open.push((name, index, depth));
+            open.push(OpenInlineTag {
+                name,
+                destination,
+                index,
+                depth,
+            });
         }
     }
 
-    for (name, open_index, close_index) in pairs {
+    for (open, close_index) in pairs {
+        let open_index = open.index;
         let Some(open_range) = events.get(open_index).map(|(range, _)| range.clone()) else {
             continue;
         };
@@ -968,7 +1193,29 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
         // do, so copying part of it still re-adds the tags around the selection.
         let span = open_range.start..close_range.end;
 
-        if let Some((start_event, end_event)) = inline_html_style_events(name) {
+        let pair_events = match open.name {
+            // A Markdown link between the two tags is only reached now: it
+            // opens and closes while the `<a>` is on the stack, so `link_depth`
+            // was zero at both ends. Wrapping it would put its text inside two
+            // links, and `link_for_source_index` answers with the first one it
+            // finds — the `<a>`, whose destination is not the one the Markdown
+            // link is written to open.
+            "a" if contains_link(events, open_index, close_index) => None,
+            "a" => open.destination.map(|destination| {
+                (
+                    MarkdownEvent::Start(MarkdownTag::Link {
+                        link_type: LinkType::Inline,
+                        dest_url: SharedString::from(destination),
+                        title: SharedString::default(),
+                        id: SharedString::default(),
+                    }),
+                    MarkdownEvent::End(MarkdownTagEnd::Link),
+                )
+            }),
+            name => inline_html_style_events(name),
+        };
+
+        if let Some((start_event, end_event)) = pair_events {
             if let Some(event) = events.get_mut(open_index) {
                 *event = (span.clone(), start_event);
             }
@@ -976,9 +1223,22 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
                 *event = (span, end_event);
             }
         } else {
-            substitute_unicode_script(events, name, open_index, close_index, text);
+            substitute_unicode_script(events, open.name, open_index, close_index, text);
         }
     }
+}
+
+/// Whether a link starts strictly between two events.
+fn contains_link(
+    events: &[(Range<usize>, MarkdownEvent)],
+    open_index: usize,
+    close_index: usize,
+) -> bool {
+    events
+        .get(open_index + 1..close_index)
+        .into_iter()
+        .flatten()
+        .any(|(_, event)| matches!(event, MarkdownEvent::Start(MarkdownTag::Link { .. })))
 }
 
 /// Rewrites `<sub>`/`<sup>` contents to the matching Unicode characters, the
@@ -2437,6 +2697,326 @@ mod tests {
                 .any(|(_, event)| matches!(event, MarkdownEvent::Start(MarkdownTag::Strong))),
             "{:?}",
             parsed.events
+        );
+    }
+
+    /// The source text of every inline link of `source`, with the destination
+    /// the renderer would open.
+    fn inline_links(source: &str) -> Vec<(String, String)> {
+        parse_markdown_with_options(source, true, false, false)
+            .events
+            .into_iter()
+            .filter_map(|(range, event)| match event {
+                MarkdownEvent::Start(MarkdownTag::Link { dest_url, .. }) => {
+                    Some((dest_url.to_string(), source.get(range)?.to_string()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_an_inline_html_anchor_in_a_plain_paragraph_becomes_a_link() {
+        let source = "素の <a href=\"https://example.com/x\">リンク</a> です";
+
+        assert_eq!(
+            inline_links(source),
+            vec![(
+                "https://example.com/x".to_string(),
+                "<a href=\"https://example.com/x\">リンク</a>".to_string()
+            )],
+            "the whole span is carried so a selection can be rebalanced"
+        );
+
+        let events = parse_markdown_with_options(source, true, false, false).events;
+        assert_eq!(
+            events
+                .iter()
+                .filter(|(_, event)| matches!(event, MarkdownEvent::End(MarkdownTagEnd::Link)))
+                .count(),
+            1,
+            "{events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|(_, event)| matches!(event, MarkdownEvent::InlineHtml)),
+            "the tags themselves stop being rendered as text: {events:?}"
+        );
+    }
+
+    #[test]
+    fn test_an_inline_html_anchor_reads_its_href_however_it_is_written() {
+        for (source, expected) in [
+            ("<a href=\"x\">t</a>", "x"),
+            ("<a href='x'>t</a>", "x"),
+            ("<a href=x>t</a>", "x"),
+            ("<a HREF=\"x\">t</a>", "x"),
+            ("<a title=\"t\" href=\"x\" download>t</a>", "x"),
+            ("<a class=\"a b\" href=\"x\">t</a>", "x"),
+            (
+                "<a href=\"https://example.com/?a=1&amp;b=2\">t</a>",
+                "https://example.com/?a=1&b=2",
+            ),
+            ("<a href=\"./notes:1.md\">t</a>", "./notes:1.md"),
+            ("<a href=\"#fn-1\">t</a>", "#fn-1"),
+        ] {
+            let links = inline_links(source);
+            assert_eq!(
+                links.first().map(|(destination, _)| destination.as_str()),
+                Some(expected),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_an_inline_html_anchor_that_cannot_be_opened_is_still_dropped() {
+        for source in [
+            "<a href=\"javascript:alert(1)\">t</a>",
+            "<a href=\"JavaScript:alert(1)\">t</a>",
+            "<a href=\"data:text/html,<b>x</b>\">t</a>",
+            "<a href=\"vbscript:x\">t</a>",
+            "<a href=\"\">t</a>",
+            "<a href=\"   \">t</a>",
+            "<a>t</a>",
+            "<a name=\"x\">t</a>",
+            "<a href>t</a>",
+        ] {
+            assert!(
+                inline_links(source).is_empty(),
+                "{source} should not become a link"
+            );
+        }
+    }
+
+    #[test]
+    fn test_an_inline_html_anchor_never_nests_inside_another_link() {
+        // The Markdown link already owns the text, so its `<a>` stays dropped
+        // and the only link is the Markdown one.
+        assert_eq!(
+            inline_links("[a <a href=\"inner\">b</a> c](https://example.com)"),
+            vec![(
+                "https://example.com".to_string(),
+                "[a <a href=\"inner\">b</a> c](https://example.com)".to_string()
+            )]
+        );
+
+        // Two `<a>`s in a row: the first pair is a link, the leftover `</a>` is
+        // dropped, and no link ends up inside another.
+        let nested = inline_links("<a href=\"outer\">a<a href=\"inner\">b</a></a>");
+        assert_eq!(
+            nested
+                .iter()
+                .map(|(destination, _)| destination.as_str())
+                .collect::<Vec<_>>(),
+            vec!["outer"]
+        );
+    }
+
+    #[test]
+    fn test_an_unpaired_inline_html_anchor_is_left_alone() {
+        for source in [
+            "a <a href=\"x\">b",
+            "a </a> b",
+            "a <a href=\"x\">b</i> c",
+            "a `<a href=\"x\">b</a>` c",
+            "<!-- <a href=\"x\"> --> b <!-- </a> -->",
+        ] {
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            assert!(
+                inline_links(source).is_empty(),
+                "{source} has no pair to rewrite"
+            );
+            let starts = parsed
+                .events
+                .iter()
+                .filter(|(_, event)| matches!(event, MarkdownEvent::Start(_)))
+                .count();
+            let ends = parsed
+                .events
+                .iter()
+                .filter(|(_, event)| matches!(event, MarkdownEvent::End(_)))
+                .count();
+            assert_eq!(starts, ends, "{source} should keep its events balanced");
+        }
+    }
+
+    #[test]
+    fn test_copying_inside_an_inline_html_link_keeps_the_tags() {
+        let source = "素の <a href=\"https://example.com\">リンク</a> です";
+        let parsed = parse_markdown_with_options(source, true, false, false);
+        let start = source
+            .find("リンク")
+            .expect("the link text is in the source");
+
+        assert_eq!(
+            crate::selection::rebalanced_markdown_for_selection(
+                source,
+                &parsed.events,
+                &parsed.root_block_starts,
+                start..start + "リンク".len(),
+            ),
+            "<a href=\"https://example.com\">リンク</a>"
+        );
+    }
+
+    #[test]
+    fn test_an_inline_html_anchor_carries_a_multibyte_href_through() {
+        for (source, expected) in [
+            (
+                "<a href=\"./日本語のノート.md\">t</a>",
+                "./日本語のノート.md",
+            ),
+            ("<a href='日本語'>t</a>", "日本語"),
+            ("<a href=日本語>t</a>", "日本語"),
+            ("<a href=\"x?a=日&amp;b=本\">t</a>", "x?a=日&b=本"),
+            ("<a href=\"&#x3042;.md\">t</a>", "あ.md"),
+            // Entities this does not know stay as they were written rather
+            // than being guessed at or cut in half.
+            ("<a href=\"a&b\">t</a>", "a&b"),
+            ("<a href=\"a&#x\">t</a>", "a&#x"),
+            ("<a href=\"a&nosuchentity;b\">t</a>", "a&nosuchentity;b"),
+            ("<a href=\"a&#99999999;b\">t</a>", "a&#99999999;b"),
+            ("<a href=\"日&amp;本\" title=\"題\">t</a>", "日&本"),
+        ] {
+            assert_eq!(
+                inline_links(source)
+                    .first()
+                    .map(|(destination, _)| destination.as_str()),
+                Some(expected),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_an_inline_html_anchor_that_cannot_be_read_leaves_the_paragraph_alone() {
+        // None of these is a tag this can make sense of, and none of them may
+        // panic on the way to finding that out.
+        for source in [
+            "<a href=\"x>t</a>",
+            "<a href='x>t</a>",
+            "<a href=\"日本語>t</a>",
+            "<a href=>t</a>",
+            "<a href==>t</a>",
+            "<a =>t</a>",
+            "<a\u{3000}href=\"x\">t</a>",
+        ] {
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            let starts = parsed
+                .events
+                .iter()
+                .filter(|(_, event)| matches!(event, MarkdownEvent::Start(_)))
+                .count();
+            let ends = parsed
+                .events
+                .iter()
+                .filter(|(_, event)| matches!(event, MarkdownEvent::End(_)))
+                .count();
+            assert_eq!(starts, ends, "{source} should keep its events balanced");
+        }
+    }
+
+    #[test]
+    fn test_a_destination_that_hides_its_scheme_is_still_refused() {
+        for source in [
+            // Decoded before the scheme is read.
+            "<a href=\"&#106;avascript:alert(1)\">t</a>",
+            "<a href=\"&#x6A;avascript:alert(1)\">t</a>",
+            // `open_preview_url` percent-decodes before it opens anything.
+            "<a href=\"javascript%3Aalert(1)\">t</a>",
+            "<a href=\"JAVASCRIPT%3aalert(1)\">t</a>",
+            "<a href=\"data%3Atext/html,x\">t</a>",
+            // `Url::parse` drops these before it reads the scheme.
+            "<a href=\"java&#9;script:alert(1)\">t</a>",
+            "<a href=\"java&#10;script:alert(1)\">t</a>",
+            "<a href=\"&#13;javascript:alert(1)\">t</a>",
+            "<a href=\"&#0;javascript:alert(1)\">t</a>",
+            // Nothing to open.
+            "<a href=\"\u{a0}\">t</a>",
+        ] {
+            assert!(
+                inline_links(source).is_empty(),
+                "{source} should not become a link"
+            );
+        }
+    }
+
+    #[test]
+    fn test_a_destination_that_only_looks_like_a_scheme_still_links() {
+        for (source, expected) in [
+            ("<a href=\"./javascript:x\">t</a>", "./javascript:x"),
+            ("<a href=\"?a=javascript:x\">t</a>", "?a=javascript:x"),
+            ("<a href=\"#javascript:x\">t</a>", "#javascript:x"),
+            ("<a href=\"notes/data:1.md\">t</a>", "notes/data:1.md"),
+            (
+                "<a href=\"mailto:a@example.com\">t</a>",
+                "mailto:a@example.com",
+            ),
+            ("<a href=\"x%20y.md\">t</a>", "x%20y.md"),
+        ] {
+            assert_eq!(
+                inline_links(source)
+                    .first()
+                    .map(|(destination, _)| destination.as_str()),
+                Some(expected),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_an_inline_html_anchor_never_swallows_a_markdown_link() {
+        // The `<a>` pair would otherwise span the Markdown link inside it, and
+        // the renderer resolves a click to the first link whose source range
+        // covers it — which would open `outer` from `[inner](inner-url)`.
+        let source = "<a href=\"outer\">前 [inner](inner-url) 後</a>";
+        assert_eq!(
+            inline_links(source)
+                .iter()
+                .map(|(destination, _)| destination.as_str())
+                .collect::<Vec<_>>(),
+            vec!["inner-url"],
+            "the Markdown link keeps its own destination"
+        );
+    }
+
+    #[test]
+    fn test_an_inline_html_anchor_does_not_pair_across_paragraphs() {
+        let source = "<a href=\"x\">前\n\n後</a>";
+        assert!(
+            inline_links(source).is_empty(),
+            "the tags are in different paragraphs, so there is no pair"
+        );
+    }
+
+    #[test]
+    fn test_an_inline_html_anchor_keeps_an_image_and_its_emphasis() {
+        let source = "<a href=\"x\">**強調** と ![代替](i.png)</a>";
+        let parsed = parse_markdown_with_options(source, true, false, false);
+
+        assert_eq!(
+            inline_links(source)
+                .iter()
+                .map(|(destination, _)| destination.as_str())
+                .collect::<Vec<_>>(),
+            vec!["x"]
+        );
+        assert!(
+            parsed
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, MarkdownEvent::Start(MarkdownTag::Image { .. }))),
+            "the image inside the anchor survives: {:?}",
+            parsed.events
+        );
+        assert!(
+            parsed
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, MarkdownEvent::Start(MarkdownTag::Strong))),
+            "and so does the emphasis"
         );
     }
 

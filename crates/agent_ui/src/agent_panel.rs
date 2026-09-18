@@ -40,7 +40,7 @@ use crate::agent_connection_store::AgentConnectionStore;
 use crate::completion_provider::{AgentContextSelection, AgentContextSource};
 use crate::panel_thread_history::{
     MIN_THREAD_WIDTH_BESIDE_HISTORY, OpenTabId, OpenTabRow, PANEL_THREAD_HISTORY_WIDTH,
-    PanelThreadHistory, PanelThreadHistoryEvent,
+    PanelThreadHistory, PanelThreadHistoryEvent, SLIM_PANEL_THREAD_HISTORY_WIDTH,
 };
 use crate::terminal_thread_metadata_store::{
     TerminalThreadMetadata, TerminalThreadMetadataStore, compose_terminal_thread_title,
@@ -1634,6 +1634,17 @@ enum VisibleSurface<'a> {
 
 enum WhichFontSize {
     AgentFont,
+    None,
+}
+
+/// スレッド履歴の一覧に出せる幅 (ADR-F53)。パネルはドックの幅で決まるので、
+/// 「出す / 出さない」の 2 択だと少し狭めただけで一覧ごと消えてしまう。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ThreadHistoryFit {
+    Full,
+    /// 題名 1 行だけの細い一覧。
+    Slim,
+    /// 一覧の置き場が無い = 帯すら出さない。
     None,
 }
 
@@ -4338,12 +4349,26 @@ impl AgentPanel {
         AgentSettings::get_global(cx).panel_thread_history && self.has_open_project(cx)
     }
 
-    /// Whether the panel is wide enough to give the history list its column
-    /// without squeezing the surface beside it.
+    /// Which of the history list's two widths the panel can afford beside the
+    /// surface, if either. The width is measured, so an unmeasured panel (the
+    /// first frame) is assumed to be wide.
+    fn thread_history_fit(&self) -> ThreadHistoryFit {
+        let Some(width) = self.measured_panel_width.get() else {
+            return ThreadHistoryFit::Full;
+        };
+        if width >= PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY {
+            ThreadHistoryFit::Full
+        } else if width >= SLIM_PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY {
+            ThreadHistoryFit::Slim
+        } else {
+            ThreadHistoryFit::None
+        }
+    }
+
+    /// Whether the panel is wide enough to give the history list a column —
+    /// either width — without squeezing the surface beside it.
     fn fits_thread_history(&self) -> bool {
-        self.measured_panel_width.get().is_none_or(|width| {
-            width >= PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY
-        })
+        self.thread_history_fit() != ThreadHistoryFit::None
     }
 
     fn thread_history_visible(&self, cx: &App) -> bool {
@@ -4396,7 +4421,7 @@ impl AgentPanel {
     /// 縦の一覧の「開いているタブ」の節に出す行 (ADR-F53)。ペインのタブを
     /// 並び順どおりに (分割しているときは全ペインぶん) 並べ、そのあとにタブを
     /// 持たないパネルの端末スレッドを古い順で続ける。
-    fn open_tab_rows(&self, cx: &App) -> Vec<OpenTabRow> {
+    fn open_tab_rows(&self, window: &Window, cx: &App) -> Vec<OpenTabRow> {
         let active_pane_item_id = matches!(
             self.base_view,
             BaseView::AgentThread { .. } | BaseView::PaneItem { .. }
@@ -4416,7 +4441,7 @@ impl AgentPanel {
                 rows.push(OpenTabRow {
                     id: OpenTabId::PaneItem(item_id),
                     title: item.tab_content_text(0, cx),
-                    icon: Self::open_tab_icon(item.as_ref(), cx),
+                    icon: Self::open_tab_icon(item.as_ref(), window, cx),
                     is_active: Some(item_id) == active_pane_item_id,
                 });
             }
@@ -4433,7 +4458,7 @@ impl AgentPanel {
             rows.push(OpenTabRow {
                 id: OpenTabId::PanelTerminal(*terminal_id),
                 title: terminal.title(cx),
-                icon: IconName::Terminal,
+                icon: Icon::new(IconName::Terminal),
                 is_active: Some(*terminal_id) == active_terminal_id,
             });
         }
@@ -4441,17 +4466,12 @@ impl AgentPanel {
         rows
     }
 
-    fn open_tab_icon(item: &dyn ItemHandle, cx: &App) -> IconName {
-        let Some(thread_item) = item.downcast::<ThreadItem>() else {
-            return IconName::Terminal;
-        };
-        thread_item
-            .read(cx)
-            .conversation_view()
-            .read(cx)
-            .agent_key()
-            .icon()
-            .unwrap_or(IconName::ZedAgent)
+    /// 行のアイコンは、そのタブがタブバーで出しているもの
+    /// ([`workspace::Item::tab_icon`]) をそのまま使う。持たないタブ
+    /// ([`TerminalView`] など) だけ端末のアイコンに落とす。
+    fn open_tab_icon(item: &dyn ItemHandle, window: &Window, cx: &App) -> Icon {
+        item.tab_icon(window, cx)
+            .unwrap_or_else(|| Icon::new(IconName::Terminal))
     }
 
     /// 「開いているタブ」の行から前面化する。ペインのタブはそのペインごと
@@ -4926,6 +4946,26 @@ impl AgentPanel {
         &self.retained_threads
     }
 
+    /// このパネルが抱えているが、いま表に出してはいないスレッド。ADR-F36
+    /// Phase B 以降、スレッドはパネルのタブ (`tabbed_threads`) にも載るので、
+    /// `retained_threads` だけを見ると裏で生きている分を数え落とす。同じ
+    /// スレッドが両方に載ることはないはずだが、診断の数え上げが二重計上で
+    /// 嘘をつかないよう ID で重複を落とす。
+    pub fn background_threads(
+        &self,
+    ) -> impl Iterator<Item = (ThreadId, &Entity<ConversationView>)> + '_ {
+        let visible = self
+            .active_conversation_view()
+            .map(|conversation_view| conversation_view.entity_id());
+        let mut seen = HashSet::default();
+        self.retained_threads
+            .iter()
+            .chain(self.tabbed_threads.iter())
+            .filter(move |(_, view)| Some(view.entity_id()) != visible)
+            .filter(move |(id, _)| seen.insert(**id))
+            .map(|(id, view)| (*id, view))
+    }
+
     pub fn active_conversation_view(&self) -> Option<&Entity<ConversationView>> {
         match &self.base_view {
             BaseView::AgentThread { conversation_view } => Some(conversation_view),
@@ -4953,6 +4993,14 @@ impl AgentPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // スレッド以外のタブ (公式 CLI の端末など) はペインが抱えているので、
+        // 検索バーもそのペインのツールバーのもの。パネルの端末スレッドが持つ
+        // `search_bar` とは別系統 (ADR-F53)。
+        if matches!(self.visible_surface(), VisibleSurface::PaneItem) {
+            self.deploy_active_pane_search(window, cx);
+            return;
+        }
+
         let Some(terminal) = self
             .active_terminal_id()
             .and_then(|terminal_id| self.terminals.get_mut(&terminal_id))
@@ -4969,6 +5017,30 @@ impl AgentPanel {
         let deployed = search_bar.update(cx, |search_bar, cx| {
             let terminal_item: &dyn ItemHandle = &terminal_view;
             search_bar.set_active_pane_item(Some(terminal_item), window, cx);
+            search_bar.deploy(&DeployBufferSearch::find(), None, window, cx)
+        });
+        if deployed {
+            cx.stop_propagation();
+        } else {
+            cx.propagate();
+        }
+    }
+
+    /// アクティブなペインのツールバーの検索バーを出す。検索できないタブ
+    /// (スレッドなど) では [`BufferSearchBar::deploy`] が false を返すので、
+    /// 何も出さずに次のハンドラーへ回す。
+    fn deploy_active_pane_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(search_bar) = self
+            .active_pane
+            .read(cx)
+            .toolbar()
+            .read(cx)
+            .item_of_type::<BufferSearchBar>()
+        else {
+            cx.propagate();
+            return;
+        };
+        let deployed = search_bar.update(cx, |search_bar, cx| {
             search_bar.deploy(&DeployBufferSearch::find(), None, window, cx)
         });
         if deployed {
@@ -6787,6 +6859,17 @@ fn new_thread_pane(
             )
         });
 
+        // パネルのタブ (公式 CLI の端末など) でも検索できるように、ペインの
+        // ツールバーに検索バーだけを載せる。パンくずを載せないのは、スレッドの
+        // タブの見た目を変えないため: 検索できないアイテムでは検索バーが
+        // `Hidden` を返し、ツールバーは何も描かない (ADR-F53)。
+        let toolbar = pane.toolbar().clone();
+        let languages = project.read(cx).languages().clone();
+        let search_bar = cx.new(|cx| BufferSearchBar::new(Some(languages), window, cx));
+        toolbar.update(cx, |toolbar, cx| {
+            toolbar.add_item(search_bar, window, cx);
+        });
+
         pane
     });
 
@@ -8595,15 +8678,22 @@ impl Render for AgentPanel {
         // - Font size works as expected and can be changed with cmd-+/cmd-
         // - Scrolling in all views works as expected
         // - Files can be dropped into the panel
+        let thread_history_fit = self.thread_history_fit();
         let show_thread_history = self.thread_history_visible(cx);
         let active_thread_id = self.active_thread_id(cx);
-        let open_tabs = self.open_tab_rows(cx);
+        let open_tabs = self.open_tab_rows(window, cx);
         self.thread_history.update(cx, |thread_history, cx| {
             thread_history.set_active_thread_id(active_thread_id, cx);
+            thread_history.set_slim(thread_history_fit == ThreadHistoryFit::Slim, cx);
             thread_history.set_open_tabs(open_tabs, cx);
         });
 
-        let content = v_flex()
+        // 検索バーの操作 (次を検索・閉じるなど) をパネルの中で受け止める。
+        // これが無いと、ワークスペース既定のハンドラーが中央のペインを
+        // 相手にしてしまう (ADR-F53)。
+        let root =
+            search::buffer_search::register_pane_search_actions(v_flex(), self.active_pane.clone());
+        let content = root
             .key_context(self.key_context())
             .relative()
             .size_full()
@@ -8781,14 +8871,7 @@ impl AgentPanel {
 
     /// 裏で生きているスレッドの数。
     pub fn test_background_thread_count(&self) -> usize {
-        let visible = self.test_visible_view_id();
-        self.retained_threads
-            .iter()
-            .chain(self.tabbed_threads.iter())
-            .filter(|(_, view)| Some(view.entity_id()) != visible)
-            .map(|(id, _)| *id)
-            .collect::<HashSet<_>>()
-            .len()
+        self.background_threads().count()
     }
 
     /// 裏でも表でも、このパネルが持っているスレッドのビュー。
@@ -11829,7 +11912,7 @@ mod tests {
 
         panel.update(&mut cx, |panel, _cx| {
             panel.measured_panel_width.set(Some(
-                PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+                SLIM_PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
             ));
         });
         panel.read_with(&cx, |panel, cx| {
@@ -11857,6 +11940,120 @@ mod tests {
                 "turning the setting off hides the list at any width"
             );
         });
+    }
+
+    /// ADR-F53: 少し狭くなっただけで一覧ごと消さない。240px の一覧と 14px の
+    /// 帯のあいだに、題名 1 行だけの 160px の一覧を挟む。
+    #[gpui::test]
+    async fn test_a_narrow_panel_gets_a_slim_history_before_it_loses_it(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        let fit_at = |width: Pixels, cx: &mut VisualTestContext| {
+            panel.update(cx, |panel, _cx| {
+                panel.measured_panel_width.set(Some(width));
+            });
+            panel.read_with(cx, |panel, _cx| panel.thread_history_fit())
+        };
+
+        assert_eq!(fit_at(px(600.), &mut cx), ThreadHistoryFit::Full);
+        assert_eq!(
+            fit_at(
+                PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY,
+                &mut cx
+            ),
+            ThreadHistoryFit::Full,
+            "ちょうど 240 + 320 なら広いほう"
+        );
+        assert_eq!(fit_at(px(559.), &mut cx), ThreadHistoryFit::Slim);
+        assert_eq!(fit_at(px(500.), &mut cx), ThreadHistoryFit::Slim);
+        assert_eq!(
+            fit_at(
+                SLIM_PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY,
+                &mut cx
+            ),
+            ThreadHistoryFit::Slim,
+            "ちょうど 160 + 320 ならまだ細い一覧が入る"
+        );
+        assert_eq!(fit_at(px(479.), &mut cx), ThreadHistoryFit::None);
+
+        // 細い一覧も「一覧が出ている」: 帯にもタブバーにも落ちない。
+        assert_eq!(fit_at(px(500.), &mut cx), ThreadHistoryFit::Slim);
+        panel.read_with(&cx, |panel, cx| {
+            assert!(panel.thread_history_visible(cx), "細くても一覧は出ている");
+            assert!(
+                !panel.thread_history_rail_visible(cx),
+                "一覧が出ているあいだは帯を出さない"
+            );
+            assert!(
+                !panel.tab_bar_visible(cx),
+                "auto: 一覧から開いているタブへ行けるのでタブバーは要らない"
+            );
+        });
+
+        assert_eq!(fit_at(px(479.), &mut cx), ThreadHistoryFit::None);
+        panel.read_with(&cx, |panel, cx| {
+            assert!(!panel.thread_history_visible(cx));
+            assert!(!panel.thread_history_rail_visible(cx));
+            assert!(
+                panel.tab_bar_visible(cx),
+                "一覧も帯も出せない幅ではタブバーを戻す (行き止まりを作らない)"
+            );
+        });
+
+        // 描く幅も切り替わる。幅は実測なので、ウィンドウごと狭めて確かめる。
+        let mut seen = Vec::new();
+        for window_width in [
+            px(1400.),
+            px(1200.),
+            px(1100.),
+            px(1000.),
+            px(950.),
+            px(900.),
+            px(850.),
+            px(800.),
+            px(700.),
+            px(600.),
+        ] {
+            cx.simulate_resize(size(window_width, px(700.)));
+            cx.update(|window, _cx| window.refresh());
+            cx.run_until_parked();
+            let (fit, measured, list_is_slim) = panel.read_with(&cx, |panel, cx| {
+                (
+                    panel.thread_history_fit(),
+                    panel.measured_panel_width.get(),
+                    panel.thread_history.read(cx).is_slim(),
+                )
+            });
+            assert_eq!(
+                list_is_slim,
+                fit == ThreadHistoryFit::Slim,
+                "パネル幅 {measured:?} で一覧に伝えた細さ"
+            );
+            let drawn = cx
+                .debug_bounds("PANEL_THREAD_HISTORY")
+                .map(|bounds| bounds.size.width);
+            let expected = match fit {
+                ThreadHistoryFit::Full => Some(PANEL_THREAD_HISTORY_WIDTH),
+                ThreadHistoryFit::Slim => Some(SLIM_PANEL_THREAD_HISTORY_WIDTH),
+                ThreadHistoryFit::None => None,
+            };
+            assert_eq!(
+                drawn, expected,
+                "パネル幅 {measured:?} ({fit:?}) で描いた一覧の幅"
+            );
+            seen.push((window_width, measured, fit));
+        }
+        for fit in [
+            ThreadHistoryFit::Full,
+            ThreadHistoryFit::Slim,
+            ThreadHistoryFit::None,
+        ] {
+            assert!(
+                seen.iter().any(|(_, _, seen_fit)| *seen_fit == fit),
+                "3 段すべてを通っていないと確かめたことにならない: {seen:?}"
+            );
+        }
     }
 
     #[gpui::test]
@@ -12721,6 +12918,331 @@ mod tests {
             crate::sandboxed_claude_code::TerminalTabHost::Elsewhere,
             "前面化はパネルではなくそのペインに任せる"
         );
+
+        // 全ウィンドウ版は、呼び手がもう調べた `Workspace` を必ず飛ばす
+        // (貸し出し中で読むと落ちる)。ウィンドウが 1 つならここで打ち止め。
+        let workspace_id = workspace.entity_id();
+        let found_elsewhere = cx.update(|_window, cx| {
+            crate::sandboxed_claude_code::terminal_tab_location_elsewhere(
+                &terminal,
+                workspace_id,
+                cx,
+            )
+        });
+        assert!(
+            found_elsewhere.is_none(),
+            "呼び手の `Workspace` は二度見ない"
+        );
+
+        // 同じ `Workspace` の中で見つかるなら、説明もそのまま呼び手に出す。
+        let already_running = crate::sandboxed_claude_code::test_already_running_notification_id();
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                crate::sandboxed_claude_code::test_reveal_terminal_tab(
+                    workspace, &terminal, window, cx,
+                );
+            })
+            .expect("the workspace can be updated");
+        cx.run_until_parked();
+        assert!(
+            workspace
+                .read_with(&cx, |workspace, _cx| workspace
+                    .notification_ids()
+                    .contains(&already_running))
+                .expect("the workspace can be read"),
+            "切り替え先が無いので説明は呼び手に出る"
+        );
+    }
+
+    /// ADR-F53: スレッド以外のタブ (公式 CLI の端末) でも `agent::ToggleSearch`
+    /// (Ctrl+F) が効く。スレッドのタブでは今までどおり何も出ない。
+    #[gpui::test]
+    async fn test_a_panel_tab_gets_the_panes_search_bar(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        let search_bar_shown = |cx: &mut VisualTestContext| {
+            panel.read_with(cx, |panel, cx| {
+                panel
+                    .active_pane
+                    .read(cx)
+                    .toolbar()
+                    .read(cx)
+                    .item_of_type::<BufferSearchBar>()
+                    .map(|search_bar| !search_bar.read(cx).is_dismissed())
+            })
+        };
+        let toggle_search = |cx: &mut VisualTestContext| {
+            cx.update(|window, cx| {
+                window.dispatch_action(crate::ToggleSearch.boxed_clone(), cx);
+            });
+            cx.run_until_parked();
+        };
+
+        assert_eq!(
+            search_bar_shown(&mut cx),
+            Some(false),
+            "ペインには検索バーが載っているが、まだ畳まれている"
+        );
+
+        toggle_search(&mut cx);
+        assert_eq!(
+            search_bar_shown(&mut cx),
+            Some(false),
+            "スレッドのタブは検索できないので何も出さない"
+        );
+
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx);
+        });
+        cx.run_until_parked();
+
+        toggle_search(&mut cx);
+        assert_eq!(
+            search_bar_shown(&mut cx),
+            Some(true),
+            "CLI のタブでは、そのペインのツールバーの検索バーが出る"
+        );
+    }
+
+    /// ADR-F53: タブを別のウィンドウへ引き出したあとの二重起動は、その
+    /// ウィンドウを前に出してからタブを選ぶ。
+    #[gpui::test]
+    async fn test_revealing_a_cli_tab_that_moved_to_another_window(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+        let workspace_a = panel
+            .read_with(&cx, |panel, _cx| panel.workspace.clone())
+            .upgrade()
+            .expect("パネルのワークスペース");
+
+        let cli_view = panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx)
+        });
+        let other_view = panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx)
+        });
+        cx.run_until_parked();
+        let cli_terminal = cli_view.read_with(&cx, |view, _cx| view.terminal().clone());
+        let cli_item_id = cli_view.entity_id();
+        let other_item_id = other_view.entity_id();
+
+        // 2 つめのウィンドウは別のプロジェクトで開く。`Workspace::test_new` は
+        // プロジェクトのクライアントにメッセージハンドラーを登録するので、
+        // 同じプロジェクトで 2 枚作ると二重登録で落ちる。
+        let fs_b = FakeFs::new(cx.executor());
+        let project_b = Project::test(fs_b, [], &mut cx).await;
+        let window_b =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project_b.clone(), window, cx));
+        let workspace_b = window_b
+            .read_with(&cx, |multi_workspace, _cx| {
+                multi_workspace.workspace().clone()
+            })
+            .expect("2 つめのウィンドウのワークスペース");
+        let mut cx_b = VisualTestContext::from_window(window_b.into(), &cx);
+
+        // 端末のタブを 2 枚とも 2 つめのウィンドウへ引き出す。
+        for _ in 0..2 {
+            let item = panel
+                .update_in(&mut cx, |panel, window, cx| {
+                    let pane = panel.active_pane.clone();
+                    pane.update(cx, |pane, cx| pane.take_active_item(window, cx))
+                })
+                .expect("端末のタブを取り出せる");
+            workspace_b.update_in(&mut cx_b, |workspace, window, cx| {
+                workspace.add_item_to_active_pane(item, None, true, window, cx);
+            });
+        }
+        cx.run_until_parked();
+        cx_b.run_until_parked();
+
+        // 探している CLI のタブが選ばれていない状態から始める。
+        let pane_b = workspace_b.read_with(&cx_b, |workspace, _cx| workspace.active_pane().clone());
+        let other_index = pane_b
+            .read_with(&cx_b, |pane, _cx| {
+                pane.items()
+                    .position(|item| item.item_id() == other_item_id)
+            })
+            .expect("もう 1 枚のタブ");
+        pane_b.update_in(&mut cx_b, |pane, window, cx| {
+            pane.activate_item(other_index, true, true, window, cx);
+        });
+        cx_b.run_until_parked();
+        let active_item_id = |cx: &mut VisualTestContext| {
+            pane_b.read_with(cx, |pane, _cx| {
+                pane.active_item().map(|item| item.item_id())
+            })
+        };
+        assert_eq!(active_item_id(&mut cx_b), Some(other_item_id));
+
+        cx.update(|window, _cx| window.activate_window());
+        cx.run_until_parked();
+        let window_a = cx
+            .update(|_window, cx| cx.active_window())
+            .expect("1 つめのウィンドウが前に出ている");
+        assert_ne!(window_a, gpui::AnyWindowHandle::from(window_b));
+
+        workspace_a.update_in(&mut cx, |workspace, window, cx| {
+            crate::sandboxed_claude_code::test_reveal_terminal_tab(
+                workspace,
+                &cli_terminal,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        cx_b.run_until_parked();
+
+        assert_eq!(
+            cx.update(|_window, cx| cx.active_window()),
+            Some(gpui::AnyWindowHandle::from(window_b)),
+            "タブを抱えているウィンドウごと前に出す"
+        );
+        assert_eq!(
+            active_item_id(&mut cx_b),
+            Some(cli_item_id),
+            "そのウィンドウで探していたタブが選ばれる"
+        );
+
+        let already_running = crate::sandboxed_claude_code::test_already_running_notification_id();
+        let says_already_running = |workspace: &Entity<Workspace>, cx: &mut VisualTestContext| {
+            workspace.read_with(cx, |workspace, _cx| {
+                workspace.notification_ids().contains(&already_running)
+            })
+        };
+        assert!(
+            says_already_running(&workspace_b, &mut cx_b),
+            "説明はタブが出るほうのウィンドウに出す"
+        );
+        assert!(
+            !says_already_running(&workspace_a, &mut cx),
+            "呼び手側に出すと前面化した窓の裏に隠れる"
+        );
+
+        // 探索は `already_searched` の `Workspace` を必ず飛ばす。窓が 2 枚
+        // ある状態で確かめないと「そもそも見つからない」と区別できない。
+        // ウィンドウを開いたまま読むので `VisualTestContext::update`
+        // (対象の窓を貸し出す) ではなく `App` そのものを回す。
+        let workspace_a_id = workspace_a.entity_id();
+        let workspace_b_id = workspace_b.entity_id();
+        let (found_from_a, found_from_b) = cx.cx.update(|cx| {
+            let place_of = |already_searched| {
+                crate::sandboxed_claude_code::terminal_tab_location_elsewhere(
+                    &cli_terminal,
+                    already_searched,
+                    cx,
+                )
+                .map(|place| (place.workspace.entity_id(), place.pane.entity_id()))
+            };
+            (place_of(workspace_a_id), place_of(workspace_b_id))
+        });
+        assert_eq!(
+            found_from_a,
+            Some((workspace_b_id, pane_b.entity_id())),
+            "呼び手のぶんだけ飛ばして、タブを抱えている `Workspace` を返す"
+        );
+        assert_eq!(found_from_b, None, "渡された `Workspace` は二度見ない");
+    }
+
+    /// ADR-F53: 1 つのウィンドウは抱えている `Workspace` のうち 1 つしか
+    /// 映さない。タブがいま映していないほうにあるときは、そちらへ切り替えて
+    /// からタブを選ぶ (切り替えないとタブは選ばれても見えない)。
+    #[gpui::test]
+    async fn test_revealing_a_cli_tab_in_a_workspace_the_window_is_not_showing(
+        cx: &mut TestAppContext,
+    ) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+        let workspace_a = panel
+            .read_with(&cx, |panel, _cx| panel.workspace.clone())
+            .upgrade()
+            .expect("パネルのワークスペース");
+
+        let cli_view = panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx)
+        });
+        cx.run_until_parked();
+        let cli_terminal = cli_view.read_with(&cx, |view, _cx| view.terminal().clone());
+        let cli_item_id = cli_view.entity_id();
+
+        let window_handle = cx
+            .update(|window, _cx| window.window_handle())
+            .downcast::<MultiWorkspace>()
+            .expect("ウィンドウの根は `MultiWorkspace`");
+
+        // 同じウィンドウに 2 つめの `Workspace` を足して、そちらを映す。
+        // 1 つめを先に pin しないと、切り替えでウィンドウから外れてしまう。
+        let fs_c = FakeFs::new(cx.executor());
+        let project_c = Project::test(fs_c, [], &mut cx).await;
+        let workspace_c = window_handle
+            .update(&mut cx, |multi_workspace, window, cx| {
+                multi_workspace.retain_active_workspace(cx);
+                multi_workspace.test_add_workspace(project_c.clone(), window, cx)
+            })
+            .expect("2 つめのワークスペースを足せる");
+        cx.run_until_parked();
+
+        let displayed = |cx: &mut VisualTestContext| {
+            window_handle
+                .read_with(cx, |multi_workspace, _cx| {
+                    multi_workspace.workspace().entity_id()
+                })
+                .expect("映しているワークスペース")
+        };
+        assert_eq!(
+            displayed(&mut cx),
+            workspace_c.entity_id(),
+            "2 つめのワークスペースを映している"
+        );
+        assert!(
+            window_handle
+                .read_with(&cx, |multi_workspace, _cx| multi_workspace
+                    .workspaces()
+                    .any(|workspace| workspace == &workspace_a))
+                .unwrap_or(false),
+            "1 つめのワークスペースはタブごと残っている"
+        );
+
+        // 二重起動は「いま映しているワークスペース」から起きる。
+        workspace_c.update_in(&mut cx, |workspace, window, cx| {
+            crate::sandboxed_claude_code::test_reveal_terminal_tab(
+                workspace,
+                &cli_terminal,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            displayed(&mut cx),
+            workspace_a.entity_id(),
+            "タブを抱えているワークスペースへ切り替える"
+        );
+        assert_eq!(
+            panel.read_with(&cx, |panel, cx| panel
+                .active_pane
+                .read(cx)
+                .active_item()
+                .map(|item| item.item_id())),
+            Some(cli_item_id),
+            "そのワークスペースで探していたタブが選ばれる"
+        );
+
+        let already_running = crate::sandboxed_claude_code::test_already_running_notification_id();
+        let says_already_running = |workspace: &Entity<Workspace>, cx: &mut VisualTestContext| {
+            workspace.read_with(cx, |workspace, _cx| {
+                workspace.notification_ids().contains(&already_running)
+            })
+        };
+        assert!(
+            says_already_running(&workspace_a, &mut cx),
+            "説明は切り替えた先の `Workspace` に出す"
+        );
+        assert!(
+            !says_already_running(&workspace_c, &mut cx),
+            "呼び手側に出すと切り替えた裏に残って見えない"
+        );
     }
 
     /// 最後のタブが端末だったときは、いつもどおり下書きに戻る。
@@ -12876,7 +13398,7 @@ mod tests {
         override_agent_settings(&mut cx, |settings| settings.panel_thread_history = true);
         panel.update(&mut cx, |panel, _cx| {
             panel.measured_panel_width.set(Some(
-                PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+                SLIM_PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
             ));
         });
         assert!(
@@ -12913,7 +13435,7 @@ mod tests {
         override_agent_settings(&mut cx, |settings| settings.panel_thread_history = true);
         panel.update(&mut cx, |panel, _cx| {
             panel.measured_panel_width.set(Some(
-                PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+                SLIM_PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
             ));
         });
         assert!(
@@ -13002,7 +13524,7 @@ mod tests {
             .expect("端末スレッドを作れる");
         cx.run_until_parked();
 
-        let rows = panel.read_with(&cx, |panel, cx| panel.open_tab_rows(cx));
+        let rows = cx.update(|window, cx| panel.read(cx).open_tab_rows(window, cx));
         assert_eq!(
             rows.iter().map(|row| row.id).collect::<Vec<_>>(),
             vec![
@@ -13022,7 +13544,7 @@ mod tests {
         );
         assert_eq!(
             rows.iter()
-                .map(|row| row.icon == IconName::Terminal)
+                .map(|row| row.icon == Icon::new(IconName::Terminal))
                 .collect::<Vec<_>>(),
             vec![false, true, true],
             "スレッドのタブだけエージェントのアイコンで、端末はどちらも端末のアイコン"
@@ -13051,7 +13573,7 @@ mod tests {
                 "行をクリックしたらそのタブが前に出る"
             );
         });
-        let rows = panel.read_with(&cx, |panel, cx| panel.open_tab_rows(cx));
+        let rows = cx.update(|window, cx| panel.read(cx).open_tab_rows(window, cx));
         assert_eq!(
             rows.iter()
                 .filter(|row| row.is_active)
@@ -13060,6 +13582,119 @@ mod tests {
             vec![OpenTabId::PaneItem(cli_tab)],
             "強調も移る"
         );
+    }
+
+    /// タブが自前のアイコンを持っていれば、一覧の行もそれを出す (ADR-F53)。
+    struct CustomIconItem(FocusHandle);
+
+    impl workspace::Item for CustomIconItem {
+        type Event = ();
+
+        fn include_in_nav_history() -> bool {
+            false
+        }
+
+        fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
+            "カスタムのタブ".into()
+        }
+
+        fn tab_icon(&self, _window: &Window, _cx: &App) -> Option<Icon> {
+            Some(Icon::new(IconName::GitBranch))
+        }
+    }
+
+    impl EventEmitter<()> for CustomIconItem {}
+
+    impl Focusable for CustomIconItem {
+        fn focus_handle(&self, _cx: &App) -> FocusHandle {
+            self.0.clone()
+        }
+    }
+
+    impl Render for CustomIconItem {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+        }
+    }
+
+    #[gpui::test]
+    async fn test_an_open_tab_row_uses_the_items_own_icon(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+
+        let item = cx.new(|cx| CustomIconItem(cx.focus_handle()));
+        let item_id = item.entity_id();
+        panel.update_in(&mut cx, |panel, window, cx| {
+            let pane = panel.active_pane.clone();
+            pane.update(cx, |pane, cx| {
+                pane.add_item(Box::new(item), true, true, None, window, cx);
+            });
+        });
+        cx.run_until_parked();
+
+        let rows = cx.update(|window, cx| panel.read(cx).open_tab_rows(window, cx));
+        let row = rows
+            .iter()
+            .find(|row| row.id == OpenTabId::PaneItem(item_id))
+            .expect("そのタブの行がある");
+        assert_eq!(
+            row.icon,
+            Icon::new(IconName::GitBranch),
+            "行のアイコンはタブが `Item::tab_icon` で出すもの"
+        );
+    }
+
+    /// パネルは毎フレーム行を組み直して一覧へ渡す (`set_open_tabs`) ので、
+    /// 中身が同じなら等しくなければならない。等しくないと短絡が効かず、
+    /// `notify` → 再描画 → また `notify` が止まらなくなる (ADR-F53)。
+    #[gpui::test]
+    async fn test_rebuilding_the_open_tab_rows_does_not_keep_redrawing(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx);
+        });
+        cx.run_until_parked();
+
+        let first = cx.update(|window, cx| panel.read(cx).open_tab_rows(window, cx));
+        assert!(
+            first
+                .iter()
+                .any(|row| row.icon != Icon::new(IconName::Terminal)),
+            "端末以外のアイコンの行もある = アイコンごと比べている"
+        );
+
+        let history = panel.read_with(&cx, |panel, _cx| panel.thread_history.clone());
+        let notifications = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let subscription = cx.update(|_window, cx| {
+            let notifications = notifications.clone();
+            cx.observe(&history, move |_, _| {
+                notifications.set(notifications.get() + 1);
+            })
+        });
+        cx.run_until_parked();
+
+        // パネルが描くたびに組み直した行。一覧はもう `first` を持っている。
+        let rebuilt = cx.update(|window, cx| panel.read(cx).open_tab_rows(window, cx));
+        assert_eq!(rebuilt, first, "同じ状態なら行はアイコンごと等しい");
+        history.update(&mut cx, |history, cx| {
+            history.set_open_tabs(rebuilt.clone(), cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            notifications.get(),
+            0,
+            "何も変わっていないフレームで一覧を作り直させない"
+        );
+
+        let mut changed = rebuilt;
+        changed.first_mut().expect("行がある").is_active ^= true;
+        history.update(&mut cx, |history, cx| {
+            history.set_open_tabs(changed, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(notifications.get(), 1, "本当に変わったときは作り直させる");
+        drop(subscription);
     }
 
     /// 行の × はペインの通常の経路で閉じる: アイテムは解放される。
@@ -13144,7 +13779,7 @@ mod tests {
 
         // 幅は実測 (`render_width_probe`) なので、ウィンドウごと狭めて確かめる。
         cx.simulate_resize(size(
-            PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+            SLIM_PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
             px(700.),
         ));
         assert_eq!(
@@ -13177,7 +13812,7 @@ mod tests {
 
         panel.update(&mut cx, |panel, _cx| {
             panel.measured_panel_width.set(Some(
-                PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+                SLIM_PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
             ));
         });
         panel.read_with(&cx, |panel, cx| {
@@ -14954,6 +15589,7 @@ mod tests {
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,
             sandbox_grants: Default::default(),
+            permission_judgements: Default::default(),
         };
 
         let thread_store = cx.update(|cx| ThreadStore::global(cx));

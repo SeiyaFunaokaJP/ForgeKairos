@@ -1,6 +1,7 @@
 use gpui::{App, actions};
 use workspace::Workspace;
 
+pub mod fold_headings_selector;
 pub mod markdown_export;
 pub mod markdown_preview_settings;
 pub mod markdown_preview_view;
@@ -41,7 +42,10 @@ actions!(
         CloseAndReturnToEditor,
         /// Picks the Mermaid diagram type to insert at the cursor, since
         /// `markdown::InsertMermaidDiagram` can only carry one type at a time.
-        InsertMermaidDiagramPicker
+        InsertMermaidDiagramPicker,
+        /// Picks the heading level to fold, since `markdown::FoldHeadings`
+        /// always carries one and so cannot be built from the palette.
+        FoldHeadingsPicker
     ]
 );
 
@@ -54,6 +58,7 @@ pub fn init(cx: &mut App) {
         };
         markdown_preview_view::MarkdownPreviewView::register(workspace, window, cx);
         mermaid_diagram_selector::register(workspace);
+        fold_headings_selector::register(workspace);
         table_editor::register(workspace);
         mermaid_editor::register(workspace);
     })

@@ -8,7 +8,7 @@ use collections::{HashMap, IndexMap};
 use futures::{FutureExt, future::Shared};
 use gpui::{BackgroundExecutor, Global, Task};
 use indoc::indoc;
-use language_model::Speed;
+use language_model::{LanguageModelToolUseId, Speed};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sqlez::{
@@ -86,6 +86,54 @@ pub struct DbThread {
     /// [`crate::sandboxing::ThreadSandboxGrants`].
     #[serde(default)]
     pub sandbox_grants: DbSandboxGrants,
+    /// What the permission judge decided about each tool use (ADR-F52), keyed
+    /// by the tool use it was about, so reopening a thread still shows which
+    /// calls ran without a human reviewing them, and why.
+    #[serde(default)]
+    pub permission_judgements: HashMap<LanguageModelToolUseId, DbPermissionJudgement>,
+}
+
+/// One permission judge verdict as the thread's row carries it (ADR-F52).
+///
+/// Only the outcome is stored. What the judge was shown — the command, the
+/// paths, a file's contents — is deliberately left out: it can quote secrets,
+/// and the thread's own messages already hold the tool input.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DbPermissionJudgement {
+    pub state: acp_thread::PermissionJudgeState,
+    #[serde(default)]
+    pub reason: String,
+    #[serde(default)]
+    pub reused: bool,
+    /// The model that judged; empty when nothing did (no model was configured,
+    /// or there was no input to judge).
+    #[serde(default)]
+    pub model_id: String,
+    pub judged_at: DateTime<Utc>,
+}
+
+impl DbPermissionJudgement {
+    pub fn new(
+        details: &acp_thread::PermissionJudgeDetails,
+        model_id: String,
+        judged_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            state: details.state,
+            reason: details.reason.clone(),
+            reused: details.reused,
+            model_id,
+            judged_at,
+        }
+    }
+
+    pub fn to_details(&self) -> acp_thread::PermissionJudgeDetails {
+        acp_thread::PermissionJudgeDetails {
+            state: self.state,
+            reason: self.reason.clone(),
+            reused: self.reused,
+        }
+    }
 }
 
 /// Serialized form of the sandbox permissions the user granted "for the rest of
@@ -165,6 +213,7 @@ impl SharedThread {
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,
             sandbox_grants: DbSandboxGrants::default(),
+            permission_judgements: HashMap::default(),
         }
     }
 
@@ -351,6 +400,7 @@ impl DbThread {
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,
             sandbox_grants: DbSandboxGrants::default(),
+            permission_judgements: HashMap::default(),
         })
     }
 }
@@ -802,6 +852,7 @@ mod tests {
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,
             sandbox_grants: DbSandboxGrants::default(),
+            permission_judgements: HashMap::default(),
         }
     }
 
@@ -918,6 +969,76 @@ mod tests {
         assert!(
             db_thread.sandboxed_terminal_temp_dir.is_none(),
             "Legacy threads without sandboxed_terminal_temp_dir should default to None"
+        );
+    }
+
+    #[test]
+    fn test_permission_judgements_default_when_absent() {
+        let json = r#"{
+            "title": "Old Thread",
+            "messages": [],
+            "updated_at": "2024-01-01T00:00:00Z"
+        }"#;
+
+        let db_thread: DbThread = serde_json::from_str(json).expect("Failed to deserialize");
+
+        assert!(
+            db_thread.permission_judgements.is_empty(),
+            "threads written before ADR-F52 must still load, with no judgements"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_permission_judgements_roundtrip_through_save_load(cx: &mut TestAppContext) {
+        let database = ThreadsDatabase::new(cx.executor()).unwrap();
+        let thread_id = session_id("permission-judge-thread");
+        let mut thread = make_thread(
+            "Permission Judge Thread",
+            Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+        );
+        let judged_at = Utc.with_ymd_and_hms(2024, 1, 1, 12, 34, 56).unwrap();
+        let safe = DbPermissionJudgement {
+            state: acp_thread::PermissionJudgeState::Safe,
+            reason: "ビルドするだけです".to_string(),
+            reused: false,
+            model_id: "fake-judge".to_string(),
+            judged_at,
+        };
+        let reused = DbPermissionJudgement {
+            state: acp_thread::PermissionJudgeState::Safe,
+            reason: "ビルドするだけです".to_string(),
+            reused: true,
+            model_id: "fake-judge".to_string(),
+            judged_at,
+        };
+        thread
+            .permission_judgements
+            .insert(LanguageModelToolUseId::from("tool-1"), safe.clone());
+        thread
+            .permission_judgements
+            .insert(LanguageModelToolUseId::from("tool-2"), reused.clone());
+
+        database
+            .save_thread(thread_id.clone(), thread, PathList::default())
+            .await
+            .unwrap();
+
+        let loaded = database
+            .load_thread(thread_id)
+            .await
+            .unwrap()
+            .expect("thread should exist");
+        assert_eq!(
+            loaded
+                .permission_judgements
+                .get(&LanguageModelToolUseId::from("tool-1")),
+            Some(&safe)
+        );
+        assert_eq!(
+            loaded
+                .permission_judgements
+                .get(&LanguageModelToolUseId::from("tool-2")),
+            Some(&reused)
         );
     }
 

@@ -3,9 +3,11 @@ use std::{
     sync::Arc,
 };
 
+use serde::{Deserialize, Serialize};
 use ui::{SharedString, table_row::TableRow};
 
 use crate::{
+    grid_styles::{after_deletion, before_deletion},
     table_data_engine::TableDataEngine,
     types::{AnyColumn, DataRow, TableCell},
 };
@@ -41,7 +43,8 @@ impl FilterEntry {
 
 /// One of the text conditions Excel offers beside the value checklist, for when
 /// the user wants "everything containing x" rather than a list of values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum TextFilterOp {
     Contains,
     NotContains,
@@ -117,26 +120,108 @@ impl TextFilter {
         }
     }
 
-    /// Whether a cell's value passes this condition. Case is ignored, the way
-    /// Excel's text filters ignore it.
-    pub(crate) fn matches(&self, value: Option<&SharedString>) -> bool {
-        let value = value.map(SharedString::as_ref).unwrap_or_default();
+    /// Whether a cell's value passes this condition, against a value whose case
+    /// the caller has already folded. Case is ignored the way Excel's text
+    /// filters ignore it, and a column carrying two conditions would otherwise
+    /// fold every cell of it twice per row.
+    fn matches_folded(&self, raw: &str, folded: &str) -> bool {
         match self.op {
             // A cell holding nothing but spaces reads as empty in the grid, so
             // it counts as blank here too.
-            TextFilterOp::Blank => value.trim().is_empty(),
-            TextFilterOp::NotBlank => !value.trim().is_empty(),
-            TextFilterOp::Contains => value.to_lowercase().contains(&self.folded_needle),
-            TextFilterOp::NotContains => !value.to_lowercase().contains(&self.folded_needle),
-            TextFilterOp::Equals => value.to_lowercase() == self.folded_needle,
-            TextFilterOp::StartsWith => value.to_lowercase().starts_with(&self.folded_needle),
-            TextFilterOp::EndsWith => value.to_lowercase().ends_with(&self.folded_needle),
+            TextFilterOp::Blank => raw.trim().is_empty(),
+            TextFilterOp::NotBlank => !raw.trim().is_empty(),
+            TextFilterOp::Contains => folded.contains(&self.folded_needle),
+            TextFilterOp::NotContains => !folded.contains(&self.folded_needle),
+            TextFilterOp::Equals => folded == self.folded_needle,
+            TextFilterOp::StartsWith => folded.starts_with(&self.folded_needle),
+            TextFilterOp::EndsWith => folded.ends_with(&self.folded_needle),
         }
     }
 
     /// How the condition reads where the UI reports what a column is filtered by.
     pub(crate) fn description(&self) -> String {
         self.op.describe(&self.needle)
+    }
+}
+
+/// How a column's two text conditions are combined, which is Excel's
+/// "かつ / または" in its custom filter dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum FilterJoin {
+    And,
+    Or,
+}
+
+impl FilterJoin {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            FilterJoin::And => "かつ",
+            FilterJoin::Or => "または",
+        }
+    }
+}
+
+/// The text conditions on one column: one, or two joined by "かつ" / "または".
+///
+/// Excel offers exactly two, and a third would have nowhere to be typed - the
+/// popover applies a condition to the text in its own search box rather than
+/// carrying an input of its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TextCondition {
+    pub(crate) first: TextFilter,
+    pub(crate) rest: Option<(FilterJoin, TextFilter)>,
+}
+
+impl TextCondition {
+    pub(crate) fn new(op: TextFilterOp, needle: SharedString) -> Self {
+        Self {
+            first: TextFilter::new(op, needle),
+            rest: None,
+        }
+    }
+
+    pub(crate) fn join(&self) -> Option<FilterJoin> {
+        self.rest.as_ref().map(|(join, _)| *join)
+    }
+
+    fn matches(&self, value: Option<&SharedString>) -> bool {
+        let raw = value.map(SharedString::as_ref).unwrap_or_default();
+        // Folded once for both conditions, and not at all while neither reads
+        // the typed text.
+        let folded = if self.reads_the_needle() {
+            raw.to_lowercase()
+        } else {
+            String::new()
+        };
+        let head = self.first.matches_folded(raw, &folded);
+        match &self.rest {
+            None => head,
+            Some((FilterJoin::And, second)) => head && second.matches_folded(raw, &folded),
+            Some((FilterJoin::Or, second)) => head || second.matches_folded(raw, &folded),
+        }
+    }
+
+    fn reads_the_needle(&self) -> bool {
+        self.first.op.needs_needle()
+            || self
+                .rest
+                .as_ref()
+                .is_some_and(|(_, second)| second.op.needs_needle())
+    }
+
+    /// How the whole condition reads where the UI reports what a column is
+    /// filtered by, e.g. `「a」を含む かつ 「b」で終わる`.
+    pub(crate) fn description(&self) -> String {
+        match &self.rest {
+            None => self.first.description(),
+            Some((join, second)) => format!(
+                "{} {} {}",
+                self.first.description(),
+                join.label(),
+                second.description()
+            ),
+        }
     }
 }
 
@@ -149,19 +234,19 @@ impl TextFilter {
 pub(crate) enum ColumnFilter {
     /// A row is kept when its cell in this column holds one of these values.
     Values(HashSet<Option<SharedString>>),
-    Text(TextFilter),
+    Text(TextCondition),
 }
 
 impl ColumnFilter {
     fn keeps(&self, value: Option<&SharedString>) -> bool {
         match self {
             ColumnFilter::Values(values) => values.contains(&value.cloned()),
-            ColumnFilter::Text(filter) => filter.matches(value),
+            ColumnFilter::Text(condition) => condition.matches(value),
         }
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct FilterStack {
     /// How each filtered column is filtered. A column with no entry here is not
     /// filtered at all.
@@ -184,7 +269,64 @@ impl FilterStack {
         self.column_filters
             .retain(|col, _| col.get() < number_of_cols);
     }
+
+    pub(crate) fn entries(&self) -> impl Iterator<Item = (AnyColumn, &ColumnFilter)> {
+        self.column_filters
+            .iter()
+            .map(|(col, filter)| (*col, filter))
+    }
+
+    pub(crate) fn set_column_filter(&mut self, col: AnyColumn, filter: ColumnFilter) {
+        self.column_filters.insert(col, filter);
+    }
+
+    /// Moves the filters of the columns at or after `at` to the right, so that
+    /// a column inserted there leaves each filter on the values it was built
+    /// from rather than on whichever column has taken over its index.
+    pub(crate) fn insert_columns(&mut self, at: usize, count: usize) {
+        self.column_filters = std::mem::take(&mut self.column_filters)
+            .into_iter()
+            .map(|(col, filter)| {
+                let col = if col.get() >= at {
+                    AnyColumn::new(col.get() + count)
+                } else {
+                    col
+                };
+                (col, filter)
+            })
+            .collect();
+    }
+
+    /// The same for a delete, handing back the filters of the columns that are
+    /// gone so that undoing the delete can put them back.
+    pub(crate) fn delete_columns(&mut self, deleted: &[usize]) -> RemovedColumnFilters {
+        let mut removed = HashMap::new();
+        self.column_filters = std::mem::take(&mut self.column_filters)
+            .into_iter()
+            .filter_map(|(col, filter)| match after_deletion(col.get(), deleted) {
+                Some(shifted) => Some((AnyColumn::new(shifted), filter)),
+                None => {
+                    removed.insert(col, filter);
+                    None
+                }
+            })
+            .collect();
+        RemovedColumnFilters(removed)
+    }
+
+    pub(crate) fn restore_columns(&mut self, deleted: &[usize], removed: &RemovedColumnFilters) {
+        self.column_filters = std::mem::take(&mut self.column_filters)
+            .into_iter()
+            .map(|(col, filter)| (AnyColumn::new(before_deletion(col.get(), deleted)), filter))
+            .collect();
+        self.column_filters
+            .extend(removed.0.iter().map(|(col, filter)| (*col, filter.clone())));
+    }
 }
+
+/// The filters a column delete took out of the stack.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct RemovedColumnFilters(HashMap<AnyColumn, ColumnFilter>);
 
 impl TableDataEngine {
     pub(crate) fn has_active_filters(&self, col: AnyColumn) -> bool {
@@ -197,10 +339,10 @@ impl TableDataEngine {
         !self.filter_stack.is_empty()
     }
 
-    /// The text condition on `col`, when that is what it is filtered by.
-    pub(crate) fn text_filter(&self, col: AnyColumn) -> Option<&TextFilter> {
+    /// The text conditions on `col`, when that is what it is filtered by.
+    pub(crate) fn text_filter(&self, col: AnyColumn) -> Option<&TextCondition> {
         match self.filter_stack.column_filters.get(&col) {
-            Some(ColumnFilter::Text(filter)) => Some(filter),
+            Some(ColumnFilter::Text(condition)) => Some(condition),
             _ => None,
         }
     }
@@ -350,7 +492,49 @@ impl TableDataEngine {
         }
         self.filter_stack
             .column_filters
-            .insert(column, ColumnFilter::Text(TextFilter::new(op, needle)));
+            .insert(column, ColumnFilter::Text(TextCondition::new(op, needle)));
+    }
+
+    /// Adds - or replaces - the second of `column`'s two text conditions.
+    ///
+    /// A second condition with no first one is not a filter at all, so a column
+    /// that is unfiltered or narrowed by a value checklist is left alone rather
+    /// than quietly turned into a one-condition text filter.
+    pub(crate) fn set_second_text_filter(
+        &mut self,
+        column: AnyColumn,
+        join: FilterJoin,
+        op: TextFilterOp,
+        needle: SharedString,
+    ) {
+        let Some(ColumnFilter::Text(condition)) = self.filter_stack.column_filters.get_mut(&column)
+        else {
+            return;
+        };
+        if op.needs_needle() && needle.is_empty() {
+            condition.rest = None;
+            return;
+        }
+        condition.rest = Some((join, TextFilter::new(op, needle)));
+    }
+
+    /// Switches an existing pair of conditions between "かつ" and "または".
+    pub(crate) fn set_filter_join(&mut self, column: AnyColumn, join: FilterJoin) {
+        if let Some(ColumnFilter::Text(condition)) =
+            self.filter_stack.column_filters.get_mut(&column)
+            && let Some((current, _)) = condition.rest.as_mut()
+        {
+            *current = join;
+        }
+    }
+
+    /// Drops the second condition, leaving the first in force.
+    pub(crate) fn clear_second_text_filter(&mut self, column: AnyColumn) {
+        if let Some(ColumnFilter::Text(condition)) =
+            self.filter_stack.column_filters.get_mut(&column)
+        {
+            condition.rest = None;
+        }
     }
 }
 
@@ -516,12 +700,14 @@ mod tests {
             .collect()
     }
 
+    fn retained(engine: &TableDataEngine) -> HashSet<DataRow> {
+        retain_rows(&engine.contents.rows, &engine.filter_stack, None)
+    }
+
     /// The values of column 0 that survive the engine's filters, in row order,
     /// with a virtual (missing) cell written as `<なし>`.
     fn kept_values(engine: &TableDataEngine) -> Vec<String> {
-        let mut rows: Vec<DataRow> = retain_rows(&engine.contents.rows, &engine.filter_stack, None)
-            .into_iter()
-            .collect();
+        let mut rows: Vec<DataRow> = retained(engine).into_iter().collect();
         rows.sort();
         rows.iter()
             .map(|row| {
@@ -537,15 +723,19 @@ mod tests {
             .collect()
     }
 
+    fn one_condition(op: TextFilterOp, needle: &str) -> TextCondition {
+        TextCondition::new(op, needle.into())
+    }
+
     /// `matches` reads a missing cell, which no fixture table can produce in its
     /// first column, so the two blank operators are checked against it directly.
     #[test]
     fn blank_covers_a_missing_cell() {
-        assert!(TextFilter::new(TextFilterOp::Blank, "".into()).matches(None));
-        assert!(!TextFilter::new(TextFilterOp::NotBlank, "".into()).matches(None));
+        assert!(one_condition(TextFilterOp::Blank, "").matches(None));
+        assert!(!one_condition(TextFilterOp::NotBlank, "").matches(None));
         // A missing cell has no text to contain anything either.
-        assert!(!TextFilter::new(TextFilterOp::Contains, "a".into()).matches(None));
-        assert!(TextFilter::new(TextFilterOp::NotContains, "a".into()).matches(None));
+        assert!(!one_condition(TextFilterOp::Contains, "a").matches(None));
+        assert!(one_condition(TextFilterOp::NotContains, "a").matches(None));
     }
 
     fn kept_with_text_filter(table_text: &str, op: TextFilterOp, needle: &str) -> Vec<String> {
@@ -725,7 +915,277 @@ mod tests {
         assert_eq!(kept_values(&engine), vec!["a"]);
     }
 
+    ///// Two conditions on one column /////
+
+    const FRUIT: &str = "c0\nApfel\napfelsaft\nBirne\nbirnensaft\nkirsche";
+
+    fn kept_with_two_conditions(
+        table_text: &str,
+        first: (TextFilterOp, &str),
+        join: FilterJoin,
+        second: (TextFilterOp, &str),
+    ) -> Vec<String> {
+        let mut engine = build_engine(table_text);
+        engine.set_text_filter(AnyColumn(0), first.0, first.1.into());
+        engine.set_second_text_filter(AnyColumn(0), join, second.0, second.1.into());
+        kept_values(&engine)
+    }
+
+    /// The pair Excel's custom filter dialog builds: two conditions on one
+    /// column, joined by "かつ" or "または".
+    #[test]
+    fn two_conditions_on_one_column_join_with_and_or() {
+        assert_eq!(
+            kept_with_two_conditions(
+                FRUIT,
+                (TextFilterOp::Contains, "apfel"),
+                FilterJoin::And,
+                (TextFilterOp::EndsWith, "saft"),
+            ),
+            vec!["apfelsaft"]
+        );
+        assert_eq!(
+            kept_with_two_conditions(
+                FRUIT,
+                (TextFilterOp::StartsWith, "apfel"),
+                FilterJoin::Or,
+                (TextFilterOp::StartsWith, "birne"),
+            ),
+            vec!["Apfel", "apfelsaft", "Birne", "birnensaft"]
+        );
+    }
+
+    /// Switching the join has to change which rows survive without the user
+    /// having to type either condition again.
+    #[test]
+    fn switching_the_join_re_reads_the_same_two_conditions() {
+        let mut engine = build_engine(FRUIT);
+        let column = AnyColumn(0);
+        engine.set_text_filter(column, TextFilterOp::Contains, "apfel".into());
+        engine.set_second_text_filter(
+            column,
+            FilterJoin::And,
+            TextFilterOp::EndsWith,
+            "saft".into(),
+        );
+        assert_eq!(kept_values(&engine), vec!["apfelsaft"]);
+
+        engine.set_filter_join(column, FilterJoin::Or);
+        assert_eq!(
+            kept_values(&engine),
+            vec!["Apfel", "apfelsaft", "birnensaft"]
+        );
+
+        // And the second one can be taken away again, leaving the first.
+        engine.clear_second_text_filter(column);
+        assert_eq!(kept_values(&engine), vec!["Apfel", "apfelsaft"]);
+    }
+
+    /// The needle-reading operators filter nothing without a needle, and that
+    /// has to drop the second condition rather than leave one that keeps every
+    /// row in the way of the first.
+    #[test]
+    fn a_second_condition_without_a_needle_is_dropped() {
+        let mut engine = build_engine(FRUIT);
+        let column = AnyColumn(0);
+        engine.set_text_filter(column, TextFilterOp::StartsWith, "apfel".into());
+        engine.set_second_text_filter(
+            column,
+            FilterJoin::Or,
+            TextFilterOp::Contains,
+            "birne".into(),
+        );
+        assert_eq!(
+            kept_values(&engine),
+            vec!["Apfel", "apfelsaft", "Birne", "birnensaft"]
+        );
+
+        engine.set_second_text_filter(column, FilterJoin::Or, TextFilterOp::Contains, "".into());
+        assert!(
+            engine
+                .text_filter(column)
+                .is_some_and(|condition| condition.rest.is_none())
+        );
+        assert_eq!(kept_values(&engine), vec!["Apfel", "apfelsaft"]);
+    }
+
+    /// A second condition with no first one is not a filter at all, so a column
+    /// that is unfiltered - or narrowed by its value checklist - is left alone
+    /// rather than quietly turned into a one-condition text filter.
+    #[test]
+    fn a_second_condition_needs_a_first_one_to_join() {
+        let mut engine = build_engine(FRUIT);
+        let column = AnyColumn(0);
+
+        engine.set_second_text_filter(column, FilterJoin::And, TextFilterOp::Contains, "a".into());
+        assert!(!engine.has_active_filters(column));
+
+        engine.toggle_filter(column, Some("Birne".into()));
+        engine.set_second_text_filter(column, FilterJoin::And, TextFilterOp::Contains, "a".into());
+        assert!(engine.text_filter(column).is_none());
+        assert_eq!(kept_values(&engine), vec!["Birne"]);
+    }
+
+    /// Replacing the first condition drops the second: the seven buttons with
+    /// no join armed have always replaced whatever the column was filtered by,
+    /// and leaving half of a pair behind would be a filter nobody asked for.
+    #[test]
+    fn setting_the_first_condition_again_drops_the_second() {
+        let mut engine = build_engine(FRUIT);
+        let column = AnyColumn(0);
+        engine.set_text_filter(column, TextFilterOp::Contains, "a".into());
+        engine.set_second_text_filter(
+            column,
+            FilterJoin::And,
+            TextFilterOp::EndsWith,
+            "saft".into(),
+        );
+
+        engine.set_text_filter(column, TextFilterOp::StartsWith, "birne".into());
+        assert!(
+            engine
+                .text_filter(column)
+                .is_some_and(|condition| condition.rest.is_none())
+        );
+        assert_eq!(kept_values(&engine), vec!["Birne", "birnensaft"]);
+    }
+
+    /// The pair shares one folded copy of each cell, and case folding is not
+    /// length preserving - `İ` folds to two characters, and every Japanese
+    /// character folds to itself while taking three bytes. Either condition
+    /// reading the folded copy has to answer as it would on its own.
+    #[test]
+    fn two_conditions_read_multibyte_cells_the_same_way_one_does() {
+        const CITIES: &str = "c0\nİstanbul\nistanbul\nIzmir\n東京都\n京都";
+
+        // The needle and the cell fold to the same two characters, so a needle
+        // typed either way reaches the row typed the other way.
+        assert_eq!(
+            kept_with_two_conditions(
+                CITIES,
+                (TextFilterOp::StartsWith, "İ"),
+                FilterJoin::And,
+                (TextFilterOp::EndsWith, "BUL"),
+            ),
+            vec!["İstanbul"]
+        );
+
+        // "either 東京都 or ends with 京都" - the second would also take the
+        // first on its own, which is what makes the pair worth checking.
+        assert_eq!(
+            kept_with_two_conditions(
+                CITIES,
+                (TextFilterOp::Equals, "東京都"),
+                FilterJoin::Or,
+                (TextFilterOp::EndsWith, "京都"),
+            ),
+            vec!["東京都", "京都"]
+        );
+
+        // A condition that reads no text at all shares the same folded copy.
+        assert_eq!(
+            kept_with_two_conditions(
+                CITIES,
+                (TextFilterOp::Contains, "京都"),
+                FilterJoin::And,
+                (TextFilterOp::NotBlank, ""),
+            ),
+            vec!["東京都", "京都"]
+        );
+    }
+
+    #[test]
+    fn the_description_reads_both_conditions() {
+        let mut condition = TextCondition::new(TextFilterOp::Contains, "りんご".into());
+        assert_eq!(condition.description(), "「りんご」を含む");
+
+        condition.rest = Some((
+            FilterJoin::Or,
+            TextFilter::new(TextFilterOp::EndsWith, "汁".into()),
+        ));
+        assert_eq!(
+            condition.description(),
+            "「りんご」を含む または 「汁」で終わる"
+        );
+    }
+
+    ///// Columns moving under the filters /////
+
+    /// A column inserted to the left of a filtered one used to leave the filter
+    /// behind on an index that now belongs to its neighbour, which silently
+    /// narrowed the wrong column - or, past the last column, hid every row.
+    #[test]
+    fn inserting_a_column_moves_the_filters_to_the_right_of_it() {
+        let mut engine = build_engine("c0,c1\na,keep\nb,drop");
+        engine.toggle_filter(AnyColumn(1), Some("keep".into()));
+        assert_eq!(kept_values(&engine), vec!["a"]);
+
+        engine.filter_stack.insert_columns(0, 1);
+        assert!(!engine.has_active_filters(AnyColumn(1)));
+        assert!(engine.has_active_filters(AnyColumn(2)));
+    }
+
+    #[test]
+    fn deleting_a_column_takes_its_filter_out_and_moves_the_rest_left() {
+        let mut engine = build_engine("c0,c1,c2\na,keep,1\nb,drop,2");
+        engine.toggle_filter(AnyColumn(1), Some("keep".into()));
+        engine.toggle_filter(AnyColumn(2), Some("1".into()));
+
+        let removed = engine.filter_stack.delete_columns(&[1]);
+        assert!(!engine.has_active_filters(AnyColumn(2)));
+        assert!(engine.has_active_filters(AnyColumn(1)));
+
+        // And undoing the delete puts both back where they were.
+        engine.filter_stack.restore_columns(&[1], &removed);
+        assert!(engine.has_active_filters(AnyColumn(1)));
+        assert!(engine.has_active_filters(AnyColumn(2)));
+        assert_eq!(kept_values(&engine), vec!["a"]);
+    }
+
     proptest! {
+        /// Two conditions joined by "かつ" have to keep exactly the rows both
+        /// keep on their own, and "または" exactly the rows either keeps. The
+        /// folded value the pair shares must not change any single answer.
+        #[test]
+        fn two_conditions_agree_with_the_two_single_ones(
+            (_cols, table_text) in table_text_strategy(),
+            first_op in 0usize..7,
+            second_op in 0usize..7,
+            first_needle in prop::sample::select(&["a", "b", "", "A", "c"]),
+            second_needle in prop::sample::select(&["a", "b", "", "B", "c"]),
+            use_and in any::<bool>(),
+        ) {
+            let column = AnyColumn(0);
+            let first = TextFilterOp::ALL[first_op % TextFilterOp::ALL.len()];
+            let second = TextFilterOp::ALL[second_op % TextFilterOp::ALL.len()];
+            // An operator with nothing to read is dropped rather than applied,
+            // which would leave a pair that is not a pair at all.
+            prop_assume!(!(first.needs_needle() && first_needle.is_empty()));
+            prop_assume!(!(second.needs_needle() && second_needle.is_empty()));
+
+            let mut only_first = build_engine(&table_text);
+            only_first.set_text_filter(column, first, first_needle.into());
+
+            let mut only_second = build_engine(&table_text);
+            only_second.set_text_filter(column, second, second_needle.into());
+
+            let join = if use_and { FilterJoin::And } else { FilterJoin::Or };
+            let mut both = build_engine(&table_text);
+            both.set_text_filter(column, first, first_needle.into());
+            both.set_second_text_filter(column, join, second, second_needle.into());
+
+            // Compared as row sets rather than as the values themselves, which
+            // repeat across the rows of these tables.
+            let first_set = retained(&only_first);
+            let second_set = retained(&only_second);
+            let expected: HashSet<DataRow> = if use_and {
+                first_set.intersection(&second_set).copied().collect()
+            } else {
+                first_set.union(&second_set).copied().collect()
+            };
+            prop_assert_eq!(retained(&both), expected);
+        }
+
         #[test]
         fn filter_states_are_order_independent(
             (cols, table_text) in table_text_strategy(),

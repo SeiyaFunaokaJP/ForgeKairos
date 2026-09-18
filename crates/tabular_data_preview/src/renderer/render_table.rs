@@ -12,6 +12,7 @@ use crate::{
     grid_styles::StyleShift,
     renderer::table_cell::CELL_FRAME_HEIGHT,
     settings::RowRenderMechanism,
+    table_data_engine::ColumnShift,
     types::{AnyColumn, DataRow, DisplayRow},
 };
 
@@ -601,7 +602,15 @@ impl TabularDataPreviewPane {
         if edits.is_empty() {
             return;
         }
+        // Before the edit, so that the reparse it triggers sees the filters on
+        // the columns they belong to. See [`TabularDataPreviewPane::insert_columns`].
+        let mut shift = ColumnShift::Insert {
+            at: index,
+            count: 1,
+        };
+        self.engine.apply_column_shift(&mut shift);
         let transaction_id = self.apply_buffer_edits(edits, cx);
+        self.engine.record_column_shift(transaction_id, shift);
         self.record_style_shift(
             transaction_id,
             StyleShift::InsertColumns {

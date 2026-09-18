@@ -28,6 +28,12 @@ const CLAUDE_REGISTRY_ID: &str = "claude-acp";
 const CODEX_REGISTRY_ID: &str = "codex-acp";
 const GEMINI_REGISTRY_ID: &str = "gemini";
 
+/// ADR-F55: the folder the sandboxed Claude Code CLI session is pointed at,
+/// inside the project's directory (`agent_ui`'s `CONFIG_DIR_NAME`). The ACP
+/// Claude agent shares it, so that one sign-in serves both; a test there
+/// fails if the two spellings ever drift apart.
+pub const CLI_SESSION_FOLDER: &str = "config";
+
 /// The project's directory name among the sandboxed agents' projects, from
 /// the canonical paths of all its folders: the same folders, however they were
 /// opened and in whatever order, always get the same configuration, and a
@@ -113,16 +119,16 @@ impl SandboxedAgentProfile {
     }
 
     /// The agent's folder in the project's directory (ADR-F49 決定 15, revised
-    /// by ADR-F53).
+    /// by ADR-F53 and again by ADR-F55).
     ///
-    /// Claude's is **not** the sandboxed Claude Code CLI's (`config`): the ACP
-    /// Claude agent drives the Agent SDK from this IDE's harness, which a
-    /// Claude subscription's credentials may not be used for, so the two never
-    /// share a folder and hence never share a sign-in. A folder the CLI signed
-    /// in with is left exactly as it is; this route simply looks elsewhere.
+    /// Claude's **is** the sandboxed Claude Code CLI's ([`CLI_SESSION_FOLDER`]).
+    /// Both are the unmodified `claude` signing itself in through Anthropic's
+    /// own flow, in the same project's sandbox, so sharing the folder means the
+    /// user signs in once and both find it. Neither the sign-in nor anything
+    /// else in the folder is read by this IDE.
     pub fn config_folder_name(&self) -> String {
         match self {
-            Self::Claude => CLAUDE_REGISTRY_ID.to_string(),
+            Self::Claude => CLI_SESSION_FOLDER.to_string(),
             Self::Codex => "codex".to_string(),
             Self::Gemini => "gemini".to_string(),
             Self::Other { id } => format!("agent-{}", folder_safe_name(id)),
@@ -130,16 +136,16 @@ impl SandboxedAgentProfile {
     }
 
     /// The hosts the agent talks to, from each vendor's published code:
-    /// Claude Agent 0.76 (the model API only — ADR-F53 keeps the OAuth token
-    /// exchange `platform.claude.com` out, since this route is API-key only
-    /// and reaching it is what a subscription sign-in needs), codex-acp 1.11
+    /// Claude Agent 0.76 (the model API, and — ADR-F55 — the OAuth token
+    /// exchange `platform.claude.com` the CLI's own `/login` ends at, which is
+    /// the same pair the CLI session is granted), codex-acp 1.11
     /// on `@openai/codex` 0.153 (the API-key and ChatGPT backends, and the
     /// device-code sign-in), Gemini CLI 0.59 (Code Assist, Google's OAuth
     /// token and user-info endpoints, and the API-key endpoint). `None`:
     /// whatever the IDE-wide allowlist permits.
     pub fn hosts(&self) -> Option<&'static [&'static str]> {
         match self {
-            Self::Claude => Some(&["api.anthropic.com"]),
+            Self::Claude => Some(&["api.anthropic.com", "platform.claude.com"]),
             Self::Codex => Some(&["api.openai.com", "chatgpt.com", "auth.openai.com"]),
             Self::Gemini => Some(&[
                 "cloudcode-pa.googleapis.com",
@@ -160,8 +166,10 @@ impl SandboxedAgentProfile {
     /// sign-in that ends with a code the user pastes (Gemini's user-code
     /// flow) or types on a page (Codex's device code) rather than one that
     /// waits for the browser on a localhost port, which the sandbox's network
-    /// namespace does not share. ADR-F53: Claude's is left out, since this
-    /// route offers no sign-in of the agent's at all.
+    /// namespace does not share. Claude's is left out: the agent's `/login`
+    /// prints a URL and takes a pasted code on its own, and the sandbox-wide
+    /// `NO_BROWSER=1` (ADR-F49 決定 25) already covers WSL — the CLI session
+    /// next door is started the same way.
     pub fn environment(&self, config_dir: &Path) -> Vec<(String, String)> {
         self.environment_of(
             &config_dir.to_string_lossy(),
@@ -292,19 +300,21 @@ pub fn agent_config_dir(
     path
 }
 
-/// ADR-F53: `CLAUDE_CONFIG_DIR` for the ACP Claude agent started **outside**
-/// the sandbox — the host route the user confirmed (決定 19), and a Windows
-/// start whose WSL sandbox could not be built.
+/// ADR-F53, revised by ADR-F55: `CLAUDE_CONFIG_DIR` for the ACP Claude agent
+/// started **outside** the sandbox — the host route the user confirmed
+/// (決定 19), and a Windows start whose WSL sandbox could not be built.
 ///
-/// A folder of the fork's own, so that credentials the user signed the
-/// official Claude Code CLI in with — the account's `~/.claude`, or the
-/// sandboxed session's folder — never reach this route, which may only be
-/// used with an API key. Nothing of the CLI's folders is read, moved or
-/// removed; the agent is pointed elsewhere, that is all.
+/// A folder of the fork's own, unlike the sandboxed route's, which is the CLI
+/// session's. Outside the sandbox the CLI runs in the account's own
+/// `~/.claude`, where its credentials sit beside global hooks, MCP servers and
+/// every project's history, and nothing keeps an agent this IDE starts from
+/// writing there. So this route is pointed at a folder of the fork's instead
+/// and signs itself in there: the account's folder is neither read, written,
+/// moved nor removed. That does mean this route asks for its own sign-in, even
+/// where the CLI tab on the same machine already has one.
 ///
-/// One folder for the whole account rather than one per project, unlike the
-/// sandboxed route's: outside the sandbox there is no sign-in to keep apart,
-/// only the agent's own settings and history.
+/// One folder for the whole account rather than one per project: outside the
+/// sandbox there is no per-project isolation to hold up anyway.
 pub fn claude_acp_host_config_dir() -> PathBuf {
     paths::external_agents_dir().join("claude-acp-config")
 }

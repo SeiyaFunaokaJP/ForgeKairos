@@ -462,10 +462,18 @@ message Push {
   optional PushOptions options = 6;
   uint64 askpass_id = 7;
   string remote_branch_name = 8;
+  // Asks for `--force` rather than `--force-with-lease`, alongside `options = FORCE`.
+  //
+  // `FORCE_WITHOUT_LEASE` is not sent any more: a server too old to know it reads the enum as its
+  // default, `SET_UPSTREAM`, and pushes something else entirely. A server too old to know this
+  // field instead keeps the lease, which only ever refuses a push that would have overwritten
+  // somebody else's work.
+  optional bool force_without_lease = 9;
 
   enum PushOptions {
     SET_UPSTREAM = 0;
     FORCE = 1;
+    // Kept for clients that predate `force_without_lease`.
     FORCE_WITHOUT_LEASE = 2;
   }
 }
@@ -508,6 +516,9 @@ message Pull {
 message RemoteMessageResponse {
   string stdout = 1;
   string stderr = 2;
+  // Set by a push that honoured `Push.force_without_lease`. Its absence is how a client tells a
+  // server that ignored the field from one that acted on it.
+  optional bool forced_without_lease = 3;
 }
 
 message BlameBuffer {
@@ -843,6 +854,10 @@ message SearchCommits {
   GitLogSource log_source = 3;
   string query = 4;
   bool case_sensitive = 5;
+  // Keeps only commits whose author header contains this. A server too old to know the field
+  // ignores it: a search that also has a `query` then answers with more commits than were asked
+  // for, and one that has only an author answers with none at all, never with the whole history.
+  optional string author = 6;
 }
 
 message SearchCommitsResponse {

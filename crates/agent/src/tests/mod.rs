@@ -1252,6 +1252,104 @@ async fn test_replayed_tool_call_ids_scoped_across_messages(cx: &mut TestAppCont
     );
 }
 
+/// ADR-F52 A11 (a): the judge's verdict is meta on the tool call, not part of
+/// the model-facing tool use, so reopening a thread has to put it back — a
+/// reopened thread must still show which calls ran without a human reviewing
+/// them.
+#[gpui::test]
+async fn test_replay_restores_the_permission_judge_verdict(cx: &mut TestAppContext) {
+    let ThreadTest {
+        model,
+        thread,
+        project_context,
+        ..
+    } = setup(cx, TestModel::Fake).await;
+    let fake_model = model.as_fake();
+
+    thread.update(cx, |thread, _cx| {
+        thread.add_tool(EchoTool);
+    });
+    thread
+        .update(cx, |thread, cx| {
+            thread.send(ClientUserMessageId::new(), ["Use the echo tool"], cx)
+        })
+        .unwrap();
+    cx.run_until_parked();
+    fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUse(
+        LanguageModelToolUse {
+            id: "call_1".into(),
+            name: EchoTool::NAME.into(),
+            raw_input: json!({"text": "first"}).to_string(),
+            input: language_model::LanguageModelToolUseInput::Json(json!({"text": "first"})),
+            is_input_complete: true,
+            thought_signature: None,
+        },
+    ));
+    fake_model.end_last_completion_stream();
+    cx.run_until_parked();
+    fake_model.send_last_completion_stream_text_chunk("Done");
+    fake_model.end_last_completion_stream();
+    cx.run_until_parked();
+
+    let mut db_thread = thread.read_with(cx, |thread, cx| thread.to_db(cx)).await;
+    let judgement = crate::db::DbPermissionJudgement {
+        state: acp_thread::PermissionJudgeState::Safe,
+        reason: "反響を返すだけです".to_string(),
+        reused: true,
+        model_id: "fake-judge".to_string(),
+        judged_at: chrono::Utc::now(),
+    };
+    db_thread.permission_judgements.insert(
+        language_model::LanguageModelToolUseId::from("call_1"),
+        judgement.clone(),
+    );
+
+    cx.update(|cx| {
+        LanguageModelRegistry::test(cx);
+    });
+    let restored = cx.update(|cx| {
+        let thread = thread.read(cx);
+        let project = thread.project.clone();
+        let context_server_registry = thread.context_server_registry.clone();
+        let templates = thread.templates.clone();
+        cx.new(|cx| {
+            Thread::from_db(
+                acp::SessionId::new("restored"),
+                db_thread,
+                project,
+                project_context.clone(),
+                context_server_registry,
+                templates,
+                cx,
+            )
+        })
+    });
+    restored.update(cx, |thread, _cx| {
+        thread.add_tool(EchoTool);
+    });
+
+    let mut replay_events = restored.update(cx, |thread, cx| thread.replay(cx));
+    let mut replayed = Vec::new();
+    while let Some(event) = replay_events.next().await {
+        if let ThreadEvent::ToolCallUpdate(acp_thread::ToolCallUpdate::UpdateFields(update)) =
+            event.unwrap()
+            && let Some(details) = acp_thread::permission_judge_from_meta(&update.meta)
+        {
+            replayed.push(details);
+        }
+    }
+
+    assert_eq!(
+        replayed,
+        vec![acp_thread::PermissionJudgeDetails {
+            state: acp_thread::PermissionJudgeState::Safe,
+            reason: "反響を返すだけです".to_string(),
+            reused: true,
+        }],
+        "the replayed tool call must carry the verdict the thread was saved with"
+    );
+}
+
 async fn expect_tool_call(events: &mut UnboundedReceiver<Result<ThreadEvent>>) -> acp::ToolCall {
     let event = events
         .next()
@@ -7864,6 +7962,440 @@ async fn test_edit_file_tool_allow_still_prompts_for_local_settings(cx: &mut Tes
 
     let _update = rx.expect_update_fields().await;
     let _auth = rx.expect_authorization().await;
+}
+
+/// Builds the file-editing tools over a project with the given worktrees. The
+/// thread is returned with them because the tools only hold a weak handle to
+/// it.
+async fn setup_file_permission_test(
+    cx: &mut TestAppContext,
+    fs: Arc<FakeFs>,
+    worktrees: &[&Path],
+) -> (
+    Arc<crate::EditFileTool>,
+    Arc<crate::WriteFileTool>,
+    Entity<Thread>,
+) {
+    let project = Project::test(fs, worktrees.iter().copied(), cx).await;
+    let context_server_registry =
+        cx.new(|cx| crate::ContextServerRegistry::new(project.read(cx).context_server_store(), cx));
+    let language_registry = project.read_with(cx, |project, _cx| project.languages().clone());
+    let thread = cx.new(|cx| {
+        crate::Thread::new(
+            project.clone(),
+            cx.new(|_cx| prompt_store::ProjectContext::default()),
+            context_server_registry,
+            crate::Templates::new(),
+            None,
+            cx,
+        )
+    });
+    let action_log = thread.read_with(cx, |thread, _cx| thread.action_log().clone());
+
+    #[allow(clippy::arc_with_non_send_sync)]
+    let edit_tool = Arc::new(crate::EditFileTool::new(
+        project.clone(),
+        thread.downgrade(),
+        action_log.clone(),
+        language_registry.clone(),
+    ));
+    #[allow(clippy::arc_with_non_send_sync)]
+    let write_tool = Arc::new(crate::WriteFileTool::new(
+        project,
+        thread.downgrade(),
+        action_log,
+        language_registry,
+    ));
+    (edit_tool, write_tool, thread)
+}
+
+/// A project-relative path spelled the way the permission cards display it, so
+/// the assertions read the same under both path styles.
+fn display_project_path(unix_path: &str) -> String {
+    let path = util::rel_path::RelPath::new_test(unix_path);
+    path.display(util::paths::PathStyle::local()).into_owned()
+}
+
+fn write_file_input(path: &str) -> crate::WriteFileToolInput {
+    crate::WriteFileToolInput {
+        path: path.into(),
+        content: "書き込み\n".into(),
+    }
+}
+
+fn set_tool_permission_default(cx: &mut TestAppContext, mode: settings::ToolPermissionMode) {
+    cx.update(|cx| {
+        let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+        settings.tool_permissions.default = mode;
+        agent_settings::AgentSettings::override_global(settings, cx);
+    });
+}
+
+/// Waits for the permission card, skipping the tool-call field updates that
+/// precede it.
+async fn next_permission_card(
+    events: &mut UnboundedReceiver<Result<ThreadEvent>>,
+) -> ToolCallAuthorization {
+    loop {
+        let event = events
+            .next()
+            .await
+            .expect("権限カードの前にイベントが尽きた")
+            .unwrap();
+        if let ThreadEvent::ToolCallAuthorization(authorization) = event {
+            return authorization;
+        }
+    }
+}
+
+#[track_caller]
+fn assert_no_permission_card(events: &mut UnboundedReceiver<Result<ThreadEvent>>) {
+    while let Ok(Ok(event)) = events.try_recv() {
+        assert!(
+            !matches!(event, ThreadEvent::ToolCallAuthorization(_)),
+            "確認カードが出た: {event:?}"
+        );
+    }
+}
+
+/// A7: the card for the project's `.zed` folder is always shown, so the
+/// standing approvals it used to offer wrote a rule that neither this card nor
+/// the next one ever reads.
+#[gpui::test]
+async fn test_edit_file_tool_sensitive_settings_card_offers_only_once_only_choices(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree("/root", json!({".zed": {"settings.json": "{}"}}))
+        .await;
+    let (edit_tool, _write_tool, _thread) =
+        setup_file_permission_test(cx, fs, &["/root".as_ref()]).await;
+
+    let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+    let _task = cx.update(|cx| {
+        edit_tool.run(
+            ToolInput::resolved(crate::EditFileToolInput {
+                path: "root/.zed/settings.json".into(),
+                edits: vec![],
+            }),
+            event_stream,
+            cx,
+        )
+    });
+
+    let authorization = next_permission_card(&mut rx).await;
+    let PermissionOptions::Flat(options) = authorization.options else {
+        panic!("機微な設定のカードは許可 / 拒否の 2 択のはず");
+    };
+    let labels: Vec<&str> = options.iter().map(|option| option.name.as_ref()).collect();
+    assert_eq!(labels, vec!["許可", "拒否"]);
+}
+
+/// Zed loads `.vscode/tasks.json` and `.vscode/launch.json` as its own tasks
+/// and debug configurations, so writing one changes what the user's next run
+/// executes — the same reach as `.zed/tasks.json`, and so the same card.
+#[gpui::test]
+async fn test_edit_file_tool_vscode_run_configs_are_sensitive(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        "/root",
+        json!({".vscode": {
+            "tasks.json": "{}",
+            "launch.json": "{}",
+            "settings.json": "{}",
+            "extensions.json": "{}",
+        }}),
+    )
+    .await;
+    let (_edit_tool, write_tool, _thread) =
+        setup_file_permission_test(cx, fs, &["/root".as_ref()]).await;
+    set_tool_permission_default(cx, settings::ToolPermissionMode::Allow);
+
+    for file_name in ["tasks.json", "launch.json"] {
+        let path = format!("root/.vscode/{file_name}");
+        let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+        let _task = cx.update(|cx| {
+            write_tool.clone().run(
+                ToolInput::resolved(write_file_input(&path)),
+                event_stream,
+                cx,
+            )
+        });
+
+        let authorization = next_permission_card(&mut rx).await;
+        assert_eq!(
+            authorization.tool_call.fields.title,
+            Some(format!("`{path}` を編集 (プロジェクトの設定)")),
+        );
+        let PermissionOptions::Flat(options) = authorization.options else {
+            panic!("{path}: 機微な設定のカードは許可 / 拒否の 2 択のはず");
+        };
+        let labels: Vec<&str> = options.iter().map(|option| option.name.as_ref()).collect();
+        assert_eq!(labels, vec!["許可", "拒否"]);
+    }
+}
+
+/// ...and only those two: the rest of `.vscode` is never read by Zed, so it
+/// keeps behaving like any other project file.
+#[gpui::test]
+async fn test_edit_file_tool_other_vscode_files_are_not_sensitive(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        "/root",
+        json!({".vscode": {
+            "settings.json": "{}",
+            "extensions.json": "{}",
+            "tasks": {"tasks.json": "{}"},
+        }}),
+    )
+    .await;
+    let (_edit_tool, write_tool, _thread) =
+        setup_file_permission_test(cx, fs, &["/root".as_ref()]).await;
+    set_tool_permission_default(cx, settings::ToolPermissionMode::Allow);
+
+    // The last one is `tasks.json` but not a direct child of `.vscode`, which
+    // is what the settings loader requires too.
+    for path in [
+        "root/.vscode/settings.json",
+        "root/.vscode/extensions.json",
+        "root/.vscode/tasks/tasks.json",
+    ] {
+        let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+        let task = cx.update(|cx| {
+            write_tool.clone().run(
+                ToolInput::resolved(write_file_input(path)),
+                event_stream,
+                cx,
+            )
+        });
+
+        cx.run_until_parked();
+        assert_no_permission_card(&mut rx);
+        assert!(task.await.is_ok(), "{path} の書き込みが失敗した");
+    }
+}
+
+/// A8: a new file that only one worktree could hold is in the project, even
+/// though the project-path lookup can't name it yet.
+#[gpui::test]
+async fn test_write_file_tool_allow_skips_confirmation_for_new_path_in_single_worktree(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree("/root", json!({"src": {"main.rs": "fn main() {}"}}))
+        .await;
+    let (_edit_tool, write_tool, _thread) =
+        setup_file_permission_test(cx, fs, &["/root".as_ref()]).await;
+    set_tool_permission_default(cx, settings::ToolPermissionMode::Allow);
+
+    for path in ["notes.md", "src/new.rs"] {
+        let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+        let task = cx.update(|cx| {
+            write_tool.clone().run(
+                ToolInput::resolved(write_file_input(path)),
+                event_stream,
+                cx,
+            )
+        });
+
+        cx.run_until_parked();
+        assert_no_permission_card(&mut rx);
+        // The write must go through rather than merely skip the card.
+        assert!(task.await.is_ok(), "{path} の書き込みが失敗した");
+    }
+}
+
+/// A8: with two worktrees a bare `notes.md` names no place in particular, so
+/// the user picks instead of us.
+#[gpui::test]
+async fn test_write_file_tool_allow_still_prompts_for_new_path_with_two_worktrees(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree("/root", json!({"src": {"main.rs": "fn main() {}"}}))
+        .await;
+    fs.insert_tree("/other", json!({"src": {"lib.rs": ""}}))
+        .await;
+    let (_edit_tool, write_tool, _thread) =
+        setup_file_permission_test(cx, fs.clone(), &["/root".as_ref(), "/other".as_ref()]).await;
+    set_tool_permission_default(cx, settings::ToolPermissionMode::Allow);
+
+    let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+    let task = cx.update(|cx| {
+        write_tool.run(
+            ToolInput::resolved(write_file_input("notes.md")),
+            event_stream,
+            cx,
+        )
+    });
+
+    let authorization = next_permission_card(&mut rx).await;
+    assert_eq!(
+        authorization.tool_call.fields.title,
+        Some(format!(
+            "`notes.md` を編集 (どのワークツリーか曖昧: 承認すると `{}` に書かれます)",
+            display_project_path("root/notes.md")
+        ))
+    );
+
+    // The card named a worktree, so approving it has to write there.
+    authorization
+        .response
+        .send(acp_thread::SelectedPermissionOutcome::new(
+            acp::PermissionOptionId::new("allow"),
+            acp::PermissionOptionKind::AllowOnce,
+        ))
+        .expect("authorization response should send");
+    assert!(task.await.is_ok());
+    assert!(
+        fs.load("/root/notes.md".as_ref())
+            .await
+            .unwrap()
+            .contains("書き込み")
+    );
+    assert!(!fs.is_file("/other/notes.md".as_ref()).await);
+}
+
+/// 決定 1: when a new relative path could land in more than one worktree, the
+/// card says which one the write would silently pick instead of calling the
+/// path "outside the project".
+#[gpui::test]
+async fn test_write_file_tool_card_names_the_worktree_a_new_path_would_land_in(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree("/root", json!({"src": {"main.rs": ""}}))
+        .await;
+    fs.insert_tree("/other", json!({"src": {"lib.rs": ""}}))
+        .await;
+    let (_edit_tool, write_tool, _thread) =
+        setup_file_permission_test(cx, fs, &["/root".as_ref(), "/other".as_ref()]).await;
+    set_tool_permission_default(cx, settings::ToolPermissionMode::Allow);
+
+    // `src` exists in both worktrees, so `src/new.rs` is ambiguous too — and
+    // the first worktree is the one `resolve_path` would take.
+    let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+    let _task = cx.update(|cx| {
+        write_tool.run(
+            ToolInput::resolved(write_file_input("src/new.rs")),
+            event_stream,
+            cx,
+        )
+    });
+
+    let authorization = next_permission_card(&mut rx).await;
+    assert_eq!(
+        authorization.tool_call.fields.title,
+        Some(format!(
+            "`src/new.rs` を編集 (どのワークツリーか曖昧: 承認すると `{}` に書かれます)",
+            display_project_path("root/src/new.rs")
+        ))
+    );
+}
+
+/// A8: a relative path counts as a new file in the project only when it is
+/// written as one — `..` keeps the card even where it normalizes away to a
+/// path inside the worktree.
+#[gpui::test]
+async fn test_write_file_tool_allow_still_prompts_for_relative_path_with_dotdot(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree("/root", json!({"src": {"main.rs": "fn main() {}"}}))
+        .await;
+    let (_edit_tool, write_tool, _thread) =
+        setup_file_permission_test(cx, fs, &["/root".as_ref()]).await;
+    set_tool_permission_default(cx, settings::ToolPermissionMode::Allow);
+
+    let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+    let _task = cx.update(|cx| {
+        write_tool.clone().run(
+            ToolInput::resolved(write_file_input("src/../notes.md")),
+            event_stream,
+            cx,
+        )
+    });
+
+    let authorization = next_permission_card(&mut rx).await;
+    assert_eq!(
+        authorization.tool_call.fields.title,
+        Some("`src/../notes.md` を編集 (プロジェクトの外)".into())
+    );
+
+    // A path that leaves the worktree is refused before the card: the tool
+    // can't place it at all, so there is nothing to approve.
+    let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+    let task = cx.update(|cx| {
+        write_tool.run(
+            ToolInput::resolved(write_file_input("../outside.txt")),
+            event_stream,
+            cx,
+        )
+    });
+
+    cx.run_until_parked();
+    assert_no_permission_card(&mut rx);
+    assert!(
+        task.await.is_err(),
+        "ワークツリーの外へ出る相対パスは書き込めてはいけない"
+    );
+}
+
+/// A8: `.git` is never a place a new file quietly lands in — not even for a
+/// user who cleared `file_scan_exclusions`, which is what puts `.git` into the
+/// worktree snapshot in the first place.
+#[gpui::test]
+async fn test_write_file_tool_allow_still_prompts_for_a_new_path_under_dot_git(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+    cx.update(|cx| {
+        settings::SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project.worktree.file_scan_exclusions =
+                    Some(settings::SplicingVec::from(Vec::new()));
+            });
+        });
+    });
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        "/root",
+        json!({".git": {"config": ""}, "src": {"main.rs": ""}}),
+    )
+    .await;
+    let (_edit_tool, write_tool, _thread) =
+        setup_file_permission_test(cx, fs, &["/root".as_ref()]).await;
+    set_tool_permission_default(cx, settings::ToolPermissionMode::Allow);
+
+    let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+    let _task = cx.update(|cx| {
+        write_tool.run(
+            ToolInput::resolved(write_file_input(".git/hooks-note")),
+            event_stream,
+            cx,
+        )
+    });
+
+    let authorization = next_permission_card(&mut rx).await;
+    assert_eq!(
+        authorization.tool_call.fields.title,
+        Some("`.git/hooks-note` を編集 (プロジェクトの外)".into())
+    );
 }
 
 #[gpui::test]

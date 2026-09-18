@@ -362,21 +362,19 @@ impl MarkdownElement {
             builder.pop_div();
         }
 
-        let actual_header_column_count = html_table_columns_count(&table.header);
-        let actual_body_column_count = html_table_columns_count(&table.body);
-        let max_column_count = actual_header_column_count.max(actual_body_column_count);
+        let grid = HtmlTableGrid::of(table);
+        let max_column_count = grid.column_count();
 
         if max_column_count == 0 {
             return;
         }
 
         let total_rows = table.header.len() + table.body.len();
-        let mut grid_occupied = vec![vec![false; max_column_count]; total_rows];
 
         let column_min_widths = self.style.table_overflow_x_scroll.then(|| {
             html_table_column_min_widths(
                 table,
-                max_column_count,
+                &grid,
                 self.style
                     .base_text_style
                     .font_size
@@ -425,16 +423,10 @@ impl MarkdownElement {
         );
 
         for (row_index, row) in table.header.iter().chain(table.body.iter()).enumerate() {
-            let mut column_index = 0;
-
-            for cell in &row.columns {
-                while column_index < max_column_count && grid_occupied[row_index][column_index] {
-                    column_index += 1;
-                }
-
-                if column_index >= max_column_count {
+            for (cell_index, cell) in row.columns.iter().enumerate() {
+                let Some(column_index) = grid.cell_column(row_index, cell_index) else {
                     break;
-                }
+                };
 
                 let max_span = max_column_count.saturating_sub(column_index);
                 let text_align = match cell.alignment {
@@ -494,24 +486,13 @@ impl MarkdownElement {
                 builder.pop_div();
                 builder.pop_div();
                 builder.pop_text_style();
-
-                for row_offset in 0..cell.row_span {
-                    for column_offset in 0..cell.col_span {
-                        if row_index + row_offset < total_rows
-                            && column_index + column_offset < max_column_count
-                        {
-                            grid_occupied[row_index + row_offset][column_index + column_offset] =
-                                true;
-                        }
-                    }
-                }
-
-                column_index += cell.col_span;
             }
 
-            while column_index < max_column_count {
-                if grid_occupied[row_index][column_index] {
-                    column_index += 1;
+            // Whatever the row's own cells and the spans reaching into it from
+            // above leave empty still needs a box, or the grid would pull the
+            // following rows up into the hole.
+            for column_index in 0..max_column_count {
+                if grid.is_occupied(row_index, column_index) {
                     continue;
                 }
 
@@ -527,7 +508,6 @@ impl MarkdownElement {
                     markdown_end,
                 );
                 builder.pop_div();
-                column_index += 1;
             }
         }
 
@@ -751,40 +731,124 @@ fn html_list_item_prefix(order: usize, ordered: bool, depth: usize) -> String {
     }
 }
 
+/// The widest an HTML table may get. A `colspan` is a number the document is
+/// free to make absurd, and every column of every row becomes an element, so
+/// without a ceiling one cell can ask for a grid that does not fit in memory.
+/// No table anyone can read comes anywhere near this.
+const MAX_TABLE_COLUMNS: usize = 512;
+
+/// Where an HTML table's cells land once `rowspan` and `colspan` are resolved.
+///
+/// A cell that spans rows keeps its columns busy in the rows below it, so the
+/// cells of those rows start further right than their own `colspan`s alone
+/// would say. Counting `colspan`s is therefore not enough, neither for the
+/// column each cell belongs to nor for how many columns the table has.
+struct HtmlTableGrid {
+    /// Which columns of each row are taken, the header rows first.
+    occupied: Vec<Vec<bool>>,
+    /// The column each cell of each row starts at, in the same row order.
+    cell_columns: Vec<Vec<usize>>,
+    column_count: usize,
+}
+
+impl HtmlTableGrid {
+    fn of(table: &ParsedHtmlTable) -> Self {
+        Self::new(table.header.iter().chain(table.body.iter()))
+    }
+
+    fn new<'a>(rows: impl Iterator<Item = &'a ParsedHtmlTableRow>) -> Self {
+        // Every row has to exist before the first cell is placed: a `rowspan`
+        // claims columns in rows that have not been walked yet.
+        let rows = rows.collect::<Vec<_>>();
+        let mut grid = Self {
+            occupied: vec![Vec::new(); rows.len()],
+            cell_columns: Vec::with_capacity(rows.len()),
+            column_count: 0,
+        };
+
+        for (row_index, row) in rows.iter().enumerate() {
+            let mut columns = Vec::with_capacity(row.columns.len());
+            let mut column_index = 0;
+
+            for cell in &row.columns {
+                while grid.is_occupied(row_index, column_index) {
+                    column_index += 1;
+                }
+                if column_index >= MAX_TABLE_COLUMNS {
+                    // The cells past the ceiling get no column at all, which is
+                    // what `cell_column` returning `None` tells the renderer.
+                    break;
+                }
+                let col_span = cell.col_span.min(MAX_TABLE_COLUMNS - column_index);
+                grid.occupy(row_index, column_index, cell.row_span, col_span);
+                columns.push(column_index);
+                grid.column_count = grid.column_count.max(column_index + col_span);
+                column_index += col_span;
+            }
+
+            grid.cell_columns.push(columns);
+        }
+
+        grid
+    }
+
+    fn column_count(&self) -> usize {
+        self.column_count
+    }
+
+    fn is_occupied(&self, row_index: usize, column_index: usize) -> bool {
+        self.occupied
+            .get(row_index)
+            .and_then(|row| row.get(column_index))
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// The column the `cell_index`th cell of `row_index` starts at, or `None`
+    /// when the grid has no such cell.
+    fn cell_column(&self, row_index: usize, cell_index: usize) -> Option<usize> {
+        self.cell_columns.get(row_index)?.get(cell_index).copied()
+    }
+
+    fn occupy(&mut self, row_index: usize, column_index: usize, row_span: usize, col_span: usize) {
+        let end = column_index + col_span;
+        for row_offset in 0..row_span {
+            // A `rowspan` past the last row claims nothing below the table.
+            let Some(row) = self.occupied.get_mut(row_index + row_offset) else {
+                break;
+            };
+            if row.len() < end {
+                row.resize(end, false);
+            }
+            for column in row.get_mut(column_index..end).into_iter().flatten() {
+                *column = true;
+            }
+        }
+    }
+}
+
 /// Floors for an HTML table's columns, the same ones a markdown table gets, so
 /// a table that outgrows the pane scrolls instead of wrapping to one character
 /// per line. Cells that span several columns are left out: their text says
 /// nothing about how wide any single column has to be.
 fn html_table_column_min_widths(
     table: &ParsedHtmlTable,
-    column_count: usize,
+    grid: &HtmlTableGrid,
     font_size: Pixels,
     rem_size: Pixels,
 ) -> Vec<Pixels> {
-    let mut widths = TableColumnMinWidths::new(column_count, font_size);
-    for row in table.header.iter().chain(table.body.iter()) {
-        let mut column_index = 0;
-        for cell in &row.columns {
+    let mut widths = TableColumnMinWidths::new(grid.column_count(), font_size);
+    for (row_index, row) in table.header.iter().chain(table.body.iter()).enumerate() {
+        for (cell_index, cell) in row.columns.iter().enumerate() {
+            let Some(column_index) = grid.cell_column(row_index, cell_index) else {
+                break;
+            };
             if cell.col_span == 1 {
                 widths.observe_cell(column_index, &html_paragraph_text(&cell.children));
             }
-            column_index += cell.col_span;
         }
     }
     widths.finish(rem_size)
-}
-
-fn html_table_columns_count(rows: &[ParsedHtmlTableRow]) -> usize {
-    let mut actual_column_count = 0;
-    for row in rows {
-        actual_column_count = actual_column_count.max(
-            row.columns
-                .iter()
-                .map(|column| column.col_span)
-                .sum::<usize>(),
-        );
-    }
-    actual_column_count
 }
 
 #[cfg(test)]
@@ -794,7 +858,8 @@ mod tests {
     use gpui::{Entity, TestAppContext, size};
     use ui::prelude::*;
 
-    use crate::html::html_parser::html_details_key;
+    use super::{HtmlTableGrid, MAX_TABLE_COLUMNS, html_table_column_min_widths};
+    use crate::html::html_parser::{ParsedHtmlElement, ParsedHtmlTable, html_details_key};
     use crate::{
         CodeBlockRenderer, CopyButtonVisibility, Markdown, MarkdownElement, MarkdownOptions,
         MarkdownStyle,
@@ -1265,6 +1330,177 @@ mod tests {
             wrapped.size.height,
             scrolling.size.height
         );
+    }
+
+    fn parsed_table(html: &str) -> ParsedHtmlTable {
+        let parsed = crate::html::html_parser::parse_html_block(html, 0..html.len())
+            .expect("the block should parse");
+        match parsed.children.into_iter().next() {
+            Some(ParsedHtmlElement::Table(table)) => table,
+            other => panic!("expected a table, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_row_span_pushes_the_cells_below_it_to_the_right() {
+        let table = parsed_table(concat!(
+            "<table><tbody>",
+            "<tr><td rowspan=\"2\">a</td></tr>",
+            "<tr><td>b</td><td>c</td></tr>",
+            "</tbody></table>",
+        ));
+        let grid = HtmlTableGrid::of(&table);
+
+        assert_eq!(
+            grid.column_count(),
+            3,
+            "`a` keeps column 0 of the second row, so `b` and `c` sit beside it"
+        );
+        assert_eq!(grid.cell_column(0, 0), Some(0));
+        assert_eq!(grid.cell_column(1, 0), Some(1));
+        assert_eq!(grid.cell_column(1, 1), Some(2));
+        assert!(
+            grid.is_occupied(1, 0),
+            "the span reaches into the second row"
+        );
+        assert!(!grid.is_occupied(2, 0), "and no further");
+    }
+
+    #[test]
+    fn a_row_span_in_the_header_reaches_into_the_body() {
+        let table = parsed_table(concat!(
+            "<table>",
+            "<thead><tr><th rowspan=\"2\">h</th><th>i</th></tr></thead>",
+            "<tbody><tr><td>b</td></tr></tbody>",
+            "</table>",
+        ));
+        let grid = HtmlTableGrid::of(&table);
+
+        assert_eq!(grid.column_count(), 2);
+        assert_eq!(
+            grid.cell_column(1, 0),
+            Some(1),
+            "the body row starts under the header cell the span leaves free"
+        );
+    }
+
+    #[test]
+    fn a_column_floor_is_measured_against_the_column_the_cell_lands_in() {
+        let table = parsed_table(concat!(
+            "<table><tbody>",
+            "<tr><td rowspan=\"2\">R</td><td>短</td></tr>",
+            "<tr><td>とても長い見出しの文字列</td></tr>",
+            "</tbody></table>",
+        ));
+        let grid = HtmlTableGrid::of(&table);
+        let widths = html_table_column_min_widths(&table, &grid, px(14.), px(16.));
+
+        let (Some(first), Some(second)) = (widths.first(), widths.get(1)) else {
+            panic!("the table has two columns, got {widths:?}");
+        };
+        assert!(
+            second > first,
+            "the long cell of the second row belongs to column 1, got {widths:?}"
+        );
+    }
+
+    #[test]
+    fn an_absurd_span_cannot_ask_for_a_grid_that_does_not_fit_in_memory() {
+        for span in ["99999", "4294967296", "18446744073709551615"] {
+            let table = parsed_table(&format!(
+                "<table><tbody><tr><td colspan=\"{span}\">a</td></tr><tr><td>b</td></tr></tbody></table>",
+            ));
+            let grid = HtmlTableGrid::of(&table);
+
+            assert!(
+                grid.column_count() <= MAX_TABLE_COLUMNS,
+                "colspan=\"{span}\" gave {} columns",
+                grid.column_count()
+            );
+            assert_eq!(grid.cell_column(1, 0), Some(0));
+        }
+
+        let table = parsed_table(concat!(
+            "<table><tbody>",
+            "<tr><td rowspan=\"18446744073709551615\">a</td><td>b</td></tr>",
+            "<tr><td>c</td></tr>",
+            "</tbody></table>",
+        ));
+        let grid = HtmlTableGrid::of(&table);
+        assert_eq!(
+            grid.cell_column(1, 0),
+            Some(1),
+            "a rowspan past the last row claims nothing below the table"
+        );
+    }
+
+    #[test]
+    fn a_span_that_is_not_a_positive_number_counts_as_one() {
+        // HTML gives `rowspan="0"` the rest of the rows, but treating it as one
+        // is what the parser already does, and a cell that occupies nothing at
+        // all would leave the renderer drawing a filler on top of it.
+        let table = parsed_table(concat!(
+            "<table><tbody>",
+            "<tr><td colspan=\"0\">a</td><td rowspan=\"0\">b</td></tr>",
+            "<tr><td colspan=\"-3\">c</td><td colspan=\"x\">d</td></tr>",
+            "</tbody></table>",
+        ));
+        let grid = HtmlTableGrid::of(&table);
+
+        assert_eq!(grid.column_count(), 2);
+        assert_eq!(grid.cell_column(0, 0), Some(0));
+        assert_eq!(grid.cell_column(0, 1), Some(1));
+        assert_eq!(grid.cell_column(1, 0), Some(0));
+        assert_eq!(grid.cell_column(1, 1), Some(1));
+        for row_index in 0..2 {
+            for column_index in 0..2 {
+                assert!(
+                    grid.is_occupied(row_index, column_index),
+                    "({row_index}, {column_index}) has a cell in it"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_row_span_and_a_column_span_on_the_same_cell_claim_a_rectangle() {
+        let table = parsed_table(concat!(
+            "<table><tbody>",
+            "<tr><td rowspan=\"2\" colspan=\"2\">a</td><td>b</td></tr>",
+            "<tr><td>c</td></tr>",
+            "<tr><td>d</td><td>e</td><td>f</td></tr>",
+            "</tbody></table>",
+        ));
+        let grid = HtmlTableGrid::of(&table);
+
+        assert_eq!(grid.column_count(), 3);
+        assert_eq!(grid.cell_column(0, 1), Some(2));
+        assert_eq!(grid.cell_column(1, 0), Some(2), "`c` clears the rectangle");
+        assert_eq!(grid.cell_column(2, 0), Some(0), "which ends after two rows");
+        assert!(grid.is_occupied(1, 1));
+        assert_eq!(grid.cell_column(2, 2), Some(2));
+    }
+
+    #[test]
+    fn a_header_less_table_and_an_empty_row_still_have_a_grid() {
+        // No `<thead>`, a header row spelled with `<th>` inside the body, and an
+        // empty `<tr>` the parser drops on the way in.
+        let table = parsed_table(concat!(
+            "<table><tbody>",
+            "<tr><th rowspan=\"2\">h</th><th>i</th></tr>",
+            "<tr></tr>",
+            "<tr><td>a</td></tr>",
+            "</tbody></table>",
+        ));
+        let grid = HtmlTableGrid::of(&table);
+
+        assert_eq!(grid.column_count(), 2);
+        assert_eq!(
+            grid.cell_column(1, 0),
+            Some(1),
+            "the row under the header span starts beside it"
+        );
+        assert!(grid.cell_column(1, 1).is_none(), "and has nothing else");
     }
 
     #[gpui::test]

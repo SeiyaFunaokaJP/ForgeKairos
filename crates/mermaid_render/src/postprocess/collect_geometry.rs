@@ -1,21 +1,41 @@
-//! Collects a coordinate map of a flowchart's nodes and edge labels, so that a
+//! Collects a coordinate map of a diagram's nodes and edge labels, so that a
 //! rendered diagram can be hit-tested back to the mermaid source.
 //!
-//! merman keeps the diagram's structure in the SVG it emits: every flowchart
-//! node is a `<g class="node …" id="{diagram_id}-flowchart-{node id}-{n}">`
-//! wrapping a shape that carries the `label-container` class, and every edge is
-//! a `<path data-id="L_{from}_{to}_{n}">` whose label (when it has one) is a
-//! `<g class="label" data-id="L_{from}_{to}_{n}">` holding a
-//! `<rect class="background">`. This pass walks the event stream and turns that
-//! into a [`DiagramGeometry`] in `viewBox` coordinates.
+//! merman keeps the diagram's structure in the SVG it emits, in a spelling that
+//! differs per diagram kind because each kind has its own renderer:
 //!
-//! It runs after [`super::center_edge_labels`] so that the edge label boxes it
-//! reports are the corrected ones, and before the passes that only rewrite
-//! styles and classes, which never move anything.
+//! * flowchart: `<g class="node …" id="{diagram_id}-flowchart-{node id}-{n}">`
+//!   wrapping a shape that carries the `label-container` class, and
+//!   `<path data-id="L_{from}_{to}_{n}">` per edge, whose label (when it has
+//!   one) is a `<g class="label" data-id="L_{from}_{to}_{n}">` holding a
+//!   `<rect class="background">`.
+//! * ER: `<g class="node …" id="{diagram_id}-entity-{name}-{n}">` around a
+//!   `label-container` (an entity with no attributes) or an `outer-path` group
+//!   (one with attributes), and
+//!   `<path data-id="id_{from element id}_{to element id}_{n}">` per
+//!   relationship, whose label is spelled like a flowchart's.
+//! * state: `<g class="node statediagram-state" id="state-{state id}-{n}">`,
+//!   and `<path data-id="edge{n}">` per transition, where `{n}` numbers the
+//!   diagram's transitions in the order they were written. A composite state
+//!   nests a whole `<g class="root">` — its own sections, under one more
+//!   translate — inside the enclosing `<g class="nodes">`.
 //!
-//! Only flowcharts are mapped; for every other diagram kind the result stays
-//! empty, since neither the node ids nor the source syntax of the other kinds
-//! line up with what the editing UI needs.
+//! State and ER labels are drawn through `<foreignObject>`, which merman's
+//! resvg-safe pipeline replaces with a `<text>` (and, for an edge label, a
+//! background `<rect>`) appended at the end of the document, carrying absolute
+//! coordinates and the ancestors' classes but no id. Those are matched back
+//! onto the boxes collected above by position, and only when exactly one box
+//! claims them.
+//!
+//! This pass walks the event stream and turns all of that into a
+//! [`DiagramGeometry`] in `viewBox` coordinates. It runs after
+//! [`super::center_edge_labels`] so that the edge label boxes it reports are
+//! the corrected ones, and before the passes that only rewrite styles and
+//! classes, which never move anything.
+//!
+//! Every other diagram kind comes back empty rather than guessed at, since
+//! neither the node ids nor the source syntax of the other kinds line up with
+//! what the editing UI needs.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -102,10 +122,19 @@ struct Frame {
     usable: bool,
 }
 
+/// The diagram kinds whose SVG this pass can read.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum DiagramKind {
+    Flowchart,
+    Er,
+    State,
+}
+
 /// The section of the diagram currently being walked. merman groups a
-/// flowchart into `<g class="nodes">`, `<g class="edgePaths">` and
+/// diagram into `<g class="nodes">`, `<g class="edgePaths">` and
 /// `<g class="edgeLabels">`; anything outside them (clusters, markers, defs)
-/// is not mapped.
+/// is not mapped. A composite state nests another set of them inside
+/// `<g class="nodes">`, so the open sections are kept as a stack.
 #[derive(Clone, Copy, PartialEq)]
 enum Section {
     Nodes,
@@ -115,6 +144,9 @@ enum Section {
 
 struct PendingNode {
     node_id: String,
+    /// The element's own id with the diagram's prefix removed
+    /// (`entity-顧客-0`), which is how an ER relationship names its ends.
+    element_suffix: String,
     start_depth: usize,
     rows: Vec<String>,
     bounds: Option<BoundingBox>,
@@ -128,24 +160,57 @@ struct PendingEdgeLabel {
     start_depth: usize,
     rows: Vec<String>,
     bounds: Option<BoundingBox>,
+    /// Where the label group itself is anchored, which is the point the
+    /// replacement for a `<foreignObject>` label is drawn at.
+    anchor: (f64, f64),
+}
+
+/// What a `<text>` that replaced a `<foreignObject>` label belongs to.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FallbackRole {
+    Node,
+    Edge,
+}
+
+/// A label merman drew outside the element it belongs to, to be matched back
+/// onto that element by position.
+struct PendingFallback {
+    role: FallbackRole,
+    start_depth: usize,
+    text: String,
+    anchor: Option<(f64, f64)>,
+    bounds: Option<BoundingBox>,
 }
 
 struct CollectGeometry<I> {
     inner: I,
     sink: Rc<RefCell<DiagramGeometry>>,
-    /// `{svg id}-flowchart-`, the prefix merman puts in front of every node id.
-    node_id_prefix: String,
-    is_flowchart: bool,
+    /// The `id` of the root `<svg>`, which prefixes the element ids of every
+    /// kind but the state diagram.
+    svg_id: String,
+    kind: Option<DiagramKind>,
     view_box: [f32; 4],
     depth: usize,
     frames: Vec<Frame>,
-    section: Option<(Section, usize)>,
+    sections: Vec<(Section, usize)>,
     node: Option<PendingNode>,
     edge_label: Option<PendingEdgeLabel>,
+    fallback: Option<PendingFallback>,
     nodes: Vec<NodeGeometry>,
+    /// The element id suffix of each collected node, positionally matching
+    /// `nodes`.
+    node_suffixes: Vec<String>,
     edge_ids: Vec<String>,
-    edge_labels: Vec<(String, Option<String>, Option<[f32; 4]>)>,
+    edge_labels: Vec<EdgeLabel>,
+    fallbacks: Vec<PendingFallback>,
     finished: bool,
+}
+
+struct EdgeLabel {
+    edge_id: String,
+    text: Option<String>,
+    rect: Option<[f32; 4]>,
+    anchor: (f64, f64),
 }
 
 /// An attribute's value, read for measurement only.
@@ -452,56 +517,91 @@ impl<I> CollectGeometry<I> {
         })
     }
 
-    /// Strips the `{svg id}-flowchart-` prefix and the `-{n}` suffix merman
-    /// wraps around a node's own id.
-    fn plain_node_id(&self, element_id: &str) -> Option<String> {
-        let rest = element_id
-            .strip_prefix(self.node_id_prefix.as_str())
-            .or_else(|| {
-                element_id
-                    .find("-flowchart-")
-                    .map(|index| &element_id[index + "-flowchart-".len()..])
-            })?;
-        let (name, index) = rest.rsplit_once('-')?;
-        if name.is_empty() || index.is_empty() || !index.bytes().all(|byte| byte.is_ascii_digit()) {
-            return None;
-        }
-        Some(name.to_string())
+    /// Strips the prefix and the `-{n}` suffix merman wraps around a node's own
+    /// id. The prefix is the diagram's own id followed by the kind's word, and
+    /// a state diagram leaves the diagram id out.
+    fn plain_node_id(&self, element_id: &str, kind: DiagramKind) -> Option<String> {
+        let infix = match kind {
+            DiagramKind::Flowchart => "-flowchart-",
+            DiagramKind::Er => "-entity-",
+            DiagramKind::State => return strip_index(element_id.strip_prefix("state-")?),
+        };
+        let prefixed = format!("{}{infix}", self.svg_id);
+        let rest = element_id.strip_prefix(prefixed.as_str()).or_else(|| {
+            element_id
+                .find(infix)
+                .map(|index| &element_id[index + infix.len()..])
+        })?;
+        strip_index(rest)
+    }
+
+    /// The element's id with the diagram's own id and the separating `-`
+    /// removed, which is how an ER relationship's `data-id` names its ends.
+    fn element_suffix(&self, element_id: &str) -> String {
+        element_id
+            .strip_prefix(self.svg_id.as_str())
+            .and_then(|rest| rest.strip_prefix('-'))
+            .unwrap_or(element_id)
+            .to_string()
     }
 
     fn on_start(&mut self, element: &BytesStart<'_>, depth: usize, empty: bool, frame: Frame) {
-        if !self.is_flowchart {
+        let Some(kind) = self.kind else {
             if element.name().as_ref() == b"svg" {
                 self.read_svg_root(element);
             }
             return;
-        }
+        };
 
-        if self.section.is_none() {
-            let section = if has_class(element, "nodes") {
-                Some(Section::Nodes)
-            } else if has_class(element, "edgePaths") {
-                Some(Section::EdgePaths)
-            } else if has_class(element, "edgeLabels") {
-                Some(Section::EdgeLabels)
-            } else {
-                None
-            };
-            if let Some(section) = section {
-                self.section = Some((section, depth));
-                return;
+        // The fallback labels sit outside the diagram's sections, and carry the
+        // classes of the element they were lifted out of, so they have to be
+        // recognized before anything else would read those classes as a section
+        // or a node of its own.
+        if self.fallback.is_some() {
+            self.on_fallback_element(element, frame);
+            return;
+        }
+        if has_class(element, "merman-foreignobject-fallback") {
+            if let Some(role) = fallback_role(element) {
+                self.fallback = Some(PendingFallback {
+                    role,
+                    start_depth: depth,
+                    text: String::new(),
+                    anchor: None,
+                    bounds: None,
+                });
             }
+            return;
         }
 
-        let Some((section, _)) = self.section else {
+        // A nested `<g class="root">` opens its own sections inside the
+        // enclosing one, so a section is looked for at every element rather
+        // than only while none is open.
+        let section = if has_class(element, "nodes") {
+            Some(Section::Nodes)
+        } else if has_class(element, "edgePaths") {
+            Some(Section::EdgePaths)
+        } else if has_class(element, "edgeLabels") {
+            Some(Section::EdgeLabels)
+        } else {
+            None
+        };
+        if let Some(section) = section
+            && !empty
+        {
+            self.sections.push((section, depth));
+            return;
+        }
+
+        let Some((section, _)) = self.sections.last().copied() else {
             return;
         };
 
         match section {
-            Section::Nodes => self.on_node_element(element, depth, empty, frame),
+            Section::Nodes => self.on_node_element(element, depth, empty, frame, kind),
             Section::EdgePaths => {
                 if element.name().as_ref() == b"path"
-                    && let Some(edge_id) = self.edge_id_of(element)
+                    && let Some(edge_id) = self.edge_id_of(element, kind)
                 {
                     self.edge_ids.push(edge_id);
                 }
@@ -513,13 +613,17 @@ impl<I> CollectGeometry<I> {
     fn read_svg_root(&mut self, element: &BytesStart<'_>) {
         let role = attribute(element, "aria-roledescription").unwrap_or_default();
         let class = attribute(element, "class").unwrap_or_default();
-        if !role.starts_with("flowchart")
-            && !class
-                .split_ascii_whitespace()
-                .any(|token| token == "flowchart")
-        {
+        let has_class_token =
+            |wanted: &str| class.split_ascii_whitespace().any(|token| token == wanted);
+        let kind = if role.starts_with("flowchart") || has_class_token("flowchart") {
+            DiagramKind::Flowchart
+        } else if role == "er" || has_class_token("erDiagram") {
+            DiagramKind::Er
+        } else if role.starts_with("stateDiagram") || has_class_token("statediagram") {
+            DiagramKind::State
+        } else {
             return;
-        }
+        };
         let Some(view_box) = attribute(element, "viewBox") else {
             return;
         };
@@ -536,17 +640,48 @@ impl<I> CollectGeometry<I> {
             return;
         }
         self.view_box = [min_x, min_y, width, height];
-        self.is_flowchart = true;
+        self.kind = Some(kind);
     }
 
-    fn edge_id_of(&self, element: &BytesStart<'_>) -> Option<String> {
-        if let Some(data_id) = attribute(element, "data-id") {
-            return Some(data_id);
+    fn edge_id_of(&self, element: &BytesStart<'_>, kind: DiagramKind) -> Option<String> {
+        let id = match attribute(element, "data-id") {
+            Some(data_id) => data_id,
+            None => {
+                let element_id = attribute(element, "id")?;
+                element_id
+                    .find("-L_")
+                    .map(|index| element_id[index + 1..].to_string())?
+            }
+        };
+        // A state diagram draws a note as an edge too, with an id of its own
+        // shape; only the numbered transitions are mapped.
+        if kind == DiagramKind::State && transition_index(&id).is_none() {
+            return None;
         }
-        let element_id = attribute(element, "id")?;
-        element_id
-            .find("-L_")
-            .map(|index| element_id[index + 1..].to_string())
+        Some(id)
+    }
+
+    fn on_fallback_element(&mut self, element: &BytesStart<'_>, frame: Frame) {
+        let is_text = element.name().as_ref() == b"text";
+        let is_rect = element.name().as_ref() == b"rect";
+        if !is_text && !is_rect {
+            return;
+        }
+        let bounds = frame.usable.then(|| shape_bounds(element)).flatten();
+        let anchor = (
+            attribute_f64(element, "x").map(|x| x + frame.dx),
+            attribute_f64(element, "y").map(|y| y + frame.dy),
+        );
+        let Some(fallback) = self.fallback.as_mut() else {
+            return;
+        };
+        if is_text {
+            if let (Some(x), Some(y)) = anchor {
+                fallback.anchor = Some((x, y));
+            }
+        } else if let Some(bounds) = bounds {
+            extend_optional(&mut fallback.bounds, bounds.translated(frame.dx, frame.dy));
+        }
     }
 
     fn on_node_element(
@@ -555,19 +690,27 @@ impl<I> CollectGeometry<I> {
         depth: usize,
         empty: bool,
         frame: Frame,
+        kind: DiagramKind,
     ) {
         if self.node.is_none() {
             if !has_class(element, "node") {
                 return;
             }
+            // A state diagram draws start and end markers, notes, forks and
+            // choices as nodes as well. Only a `statediagram-state` names a
+            // state the source declares, and only it has a label to edit.
+            if kind == DiagramKind::State && !has_class(element, "statediagram-state") {
+                return;
+            }
             let Some(element_id) = attribute(element, "id") else {
                 return;
             };
-            let Some(node_id) = self.plain_node_id(&element_id) else {
+            let Some(node_id) = self.plain_node_id(&element_id, kind) else {
                 return;
             };
             self.node = Some(PendingNode {
                 node_id,
+                element_suffix: self.element_suffix(&element_id),
                 start_depth: depth,
                 rows: Vec::new(),
                 bounds: None,
@@ -576,7 +719,12 @@ impl<I> CollectGeometry<I> {
             return;
         }
 
-        let is_container = has_class(element, "label-container");
+        // An ER entity with attributes and a state drawn with a title bar put
+        // their outline in a group of `<path>`s or a bare `<rect>` instead of
+        // the `label-container` a flowchart node uses.
+        let is_container = has_class(element, "label-container")
+            || (kind != DiagramKind::Flowchart
+                && (has_class(element, "outer-path") || has_class(element, "outer")));
         let is_row = element.name().as_ref() == b"tspan" && has_class(element, "text-outer-tspan");
         let bounds = (frame.usable && (is_container || self.has_open_container()))
             .then(|| shape_bounds(element))
@@ -616,6 +764,10 @@ impl<I> CollectGeometry<I> {
                 start_depth: depth,
                 rows: Vec::new(),
                 bounds: None,
+                // The enclosing `<g class="edgeLabel">` is translated to where
+                // the label is drawn, which is the point a label lifted into a
+                // `<foreignObject>` replacement is written at.
+                anchor: (frame.dx, frame.dy),
             });
             return;
         }
@@ -657,6 +809,7 @@ impl<I> CollectGeometry<I> {
                     label: join_rows(node.rows).unwrap_or_default(),
                     rect: bounds.to_rect(),
                 });
+                self.node_suffixes.push(node.element_suffix);
             }
         }
         if self
@@ -665,23 +818,36 @@ impl<I> CollectGeometry<I> {
             .is_some_and(|edge_label| edge_label.start_depth == depth)
             && let Some(edge_label) = self.edge_label.take()
         {
-            self.edge_labels.push((
-                edge_label.edge_id,
-                join_rows(edge_label.rows),
-                edge_label
+            self.edge_labels.push(EdgeLabel {
+                edge_id: edge_label.edge_id,
+                text: join_rows(edge_label.rows),
+                rect: edge_label
                     .bounds
                     .filter(BoundingBox::is_usable)
                     .map(BoundingBox::to_rect),
-            ));
+                anchor: edge_label.anchor,
+            });
         }
-        if let Some((_, section_depth)) = self.section
+        if self
+            .fallback
+            .as_ref()
+            .is_some_and(|fallback| fallback.start_depth == depth)
+            && let Some(fallback) = self.fallback.take()
+        {
+            self.fallbacks.push(fallback);
+        }
+        if let Some((_, section_depth)) = self.sections.last().copied()
             && section_depth == depth
         {
-            self.section = None;
+            self.sections.pop();
         }
     }
 
     fn on_text(&mut self, text: &str) {
+        if let Some(fallback) = self.fallback.as_mut() {
+            fallback.text.push_str(text);
+            return;
+        }
         let target = match (self.node.as_mut(), self.edge_label.as_mut()) {
             (Some(node), _) => &mut node.rows,
             (None, Some(edge_label)) => &mut edge_label.rows,
@@ -694,15 +860,32 @@ impl<I> CollectGeometry<I> {
     }
 
     fn finish(&mut self) {
-        let nodes = std::mem::take(&mut self.nodes);
-        let edge_labels = std::mem::take(&mut self.edge_labels);
+        let kind = self.kind;
+        let mut nodes = std::mem::take(&mut self.nodes);
+        let mut edge_labels = std::mem::take(&mut self.edge_labels);
+        self.apply_fallback_labels(&mut nodes, &mut edge_labels);
         let node_ids: Vec<&str> = nodes.iter().map(|node| node.node_id.as_str()).collect();
         let mut seen_pairs: Vec<((String, String), usize)> = Vec::new();
         let edges = self
             .edge_ids
             .iter()
-            .map(|edge_id| {
-                let (from, to) = split_edge_id(edge_id, &node_ids);
+            .filter_map(|edge_id| {
+                let (from, to, statement_index) = match kind {
+                    // A state diagram's SVG does not name a transition's ends
+                    // at all; its number is the position of the statement that
+                    // wrote it, counting the whole document in order.
+                    Some(DiagramKind::State) => {
+                        (String::new(), String::new(), transition_index(edge_id))
+                    }
+                    Some(DiagramKind::Er) => {
+                        let (from, to) = split_er_edge_id(edge_id, &self.node_suffixes, &node_ids)?;
+                        (from, to, None)
+                    }
+                    _ => {
+                        let (from, to) = split_edge_id(edge_id, &node_ids);
+                        (from, to, None)
+                    }
+                };
                 // merman's own `_{n}` suffix counts every edge in the diagram,
                 // not just the ones between this pair, so it cannot be used to
                 // find the matching statement in the source. Document order
@@ -721,15 +904,16 @@ impl<I> CollectGeometry<I> {
                         0
                     }
                 };
-                let label = edge_labels.iter().find(|(id, _, _)| id == edge_id);
-                EdgeGeometry {
+                let label = edge_labels.iter().find(|label| &label.edge_id == edge_id);
+                Some(EdgeGeometry {
                     edge_id: edge_id.clone(),
                     from,
                     to,
                     occurrence,
-                    label: label.and_then(|(_, label, _)| label.clone()),
-                    label_rect: label.and_then(|(_, _, rect)| *rect),
-                }
+                    statement_index,
+                    label: label.and_then(|label| label.text.clone()),
+                    label_rect: label.and_then(|label| label.rect),
+                })
             })
             .collect();
         drop(node_ids);
@@ -739,11 +923,147 @@ impl<I> CollectGeometry<I> {
             edges,
         };
     }
+
+    /// Fills in the labels merman drew outside the element they belong to.
+    ///
+    /// A replacement carries no id, so it is claimed by position: a node label
+    /// by the one node box that contains its anchor, an edge label by the one
+    /// label group anchored at exactly that point. Anything claimed by no box,
+    /// or by more than one, is dropped: the label is only ever shown, so a
+    /// missing one costs a prefilled field while a wrong one would put another
+    /// element's text in front of the user.
+    fn apply_fallback_labels(&mut self, nodes: &mut [NodeGeometry], edge_labels: &mut [EdgeLabel]) {
+        const ANCHOR_TOLERANCE: f64 = 0.01;
+
+        for fallback in std::mem::take(&mut self.fallbacks) {
+            let (Some((x, y)), text) = (fallback.anchor, fallback.text.trim()) else {
+                continue;
+            };
+            if text.is_empty() {
+                continue;
+            }
+            match fallback.role {
+                FallbackRole::Node => {
+                    let mut claimants = nodes.iter_mut().filter(|node| {
+                        node.label.is_empty() && rect_contains(node.rect, x as f32, y as f32)
+                    });
+                    let Some(node) = claimants.next() else {
+                        continue;
+                    };
+                    if claimants.next().is_some() {
+                        continue;
+                    }
+                    node.label = text.to_string();
+                }
+                FallbackRole::Edge => {
+                    let mut claimants = edge_labels.iter_mut().filter(|label| {
+                        (label.anchor.0 - x).abs() < ANCHOR_TOLERANCE
+                            && (label.anchor.1 - y).abs() < ANCHOR_TOLERANCE
+                    });
+                    let Some(label) = claimants.next() else {
+                        continue;
+                    };
+                    if claimants.next().is_some() {
+                        continue;
+                    }
+                    if label.text.is_none() {
+                        label.text = Some(text.to_string());
+                    }
+                    if label.rect.is_none() {
+                        label.rect = fallback
+                            .bounds
+                            .filter(BoundingBox::is_usable)
+                            .map(BoundingBox::to_rect);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn join_rows(rows: Vec<String>) -> Option<String> {
     let joined = rows.join("\n");
     (!joined.trim().is_empty()).then_some(joined)
+}
+
+fn rect_contains(rect: [f32; 4], x: f32, y: f32) -> bool {
+    x >= rect[0] && y >= rect[1] && x <= rect[0] + rect[2] && y <= rect[1] + rect[3]
+}
+
+/// Drops the `-{n}` merman appends to an element's own id.
+fn strip_index(rest: &str) -> Option<String> {
+    let (name, index) = rest.rsplit_once('-')?;
+    if name.is_empty() || index.is_empty() || !index.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// The position of the statement a state diagram's `edge{n}` was written by.
+fn transition_index(edge_id: &str) -> Option<usize> {
+    edge_id.strip_prefix("edge")?.parse::<usize>().ok()
+}
+
+/// Which kind of label a `merman-foreignobject-fallback` group replaced, from
+/// the classes of the element it was lifted out of.
+///
+/// An ER entity's attribute cells and a cluster's title are labels too, but
+/// neither belongs to a box this pass reports, so they are left unclaimed.
+fn fallback_role(element: &BytesStart<'_>) -> Option<FallbackRole> {
+    let class = attribute(element, "class")?;
+    let mut tokens = class.split_ascii_whitespace();
+    let mut is_node = false;
+    let mut is_edge = false;
+    for token in &mut tokens {
+        match token {
+            "edgeLabel" => is_edge = true,
+            "nodeLabel" => is_node = true,
+            "cluster-label" | "attribute-type" | "attribute-name" | "attribute-keys"
+            | "attribute-comment" => return None,
+            _ => {}
+        }
+    }
+    match (is_edge, is_node) {
+        (true, false) => Some(FallbackRole::Edge),
+        (false, true) => Some(FallbackRole::Node),
+        _ => None,
+    }
+}
+
+/// Splits the endpoints out of an ER relationship's
+/// `id_{from element id}_{to element id}_{n}`.
+///
+/// Both halves are element ids, which carry an index of their own and may hold
+/// any character an entity name may, so the split is found by matching against
+/// the ids of the entities the diagram actually drew rather than by counting
+/// underscores. A relationship whose ends are not both among them is dropped.
+fn split_er_edge_id(
+    edge_id: &str,
+    suffixes: &[String],
+    node_ids: &[&str],
+) -> Option<(String, String)> {
+    let body = edge_id.strip_prefix("id_")?;
+    let pair = match body.rsplit_once('_') {
+        Some((pair, index)) if index.parse::<usize>().is_ok() => pair,
+        _ => body,
+    };
+    for (from_index, from_suffix) in suffixes.iter().enumerate() {
+        let Some(rest) = pair
+            .strip_prefix(from_suffix.as_str())
+            .and_then(|rest| rest.strip_prefix('_'))
+        else {
+            continue;
+        };
+        for (to_index, to_suffix) in suffixes.iter().enumerate() {
+            if rest == to_suffix {
+                return Some((
+                    node_ids.get(from_index)?.to_string(),
+                    node_ids.get(to_index)?.to_string(),
+                ));
+            }
+        }
+    }
+    None
 }
 
 /// Splits the endpoints out of merman's `L_{from}_{to}_{n}` edge id.
@@ -829,7 +1149,7 @@ impl<I> CollectGeometry<I> {
                 self.frames.pop();
             }
             Event::Text(text) => {
-                if self.node.is_some() || self.edge_label.is_some() {
+                if self.node.is_some() || self.edge_label.is_some() || self.fallback.is_some() {
                     let decoded = match text.decode() {
                         Ok(decoded) => decoded,
                         Err(_) => String::from_utf8_lossy(text.as_ref()).into_owned().into(),
@@ -855,17 +1175,20 @@ pub(super) fn process<'a>(
     CollectGeometry {
         inner: events,
         sink,
-        node_id_prefix: format!("{svg_id}-flowchart-"),
-        is_flowchart: false,
+        svg_id: svg_id.to_string(),
+        kind: None,
         view_box: [0.0; 4],
         depth: 0,
         frames: Vec::new(),
-        section: None,
+        sections: Vec::new(),
         node: None,
         edge_label: None,
+        fallback: None,
         nodes: Vec::new(),
+        node_suffixes: Vec::new(),
         edge_ids: Vec::new(),
         edge_labels: Vec::new(),
+        fallbacks: Vec::new(),
         finished: false,
     }
 }
@@ -926,6 +1249,71 @@ mod tests {
 
         let none = BytesStart::from_content("g", 1);
         assert_eq!(own_translate(&none), Some((0.0, 0.0)));
+    }
+
+    /// A label merman drew outside its element carries no id, so it is claimed
+    /// by position. Where more than one box could claim it, it is dropped: the
+    /// label is only ever shown, and a missing one costs a prefilled field while
+    /// a wrong one puts another element's text in front of the user and has them
+    /// overwrite a token they never looked at.
+    #[test]
+    fn a_fallback_label_claimed_by_two_boxes_is_dropped() {
+        let svg = concat!(
+            r#"<svg id="m-0" aria-roledescription="stateDiagram-v2" viewBox="0 0 200 100">"#,
+            r#"<g class="nodes">"#,
+            r#"<g class="node statediagram-state" id="state-a-0" transform="translate(20,20)">"#,
+            r#"<rect class="label-container" x="-15" y="-10" width="30" height="20"/></g>"#,
+            r#"<g class="node statediagram-state" id="state-b-1" transform="translate(30,20)">"#,
+            r#"<rect class="label-container" x="-15" y="-10" width="30" height="20"/></g>"#,
+            r#"<g class="node statediagram-state" id="state-c-2" transform="translate(120,20)">"#,
+            r#"<rect class="label-container" x="-15" y="-10" width="30" height="20"/></g>"#,
+            r#"</g>"#,
+            r#"<g class="edgePaths"><path data-id="edge0" d="M 0 0 L 10 10"/>"#,
+            r#"<path data-id="edge1" d="M 0 0 L 10 10"/></g>"#,
+            r#"<g class="edgeLabels">"#,
+            r#"<g transform="translate(60,60)"><g class="label" data-id="edge0"></g></g>"#,
+            r#"<g transform="translate(60,60)"><g class="label" data-id="edge1"></g></g>"#,
+            r#"</g>"#,
+            // Inside both a and b: nothing may claim it.
+            r#"<g class="merman-foreignobject-fallback nodeLabel"><text x="25" y="20">both</text></g>"#,
+            // Inside c alone: claimed.
+            r#"<g class="merman-foreignobject-fallback nodeLabel"><text x="120" y="20">only c</text></g>"#,
+            // Anchored where two edge labels sit: nothing may claim it either.
+            r#"<g class="merman-foreignobject-fallback edgeLabel"><text x="60" y="60">shared</text></g>"#,
+            r#"</svg>"#,
+        );
+        let mut reader = Reader::from_str(svg);
+        reader.config_mut().check_end_names = false;
+        let mut input = Vec::new();
+        loop {
+            match reader.read_event() {
+                Ok(Event::Eof) => break,
+                Ok(event) => input.push(event.into_owned()),
+                Err(error) => panic!("the fixture should parse: {error}"),
+            }
+        }
+
+        let sink = Rc::new(RefCell::new(DiagramGeometry::default()));
+        process(input.into_iter().map(Ok), "m-0", sink.clone())
+            .collect::<Result<Vec<_>>>()
+            .expect("the fixture should walk");
+        let geometry = sink.take();
+
+        let labels: Vec<(&str, &str)> = geometry
+            .nodes
+            .iter()
+            .map(|node| (node.node_id.as_str(), node.label.as_str()))
+            .collect();
+        assert_eq!(
+            labels,
+            vec![("a", ""), ("b", ""), ("c", "only c")],
+            "a label two boxes could claim must be dropped, one box's must not"
+        );
+        assert!(
+            geometry.edges.iter().all(|edge| edge.label.is_none()),
+            "a label two edge label groups could claim must be dropped: {:?}",
+            geometry.edges
+        );
     }
 
     /// The pass reads attributes only to measure them, so input it cannot

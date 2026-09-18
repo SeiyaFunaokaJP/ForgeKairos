@@ -1,6 +1,7 @@
 use super::tool_permissions::{
     authorize_symlink_access, canonicalize_worktree_roots, detect_symlink_escape,
-    resolve_creatable_global_skill_path, sensitive_settings_kind,
+    resolve_creatable_global_skill_path, resolve_one_new_path_in_the_project,
+    sensitive_settings_kind,
 };
 use agent_client_protocol::schema::v1 as acp;
 use agent_settings::AgentSettings;
@@ -119,9 +120,17 @@ impl AgentTool for CreateDirectoryTool {
             // project is handled as a narrow sandbox write grant below.
             let global_skill_directory =
                 resolve_creatable_global_skill_path(Path::new(&input.path), fs.as_ref()).await;
-            let in_project = project.read_with(cx, |project, cx| {
-                project.find_project_path(&input.path, cx).is_some()
+            // A brand-new relative directory such as `docs` resolves nowhere,
+            // so `find_project_path` alone would send it to the out-of-project
+            // branch below — a sandbox write grant (or a flat refusal) for a
+            // directory that is plainly in the project. When exactly one
+            // worktree could hold it, place it there instead (ADR-F54 決定 3).
+            let project_path = project.read_with(cx, |project, cx| {
+                project.find_project_path(&input.path, cx).or_else(|| {
+                    resolve_one_new_path_in_the_project(project, Path::new(&input.path), cx)
+                })
             });
+            let in_project = project_path.is_some();
 
             // A path outside the project (and not the global skills dir) can only
             // be created as a narrow sandbox write grant: create the directory and
@@ -218,21 +227,21 @@ impl AgentTool for CreateDirectoryTool {
                 return Ok(format!("Created directory {destination_path}"));
             }
 
+            // The path the permission card was about is the path we create:
+            // re-resolving here would drop the new-directory placement above
+            // and fail with "outside the project" after the user approved.
+            let project_path =
+                project_path.ok_or_else(|| "Path to create was outside the project".to_string())?;
+
             // ADR-F50: a new directory is a write into the worktree.
-            let noted = project.update(cx, |project, cx| {
-                project
-                    .find_project_path(&input.path, cx)
-                    .map(|project_path| project.note_agent_write_to_project_path(&project_path, cx))
-            });
-            if let Some(noted) = noted {
-                noted.await;
-            }
+            project
+                .update(cx, |project, cx| {
+                    project.note_agent_write_to_project_path(&project_path, cx)
+                })
+                .await;
             let create_entry = project.update(cx, |project, cx| {
-                match project.find_project_path(&input.path, cx) {
-                    Some(project_path) => Ok(project.create_entry(project_path, true, cx)),
-                    None => Err("Path to create was outside the project".to_string()),
-                }
-            })?;
+                project.create_entry(project_path, true, cx)
+            });
 
             futures::select! {
                 result = create_entry.fuse() => {
@@ -371,6 +380,123 @@ mod tests {
             settings.tool_permissions.default = settings::ToolPermissionMode::Allow;
             AgentSettings::override_global(settings, cx);
         });
+    }
+
+    /// 決定 3: a brand-new relative directory resolves nowhere, but when only
+    /// one worktree could hold it, it is in the project — not a path to be
+    /// refused (or granted to the sandbox) as "outside the project".
+    #[gpui::test]
+    async fn test_create_directory_new_relative_path_stays_in_the_project(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root"), json!({ "directory1": {} }))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/root").as_ref()], cx).await;
+        cx.executor().run_until_parked();
+
+        let tool = Arc::new(CreateDirectoryTool::new(project));
+        for path in ["docs", "directory1/new_directory"] {
+            let (event_stream, mut event_rx) = ToolCallEventStream::test();
+            let result = cx
+                .update(|cx| {
+                    tool.clone().run(
+                        ToolInput::resolved(CreateDirectoryToolInput {
+                            path: path.to_string(),
+                            reason: None,
+                        }),
+                        event_stream,
+                        cx,
+                    )
+                })
+                .await;
+            assert!(result.is_ok(), "{path}: {result:?}");
+            event_rx.expect_no_authorization();
+        }
+        assert!(fs.is_dir(path!("/root/docs").as_ref()).await);
+        assert!(
+            fs.is_dir(path!("/root/directory1/new_directory").as_ref())
+                .await
+        );
+    }
+
+    /// 決定 3: with two worktrees the same relative directory names no place
+    /// in particular, so it stays out of the project rather than landing in
+    /// whichever worktree happens to come first.
+    #[gpui::test]
+    async fn test_create_directory_new_relative_path_with_two_worktrees_is_outside(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root"), json!({})).await;
+        fs.insert_tree(path!("/other"), json!({})).await;
+        let project = Project::test(
+            fs.clone(),
+            [path!("/root").as_ref(), path!("/other").as_ref()],
+            cx,
+        )
+        .await;
+        cx.executor().run_until_parked();
+
+        let tool = Arc::new(CreateDirectoryTool::new(project));
+        let (event_stream, _event_rx) = ToolCallEventStream::test();
+        let result = cx
+            .update(|cx| {
+                tool.run(
+                    ToolInput::resolved(CreateDirectoryToolInput {
+                        path: "docs".to_string(),
+                        reason: None,
+                    }),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await;
+        assert!(result.is_err(), "{result:?}");
+        assert!(!fs.is_dir(path!("/root/docs").as_ref()).await);
+        assert!(!fs.is_dir(path!("/other/docs").as_ref()).await);
+    }
+
+    /// 決定 3: the parent has to be a directory. A new path whose parent is a
+    /// file names no place in the project, so it stays out rather than being
+    /// waved through on the strength of the parent entry existing.
+    #[gpui::test]
+    async fn test_create_directory_new_relative_path_under_a_file_is_outside(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root"), json!({ "notes.md": "既存" }))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/root").as_ref()], cx).await;
+        cx.executor().run_until_parked();
+
+        let tool = Arc::new(CreateDirectoryTool::new(project));
+        let (event_stream, _event_rx) = ToolCallEventStream::test();
+        let result = cx
+            .update(|cx| {
+                tool.run(
+                    ToolInput::resolved(CreateDirectoryToolInput {
+                        path: "notes.md/child".to_string(),
+                        reason: None,
+                    }),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await;
+        assert_eq!(
+            result,
+            Err("Path to create was outside the project".to_string()),
+            "ファイルの下は「プロジェクトの外」として断るはず (実際に作ろうとして              ファイルシステムのエラーで落ちるのでは、確認カードの分類が違う)"
+        );
+        assert_eq!(
+            fs.load(path!("/root/notes.md").as_ref()).await.unwrap(),
+            "既存"
+        );
     }
 
     /// ADR-F50: a directory created in a worktree pauses its code first.

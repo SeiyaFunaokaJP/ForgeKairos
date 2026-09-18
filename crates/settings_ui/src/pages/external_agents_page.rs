@@ -14,7 +14,7 @@ use settings::{
 };
 use ui::{
     AiSettingItem, AiSettingItemSource, AiSettingItemStatus, ContextMenu, ContextMenuEntry,
-    Divider, PopoverMenu, Tooltip, prelude::*,
+    Divider, PopoverMenu, SwitchField, ToggleState, Tooltip, prelude::*,
 };
 use util::ResultExt as _;
 use workspace::{MultiWorkspace, Workspace, create_and_open_local_file};
@@ -56,7 +56,75 @@ pub(crate) fn render_external_agents_page(
                 .color(Color::Muted),
         )
         .child(agent_list)
+        .child(render_claude_subscription_sign_in(cx))
         .into_any_element()
+}
+
+/// ADR-F55: the ACP Claude agent's registry id, whose subscription sign-in
+/// this page can turn off. Spelled here rather than taken from
+/// `agent_servers`, which this crate does not depend on; the id is also what
+/// the user writes in `settings.json`, so it is theirs as much as ours.
+const CLAUDE_AGENT_ID: &str = "claude-acp";
+const SUBSCRIPTION_SIGN_IN_ALLOWED_BY_DEFAULT: bool = true;
+
+/// ADR-F55: `agent_servers.claude-acp.allow_subscription_sign_in`.
+///
+/// カードの側 (`agent_ui`) と同じ設定を同じ注記で切り替える。切ると、
+/// サインインのボタンは認証カードから消え、別の経路から要求されても
+/// 断られる。API キーでの利用はこの設定に関係なく使える。
+fn render_claude_subscription_sign_in(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
+    // The merged view, not just the user file: the card in the agent panel
+    // reads the same one, so the switch and the card never disagree.
+    let allowed = SettingsStore::global(cx)
+        .get::<project::agent_server_store::AllAgentServersSettings>(None)
+        .get(CLAUDE_AGENT_ID)
+        .and_then(|settings| settings.allow_subscription_sign_in())
+        .unwrap_or(SUBSCRIPTION_SIGN_IN_ALLOWED_BY_DEFAULT);
+
+    v_flex().pt_6().child(
+        SwitchField::new(
+            "claude-acp-allow-subscription-sign-in",
+            Some("Claude (ACP) でサブスクリプションのログインを使う"),
+            Some(
+                "サブスクリプション (Claude Pro / Max など) での利用は、Anthropic が 2026-06-15 に「これまでどおり」と告知しています。ログインは Claude Code 自身の画面で行われ、Zed は認証情報を見も保存も中継もしません。ここを切るとログインのボタンが認証カードから消えます (API キーでの利用はそのまま使えます)。"
+                    .into(),
+            ),
+            allowed,
+            move |state, _window, cx| {
+                set_allow_subscription_sign_in(*state == ToggleState::Selected, cx);
+            },
+        )
+        .tab_index(0),
+    )
+}
+
+fn set_allow_subscription_sign_in(allowed: bool, cx: &mut App) {
+    let fs = <dyn fs::Fs>::global(cx);
+    update_settings_file(fs, cx, move |settings, _| {
+        let entry = settings
+            .agent_servers
+            .get_or_insert_default()
+            .entry(CLAUDE_AGENT_ID.to_string())
+            .or_insert_with(|| CustomAgentServerSettings::Registry {
+                default_mode: None,
+                env: Default::default(),
+                default_config_options: HashMap::default(),
+                favorite_config_option_values: HashMap::default(),
+                allow_subscription_sign_in: None,
+            });
+        match entry {
+            CustomAgentServerSettings::Custom {
+                allow_subscription_sign_in,
+                ..
+            }
+            | CustomAgentServerSettings::Registry {
+                allow_subscription_sign_in,
+                ..
+            } => {
+                *allow_subscription_sign_in = Some(allowed);
+            }
+        }
+    });
 }
 
 fn get_agent_server_store(
@@ -347,6 +415,7 @@ pub(crate) struct CustomAgentForm {
     default_mode: Option<String>,
     default_config_options: HashMap<String, AgentConfigOptionValue>,
     favorite_config_option_values: HashMap<String, Vec<String>>,
+    allow_subscription_sign_in: Option<bool>,
     /// Stable handles for the Cancel/Save buttons so they can render a focus
     /// ring. `Filled`/`Subtle` buttons only get a subtle `focus_visible`
     /// background change otherwise, which is hard to see.
@@ -370,6 +439,7 @@ impl CustomAgentForm {
         let mut default_mode = None;
         let mut default_config_options = HashMap::default();
         let mut favorite_config_option_values = HashMap::default();
+        let mut allow_subscription_sign_in = None;
 
         // Pre-fill from the raw settings so invalid values typed directly into
         // settings.json still load into the form for correction.
@@ -382,6 +452,7 @@ impl CustomAgentForm {
                     default_mode: mode,
                     default_config_options: config_options,
                     favorite_config_option_values: favorites,
+                    allow_subscription_sign_in: sign_in,
                 } => {
                     command_initial = Some(path.to_string_lossy().to_string());
                     if !args.is_empty() {
@@ -393,12 +464,14 @@ impl CustomAgentForm {
                     default_mode = mode.clone();
                     default_config_options = config_options.clone();
                     favorite_config_option_values = favorites.clone();
+                    allow_subscription_sign_in = *sign_in;
                 }
                 CustomAgentServerSettings::Registry {
                     env: env_map,
                     default_mode: mode,
                     default_config_options: config_options,
                     favorite_config_option_values: favorites,
+                    allow_subscription_sign_in: sign_in,
                 } => {
                     for (key, value) in sorted_pairs(env_map) {
                         env.push(new_kv_row(Some(&key), Some(&value), window, cx));
@@ -406,6 +479,7 @@ impl CustomAgentForm {
                     default_mode = mode.clone();
                     default_config_options = config_options.clone();
                     favorite_config_option_values = favorites.clone();
+                    allow_subscription_sign_in = *sign_in;
                 }
             }
         }
@@ -419,6 +493,7 @@ impl CustomAgentForm {
             default_mode,
             default_config_options,
             favorite_config_option_values,
+            allow_subscription_sign_in,
             cancel_focus_handle: cx.focus_handle(),
             save_focus_handle: cx.focus_handle(),
             error: None,
@@ -774,6 +849,7 @@ struct CustomAgentFormValues {
     default_mode: Option<String>,
     default_config_options: HashMap<String, AgentConfigOptionValue>,
     favorite_config_option_values: HashMap<String, Vec<String>>,
+    allow_subscription_sign_in: Option<bool>,
 }
 
 fn build_settings_from_form(
@@ -789,6 +865,7 @@ fn build_settings_from_form(
         default_mode: form.default_mode.clone(),
         default_config_options: form.default_config_options.clone(),
         favorite_config_option_values: form.favorite_config_option_values.clone(),
+        allow_subscription_sign_in: form.allow_subscription_sign_in,
     };
     build_settings_from_values(values)
 }
@@ -826,6 +903,7 @@ fn build_settings_from_values(
         default_mode: values.default_mode,
         default_config_options: values.default_config_options,
         favorite_config_option_values: values.favorite_config_option_values,
+        allow_subscription_sign_in: values.allow_subscription_sign_in,
     };
 
     Ok((AgentId(name.into()), values.original_id, content))
@@ -938,6 +1016,7 @@ async fn add_custom_agent_settings_entry(
                                 default_mode: None,
                                 default_config_options: Default::default(),
                                 favorite_config_option_values: Default::default(),
+                                allow_subscription_sign_in: None,
                             },
                         );
                     }
@@ -1035,6 +1114,7 @@ mod tests {
             default_mode: None,
             default_config_options: HashMap::default(),
             favorite_config_option_values: HashMap::default(),
+            allow_subscription_sign_in: None,
         }
     }
 
@@ -1102,6 +1182,7 @@ mod tests {
                 default_mode: None,
                 default_config_options: HashMap::default(),
                 favorite_config_option_values: HashMap::default(),
+                allow_subscription_sign_in: None,
             }
         );
     }
@@ -1129,6 +1210,95 @@ mod tests {
                 );
             }
             _ => panic!("expected a custom agent"),
+        }
+    }
+
+    /// ADR-F55: このページのスイッチが settings.json に落とす値を、書いた形
+    /// (`Registry` / `Custom`) とは無関係に読み戻せる。`agent_ui` の認証カードと
+    /// `agent_servers` の関門はどちらもこの 1 か所を読むので、ここがずれると
+    /// 「切ったのに効かない」が起きる。
+    #[gpui::test]
+    async fn the_switch_writes_a_setting_both_shapes_read_back(cx: &mut gpui::TestAppContext) {
+        use fs::Fs as _;
+        use project::agent_server_store::CustomAgentServerSettings as ReadBack;
+
+        let fs = fs::FakeFs::new(cx.executor());
+        cx.update(|cx| {
+            let store = settings::SettingsStore::test(cx);
+            cx.set_global(store);
+            <dyn fs::Fs>::set_global(fs.clone(), cx);
+        });
+        fs.create_dir(paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+
+        // 書いた形をそのまま読み戻す: 保存先の変種が変われば落ちる。
+        async fn written(fs: &std::sync::Arc<fs::FakeFs>) -> ReadBack {
+            let text = fs
+                .load(paths::settings_file())
+                .await
+                .expect("設定ファイルを読める");
+            let content: serde_json::Value =
+                serde_json::from_str(&text).expect("設定ファイルは JSON");
+            let entry = content
+                .get("agent_servers")
+                .and_then(|agent_servers| agent_servers.get(CLAUDE_AGENT_ID))
+                .expect("claude-acp の項目がある")
+                .clone();
+            serde_json::from_value::<CustomAgentServerSettings>(entry)
+                .expect("設定の型として読める")
+                .into()
+        }
+
+        for (shape, seed) in [
+            ("Registry", None),
+            (
+                "Custom",
+                Some(CustomAgentServerSettings::Custom {
+                    path: "/usr/bin/claude-agent-acp".into(),
+                    args: Vec::new(),
+                    env: HashMap::default(),
+                    default_mode: None,
+                    default_config_options: HashMap::default(),
+                    favorite_config_option_values: HashMap::default(),
+                    allow_subscription_sign_in: None,
+                }),
+            ),
+        ] {
+            match seed {
+                Some(seed) => {
+                    let text = serde_json::to_string(&serde_json::json!({
+                        "agent_servers": { CLAUDE_AGENT_ID: seed },
+                    }))
+                    .expect("設定を JSON にできる");
+                    fs.save(
+                        paths::settings_file(),
+                        &text.as_str().into(),
+                        language::LineEnding::Unix,
+                    )
+                    .await
+                    .expect("設定ファイルを置ける");
+                }
+                None => {
+                    fs.save(
+                        paths::settings_file(),
+                        &"{}".into(),
+                        language::LineEnding::Unix,
+                    )
+                    .await
+                    .expect("設定ファイルを置ける");
+                }
+            }
+
+            for allowed in [false, true] {
+                cx.update(|cx| set_allow_subscription_sign_in(allowed, cx));
+                cx.run_until_parked();
+                assert_eq!(
+                    written(&fs).await.allow_subscription_sign_in(),
+                    Some(allowed),
+                    "{shape} の項目に {allowed} を書いて読み戻せる"
+                );
+            }
         }
     }
 

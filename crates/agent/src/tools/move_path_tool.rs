@@ -1,6 +1,7 @@
 use super::tool_permissions::{
-    authorize_symlink_escapes, canonicalize_worktree_roots, collect_symlink_escapes,
-    resolve_creatable_global_skill_descendant_path, resolve_global_skill_descendant_path,
+    ambiguous_worktree_note, authorize_symlink_escapes, canonicalize_worktree_roots,
+    collect_symlink_escapes, resolve_creatable_global_skill_descendant_path,
+    resolve_global_skill_descendant_path, resolve_new_path_in_the_project,
     resolves_to_global_skills_dir, sensitive_settings_kind,
 };
 use crate::{
@@ -164,15 +165,55 @@ impl AgentTool for MovePathTool {
             )
             .await);
 
+            // A destination that doesn't exist yet resolves nowhere, so
+            // `find_project_path` alone would call a move that stays inside
+            // the project "outside the project" — and then refuse it after
+            // the user approved. Place it where exactly one worktree could
+            // hold it (ADR-F54 決定 3).
+            // The count is kept because the card below promises a specific
+            // worktree when there is more than one candidate, and approving
+            // that card has to put the move there rather than refuse it.
+            let (destination_project_path, destination_candidate_count) =
+                project.read_with(cx, |project, cx| {
+                    match project.find_project_path(&input.destination_path, cx) {
+                        Some(project_path) => (Some(project_path), 1),
+                        None => match resolve_new_path_in_the_project(
+                            project,
+                            Path::new(&input.destination_path),
+                            cx,
+                        ) {
+                            Some(placement) => {
+                                (Some(placement.project_path), placement.candidate_count)
+                            }
+                            None => (None, 0),
+                        },
+                    }
+                });
+
             // 決定 3: either end outside every worktree root is never
             // approved by the mode alone. A sensitive location always prompts
             // anyway, so it is left to the sensitive-settings path below.
             let outside_project = sensitive_kind.is_none()
-                && project.read_with(cx, |project, cx| {
-                    [&input.source_path, &input.destination_path]
-                        .into_iter()
-                        .any(|path| project.find_project_path(path, cx).is_none())
-                });
+                && (destination_candidate_count != 1
+                    || project.read_with(cx, |project, cx| {
+                        project.find_project_path(&input.source_path, cx).is_none()
+                    }));
+
+            // 決定 1: when several worktrees could hold the destination the
+            // move silently lands in the first, so the card names it rather
+            // than claiming the path is outside the project.
+            let ambiguous_destination_note = destination_project_path
+                .as_ref()
+                // `outside_project` is what carries "the sensitive-settings card
+                // isn't the one being shown": overriding that card here would
+                // offer a standing approval for a settings file.
+                .filter(|_| outside_project && destination_candidate_count >= 2)
+                .and_then(|project_path| {
+                    project.read_with(cx, |project, cx| {
+                        project.short_full_path_for_project_path(project_path, cx)
+                    })
+                })
+                .map(|destination| ambiguous_worktree_note(&destination, "移動されます"));
 
             // A judged decision reaches the same authorization call, which
             // re-evaluates the settings and runs the judge there; treating it
@@ -199,7 +240,9 @@ impl AgentTool for MovePathTool {
                         vec![input.source_path.clone(), input.destination_path.clone()],
                     );
                     let title = format!("{src} を {dest} に移動");
-                    if outside_project {
+                    if let Some(note) = &ambiguous_destination_note {
+                        event_stream.authorize_with_note(&title, note, context, cx)
+                    } else if outside_project {
                         event_stream.authorize_outside_project(&title, context, cx)
                     } else {
                         authorize_with_sensitive_settings(
@@ -240,13 +283,13 @@ impl AgentTool for MovePathTool {
                 {
                     global_destination_path
                 } else {
+                    let project_path = destination_project_path.clone().ok_or_else(|| {
+                        format!(
+                            "Destination path {} was outside the project.",
+                            input.destination_path
+                        )
+                    })?;
                     project.read_with(cx, |project, cx| {
-                        let project_path = project.find_project_path(&input.destination_path, cx).ok_or_else(|| {
-                            format!(
-                                "Destination path {} was outside the project.",
-                                input.destination_path
-                            )
-                        })?;
                         project.absolute_path(&project_path, cx).ok_or_else(|| {
                             format!(
                                 "Destination path {} could not be resolved.",
@@ -295,20 +338,24 @@ impl AgentTool for MovePathTool {
             // it lands in.
             let noted = project.update(cx, |project, cx| {
                 let mut noted = Vec::new();
-                for path in [&input.source_path, &input.destination_path] {
-                    if let Some(project_path) = project.find_project_path(path, cx) {
-                        noted.push(project.note_agent_write_to_project_path(&project_path, cx));
-                    }
+                if let Some(project_path) = project.find_project_path(&input.source_path, cx) {
+                    noted.push(project.note_agent_write_to_project_path(&project_path, cx));
+                }
+                if let Some(project_path) = &destination_project_path {
+                    noted.push(project.note_agent_write_to_project_path(project_path, cx));
                 }
                 noted
             });
             futures::future::join_all(noted).await;
+            // The destination the card was about is the destination we move
+            // to: re-resolving it here would drop the new-path placement and
+            // refuse the move after the user approved it.
             let rename_task = project.update(cx, |project, cx| {
                 match project
                     .find_project_path(&input.source_path, cx)
                     .and_then(|project_path| project.entry_for_path(&project_path, cx))
                 {
-                    Some(entity) => match project.find_project_path(&input.destination_path, cx) {
+                    Some(entity) => match destination_project_path.clone() {
                         Some(project_path) => Ok(project.rename_entry(entity.id, project_path, cx)),
                         None => Err(format!(
                             "Destination path {} was outside the project.",
@@ -357,6 +404,150 @@ mod tests {
             settings.tool_permissions.default = settings::ToolPermissionMode::Allow;
             AgentSettings::override_global(settings, cx);
         });
+    }
+
+    /// 決定 3: a rename whose destination doesn't exist yet resolves nowhere,
+    /// but with one worktree it plainly stays in the project — it used to be
+    /// called "outside the project" on the card and then refused after the
+    /// user approved it.
+    #[gpui::test]
+    async fn test_move_path_to_new_relative_destination_stays_in_the_project(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root"), json!({ "a.txt": "中身" }))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/root").as_ref()], cx).await;
+        cx.executor().run_until_parked();
+
+        let tool = Arc::new(MovePathTool::new(project));
+        let (event_stream, mut event_rx) = ToolCallEventStream::test();
+        let result = cx
+            .update(|cx| {
+                tool.run(
+                    ToolInput::resolved(MovePathToolInput {
+                        source_path: "a.txt".to_string(),
+                        destination_path: "b.txt".to_string(),
+                    }),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await;
+        assert!(result.is_ok(), "{result:?}");
+        event_rx.expect_no_authorization();
+        assert_eq!(
+            fs.load(path!("/root/b.txt").as_ref()).await.unwrap(),
+            "中身"
+        );
+    }
+
+    /// 決定 1: with two worktrees the destination names no worktree in
+    /// particular, so the card says which one the move would silently pick.
+    #[gpui::test]
+    async fn test_move_path_card_names_the_worktree_an_ambiguous_destination_lands_in(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root"), json!({ "a.txt": "中身" }))
+            .await;
+        fs.insert_tree(path!("/other"), json!({})).await;
+        let project = Project::test(
+            fs.clone(),
+            [path!("/root").as_ref(), path!("/other").as_ref()],
+            cx,
+        )
+        .await;
+        cx.executor().run_until_parked();
+
+        let tool = Arc::new(MovePathTool::new(project));
+        let (event_stream, mut event_rx) = ToolCallEventStream::test();
+        let task = cx.update(|cx| {
+            tool.run(
+                ToolInput::resolved(MovePathToolInput {
+                    source_path: "a.txt".to_string(),
+                    destination_path: "b.txt".to_string(),
+                }),
+                event_stream,
+                cx,
+            )
+        });
+
+        let auth = event_rx.expect_authorization().await;
+        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        assert!(
+            title.contains("どのワークツリーか曖昧") && title.contains("b.txt"),
+            "移動先のワークツリーを示すカードのはず: {title}",
+        );
+
+        // The card named a worktree, so approving it has to put the file
+        // there — not refuse the move the user just approved.
+        auth.response
+            .send(acp_thread::SelectedPermissionOutcome::new(
+                acp::PermissionOptionId::new("allow"),
+                acp::PermissionOptionKind::AllowOnce,
+            ))
+            .expect("authorization response should send");
+        let result = task.await;
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(
+            fs.load(path!("/root/b.txt").as_ref()).await.unwrap(),
+            "中身"
+        );
+        assert!(!fs.is_file(path!("/other/b.txt").as_ref()).await);
+    }
+
+    /// The ambiguity card must not displace the sensitive-settings card: a
+    /// `.zed` destination that two worktrees could hold is still a settings
+    /// file, and its card must not offer a standing approval.
+    #[gpui::test]
+    async fn test_move_path_ambiguous_settings_destination_keeps_the_settings_card(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root"), json!({ "a.json": "{}", ".zed": {} }))
+            .await;
+        fs.insert_tree(path!("/other"), json!({ ".zed": {} })).await;
+        let project = Project::test(
+            fs.clone(),
+            [path!("/root").as_ref(), path!("/other").as_ref()],
+            cx,
+        )
+        .await;
+        cx.executor().run_until_parked();
+
+        let tool = Arc::new(MovePathTool::new(project));
+        let (event_stream, mut event_rx) = ToolCallEventStream::test();
+        let _task = cx.update(|cx| {
+            tool.run(
+                ToolInput::resolved(MovePathToolInput {
+                    source_path: "a.json".to_string(),
+                    destination_path: ".zed/settings.json".to_string(),
+                }),
+                event_stream,
+                cx,
+            )
+        });
+
+        let auth = event_rx.expect_authorization().await;
+        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        assert!(
+            title.ends_with("(プロジェクトの設定)"),
+            "機微な設定のカードのはず: {title}",
+        );
+        assert!(
+            auth.options
+                .first_option_of_kind(acp::PermissionOptionKind::AllowAlways)
+                .is_none(),
+            "設定のカードは「常に」を出してはいけない: {:?}",
+            auth.options,
+        );
     }
 
     #[gpui::test]

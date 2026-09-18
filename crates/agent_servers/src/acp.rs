@@ -3313,6 +3313,9 @@ fn plan_remote_agent(
         &sandbox_command.env,
         &readable_paths,
         false,
+        // ADR-F49 decision 24's IDE forward is the WSL backend's alone: a
+        // remote agent runs without the IDE's MCP (ADR-F49 第 2a 段).
+        None,
         session_id,
         program,
         args,
@@ -3521,6 +3524,8 @@ async fn wrap_login_in_sandbox(
                 &env,
                 readable_paths,
                 true,
+                // A sign-in talks to the provider, not to the IDE.
+                None,
                 // The sign-in is its own short command, not the agent's
                 // process: nothing follows what it leaves behind, because it
                 // leaves nothing that can write the project.
@@ -6677,6 +6682,7 @@ mod tests {
                             AgentConfigOptionValue::from("manual"),
                         )]),
                         favorite_config_option_values: HashMap::default(),
+                        allow_subscription_sign_in: None,
                     }
                     .into(),
                 )])),
@@ -8037,9 +8043,13 @@ mod tests {
         assert_eq!(plan.env.get("PATH").map(String::as_str), Some("/usr/bin"));
         assert_eq!(
             plan.hosts,
-            AgentSandboxHosts::Listed(vec!["api.anthropic.com".to_string()]),
-            "ADR-F53: the OAuth token exchange is not among them — this route \
-             is API-key only"
+            AgentSandboxHosts::Listed(vec![
+                "api.anthropic.com".to_string(),
+                "platform.claude.com".to_string(),
+            ]),
+            "ADR-F55: the model API and the token exchange the agent's own \
+             `/login` ends at — the same pair the CLI session in the sandbox \
+             is granted"
         );
         assert_eq!(
             plan.sandbox_write_paths,

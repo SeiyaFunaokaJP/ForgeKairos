@@ -6,20 +6,22 @@
 //! block, its branch, its `end` — because a message that changed places with
 //! the `end` above it would be read as happening inside the block.
 //!
-//! `box` groupings are shown but not edited here: a box wraps a *run* of
-//! declarations, so moving one column out of the middle of a box cannot be
-//! expressed without moving the others too, and
-//! [`SequenceDocument::structure_error`] refuses that rather than guessing.
+//! A `box` wraps a *run* of declarations, so a column that joins one has to
+//! stand next to the others: changing a participant's group moves its row to
+//! the end of that group's run rather than leaving a diagram
+//! [`SequenceDocument::structure_error`] would refuse.
 
 use editor::Editor;
 use gpui::{AnyElement, App, Context, Entity, Window};
 use mermaid_render::sequence_model::{
-    SequenceArrow, SequenceAutonumber, SequenceBlock, SequenceBlockKind, SequenceBranch,
-    SequenceBranchKind, SequenceDocument, SequenceItem, SequenceMessage, SequenceNote,
-    SequenceNotePlacement, SequenceParticipant, SequenceParticipantKind, is_valid_participant_id,
+    BOX_FILL_PRESETS, SequenceArrow, SequenceAutonumber, SequenceBlock, SequenceBlockKind,
+    SequenceBranch, SequenceBranchKind, SequenceDocument, SequenceGroupBox, SequenceItem,
+    SequenceMessage, SequenceNote, SequenceNotePlacement, SequenceParticipant,
+    SequenceParticipantKind, box_fill_label, is_valid_participant_id,
 };
 use ui::{
-    Checkbox, ContextMenu, DropdownMenu, DropdownStyle, IconPosition, ToggleState, prelude::*,
+    Checkbox, ContextMenu, DropdownMenu, DropdownStyle, IconButtonShape, IconPosition, ToggleState,
+    Tooltip, prelude::*,
 };
 use util::ResultExt as _;
 
@@ -31,6 +33,7 @@ use super::{
 pub(super) struct SequenceForm {
     pub(super) document: SequenceDocument,
     pub(super) title: Entity<Editor>,
+    pub(super) boxes: Vec<BoxRow>,
     pub(super) participants: Vec<ParticipantRow>,
     pub(super) items: Vec<ItemRow>,
 }
@@ -40,6 +43,10 @@ pub(super) struct ParticipantRow {
     pub(super) alias: Entity<Editor>,
 }
 
+pub(super) struct BoxRow {
+    pub(super) name: Entity<Editor>,
+}
+
 pub(super) enum ItemRow {
     /// A message, a note, a block start or a block branch: one line of text.
     Text(Entity<Editor>),
@@ -47,13 +54,15 @@ pub(super) enum ItemRow {
         start: Entity<Editor>,
         step: Entity<Editor>,
     },
-    /// `end`, `activate` and `deactivate` have nothing to type into.
+    /// `end`, `activate`, `deactivate`, `create` and `destroy` have nothing to
+    /// type into.
     Fixed,
 }
 
 impl SequenceForm {
     pub(super) fn fields(&self) -> Vec<Entity<Editor>> {
         std::iter::once(self.title.clone())
+            .chain(self.boxes.iter().map(|row| row.name.clone()))
             .chain(
                 self.participants
                     .iter()
@@ -77,6 +86,13 @@ impl SequenceForm {
         } else {
             Some(title)
         };
+
+        for (group, row) in document.boxes.iter_mut().zip(&self.boxes) {
+            // A name of nothing but spaces reads as an unnamed box everywhere
+            // else in the form, so it has to write one back as well.
+            let name = row.name.read(cx).text(cx).trim().to_string();
+            group.name = (!name.is_empty()).then_some(name);
+        }
 
         let mut renames: Vec<(String, String)> = Vec::new();
         for (participant, row) in document.participants.iter_mut().zip(&self.participants) {
@@ -135,7 +151,10 @@ impl SequenceForm {
                             note.to = id;
                         }
                     }
-                    SequenceItem::Activate(id) | SequenceItem::Deactivate(id) => {
+                    SequenceItem::Activate(id)
+                    | SequenceItem::Deactivate(id)
+                    | SequenceItem::Create(id)
+                    | SequenceItem::Destroy(id) => {
                         if let Some(new) = renamed(id) {
                             *id = new;
                         }
@@ -238,6 +257,13 @@ impl MermaidEditor {
             window,
             cx,
         );
+        let mut boxes = Vec::with_capacity(document.boxes.len());
+        for group in &document.boxes {
+            let name = group.name.clone().unwrap_or_default();
+            boxes.push(BoxRow {
+                name: self.new_field(&name, window, cx),
+            });
+        }
         let mut participants = Vec::with_capacity(document.participants.len());
         for participant in &document.participants {
             let (id, alias) = (
@@ -256,6 +282,7 @@ impl MermaidEditor {
         SequenceForm {
             document,
             title,
+            boxes,
             participants,
             items,
         }
@@ -292,9 +319,11 @@ impl MermaidEditor {
                     step: self.new_field(&step, window, cx),
                 }
             }
-            SequenceItem::BlockEnd | SequenceItem::Activate(_) | SequenceItem::Deactivate(_) => {
-                ItemRow::Fixed
-            }
+            SequenceItem::BlockEnd
+            | SequenceItem::Activate(_)
+            | SequenceItem::Deactivate(_)
+            | SequenceItem::Create(_)
+            | SequenceItem::Destroy(_) => ItemRow::Fixed,
         }
     }
 
@@ -316,7 +345,15 @@ impl MermaidEditor {
         let Some(form) = self.sequence() else {
             return;
         };
-        let id = form.current_document(cx).unused_participant_id("参加者");
+        let document = form.current_document(cx);
+        let id = document.unused_participant_id("参加者");
+        // Nothing may be declared at the top of the diagram after a `create`d
+        // column, so a new row goes in front of the first of those.
+        let at = document
+            .participants
+            .iter()
+            .position(|participant| document.is_created(&participant.id))
+            .unwrap_or(document.participants.len());
         let row = ParticipantRow {
             id: self.new_field(&id, window, cx),
             alias: self.new_field("", window, cx),
@@ -324,14 +361,20 @@ impl MermaidEditor {
         let Some(form) = self.sequence_mut() else {
             return;
         };
-        form.document.participants.push(SequenceParticipant {
-            id,
-            alias: None,
-            kind: SequenceParticipantKind::Participant,
-            wrap: false,
-            box_index: None,
-        });
-        form.participants.push(row);
+        if at > form.document.participants.len() || at > form.participants.len() {
+            return;
+        }
+        form.document.participants.insert(
+            at,
+            SequenceParticipant {
+                id,
+                alias: None,
+                kind: SequenceParticipantKind::Participant,
+                wrap: false,
+                box_index: None,
+            },
+        );
+        form.participants.insert(at, row);
         self.schedule_preview(cx);
         cx.notify();
     }
@@ -398,19 +441,146 @@ impl MermaidEditor {
         cx.notify();
     }
 
+    pub(super) fn add_sequence_box(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let name = "グループ".to_string();
+        let row = BoxRow {
+            name: self.new_field(&name, window, cx),
+        };
+        let Some(form) = self.sequence_mut() else {
+            return;
+        };
+        form.document.boxes.push(SequenceGroupBox {
+            name: Some(name),
+            fill: None,
+            wrap: false,
+        });
+        form.boxes.push(row);
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    pub(super) fn remove_sequence_box(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(form) = self.sequence_mut() else {
+            return;
+        };
+        if index >= form.document.boxes.len() || index >= form.boxes.len() {
+            return;
+        }
+        form.document.boxes.remove(index);
+        form.boxes.remove(index);
+        // `box_index` is a position in the list, so every index past the one
+        // that went away now names a different box.
+        for participant in &mut form.document.participants {
+            participant.box_index = match participant.box_index {
+                Some(current) if current == index => None,
+                Some(current) if current > index => Some(current - 1),
+                other => other,
+            };
+        }
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    pub(super) fn set_sequence_box_fill(
+        &mut self,
+        index: usize,
+        fill: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(form) = self.sequence_mut() else {
+            return;
+        };
+        let Some(group) = form.document.boxes.get_mut(index) else {
+            return;
+        };
+        group.fill = fill;
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    /// Puts the participant at `index` into `box_index`, moving its row so that
+    /// the group stays one unbroken run of declarations.
+    ///
+    /// A column that joins a box has to sit next to the box's other members,
+    /// and one that leaves has to get out from between them, so both cases move
+    /// the row to just after the last member of the box that is changing size.
+    /// A box the column is the first member of has no such row, so the move
+    /// falls back to the group it is leaving: staying put would otherwise cut
+    /// that group's run in two.
+    pub(super) fn set_participant_box(
+        &mut self,
+        index: usize,
+        box_index: Option<usize>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(form) = self.sequence_mut() else {
+            return;
+        };
+        if index >= form.participants.len() {
+            return;
+        }
+        if box_index.is_some_and(|box_index| box_index >= form.document.boxes.len()) {
+            return;
+        }
+        let Some(participant) = form.document.participants.get_mut(index) else {
+            return;
+        };
+        let previous = participant.box_index;
+        if previous == box_index {
+            return;
+        }
+        participant.box_index = box_index;
+
+        let last_member = |anchor: usize| {
+            form.document
+                .participants
+                .iter()
+                .enumerate()
+                .filter(|(other, participant)| {
+                    *other != index && participant.box_index == Some(anchor)
+                })
+                .map(|(other, _)| other)
+                .max()
+        };
+        let last = box_index
+            .and_then(last_member)
+            .or_else(|| previous.and_then(last_member));
+        // Taking the row out first shifts every later index down by one,
+        // which is why a row moving down lands on the anchor's own index.
+        if let Some(last) = last {
+            let target = if index < last { last } else { last + 1 };
+            if target != index {
+                let participant = form.document.participants.remove(index);
+                form.document.participants.insert(target, participant);
+                let row = form.participants.remove(index);
+                form.participants.insert(target, row);
+            }
+        }
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
     pub(super) fn add_sequence_item(
         &mut self,
         kind: AddKind,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if matches!(kind, AddKind::Create) {
+            self.add_created_participant(window, cx);
+            return;
+        }
         let Some(form) = self.sequence() else {
             return;
         };
         let document = form.current_document(cx);
         let first = document.participants.first().map(|one| one.id.clone());
         let item = match kind {
-            AddKind::Message | AddKind::Note | AddKind::Activate | AddKind::Deactivate => {
+            AddKind::Message
+            | AddKind::Note
+            | AddKind::Activate
+            | AddKind::Deactivate
+            | AddKind::Destroy => {
                 let Some(first) = first else {
                     self.message = Some("先に参加者を追加してください。".into());
                     cx.notify();
@@ -439,9 +609,12 @@ impl MermaidEditor {
                         wrap: false,
                     }),
                     AddKind::Activate => SequenceItem::Activate(first),
+                    AddKind::Destroy => SequenceItem::Destroy(first),
                     _ => SequenceItem::Deactivate(first),
                 }
             }
+            // `create` is handled above: it declares a column of its own.
+            AddKind::Create => return,
             AddKind::BlockStart => SequenceItem::BlockStart(SequenceBlock {
                 kind: SequenceBlockKind::Loop,
                 label: String::new(),
@@ -465,6 +638,38 @@ impl MermaidEditor {
         };
         form.document.items.push(item);
         form.items.push(row);
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    /// `create` declares a column of its own, so the button adds the
+    /// participant together with the statement — at the end of the list,
+    /// because the top of the diagram can no longer declare anything that
+    /// comes after a created column.
+    fn add_created_participant(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(form) = self.sequence() else {
+            return;
+        };
+        let id = form.current_document(cx).unused_participant_id("参加者");
+        let row = ParticipantRow {
+            id: self.new_field(&id, window, cx),
+            alias: self.new_field("", window, cx),
+        };
+        let item = SequenceItem::Create(id.clone());
+        let item_row = self.new_sequence_row(&item, window, cx);
+        let Some(form) = self.sequence_mut() else {
+            return;
+        };
+        form.document.participants.push(SequenceParticipant {
+            id,
+            alias: None,
+            kind: SequenceParticipantKind::Participant,
+            wrap: false,
+            box_index: None,
+        });
+        form.participants.push(row);
+        form.document.items.push(item);
+        form.items.push(item_row);
         self.schedule_preview(cx);
         cx.notify();
     }
@@ -547,9 +752,187 @@ impl MermaidEditor {
 
         vec![
             title,
+            self.render_sequence_boxes(form, window, cx),
             self.render_participants(form, window, cx),
             self.render_sequence_items(form, &ids, window, cx),
         ]
+    }
+
+    pub(super) fn render_sequence_boxes(
+        &self,
+        form: &SequenceForm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title("box (参加者のまとまり)"));
+        for index in 0..form.boxes.len() {
+            let (Some(row), Some(group)) = (form.boxes.get(index), form.document.boxes.get(index))
+            else {
+                continue;
+            };
+            section = section.child(
+                h_flex()
+                    .w_full()
+                    .gap_1()
+                    .child(
+                        Label::new(box_number_label(index))
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .child(
+                        field_frame(&row.name, LABEL_FIELD_WIDTH, true, window, cx)
+                            .flex_1()
+                            .child(row.name.clone()),
+                    )
+                    .child(self.render_box_fill(index, group.fill.as_deref(), window, cx))
+                    .child(
+                        IconButton::new(
+                            SharedString::from(format!("mermaid-sequence-box-remove-{index}")),
+                            IconName::Trash,
+                        )
+                        .shape(IconButtonShape::Square)
+                        .icon_size(IconSize::XSmall)
+                        .tooltip(Tooltip::text("削除 (中の参加者は残ります)"))
+                        .on_click(cx.listener(
+                            move |this, _, _window, cx| this.remove_sequence_box(index, cx),
+                        )),
+                    ),
+            );
+        }
+        section
+            .child(add_button(
+                "mermaid-sequence-add-box",
+                "box を追加",
+                cx.listener(|this, _, window, cx| this.add_sequence_box(window, cx)),
+            ))
+            .into_any_element()
+    }
+
+    /// The `box` a participant belongs to. Mermaid writes a box as a run of
+    /// declarations, so choosing one here also moves the row into that run.
+    pub(super) fn render_participant_box(
+        &self,
+        form: &SequenceForm,
+        index: usize,
+        current: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let this = cx.entity().downgrade();
+        let names = form
+            .document
+            .boxes
+            .iter()
+            .enumerate()
+            .map(|(box_index, group)| box_menu_label(box_index, group.name.as_deref()))
+            .collect::<Vec<_>>();
+        let label = current
+            .and_then(|box_index| names.get(box_index).cloned())
+            .unwrap_or_else(|| "所属なし".to_string());
+        let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
+            let mut choices = vec![(None, "所属なし".to_string())];
+            choices.extend(
+                names
+                    .iter()
+                    .enumerate()
+                    .map(|(box_index, name)| (Some(box_index), name.clone())),
+            );
+            for (choice, name) in choices {
+                let this = this.clone();
+                menu = menu.toggleable_entry(
+                    name,
+                    choice == current,
+                    IconPosition::Start,
+                    None,
+                    move |_window, cx| {
+                        this.update(cx, |this, cx| this.set_participant_box(index, choice, cx))
+                            .log_err();
+                    },
+                );
+            }
+            menu.separator()
+                .entry("新しい box…", None, move |window, cx| {
+                    this.update(cx, |this, cx| {
+                        this.add_sequence_box(window, cx);
+                        let Some(form) = this.sequence() else {
+                            return;
+                        };
+                        let Some(added) = form.document.boxes.len().checked_sub(1) else {
+                            return;
+                        };
+                        this.set_participant_box(index, Some(added), cx);
+                    })
+                    .log_err();
+                })
+        });
+
+        DropdownMenu::new(
+            ("mermaid-sequence-participant-box", index),
+            SharedString::from(label),
+            menu,
+        )
+        .style(DropdownStyle::Outlined)
+        .trigger_size(ButtonSize::Compact)
+        .into_any_element()
+    }
+
+    pub(super) fn render_box_fill(
+        &self,
+        index: usize,
+        current: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let this = cx.entity().downgrade();
+        let current = current.map(str::to_string);
+        // A fill written by hand — `rgb(…)` say — is not one of the presets, so
+        // it is offered alongside them rather than being lost as soon as the
+        // menu is opened.
+        let custom = current.clone().filter(|fill| {
+            !BOX_FILL_PRESETS
+                .iter()
+                .any(|(preset, _)| *preset == Some(fill.as_str()))
+        });
+        let label = box_fill_label(current.as_deref());
+        let selected = current;
+        let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
+            let mut choices: Vec<(Option<String>, String)> = Vec::new();
+            if let Some(fill) = &custom {
+                choices.push((Some(fill.clone()), fill.clone()));
+            }
+            choices.extend(
+                BOX_FILL_PRESETS
+                    .iter()
+                    .map(|(preset, label)| (preset.map(str::to_string), (*label).to_string())),
+            );
+            for (fill, label) in choices {
+                let this = this.clone();
+                menu = menu.toggleable_entry(
+                    label,
+                    fill == selected,
+                    IconPosition::Start,
+                    None,
+                    move |_window, cx| {
+                        let fill = fill.clone();
+                        this.update(cx, |this, cx| this.set_sequence_box_fill(index, fill, cx))
+                            .log_err();
+                    },
+                );
+            }
+            menu
+        });
+
+        DropdownMenu::new(
+            ("mermaid-sequence-box-fill", index),
+            SharedString::from(label),
+            menu,
+        )
+        .style(DropdownStyle::Outlined)
+        .trigger_size(ButtonSize::Compact)
+        .into_any_element()
     }
 
     pub(super) fn render_participants(
@@ -570,10 +953,9 @@ impl MermaidEditor {
             ) else {
                 continue;
             };
-            let box_name = participant
-                .box_index
-                .and_then(|box_index| form.document.boxes.get(box_index))
-                .map(|group| group.name.clone().unwrap_or_default());
+            // A `create`d column is declared by its statement in the list
+            // below, and a declaration inside a `box` would be a second one.
+            let created = form.document.is_created(&participant.id);
             section = section.child(
                 h_flex()
                     .w_full()
@@ -594,11 +976,22 @@ impl MermaidEditor {
                             .child(row.alias.clone()),
                     )
                     .child(self.render_participant_kind(index, participant.kind, window, cx))
-                    .children(box_name.map(|name| {
-                        Label::new(format!("box: {name}"))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                    }))
+                    .when(created, |this| {
+                        this.child(
+                            Label::new("create で作成")
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
+                    })
+                    .when(!created, |this| {
+                        this.child(self.render_participant_box(
+                            form,
+                            index,
+                            participant.box_index,
+                            window,
+                            cx,
+                        ))
+                    })
                     .child(row_controls(
                         "mermaid-sequence-participant",
                         index,
@@ -769,6 +1162,24 @@ impl MermaidEditor {
                             .color(Color::Muted),
                     )
                     .child(self.render_lifeline_target(index, id, ids, window, cx)),
+                (SequenceItem::Create(id), _) => h_flex()
+                    .w_full()
+                    .gap_1()
+                    .child(
+                        Label::new("参加者の作成")
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .child(self.render_lifeline_target(index, id, ids, window, cx)),
+                (SequenceItem::Destroy(id), _) => h_flex()
+                    .w_full()
+                    .gap_1()
+                    .child(
+                        Label::new("参加者の破棄")
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .child(self.render_lifeline_target(index, id, ids, window, cx)),
                 (
                     SequenceItem::Autonumber(autonumber),
                     Some(ItemRow::Autonumber { start, step }),
@@ -832,6 +1243,8 @@ impl MermaidEditor {
             ("end", "ブロック終了", AddKind::BlockEnd),
             ("activate", "活性化", AddKind::Activate),
             ("deactivate", "活性化の終了", AddKind::Deactivate),
+            ("create", "参加者の作成", AddKind::Create),
+            ("destroy", "参加者の破棄", AddKind::Destroy),
             ("autonumber", "自動番号", AddKind::Autonumber),
         ] {
             buttons = buttons.child(add_button(
@@ -964,7 +1377,10 @@ impl MermaidEditor {
             window,
             cx,
             move |item, id| match item {
-                SequenceItem::Activate(target) | SequenceItem::Deactivate(target) => *target = id,
+                SequenceItem::Activate(target)
+                | SequenceItem::Deactivate(target)
+                | SequenceItem::Create(target)
+                | SequenceItem::Destroy(target) => *target = id,
                 _ => {}
             },
         )
@@ -1181,6 +1597,8 @@ pub(super) enum AddKind {
     BlockEnd,
     Activate,
     Deactivate,
+    Create,
+    Destroy,
     Autonumber,
 }
 
@@ -1188,11 +1606,28 @@ pub(super) fn names_participant(item: &SequenceItem, id: &str) -> bool {
     match item {
         SequenceItem::Message(message) => message.from == id || message.to == id,
         SequenceItem::Note(note) => note.from == id || note.to == id,
-        SequenceItem::Activate(target) | SequenceItem::Deactivate(target) => target == id,
+        SequenceItem::Activate(target)
+        | SequenceItem::Deactivate(target)
+        | SequenceItem::Create(target)
+        | SequenceItem::Destroy(target) => target == id,
         SequenceItem::BlockStart(_)
         | SequenceItem::BlockBranch(_)
         | SequenceItem::BlockEnd
         | SequenceItem::Autonumber(_) => false,
+    }
+}
+
+/// How the `box` list names the row whose name field is still empty.
+pub(super) fn box_number_label(index: usize) -> String {
+    format!("box {}", index + 1)
+}
+
+/// How the membership menu names a box: its own name, or its place in the list
+/// when it has none, because an unnamed box still has to be pickable.
+pub(super) fn box_menu_label(index: usize, name: Option<&str>) -> String {
+    match name.map(str::trim).filter(|name| !name.is_empty()) {
+        Some(name) => name.to_string(),
+        None => format!("{} (名前なし)", box_number_label(index)),
     }
 }
 

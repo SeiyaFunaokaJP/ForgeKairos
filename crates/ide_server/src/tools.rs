@@ -758,64 +758,205 @@ fn required_string<'a>(arguments: &'a Value, key: &str) -> Result<&'a str> {
 }
 
 /// サンドボックスの要求 1 件ぶんの文脈。ワークツリーのルートの実体は要求ごとに 1 度だけ求める。
-struct SandboxRequest<'a> {
+pub(crate) struct SandboxRequest<'a> {
     paths: &'a SandboxPaths,
-    fs: Arc<dyn Fs>,
-    executor: gpui::BackgroundExecutor,
-    real_roots: RealRoots,
+    project: Entity<Project>,
+    checks: SandboxChecks,
+}
+
+/// ADR-F53: サンドボックスが指したパスの実体を、どこで確かめるか。
+enum SandboxChecks {
+    /// ローカルのプロジェクト。ファイルはこのマシンにあるので [`Fs`] で直接見る。
+    OnThisMachine {
+        fs: Arc<dyn Fs>,
+        executor: gpui::BackgroundExecutor,
+        real_roots: RealRoots,
+    },
+    /// リモート (SSH) のプロジェクト。ファイルを持っているのは接続先なので、「ルート直下
+    /// から 1 段もリンクを通らずに開ける」の判定も接続先にさせる
+    /// ([`Project::verify_agent_read`] = proto 506)。クライアントの [`Fs`] で見ると、接続先の
+    /// 絶対パスはこのマシンには無いので、要求が残らず「ワークスペースの外」になってしまう。
+    OnTheRemoteHost,
+}
+
+/// どちらの確認を使うか。ファイルを持っているのがこのマシンでないプロジェクト
+/// (SSH リモート) は、すべて接続先に確かめさせる。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SandboxChecksKind {
+    OnThisMachine,
+    OnTheRemoteHost,
+}
+
+impl SandboxChecksKind {
+    /// collab のプロジェクトはここまで来ない: セッションを結び付ける時点で断っている
+    /// ([`crate::sandbox_client`] の `session_project_refusal`)。
+    fn of(project: &Project) -> Self {
+        if project.is_local() {
+            Self::OnThisMachine
+        } else {
+            Self::OnTheRemoteHost
+        }
+    }
+}
+
+/// [`SandboxRequest::verify_on_host`] の結果。
+enum RemoteEntry {
+    /// 接続先に実体があり、リンクを 1 段も通らずに開ける。
+    Present(ProjectPath),
+    /// ワークツリーの中だが、接続先にはまだ無い (新規の `openDiff`)。
+    Absent,
+}
+
+/// ワークツリーの走査から見た、リモートのパスの様子。
+enum RemotePathState {
+    File,
+    Directory,
+    /// 走査がこのパスを知らない。まだ無いか、走査が届いていない (除外パターン・`.git` 配下・
+    /// 初回走査の途中) かの区別は走査からは付かないので、接続先に確かめさせる。
+    /// `plain_ancestors` は、走査が知っている祖先がすべて素のディレクトリだったか。
+    Unscanned {
+        plain_ancestors: bool,
+    },
 }
 
 impl<'a> SandboxRequest<'a> {
-    async fn new(paths: &'a SandboxPaths, project: &Entity<Project>, cx: &mut AsyncApp) -> Self {
-        let fs = project.read_with(cx, |project, _| project.fs().clone());
-        let real_roots = path_mapping::real_roots(paths, &fs).await;
+    pub(crate) async fn new(
+        paths: &'a SandboxPaths,
+        project: &Entity<Project>,
+        cx: &mut AsyncApp,
+    ) -> Self {
+        let kind = project.read_with(cx, |project, _| SandboxChecksKind::of(project));
+        Self::with_kind(paths, project, kind, cx).await
+    }
+
+    /// [`Self::new`] の中身。テストは、ローカルの [`fs::FakeFs`] のプロジェクトに
+    /// [`SandboxChecksKind::OnTheRemoteHost`] を指定して、接続先で確かめる経路を通す
+    /// (`verify_agent_read` はローカルのワークツリーでは `Fs::verify_read` に降りるので、
+    /// 判定そのものは本物)。
+    pub(crate) async fn with_kind(
+        paths: &'a SandboxPaths,
+        project: &Entity<Project>,
+        kind: SandboxChecksKind,
+        cx: &mut AsyncApp,
+    ) -> Self {
+        let checks = match kind {
+            SandboxChecksKind::OnThisMachine => {
+                let fs = project.read_with(cx, |project, _| project.fs().clone());
+                SandboxChecks::OnThisMachine {
+                    real_roots: path_mapping::real_roots(paths, &fs).await,
+                    fs,
+                    executor: cx.background_executor().clone(),
+                }
+            }
+            SandboxChecksKind::OnTheRemoteHost => SandboxChecks::OnTheRemoteHost,
+        };
         Self {
             paths,
-            fs,
-            executor: cx.background_executor().clone(),
-            real_roots,
+            project: project.clone(),
+            checks,
+        }
+    }
+
+    /// テストが「どちらの確認を選んだか」を確かめるためだけのもの。実装はこの区別を
+    /// [`Self::checks`] のパターンマッチで直接扱う。
+    #[cfg(test)]
+    pub(crate) fn checks_kind(&self) -> SandboxChecksKind {
+        match self.checks {
+            SandboxChecks::OnThisMachine { .. } => SandboxChecksKind::OnThisMachine,
+            SandboxChecks::OnTheRemoteHost => SandboxChecksKind::OnTheRemoteHost,
         }
     }
 
     /// CLI から来たパスを変換し、ワークツリーの外を指すもの (中に置かれたリンクの行き先を
     /// 含む) と、リンクを通るものを拒否する。
-    async fn resolve(&self, text: &str) -> Result<PathBuf> {
+    pub(crate) async fn resolve(&self, text: &str, cx: &mut AsyncApp) -> Result<PathBuf> {
         let host_path = self
             .paths
             .to_host(text)
             .map_err(|error| client_error(error.to_string()))?;
-        match path_mapping::has_link_below_root(self.paths, &host_path, &self.fs, &self.executor)
-            .await
-        {
-            Ok(false) => {}
-            Ok(true) => return Err(link_refused_error(text)),
-            Err(error) => {
-                log::debug!(
-                    "ide_server: could not inspect a path for a sandboxed client: {error:#}"
-                );
-                return Err(client_error(format!("{text} could not be inspected")));
+        match &self.checks {
+            SandboxChecks::OnThisMachine {
+                fs,
+                executor,
+                real_roots,
+            } => {
+                match path_mapping::has_link_below_root(self.paths, &host_path, fs, executor).await
+                {
+                    Ok(false) => {}
+                    Ok(true) => return Err(link_refused_error(text)),
+                    Err(error) => {
+                        log::debug!(
+                            "ide_server: could not inspect a path for a sandboxed client: {error:#}"
+                        );
+                        return Err(client_error(format!("{text} could not be inspected")));
+                    }
+                }
+                if let Err(error) = real_roots.ensure_contains(&host_path, fs).await {
+                    log::debug!("ide_server: refused a path for a sandboxed client: {error:#}");
+                    return Err(client_error(format!("{text} is outside the workspace")));
+                }
             }
-        }
-        if let Err(error) = self.real_roots.ensure_contains(&host_path, &self.fs).await {
-            log::debug!("ide_server: refused a path for a sandboxed client: {error:#}");
-            return Err(client_error(format!("{text} is outside the workspace")));
+            SandboxChecks::OnTheRemoteHost => {
+                self.verify_on_host(&host_path, text, cx).await?;
+            }
         }
         Ok(host_path)
     }
 
-    /// 差分の旧内容を、ファイルから 1 度だけ読む。まだ無いファイルなら空。
-    async fn read_old_contents(
+    /// 差分の旧内容を 1 度だけ読む。まだ無いファイルなら空。
+    pub(crate) async fn read_old_contents(
         &self,
         host_path: &Path,
         text: &str,
         cx: &mut AsyncApp,
     ) -> Result<String> {
+        let (fs, real_roots) = match &self.checks {
+            SandboxChecks::OnThisMachine { fs, real_roots, .. } => (fs, real_roots),
+            // ADR-F53 決定: 接続先のファイルはクライアントからは開けないので、確認を通した
+            // うえでバッファーとして読む (ホストの経路と同じ手で、未保存の変更も見える)。
+            SandboxChecks::OnTheRemoteHost => {
+                let project_path = match self.verify_on_host(host_path, text, cx).await? {
+                    RemoteEntry::Absent => return Ok(String::new()),
+                    RemoteEntry::Present(project_path) => project_path,
+                };
+                // 開く**前**に断る: `Project::open_buffer` は接続先のファイルを丸ごと読んで
+                // Rope にするので (ワークツリーの上限は 6 GiB)、読んでから大きさを見るのでは
+                // サンドボックスの中の CLI がメモリを使い切らせられる。走査が大きさを知らない
+                // パスは、読んだあとの控えの確認に任せる。
+                let scanned_size = self.project.read_with(cx, |project, cx| {
+                    let worktree = project.worktree_for_id(project_path.worktree_id, cx)?;
+                    let entry = worktree.read(cx).entry_for_path(&project_path.path)?;
+                    Some(entry.size)
+                });
+                if scanned_size.is_some_and(|size| size > MAX_SANDBOX_FILE_BYTES) {
+                    return Err(client_error(format!(
+                        "{text} is larger than {} MiB",
+                        MAX_SANDBOX_FILE_BYTES / (1024 * 1024)
+                    )));
+                }
+                let buffer = self
+                    .project
+                    .update(cx, |project, cx| project.open_buffer(project_path, cx))
+                    .await
+                    .map_err(|error| {
+                        log::debug!(
+                            "ide_server: could not open a remote file for a sandboxed client: \
+                             {error:#}"
+                        );
+                        client_error(format!("{text} could not be read"))
+                    })?;
+                let contents = buffer.read_with(cx, |buffer, _| buffer.text());
+                if u64::try_from(contents.len()).unwrap_or(u64::MAX) > MAX_SANDBOX_FILE_BYTES {
+                    return Err(client_error(format!(
+                        "{text} is larger than {} MiB",
+                        MAX_SANDBOX_FILE_BYTES / (1024 * 1024)
+                    )));
+                }
+                return Ok(contents);
+            }
+        };
         let executor = cx.background_executor().clone();
-        match self
-            .real_roots
-            .read_file(host_path, &self.fs, &executor)
-            .await
-        {
+        match real_roots.read_file(host_path, fs, &executor).await {
             Ok(SandboxFile::Missing) => Ok(String::new()),
             Ok(SandboxFile::Text(contents)) => Ok(contents),
             Ok(SandboxFile::NotRegular) => {
@@ -836,12 +977,12 @@ impl<'a> SandboxRequest<'a> {
     /// すでに開いているバッファーを CLI に見せてよいかの確認。ワークツリーの走査がリンクを
     /// たどった結果として外を指すと判断したファイルや、リンクを通るファイルは断る。通れば、
     /// そのファイルのホストの絶対パスを返す。
-    async fn verify_open_buffer(
+    pub(crate) async fn verify_open_buffer(
         &self,
         buffer: &Entity<Buffer>,
         cx: &mut AsyncApp,
     ) -> Result<PathBuf> {
-        let (abs_path, is_external) = buffer
+        let (project_path, abs_path, is_external) = buffer
             .read_with(cx, |buffer, cx| {
                 let file = WorktreeFile::from_dyn(buffer.file())?;
                 let worktree = file.worktree.read(cx);
@@ -849,7 +990,11 @@ impl<'a> SandboxRequest<'a> {
                     .entry_id
                     .and_then(|entry_id| worktree.entry_for_id(entry_id))
                     .is_some_and(|entry| entry.is_external);
-                Some((worktree.absolutize(&file.path), is_external))
+                let project_path = ProjectPath {
+                    worktree_id: worktree.id(),
+                    path: file.path.clone(),
+                };
+                Some((project_path, worktree.absolutize(&file.path), is_external))
             })
             .context("the buffer is not a file in a worktree")?;
         anyhow::ensure!(!is_external, "the worktree marks the file as outside it");
@@ -857,13 +1002,128 @@ impl<'a> SandboxRequest<'a> {
             self.paths.contains(&abs_path),
             "the file is outside the workspace"
         );
-        anyhow::ensure!(
-            !path_mapping::has_link_below_root(self.paths, &abs_path, &self.fs, &self.executor)
-                .await?,
-            "the file goes through a link"
-        );
-        self.real_roots.ensure_contains(&abs_path, &self.fs).await?;
+        match &self.checks {
+            SandboxChecks::OnThisMachine {
+                fs,
+                executor,
+                real_roots,
+            } => {
+                anyhow::ensure!(
+                    !path_mapping::has_link_below_root(self.paths, &abs_path, fs, executor).await?,
+                    "the file goes through a link"
+                );
+                real_roots.ensure_contains(&abs_path, fs).await?;
+            }
+            SandboxChecks::OnTheRemoteHost => {
+                self.verify_agent_read(project_path, cx).await?;
+            }
+        }
         Ok(abs_path)
+    }
+
+    /// ADR-F53: 接続先のパスの確認。ワークツリーの中にあることを確かめ、実体があるものは
+    /// 「ルート直下から 1 段もリンクを通らずに開ける」ことを接続先に確かめさせる。
+    ///
+    /// 走査に出ないパスでも、まず接続先に開かせてみる: `.git` 配下や `file_scan_exclusions`
+    /// に当たるもの・初回走査の途中のものは、実体があっても走査には出ない。走査だけで
+    /// 「まだ無い」と決めると、既存のファイルが差分の旧側が空の「新規ファイル」として人の
+    /// 確認を通ってしまうので、接続先が開けるものは (大きさを確かめられない以上) 断る。
+    ///
+    /// 接続先も開けなかったときだけ、まだ無いもの (新規の `openDiff`) として扱ってよいかを
+    /// 走査が知っている祖先で判断する —— 一番近い既存の祖先が素のディレクトリであること
+    /// (リンクでも、リンクの先でワークツリーの外を指すものでもないこと)。そこまで通れば
+    /// [`RemoteEntry::Absent`] で、差分の旧側が空になる。Zed 自身はこのパスを読みも書きも
+    /// しない (採用された本文を書くのはサンドボックスの中の CLI)。
+    async fn verify_on_host(
+        &self,
+        host_path: &Path,
+        text: &str,
+        cx: &mut AsyncApp,
+    ) -> Result<RemoteEntry> {
+        let found =
+            self.project.read_with(cx, |project, cx| {
+                let project_path = project.find_project_path(host_path, cx)?;
+                let worktree = project.worktree_for_id(project_path.worktree_id, cx)?;
+                let worktree = worktree.read(cx);
+                // 接続先が辿る基点はセッションのルートでなければならない。`find_project_path` は
+                // 開いているワークツリーのうち綴りが前方一致する最初のものを返すので、セッションの
+                // 開始後にルートの中へ入れ子で開かれたフォルダーが返ると、そのフォルダーまでの
+                // リンクが確かめられないまま通ってしまう (ローカルの経路はセッションのルートから
+                // 辿るので同じ穴が無い)。
+                if !self.paths.roots().iter().any(|root| {
+                    util::path_mapping::same_place(self.paths, root, &worktree.abs_path())
+                }) {
+                    return None;
+                }
+                // `canonical_path` が付いた項目はリンクを通って辿り着いたもので、`is_external`
+                // はその先がワークツリーの外を指すもの。接続先に開かせられないパス (本当に無い
+                // もの) は、走査が知っている祖先がすべて素のディレクトリであることが唯一の確認。
+                let plain_ancestors = project_path.path.ancestors().skip(1).all(|ancestor| {
+                    worktree.entry_for_path(ancestor).is_none_or(|entry| {
+                        entry.is_dir() && !entry.is_external && entry.canonical_path.is_none()
+                    })
+                });
+                let state = match worktree.entry_for_path(&project_path.path) {
+                    Some(entry) if entry.is_dir() => RemotePathState::Directory,
+                    Some(_) => RemotePathState::File,
+                    None => RemotePathState::Unscanned { plain_ancestors },
+                };
+                Some((project_path, state))
+            });
+        let Some((project_path, state)) = found else {
+            return Err(client_error(format!("{text} is not inside a worktree")));
+        };
+        match state {
+            RemotePathState::Directory => {
+                Err(client_error(format!("{text} is not a regular file")))
+            }
+            RemotePathState::File => {
+                self.verify_agent_read(project_path.clone(), cx)
+                    .await
+                    .map_err(|error| {
+                        log::debug!(
+                            "ide_server: the host refused a path for a sandboxed client: {error:#}"
+                        );
+                        link_refused_error(text)
+                    })?;
+                Ok(RemoteEntry::Present(project_path))
+            }
+            // 走査に出ないからといって「まだ無い」とは限らない (`.git` 配下や
+            // `file_scan_exclusions` に当たるものは実体があっても出ない)。実体の有無も接続先に
+            // 決めさせる。
+            RemotePathState::Unscanned { plain_ancestors } => {
+                match self.verify_agent_read(project_path, cx).await {
+                    // 実体はあるのに走査が知らない = 大きさも分からない。旧側を空で出すと
+                    // 既にあるファイルが「新規ファイル」として人の確認を通ってしまい、かと
+                    // いって大きさを確かめずに開くと接続先のファイルを丸ごと読み込むことに
+                    // なる (ワークツリー自身の上限は 6 GiB)。どちらも取らず理由を出して断る。
+                    Ok(()) => Err(client_error(format!(
+                        "{text} is not in this session's view of the worktree, so its previous \
+                         contents cannot be shown"
+                    ))),
+                    // 接続先にも開けない = 本当にまだ無い。走査が知っている祖先がすべて素の
+                    // ディレクトリなら新規ファイルとして扱う (差分の旧側が空)。
+                    Err(error) => {
+                        log::debug!(
+                            "ide_server: the host could not open a path the worktree does not \
+                             know: {error:#}"
+                        );
+                        if plain_ancestors {
+                            Ok(RemoteEntry::Absent)
+                        } else {
+                            Err(link_refused_error(text))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// proto 506: 接続先に「ルートから `path` までリンクを 1 段も通らずに開ける」を判定させる。
+    async fn verify_agent_read(&self, path: ProjectPath, cx: &mut AsyncApp) -> Result<()> {
+        self.project
+            .read_with(cx, |project, cx| project.verify_agent_read(&path, cx))
+            .await
     }
 }
 
@@ -1219,7 +1479,7 @@ async fn sandbox_diagnostics(
     let request = SandboxRequest::new(paths, project, cx).await;
     let buffers = match uri {
         Some(uri) => {
-            let host_path = request.resolve(uri).await?;
+            let host_path = request.resolve(uri, cx).await?;
             let project_path = project
                 .read_with(cx, |project, cx| project.find_project_path(&host_path, cx))
                 .ok_or_else(|| client_error(format!("{uri} is not inside a worktree")))?;
@@ -1402,8 +1662,8 @@ async fn open_diff<H: ToolHost>(
         }
         Some(paths) => {
             let request = SandboxRequest::new(paths, &project, cx).await;
-            let old_file_path = request.resolve(old_text).await?;
-            let new_file_path = request.resolve(new_text).await?;
+            let old_file_path = request.resolve(old_text, cx).await?;
+            let new_file_path = request.resolve(new_text, cx).await?;
             let old_contents = request
                 .read_old_contents(&old_file_path, old_text, cx)
                 .await?;

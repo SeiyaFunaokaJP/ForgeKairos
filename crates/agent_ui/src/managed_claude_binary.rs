@@ -26,14 +26,14 @@ use anyhow::{Context as _, Result, anyhow, bail, ensure};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use collections::HashMap;
 use futures::{
-    AsyncReadExt as _, FutureExt as _, StreamExt as _,
+    AsyncReadExt as _, AsyncWriteExt as _, FutureExt as _, StreamExt as _,
     channel::mpsc,
     future::{LocalBoxFuture, Shared, WeakShared},
     lock::Mutex as AsyncMutex,
 };
 use gpui::{
-    App, AppContext as _, AsyncApp, AsyncWindowContext, BackgroundExecutor, Entity, Global,
-    PromptButton, PromptLevel, SharedString, Task, Window,
+    App, AppContext as _, AsyncApp, AsyncWindowContext, BackgroundExecutor, Entity, FutureExt as _,
+    Global, PromptButton, PromptLevel, SharedString, Task, Window,
 };
 use http_client::{
     AsyncBody, EgressPolicyHandle, HttpClient, Response, egress_denied_hosts,
@@ -1795,7 +1795,7 @@ impl Installer {
             .host
             .stage(binary_path, sha256.clone())
             .await
-            .map_err(|error| refuse(host_kind.staging_failed(), format!("{error:#}")))?;
+            .map_err(|error| refuse_remote(host_kind.staging_failed(), error))?;
         self.executor
             .spawn(async move { work_dir.close() })
             .await
@@ -1991,7 +1991,7 @@ impl Installer {
         self.host
             .staged(sha256)
             .await
-            .map_err(|error| refuse(self.host.kind().staged_check_failed(), format!("{error:#}")))
+            .map_err(|error| refuse_remote(self.host.kind().staged_check_failed(), error))
     }
 
     /// Read-modify-write under the lock every installer shares, so that an
@@ -2297,16 +2297,149 @@ fn ensure_remote_room(output: &str, needed: u64) -> Result<()> {
 const REMOTE_SCRIPT_FAILED: &str = "接続先のホストでコマンドを実行できませんでした。";
 const REMOTE_HOME_UNREADABLE: &str = "接続先のホストのホームディレクトリを調べられませんでした。";
 
+/// 接続先との 1 往復を待つ時間 (ADR-F53)。WSL 側の `WSL_STEP_TIMEOUT` と同じ
+/// 考えで、繋がったまま黙り込んだ接続先にいつまでも張り付かないための上限。
+const REMOTE_SCRIPT_TIMEOUT: Duration = Duration::from_secs(60);
+/// [`REMOTE_FINALIZE_SCRIPT`] だけは 224 MB の `sha256sum` と rename を含むので、
+/// 他の 1 往復より長く待つ。
+const REMOTE_FINALIZE_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// この 1 往復に許す時間。アドレスではなく内容で見分けるのは、`const &str` が
+/// 使う場所ごとに埋め込まれうるため (`FakeRemoteHost` と同じ理由)。
+fn remote_script_timeout(script: &'static str) -> Duration {
+    if script == REMOTE_FINALIZE_SCRIPT {
+        REMOTE_FINALIZE_TIMEOUT
+    } else {
+        REMOTE_SCRIPT_TIMEOUT
+    }
+}
+
+/// タイムアウトの案内文に入れる「何をしていたか」。知らないスクリプト
+/// (`sandboxed_claude_code` の設定フォルダー作成など) は一般的な言い方にする。
+fn remote_script_step(script: &'static str) -> &'static str {
+    if script == REMOTE_PROBE_SCRIPT {
+        "接続先の環境の確認"
+    } else if script == REMOTE_STAGED_SCRIPT {
+        "接続先にある Claude Code の確認"
+    } else if script == REMOTE_PREPARE_SCRIPT {
+        "送信先フォルダーの準備"
+    } else if script == REMOTE_FINALIZE_SCRIPT {
+        "送った Claude Code の検証"
+    } else {
+        "接続先でのコマンドの実行"
+    }
+}
+
+/// 期限までに接続先が答えなかった。見出しを差し替える経路 ([`refuse_remote`]) でも
+/// 理由を残せるよう、文言の中身ではなく型で見分けられるようにしてある。
+#[derive(Debug)]
+struct RemoteScriptTimedOut {
+    timeout: Duration,
+    step: &'static str,
+}
+
+impl fmt::Display for RemoteScriptTimedOut {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "接続先の応答が {} 秒以内に返りませんでした ({})。接続先の状態を確かめてから、\
+             もう一度お試しください。",
+            self.timeout.as_secs(),
+            self.step
+        )
+    }
+}
+
+impl std::error::Error for RemoteScriptTimedOut {}
+
+fn remote_script_timed_out(script: &'static str) -> anyhow::Error {
+    anyhow::Error::new(RemoteScriptTimedOut {
+        timeout: remote_script_timeout(script),
+        step: remote_script_step(script),
+    })
+}
+
+/// 接続先の失敗を、見出しを差し替えて利用者に見せる ([`refuse`] と同じ扱い) —
+/// ただし原因が期限切れなら、その理由を見出しに添える (ADR-F53)。
+///
+/// `refuse` は詳細を log にしか残さないので、そのままでは黙り込んだ接続先を持つ
+/// 利用者に「確認できませんでした」としか見えず、待ち時間切れだと分からない。
+fn refuse_remote(headline: String, error: anyhow::Error) -> anyhow::Error {
+    let headline = match error.downcast_ref::<RemoteScriptTimedOut>() {
+        // 見出しは「…できませんでした。」で終わるので、続ける前に句点を外す。
+        Some(timed_out) => format!("{}: {timed_out}", headline.trim_end_matches('。')),
+        None => headline,
+    };
+    refuse(headline, format!("{error:#}"))
+}
+
+/// 本文を子プロセスの標準入力に渡し、終わるまでの出力ひとそろいを受け取る。
+struct ScriptOnStdin {
+    /// 本文をぜんぶ渡せたか。渡しきれていなければスクリプトは途中までしか走らない。
+    written: std::io::Result<()>,
+    output: std::process::Output,
+}
+
+/// 本文を `command` の標準入力へ書いて閉じ、その出力を集める。
+///
+/// 書き込みの失敗でここを抜けないのは、接続先が消えた理由 (ssh の「接続できません」
+/// など) は相手の標準エラーにあり、それを集めるのは `output` だけだから。渡しきれた
+/// かどうかは [`ScriptOnStdin::written`] で呼び出し元が判断する。
+async fn output_with_script_on_stdin(
+    command: &mut util::command::Command,
+    body: &str,
+) -> Result<ScriptOnStdin> {
+    let mut child = command.spawn()?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("the host's shell was started without standard input")?;
+    let written = match stdin.write_all(body.as_bytes()).await {
+        Ok(()) => stdin.flush().await,
+        Err(error) => Err(error),
+    };
+    // `sh -s` reads until end of file, so the body does not start running
+    // until this handle is closed.
+    drop(stdin);
+    Ok(ScriptOnStdin {
+        written,
+        output: child.output().await?,
+    })
+}
+
+/// 接続先のログインシェルに渡すもの: `/bin/sh` に与える引数と、その標準入力に
+/// 書き込む本文。
+struct RemoteShellInvocation {
+    args: Vec<String>,
+    /// `/bin/sh -s` が標準入力から読むスクリプト本文。
+    stdin: &'static str,
+}
+
+/// 本文を引数ではなく標準入力から渡す形 (ADR-F53)。`-s` はコマンドを標準入力から
+/// 読み、`--` の後ろを `$1`, `$2`, … に置く (`$0` はシェル自身の名前のまま)。
+///
+/// こうすると ssh に渡る引数は改行を含まない短いトークンだけになる。接続先の
+/// ログインシェルが解釈する 1 本の文字列を組み立てるのはトランスポート側で
+/// (`ShellKind::try_quote`)、そこは csh / tcsh でも POSIX の引用に落ちるため、
+/// 複数行の本文を引数で渡すと csh 系のログインシェルでは壊れてしまう。
+fn remote_shell_invocation(script: &'static str, arguments: Vec<String>) -> RemoteShellInvocation {
+    let mut args = vec!["-s".to_string(), "--".to_string()];
+    args.extend(arguments);
+    RemoteShellInvocation {
+        args,
+        stdin: script,
+    }
+}
+
 /// ADR-F49 第 3 段: runs `script` on the host of `remote_client` with
 /// `/bin/sh` and returns its standard output; a script that exits non-zero is
 /// an error carrying what it wrote to standard error. One round trip, with
 /// none of this process's environment and no working directory — the scripts
 /// use `$HOME`, which the account's own login always has.
 ///
-/// `arguments` arrive as `$1`, `$2`, … (`$0` is a fixed name), so nothing in
-/// them is ever read as shell syntax. The script text itself is quoted by the
-/// transport for the host's login shell, which is a POSIX-style shell on every
-/// Linux this launcher runs on.
+/// `arguments` arrive as `$1`, `$2`, …, so nothing in them is ever read as
+/// shell syntax, and the body itself goes over standard input rather than
+/// through the host's login shell (see [`remote_shell_invocation`]).
 ///
 /// Lives here, beside the staging that needed it first, so that the launcher
 /// has one way of asking the host a question rather than two.
@@ -2318,35 +2451,36 @@ pub(crate) fn run_remote_host_script(
 ) -> LocalBoxFuture<'static, Result<String>> {
     let cx = cx.clone();
     async move {
+        let invocation = remote_shell_invocation(script, arguments);
         let template = remote_client.read_with(&cx, |remote_client, _| {
-            let mut args = vec![
-                "-c".to_string(),
-                script.to_string(),
-                REMOTE_SCRIPT_NAME.to_string(),
-            ];
-            args.extend(arguments);
             remote_client.build_command(
                 Some("/bin/sh".to_string()),
-                &args,
+                &invocation.args,
                 &HashMap::default(),
                 None,
                 None,
                 Interactive::No,
             )
         })?;
-        let output = cx
+        let body = invocation.stdin;
+        let executor = cx.background_executor().clone();
+        let ScriptOnStdin { written, output } = cx
             .background_spawn(async move {
                 let mut command = util::command::new_command(&template.program);
                 command
                     .args(&template.args)
                     .envs(template.env)
-                    .stdin(std::process::Stdio::null())
+                    .stdin(std::process::Stdio::piped())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .kill_on_drop(true);
-                command.output().await
+                output_with_script_on_stdin(&mut command, body).await
             })
+            // 繋がったまま黙り込んだ接続先で止まらないように。future を落とせば
+            // `kill_on_drop` が ssh を止める。
+            .with_timeout(remote_script_timeout(script), &executor)
             .await
+            .map_err(|_| remote_script_timed_out(script))?
             .context(REMOTE_SCRIPT_FAILED)?;
         if !output.status.success() {
             // The headline is what the toast shows, as it is for the WSL probe;
@@ -2360,6 +2494,15 @@ pub(crate) fn run_remote_host_script(
                 ),
             ));
         }
+        // 渡しきれなかった本文は途中までしか走っていないので、その出力を答えとして
+        // 扱わない。ここに来るのは相手が 0 で終わったときだけなので、終了コードでは
+        // 気づけない。
+        if let Err(error) = written {
+            return Err(refuse(
+                REMOTE_SCRIPT_FAILED,
+                format!("the host's shell stopped reading the script: {error}"),
+            ));
+        }
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
     .boxed_local()
@@ -2368,7 +2511,7 @@ pub(crate) fn run_remote_host_script(
 /// 接続先で 1 往復ずつ行う操作。実機を使わずに試せるよう、トレイトにしてある。
 trait RemoteAgentOperations {
     /// Runs `script` with `/bin/sh` on the host and returns its standard
-    /// output. `arguments` arrive as `$1`, `$2`, … (`$0` is a fixed name).
+    /// output. `arguments` arrive as `$1`, `$2`, ….
     fn run_script(
         &self,
         script: &'static str,
@@ -2379,6 +2522,27 @@ trait RemoteAgentOperations {
     fn upload(&self, source: PathBuf, destination: String) -> LocalBoxFuture<'static, Result<()>>;
 }
 
+/// 1 往復ぶんのタイムアウトを被せて走らせる (ADR-F53)。切れたら future を落とすので、
+/// 実機では `run_remote_host_script` の `kill_on_drop` が ssh を止める。
+///
+/// `run_remote_host_script` 側にも同じタイムアウトがある: あちらは
+/// `RemoteAgentOperations` を通らない呼び出し (設定フォルダーの作成) のため、
+/// こちらは接続先をトレイトで差し替えられる唯一の層のため。時間も文言も同じ
+/// `remote_script_timeout` / `remote_script_timed_out` から来るので、実機で
+/// どちらが先に切れても利用者に見えるものは変わらない。
+async fn run_remote_script(
+    operations: &Rc<dyn RemoteAgentOperations>,
+    executor: &BackgroundExecutor,
+    script: &'static str,
+    arguments: Vec<String>,
+) -> Result<String> {
+    operations
+        .run_script(script, arguments)
+        .with_timeout(remote_script_timeout(script), executor)
+        .await
+        .map_err(|_| remote_script_timed_out(script))?
+}
+
 struct RemoteAgentHost {
     operations: Rc<dyn RemoteAgentOperations>,
     executor: BackgroundExecutor,
@@ -2387,18 +2551,20 @@ struct RemoteAgentHost {
 impl RemoteAgentHost {
     async fn staged_path(
         operations: Rc<dyn RemoteAgentOperations>,
+        executor: BackgroundExecutor,
         sha256: String,
     ) -> Result<Option<String>> {
-        let output = operations
-            .run_script(
-                REMOTE_STAGED_SCRIPT,
-                vec![
-                    sha256,
-                    BINARY_NAME.to_string(),
-                    REMOTE_AGENTS_HOME_RELATIVE.to_string(),
-                ],
-            )
-            .await?;
+        let output = run_remote_script(
+            &operations,
+            &executor,
+            REMOTE_STAGED_SCRIPT,
+            vec![
+                sha256,
+                BINARY_NAME.to_string(),
+                REMOTE_AGENTS_HOME_RELATIVE.to_string(),
+            ],
+        )
+        .await?;
         match remote_staging_result(&output)? {
             RemoteStagingResult::Ready(path) => Ok(Some(path)),
             // A copy that does not match is not one to run; it is replaced.
@@ -2413,18 +2579,21 @@ impl RemoteAgentHost {
         source: PathBuf,
         sha256: String,
     ) -> Result<String> {
-        if let Some(path) = Self::staged_path(operations.clone(), sha256.clone()).await? {
+        if let Some(path) =
+            Self::staged_path(operations.clone(), executor.clone(), sha256.clone()).await?
+        {
             return Ok(path);
         }
         // Named after the digest rather than randomly, so that a second attempt
         // replaces the first attempt's leftovers instead of adding to them.
         let incoming = format!("incoming-{sha256}");
-        operations
-            .run_script(
-                REMOTE_PREPARE_SCRIPT,
-                vec![incoming.clone(), REMOTE_AGENTS_HOME_RELATIVE.to_string()],
-            )
-            .await?;
+        run_remote_script(
+            &operations,
+            &executor,
+            REMOTE_PREPARE_SCRIPT,
+            vec![incoming.clone(), REMOTE_AGENTS_HOME_RELATIVE.to_string()],
+        )
+        .await?;
         // The upload is of a directory, which is what every transport can do
         // (`RemoteConnection::upload_directory`), so the binary is put in one
         // named as it will be on the host.
@@ -2454,17 +2623,18 @@ impl RemoteAgentHost {
             .await
             .context("removing the uploaded copy of Claude Code")
             .log_err();
-        let output = operations
-            .run_script(
-                REMOTE_FINALIZE_SCRIPT,
-                vec![
-                    sha256,
-                    BINARY_NAME.to_string(),
-                    incoming,
-                    REMOTE_AGENTS_HOME_RELATIVE.to_string(),
-                ],
-            )
-            .await?;
+        let output = run_remote_script(
+            &operations,
+            &executor,
+            REMOTE_FINALIZE_SCRIPT,
+            vec![
+                sha256,
+                BINARY_NAME.to_string(),
+                incoming,
+                REMOTE_AGENTS_HOME_RELATIVE.to_string(),
+            ],
+        )
+        .await?;
         match remote_staging_result(&output)? {
             RemoteStagingResult::Ready(path) => Ok(path),
             RemoteStagingResult::Missing => {
@@ -2488,12 +2658,15 @@ impl AgentBinaryHost for RemoteAgentHost {
 
     fn probe(&self) -> LocalBoxFuture<'static, Result<String>> {
         let operations = self.operations.clone();
-        async move { operations.run_script(REMOTE_PROBE_SCRIPT, Vec::new()).await }.boxed_local()
+        let executor = self.executor.clone();
+        async move { run_remote_script(&operations, &executor, REMOTE_PROBE_SCRIPT, Vec::new()).await }
+            .boxed_local()
     }
 
     fn staged(&self, sha256: String) -> LocalBoxFuture<'static, Result<Option<String>>> {
         let operations = self.operations.clone();
-        Self::staged_path(operations, sha256).boxed_local()
+        let executor = self.executor.clone();
+        Self::staged_path(operations, executor, sha256).boxed_local()
     }
 
     fn stage(&self, source: PathBuf, sha256: String) -> LocalBoxFuture<'static, Result<String>> {
@@ -2506,9 +2679,6 @@ impl AgentBinaryHost for RemoteAgentHost {
         ensure_remote_room(probe, needed)
     }
 }
-
-/// `$0` for the staging scripts: the arguments start at `$1`.
-const REMOTE_SCRIPT_NAME: &str = "zed-claude-stage";
 
 struct SystemRemoteHost {
     remote_client: Entity<RemoteClient>,
@@ -3742,6 +3912,18 @@ mod tests {
         }
     }
 
+    /// 本文が参照する位置引数のいちばん大きな番号 (`$1` … `$9`)。`$HOME` や
+    /// `$(…)`、`cut -f4` のような似て非なるものは数えない。
+    fn highest_positional_parameter(script: &str) -> usize {
+        script
+            .as_bytes()
+            .windows(2)
+            .filter(|pair| pair[0] == b'$' && pair[1].is_ascii_digit())
+            .map(|pair| usize::from(pair[1] - b'0'))
+            .max()
+            .unwrap_or(0)
+    }
+
     /// The host as the staging talks to it: one script per round trip, and one
     /// directory upload. Everything the real one does over SSH, without SSH.
     #[derive(Default)]
@@ -3753,6 +3935,8 @@ mod tests {
         scripts: Mutex<Vec<&'static str>>,
         uploads: Mutex<usize>,
         has_sha256sum: bool,
+        /// 接続は生きているのに返事を返さないスクリプト。
+        hangs: Option<&'static str>,
     }
 
     impl FakeRemoteHost {
@@ -3791,6 +3975,18 @@ mod tests {
             arguments: Vec<String>,
         ) -> LocalBoxFuture<'static, Result<String>> {
             self.scripts.lock().push(script);
+            // `sh -s --` の位置引数は足りなくても黙って空になる (`set -u` が拾うのは
+            // 参照された番号だけ)。呼び出し側と本文の食い違いはここで落とす。
+            assert_eq!(
+                arguments.len(),
+                highest_positional_parameter(script),
+                "{:?} reads $1..${}",
+                remote_script_step(script),
+                highest_positional_parameter(script)
+            );
+            if self.hangs == Some(script) {
+                return future::pending().boxed_local();
+            }
             let answer = |result: &str| format!("{REMOTE_RESULT_PREFIX}{result}\n");
             // By content, not by pointer: a `const &str` is inlined at
             // each use, so two uses need not share an address.
@@ -3981,6 +4177,207 @@ mod tests {
             .expect_err("8 GB is not");
         assert!(error.to_string().contains("空き容量"), "{error}");
         assert_eq!(operations.uploads(), 0);
+    }
+
+    /// ADR-F53 課題 A2: スクリプト本文は接続先のログインシェルを通らない。
+    ///
+    /// 1 本の文字列を組み立てるのは接続先のログインシェル向けの引用
+    /// (`ShellKind::try_quote`) で、csh / tcsh でも POSIX の引用に落ちる。csh は
+    /// 単一引用の中の生の改行を受け付けないので、複数行の本文が引数に混じった
+    /// 時点で csh 系のログインシェルでは壊れる。本文は標準入力へ回し、ssh に
+    /// 渡るのは改行を含まない短いトークンだけにする。
+    #[test]
+    fn test_the_script_body_never_becomes_a_shell_argument() {
+        let scripts = [
+            REMOTE_PROBE_SCRIPT,
+            REMOTE_STAGED_SCRIPT,
+            REMOTE_PREPARE_SCRIPT,
+            REMOTE_FINALIZE_SCRIPT,
+        ];
+        for script in scripts {
+            // この確認が空振りしないこと: どの本文も実際に複数行である。
+            assert!(script.contains('\n'), "{script:?} is a single line");
+            let invocation = remote_shell_invocation(
+                script,
+                vec!["a".repeat(64), BINARY_NAME.to_string(), "b c".to_string()],
+            );
+            assert_eq!(invocation.stdin, script, "本文は標準入力から渡す");
+            assert_eq!(
+                invocation.args,
+                ["-s", "--", &"a".repeat(64), BINARY_NAME, "b c"],
+                "位置引数は `--` の後ろにそのまま並ぶ"
+            );
+            for argument in &invocation.args {
+                assert!(
+                    !argument.contains('\n') && !argument.contains('\r'),
+                    "{argument:?} would have to survive the host's login shell"
+                );
+                assert!(argument != script, "本文が引数に混じっている");
+            }
+        }
+        // `-s` の位置引数は `$1` から始まる (`$0` はシェル自身の名前のまま) ので、
+        // スクリプトが読む番号は `-c` のときと変わらない。
+        assert!(REMOTE_STAGED_SCRIPT.contains("$HOME/$3/$1"));
+        // `$0` を読む本文が戻ってきたら、それはもうシェル自身の名前で届く。
+        for script in scripts {
+            assert!(!script.contains("$0"), "{script:?} still reads $0");
+        }
+    }
+
+    /// 引用も改行も本文の中では何も起きない (どこも通らずそのまま標準入力へ) こと、
+    /// 位置引数は空でも空白入りでも数も順序も変わらないこと。
+    #[test]
+    fn test_odd_bodies_and_odd_arguments_go_through_unchanged() {
+        let body = "printf '%s\\n' \"$1\" # 日本語 \\ ' \" `echo x`\nexit 0\n";
+        let arguments = vec![
+            String::new(),
+            "  ".to_string(),
+            "日本語 の パス".to_string(),
+            "it's a \\ trap".to_string(),
+        ];
+        let invocation = remote_shell_invocation(body, arguments.clone());
+        assert_eq!(invocation.stdin, body, "本文は一字も変えずに標準入力へ");
+        assert_eq!(
+            invocation.args.len(),
+            arguments.len() + 2,
+            "空の引数も落とさない: {:?}",
+            invocation.args
+        );
+        assert_eq!(&invocation.args[..2], ["-s", "--"]);
+        assert_eq!(&invocation.args[2..], &arguments[..], "順序はそのまま");
+    }
+
+    /// 相手が本文を読まずに終わっても、その終了コードと標準エラー (ssh の
+    /// 「接続できません」など) を落とさない。ここで書き込みの失敗を先に返すと、
+    /// 利用者にも log にも本当の理由が残らない。
+    #[test]
+    fn test_a_child_that_never_reads_the_body_still_reports_why() {
+        let mut command = if cfg!(target_os = "windows") {
+            let mut command = util::command::new_command("cmd");
+            command.arg("/c").arg("exit 7");
+            command
+        } else {
+            let mut command = util::command::new_command("/bin/sh");
+            command.arg("-c").arg("exit 7");
+            command
+        };
+        command
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        // パイプのバッファーより大きいので、読まない相手には必ず書き損じる。
+        let body = "printf hello\n".repeat(80 * 1024);
+        let result = futures::executor::block_on(output_with_script_on_stdin(&mut command, &body))
+            .expect("the child ran");
+        assert!(
+            result.written.is_err(),
+            "この確認が空振りしている: 相手は本文を読んでいない"
+        );
+        assert_eq!(
+            result.output.status.code(),
+            Some(7),
+            "相手が何をして終わったかが残る"
+        );
+    }
+
+    /// ADR-F53 課題 A3: 接続先が繋がったまま黙り込んでも、いつまでも待たない。
+    #[gpui::test]
+    async fn test_a_host_that_never_answers_times_out(cx: &mut TestAppContext) {
+        let operations = Rc::new(FakeRemoteHost {
+            has_sha256sum: true,
+            hangs: Some(REMOTE_PROBE_SCRIPT),
+            ..Default::default()
+        });
+        let (host, _downloads) = remote_host(operations.clone(), cx);
+        let probe = cx.foreground_executor.spawn(host.probe());
+        cx.executor()
+            .advance_clock(REMOTE_SCRIPT_TIMEOUT + Duration::from_secs(1));
+        let error = probe.await.expect_err("応答が返らない");
+        let message = error.to_string();
+        assert!(message.contains("60 秒"), "{message}");
+        assert!(message.contains("接続先の環境の確認"), "{message}");
+    }
+
+    /// 送った後の検証は 224 MB の `sha256sum` を含むので、他の 1 往復より長く待つ。
+    /// ここを 1 往復ぶんで切ると、遅いだけのホストで毎回やり直しになる。
+    #[gpui::test]
+    async fn test_the_check_after_the_upload_waits_longer_than_one_round_trip(
+        cx: &mut TestAppContext,
+    ) {
+        let operations = Rc::new(FakeRemoteHost {
+            has_sha256sum: true,
+            hangs: Some(REMOTE_FINALIZE_SCRIPT),
+            ..Default::default()
+        });
+        let (host, downloads) = remote_host(operations.clone(), cx);
+        let contents = b"claude binary".to_vec();
+        let digest = FakeRemoteHost::digest(&contents);
+        let stage = cx
+            .foreground_executor
+            .spawn(host.stage(downloaded(&downloads, &contents), digest));
+        cx.executor()
+            .advance_clock(REMOTE_FINALIZE_TIMEOUT + Duration::from_secs(1));
+        let error = stage.await.expect_err("応答が返らない");
+        let message = error.to_string();
+        assert!(message.contains("180 秒"), "{message}");
+        assert!(message.contains("送った Claude Code の検証"), "{message}");
+        assert_eq!(operations.uploads(), 1, "送ったあとで待っている");
+    }
+
+    /// 期限切れは、見出しを差し替える経路 (`Installer::staged` の `refuse`) を通っても
+    /// トーストに理由が残る。log 止まりにすると、黙り込んだ接続先を持つ利用者には
+    /// 「確認できませんでした」としか見えず、待ち時間切れだと分からない。
+    #[gpui::test]
+    async fn test_a_timed_out_check_names_the_wait_in_what_the_user_sees(cx: &mut TestAppContext) {
+        let operations = Rc::new(FakeRemoteHost {
+            has_sha256sum: true,
+            hangs: Some(REMOTE_STAGED_SCRIPT),
+            ..Default::default()
+        });
+        let (host, _downloads) = remote_host(operations, cx);
+        let storage = tempfile::tempdir().expect("temporary directory");
+        let installer = Installer {
+            http: FakeHttpClient::with_404_response(),
+            host: Rc::new(host),
+            executor: cx.executor(),
+            storage_dir: storage.path().to_path_buf(),
+            source: Arc::new(test_key_source()),
+            state_lock: Arc::default(),
+        };
+        let staged = cx
+            .foreground_executor
+            .spawn(async move { installer.staged("a".repeat(64)).await });
+        cx.executor()
+            .advance_clock(REMOTE_SCRIPT_TIMEOUT + Duration::from_secs(1));
+        let error = staged.await.expect_err("応答が返らない");
+        // トーストに出るのは見出しの一行だけ (`{error}`)。
+        let headline = error.to_string();
+        let existing = AgentHostKind::RemoteHost.staged_check_failed();
+        assert!(
+            headline.starts_with(existing.trim_end_matches('。')),
+            "既存の見出しは残す: {headline}"
+        );
+        assert!(headline.contains("60 秒"), "{headline}");
+        assert!(
+            headline.contains("接続先にある Claude Code の確認"),
+            "{headline}"
+        );
+        assert!(
+            !headline.contains("。:"),
+            "句点のあとに続けない: {headline}"
+        );
+    }
+
+    /// 期限切れ以外の失敗は見出しを変えない (上の試験が「常に添える」実装でも
+    /// 通ってしまわないように)。
+    #[test]
+    fn test_only_a_timeout_is_named_in_the_headline() {
+        let headline = AgentHostKind::RemoteHost.staged_check_failed();
+        let plain = refuse_remote(headline.clone(), anyhow!("the host printed no result"));
+        assert_eq!(plain.to_string(), headline, "理由は log にだけ");
+        let timed_out = refuse_remote(headline, remote_script_timed_out(REMOTE_FINALIZE_SCRIPT));
+        assert!(timed_out.to_string().contains("180 秒"));
     }
 
     #[test]

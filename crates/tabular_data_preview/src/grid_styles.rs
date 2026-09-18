@@ -616,7 +616,7 @@ fn clear_field<K: Ord>(
     });
 }
 
-fn sorted_unique(indices: &[usize]) -> Vec<usize> {
+pub(crate) fn sorted_unique(indices: &[usize]) -> Vec<usize> {
     let mut sorted = indices.to_vec();
     sorted.sort_unstable();
     sorted.dedup();
@@ -625,7 +625,7 @@ fn sorted_unique(indices: &[usize]) -> Vec<usize> {
 
 /// Where `index` ends up once every index in `deleted` is gone, or `None` when
 /// `index` is one of them. `deleted` has to be sorted and free of duplicates.
-fn after_deletion(index: usize, deleted: &[usize]) -> Option<usize> {
+pub(crate) fn after_deletion(index: usize, deleted: &[usize]) -> Option<usize> {
     match deleted.binary_search(&index) {
         Ok(_) => None,
         Err(position) => Some(index - position),
@@ -634,7 +634,7 @@ fn after_deletion(index: usize, deleted: &[usize]) -> Option<usize> {
 
 /// The inverse of [`after_deletion`]: the index `index` had before the rows in
 /// `deleted` were removed.
-fn before_deletion(index: usize, deleted: &[usize]) -> usize {
+pub(crate) fn before_deletion(index: usize, deleted: &[usize]) -> usize {
     let mut restored = index;
     for &removed in deleted {
         if removed <= restored {
@@ -807,22 +807,29 @@ impl GridStylesModel {
 
     /// Moves the colors along with a grid operation and records it against the
     /// buffer transaction it belongs to.
+    ///
+    /// No transaction means nothing reached the buffer - the edit engine
+    /// refused the operation, or there was no buffer to edit - so the cells
+    /// never moved and the colors must not move either. Moving them would paint
+    /// every color past the operation onto its neighbour, with no undo step
+    /// left to take it back.
     fn record_shift(
         &mut self,
         transaction_id: Option<TransactionId>,
         mut shift: StyleShift,
         cx: &mut Context<Self>,
     ) {
+        let Some(transaction_id) = transaction_id else {
+            return;
+        };
         let was_painted = !self.styles.is_empty();
         shift.apply(&mut self.styles);
         // Recorded even with nothing painted yet, so that a color added between
         // the operation and its undo still moves back with it.
-        if let Some(transaction_id) = transaction_id {
-            self.redo_stack.clear();
-            self.undo_stack.push((transaction_id, shift));
-            if self.undo_stack.len() > MAX_RECORDED_SHIFTS {
-                self.undo_stack.remove(0);
-            }
+        self.redo_stack.clear();
+        self.undo_stack.push((transaction_id, shift));
+        if self.undo_stack.len() > MAX_RECORDED_SHIFTS {
+            self.undo_stack.remove(0);
         }
         if was_painted || !self.styles.is_empty() {
             self.save(cx);
@@ -982,7 +989,7 @@ impl GridStylesModel {
 /// `None` when the application has no database, which is the case in tests that
 /// do not set one up. Read rather than taken on faith, so that a missing
 /// database is not a panic.
-fn key_value_store(cx: &App) -> Option<KeyValueStore> {
+pub(crate) fn key_value_store(cx: &App) -> Option<KeyValueStore> {
     cx.try_global::<db::AppDatabase>()
         .map(KeyValueStore::from_app_db)
 }
@@ -2037,6 +2044,54 @@ mod grid_tests {
             painted(&pane, &mut cx).style_for(1, 2).text,
             Some(CellColor::Purple)
         );
+    }
+
+    /// The shift is worked out before the edit is attempted, and the edit
+    /// engine hands back no transaction when nothing reached the buffer. The
+    /// cells never moved, so neither may their colors - and there would be no
+    /// undo step left to take them back if they did.
+    #[gpui::test]
+    async fn test_a_shift_with_no_transaction_behind_it_leaves_the_colors_alone(
+        cx: &mut TestAppContext,
+    ) {
+        let (pane, _editor, mut cx) = open_grid(
+            "a,b,c
+d,e,f",
+            cx,
+        )
+        .await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.select_column(AnyColumn(2), false, cx);
+        });
+        cx.dispatch_action(SetTextColor {
+            color: CellColor::Purple,
+        });
+        cx.run_until_parked();
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.record_style_shift(None, StyleShift::InsertColumns { at: 0, count: 1 }, cx);
+        });
+        cx.run_until_parked();
+
+        let styles = painted(&pane, &mut cx);
+        assert_eq!(
+            styles.style_for(1, 2).text,
+            Some(CellColor::Purple),
+            "the color stays on the cell that never moved"
+        );
+        assert_eq!(styles.style_for(1, 3).text, None);
+
+        // And the same for a deletion, which would otherwise pull every color
+        // past it one column to the left.
+        pane.update(&mut cx, |pane, cx| {
+            pane.record_style_shift(None, StyleShift::delete_columns(vec![0]), cx);
+        });
+        cx.run_until_parked();
+
+        let styles = painted(&pane, &mut cx);
+        assert_eq!(styles.style_for(1, 2).text, Some(CellColor::Purple));
+        assert_eq!(styles.style_for(1, 1).text, None);
     }
 
     #[gpui::test]

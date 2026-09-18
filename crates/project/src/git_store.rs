@@ -38,9 +38,10 @@ use git::{
         CreateWorktreeTarget, DiffStatType, DiffType, FetchOptions, FileHistoryChangedFileSets,
         GitCommandOutput, GitCommitTemplate, GitRepository, GitRepositoryCheckpoint,
         InitialGraphCommitData, LogOrder, LogSource, PatchSource, PushOptions, Remote,
-        RemoteCommandOutput, RepoPath, ResetMode, SearchCommitArgs, SequencerKind, SequencerState,
-        TAG_LIST_FORMAT, TagDistance, TagInfo, UpstreamTrackingStatus, Worktree as GitWorktree,
-        delete_branch_flag, is_binary_content,
+        RemoteCommandOutput, RepoPath, ResetMode, SearchCommitArgs, SequencerKind, SequencerProbes,
+        SequencerState, TAG_LIST_FORMAT, TagDistance, TagInfo, UpstreamTrackingStatus,
+        Worktree as GitWorktree, delete_branch_flag, is_binary_content,
+        sequencer_state_from_probes,
     },
     stash::{GitStash, StashEntry},
     status::{
@@ -517,6 +518,26 @@ pub struct RepositoryId(pub u64);
 pub struct MergeDetails {
     pub merge_heads_by_conflicted_path: TreeMap<RepoPath, Vec<Option<SharedString>>>,
     pub message: Option<SharedString>,
+}
+
+/// What a push did, which is more than the remote's own output whenever it did not do quite what
+/// was asked.
+#[derive(Clone, Debug)]
+pub struct PushOutput {
+    pub output: RemoteCommandOutput,
+    /// The push was asked for without a lease, but it ran as `--force-with-lease` because the
+    /// peer's server predates [`push_options_from_proto`] and never saw the request.
+    pub kept_lease_against_request: bool,
+}
+
+impl PushOutput {
+    /// A push that did what it was asked, which is every local one.
+    pub fn honoured(output: RemoteCommandOutput) -> Self {
+        Self {
+            output,
+            kept_lease_against_request: false,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -3401,6 +3422,7 @@ impl GitStore {
         Ok(proto::RemoteMessageResponse {
             stdout: remote_output.stdout,
             stderr: remote_output.stderr,
+            forced_without_lease: None,
         })
     }
 
@@ -3421,17 +3443,21 @@ impl GitStore {
             &mut cx,
         );
 
-        let options = envelope
+        // Not `payload.options()`, which hands back `SET_UPSTREAM` for a value this build does not
+        // know: a request asking for something newer would push the branch rather than being
+        // refused, which is the whole reason `force_without_lease` is a field of its own.
+        let proto_options = envelope
             .payload
             .options
-            .as_ref()
-            .map(|_| match envelope.payload.options() {
-                proto::push::PushOptions::SetUpstream => git::repository::PushOptions::SetUpstream,
-                proto::push::PushOptions::Force => git::repository::PushOptions::Force,
-                proto::push::PushOptions::ForceWithoutLease => {
-                    git::repository::PushOptions::ForceWithoutLease
-                }
-            });
+            .map(|option| {
+                proto::push::PushOptions::from_i32(option)
+                    .with_context(|| format!("プッシュの指定 {option} を解釈できません。"))
+            })
+            .transpose()?;
+        let options = push_options_from_proto(
+            proto_options,
+            envelope.payload.force_without_lease.unwrap_or(false),
+        );
 
         let branch_name = envelope.payload.branch_name.into();
         let remote_branch_name = envelope.payload.remote_branch_name.into();
@@ -3449,9 +3475,15 @@ impl GitStore {
                 )
             })
             .await??;
+        // How the client tells a server that read `force_without_lease` from one that never saw
+        // the field and quietly kept the lease. A host that is itself a client of somewhere older
+        // says nothing either, rather than passing on a promise it couldn't keep.
+        let forced_without_lease = matches!(options, Some(PushOptions::ForceWithoutLease))
+            && !remote_output.kept_lease_against_request;
         Ok(proto::RemoteMessageResponse {
-            stdout: remote_output.stdout,
-            stderr: remote_output.stderr,
+            stdout: remote_output.output.stdout,
+            stderr: remote_output.output.stderr,
+            forced_without_lease: forced_without_lease.then_some(true),
         })
     }
 
@@ -3484,6 +3516,7 @@ impl GitStore {
         Ok(proto::RemoteMessageResponse {
             stdout: remote_message.stdout,
             stderr: remote_message.stderr,
+            forced_without_lease: None,
         })
     }
 
@@ -4045,6 +4078,7 @@ impl GitStore {
         )?;
         let search_args = SearchCommitArgs {
             query: SharedString::from(envelope.payload.query),
+            author: envelope.payload.author.map(SharedString::from),
             case_sensitive: envelope.payload.case_sensitive,
         };
 
@@ -7188,6 +7222,7 @@ impl Repository {
                             log_source: Some(log_source_to_proto(&log_source)),
                             query: search_args.query.to_string(),
                             case_sensitive: search_args.case_sensitive,
+                            author: search_args.author.as_ref().map(|author| author.to_string()),
                         })
                         .await;
 
@@ -8606,18 +8641,14 @@ impl Repository {
         options: Option<PushOptions>,
         askpass: AskPassDelegate,
         cx: &mut Context<Self>,
-    ) -> oneshot::Receiver<Result<RemoteCommandOutput>> {
+    ) -> oneshot::Receiver<Result<PushOutput>> {
         let askpass_delegates = self.askpass_delegates.clone();
         let askpass_id = util::post_inc(&mut self.latest_askpass_id);
         let id = self.id;
 
         let args = options
-            .map(|option| match option {
-                PushOptions::SetUpstream => " --set-upstream",
-                PushOptions::Force => " --force-with-lease",
-                PushOptions::ForceWithoutLease => " --force",
-            })
-            .unwrap_or("");
+            .map(|option| format!(" {}", option.flag()))
+            .unwrap_or_default();
 
         let updates_tx = self
             .git_store()
@@ -8654,11 +8685,12 @@ impl Repository {
                         if result.is_ok() {
                             Self::refresh_branch_list(&this, backend, updates_tx, &mut cx).await?;
                         }
-                        result
+                        result.map(PushOutput::honoured)
                     }
                     RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => {
                         let _askpass_operation =
                             RemoteAskPassOperation::new(askpass_id, askpass, askpass_delegates);
+                        let (proto_options, force_without_lease) = push_options_to_proto(options);
                         let response = client
                             .request(proto::Push {
                                 project_id: project_id.0,
@@ -8667,22 +8699,20 @@ impl Repository {
                                 branch_name: branch.to_string(),
                                 remote_branch_name: remote_branch.to_string(),
                                 remote_name: remote.to_string(),
-                                options: options.map(|options| match options {
-                                    PushOptions::Force => proto::push::PushOptions::Force,
-                                    PushOptions::ForceWithoutLease => {
-                                        proto::push::PushOptions::ForceWithoutLease
-                                    }
-                                    PushOptions::SetUpstream => {
-                                        proto::push::PushOptions::SetUpstream
-                                    }
-                                }
-                                    as i32),
+                                options: proto_options,
+                                force_without_lease,
                             })
                             .await?;
 
-                        Ok(RemoteCommandOutput {
-                            stdout: response.stdout,
-                            stderr: response.stderr,
+                        Ok(PushOutput {
+                            kept_lease_against_request: push_kept_lease_against_request(
+                                force_without_lease,
+                                response.forced_without_lease,
+                            ),
+                            output: RemoteCommandOutput {
+                                stdout: response.stdout,
+                                stderr: response.stderr,
+                            },
                         })
                     }
                 }
@@ -9886,39 +9916,68 @@ impl Repository {
             Some(GitJobKey::SequencerState),
             None,
             move |repo, _cx| async move {
-                for kind in SequencerKind::all() {
-                    let probe = Self::run_step_in_job(
+                let verify_ref = async |ref_name: &str| {
+                    Self::run_step_in_job(
                         &repo,
                         id,
                         vec![
                             "rev-parse".into(),
                             "--verify".into(),
                             "--quiet".into(),
-                            kind.in_progress_ref().to_string(),
+                            ref_name.to_string(),
                         ],
                     )
-                    .await?;
-                    if !probe.succeeded() {
-                        continue;
+                    .await
+                    .map(|probe| probe.succeeded())
+                };
+
+                let mut in_progress = None;
+                for kind in SequencerKind::all() {
+                    if verify_ref(kind.in_progress_ref()).await? {
+                        in_progress = Some(kind);
+                        break;
                     }
-                    // The index rather than the last scan: the banner has to be right the moment a
-                    // cherry-pick comes back, which is before the scan it schedules has finished.
-                    let unmerged = Self::run_step_in_job(
-                        &repo,
-                        id,
-                        vec![
-                            "diff".into(),
-                            "--name-only".into(),
-                            "--diff-filter=U".into(),
-                        ],
-                    )
-                    .await?;
-                    return Ok(Some(SequencerState {
-                        kind,
-                        conflicted: !unmerged.stdout.trim().is_empty(),
-                    }));
                 }
-                Ok(None)
+
+                // The index rather than the last scan: the banner has to be right the moment a
+                // cherry-pick comes back, which is before the scan it schedules has finished.
+                let unmerged = Self::run_step_in_job(
+                    &repo,
+                    id,
+                    vec![
+                        "diff".into(),
+                        "--name-only".into(),
+                        "--diff-filter=U".into(),
+                    ],
+                )
+                .await?;
+                let unmerged_paths = !unmerged.stdout.trim().is_empty();
+
+                // Only asked when there are conflicts no sequencer ref accounts for, which keeps
+                // these off the path every scan of an ordinary repository takes.
+                let mut merge_in_progress = false;
+                let mut head_is_detached = false;
+                if in_progress.is_none() && unmerged_paths {
+                    merge_in_progress = verify_ref("MERGE_HEAD").await?;
+                    if !merge_in_progress {
+                        let head = Self::run_step_in_job(
+                            &repo,
+                            id,
+                            vec!["rev-parse".into(), "--abbrev-ref".into(), "HEAD".into()],
+                        )
+                        .await?;
+                        // A repository without a first commit prints `HEAD` too, on its way to
+                        // failing, so the exit status has to agree that this is a real answer.
+                        head_is_detached = head.succeeded() && head.stdout.trim() == "HEAD";
+                    }
+                }
+
+                Ok(sequencer_state_from_probes(SequencerProbes {
+                    in_progress,
+                    unmerged_paths,
+                    merge_in_progress,
+                    head_is_detached,
+                }))
             },
         )
     }
@@ -10013,6 +10072,7 @@ impl Repository {
                     .await;
                 }
 
+                Self::ensure_commit_is_in_head_in_job(&repo, id, &sha).await?;
                 Self::ensure_range_is_linear_in_job(&repo, id, format!("{sha}..HEAD")).await?;
                 let author = Self::author_env_in_job(&repo, id, &sha).await?;
                 let parent = Self::parent_of_in_job(&repo, id, &sha).await?;
@@ -10033,7 +10093,7 @@ impl Repository {
                 Self::run_step_in_job(
                     &repo,
                     id,
-                    Self::rebase_onto_args(&new_sha, &sha, branch_name.as_deref()),
+                    git::repository::rebase_onto_args(&new_sha, &sha, branch_name.as_deref()),
                 )
                 .await
             },
@@ -10058,6 +10118,13 @@ impl Repository {
             "squash_range",
             Some(format!("git commit-tree {newest_sha}").into()),
             move |repo, _cx| async move {
+                // Both ends matter: `newest` decides what the final `rebase --onto` replays, and
+                // an off-branch `oldest` would hang the branch off that commit's parent, dropping
+                // everything between it and `newest` from the branch.
+                Self::ensure_commit_is_in_head_in_job(&repo, id, &newest_sha).await?;
+                if oldest_sha != newest_sha {
+                    Self::ensure_commit_is_in_head_in_job(&repo, id, &oldest_sha).await?;
+                }
                 let parent = Self::parent_of_in_job(&repo, id, &oldest_sha).await?;
                 let range = match &parent {
                     Some(parent) => format!("{parent}..{newest_sha}"),
@@ -10084,7 +10151,11 @@ impl Repository {
                 Self::run_step_in_job(
                     &repo,
                     id,
-                    Self::rebase_onto_args(&new_sha, &newest_sha, branch_name.as_deref()),
+                    git::repository::rebase_onto_args(
+                        &new_sha,
+                        &newest_sha,
+                        branch_name.as_deref(),
+                    ),
                 )
                 .await
             },
@@ -10134,6 +10205,183 @@ impl Repository {
         receiver
     }
 
+    /// Replaces the consecutive range `oldest_sha..=newest_sha` on the current branch with
+    /// `groups`, which is what the todo editor collects: commits reordered, folded together,
+    /// reworded or left out.
+    ///
+    /// The whole rewrite happens on a scratch branch and the user's branch only moves at the
+    /// final `rebase --onto` (see [`git::repository::rewrite_range_commands`]), so a step git
+    /// refuses leaves the branch where it was. A conflict is git refusing rather than an error:
+    /// the scratch branch then stays, and the git panel's banner is where the stopped
+    /// `cherry-pick` or `rebase` is continued or aborted.
+    pub fn rewrite_range(
+        &mut self,
+        oldest_sha: String,
+        newest_sha: String,
+        groups: Vec<git::repository::RewriteGroup>,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let id = self.id;
+        let branch_name = self.current_branch_name();
+        let scratch_branch = git::repository::rewrite_scratch_branch_name(&newest_sha);
+        let receiver = self.send_job(
+            "rewrite_range",
+            Some(format!("git switch -c {scratch_branch}").into()),
+            move |repo, _cx| async move {
+                // A detached HEAD has no branch for the final `rebase --onto` to move, and the
+                // scratch branch would take HEAD's place with nothing to give it back.
+                let branch = branch_name.context(
+                    "detached HEAD では並べ替えられません。先にブランチに切り替えてください。",
+                )?;
+                let base = Self::parent_of_in_job(&repo, id, &oldest_sha)
+                    .await?
+                    .context(
+                        "最初のコミットを含む範囲は並べ替えられません。1 つ後のコミットから選び直してください。",
+                    )?;
+                Self::ensure_commit_is_in_head_in_job(&repo, id, &newest_sha).await?;
+                Self::ensure_range_is_linear_in_job(&repo, id, format!("{base}..{newest_sha}"))
+                    .await?;
+
+                let leftover = Self::run_step_in_job(
+                    &repo,
+                    id,
+                    vec![
+                        "rev-parse".into(),
+                        "--verify".into(),
+                        "--quiet".into(),
+                        format!("refs/heads/{scratch_branch}"),
+                    ],
+                )
+                .await?;
+                anyhow::ensure!(
+                    !leftover.succeeded(),
+                    "前回の書き換えの一時ブランチ「{scratch_branch}」が残っています。中身を確認して削除してからやり直してください。"
+                );
+
+                let mut commands = git::repository::rewrite_range_commands(
+                    &base,
+                    &groups,
+                    &newest_sha,
+                    &branch,
+                    &scratch_branch,
+                )?
+                .into_iter();
+                let create_scratch = commands
+                    .next()
+                    .context("書き換えるコマンドを組み立てられませんでした。")?;
+                let created = Self::run_step_in_job(&repo, id, create_scratch.args).await?;
+                if !created.succeeded() {
+                    return Ok(created);
+                }
+
+                let outcome = Self::run_rewrite_commands_in_job(&repo, id, commands).await;
+                let stopped = match &outcome {
+                    Ok(output) => !output.succeeded(),
+                    Err(_) => true,
+                };
+                if stopped {
+                    for args in
+                        git::repository::rewrite_cleanup_commands(&branch, &scratch_branch)?
+                    {
+                        match Self::run_step_in_job(&repo, id, args).await {
+                            Ok(output) if output.succeeded() => {}
+                            // A stopped `cherry-pick` or `rebase` keeps `switch` from leaving the
+                            // scratch branch, and that is the state the panel's banner needs to
+                            // offer continuing or aborting, so the rest of the cleanup is left
+                            // undone on purpose.
+                            Ok(_) => break,
+                            Err(error) => {
+                                log::warn!("書き換えの後始末を実行できませんでした: {error:#}");
+                                break;
+                            }
+                        }
+                    }
+                }
+                outcome
+            },
+        );
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// Runs a rewrite's commands in order, stopping at the first one git refuses, giving each the
+    /// `GIT_AUTHOR_*` of the commit it has to keep.
+    async fn run_rewrite_commands_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        commands: impl IntoIterator<Item = git::repository::RewriteCommand>,
+    ) -> Result<GitCommandOutput> {
+        let mut last = GitCommandOutput::default();
+        for command in commands {
+            let author = match &command.author_of {
+                Some(sha) => Self::author_env_in_job(repo, id, sha).await?,
+                None => HashMap::default(),
+            };
+            last = Self::run_command_in_job(repo, id, command.args, None, author).await?;
+            if !last.succeeded() {
+                break;
+            }
+        }
+        Ok(last)
+    }
+
+    /// Leaves the scratch branch a stopped rewrite parked the user on: back to `branch`, then the
+    /// scratch branch is deleted.
+    ///
+    /// This is what the git panel's banner runs after aborting the stopped `cherry-pick`, because
+    /// aborting on its own only undoes the pick and leaves the user on a branch they never asked
+    /// for. The half-rewritten commits go with it, which is why the banner says so before the user
+    /// presses anything (they are still in the reflog).
+    pub fn leave_rewrite_scratch_branch(
+        &mut self,
+        branch: String,
+        scratch_branch: String,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let id = self.id;
+        let receiver = self.send_job(
+            "leave_rewrite_scratch_branch",
+            Some(format!("git switch {branch}").into()),
+            move |repo, _cx| async move {
+                let steps = git::repository::rewrite_cleanup_commands(&branch, &scratch_branch)?;
+                Self::run_steps_in_job(&repo, id, steps).await
+            },
+        );
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// Drops one commit out of the current branch's history: everything after it is replayed onto
+    /// its parent. The commits after it get new SHAs, so an already-pushed branch needs a force
+    /// push afterwards.
+    pub fn drop_commit(
+        &mut self,
+        sha: String,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let id = self.id;
+        let branch_name = self.current_branch_name();
+        let receiver = self.send_job(
+            "drop_commit",
+            Some(format!("git rebase --onto {sha}^").into()),
+            move |repo, _cx| async move {
+                let parent = Self::parent_of_in_job(&repo, id, &sha).await?.context(
+                    "最初のコミットは捨てられません。リポジトリの最初のコミットには親がありません。",
+                )?;
+                Self::ensure_commit_is_in_head_in_job(&repo, id, &sha).await?;
+                Self::ensure_range_is_linear_in_job(&repo, id, format!("{sha}..HEAD")).await?;
+                Self::run_step_in_job(
+                    &repo,
+                    id,
+                    git::repository::rebase_onto_args(&parent, &sha, branch_name.as_deref()),
+                )
+                .await
+            },
+        );
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
     /// `git show <committish>:<path>`: the contents of one file as of a ref, with `path`
     /// relative to the repository root and spelled with `/`. A path that does not exist there
     /// comes back as a non-zero exit code rather than an error.
@@ -10165,23 +10413,6 @@ impl Repository {
     /// `rebase --onto` moves HEAD itself.
     fn current_branch_name(&self) -> Option<String> {
         self.branch.as_ref().map(|branch| branch.name().to_string())
-    }
-
-    /// `git rebase --autostash --onto <new_base> <upstream> [<branch>]`, which replays everything
-    /// after `upstream` on top of `new_base`.
-    ///
-    /// `--autostash` always goes on the command line; a git too old for it drops the flag where
-    /// the command runs and refuses a dirty worktree instead (ADR-F47).
-    fn rebase_onto_args(new_base: &str, upstream: &str, branch: Option<&str>) -> Vec<String> {
-        let mut args = vec![
-            "rebase".to_string(),
-            "--autostash".to_string(),
-            "--onto".to_string(),
-            new_base.to_string(),
-            upstream.to_string(),
-        ];
-        args.extend(branch.map(str::to_string));
-        args
     }
 
     /// `git commit-tree`, returning the new commit's SHA, or the output of the failed command.
@@ -10270,6 +10501,36 @@ impl Repository {
         )
         .await?;
         Ok(output.succeeded().then(|| output.stdout.trim().to_string()))
+    }
+
+    /// Refuses a commit that HEAD cannot reach.
+    ///
+    /// Every rewrite here ends in `rebase --onto <new> <sha> <branch>`, and that replays
+    /// `<sha>..<branch>`. For a commit on some other branch — which the graph happily shows when
+    /// it is listing every branch — that range is the whole of the current branch, so the rewrite
+    /// would quietly replay all of it onto an unrelated commit instead of touching the one commit
+    /// the user pointed at.
+    async fn ensure_commit_is_in_head_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        sha: &str,
+    ) -> Result<()> {
+        let output = Self::run_step_in_job(
+            repo,
+            id,
+            vec!["log".into(), "--format=%H".into(), format!("HEAD..{sha}")],
+        )
+        .await?;
+        anyhow::ensure!(
+            output.succeeded(),
+            "コミットが現在のブランチ上にあるか調べられませんでした: {}",
+            output.failure_message()
+        );
+        anyhow::ensure!(
+            output.stdout.trim().is_empty(),
+            "現在のブランチの履歴に無いコミットは書き換えられません。そのコミットを含むブランチに切り替えてからやり直してください。"
+        );
+        Ok(())
     }
 
     /// Refuses a range containing a merge commit: replaying it with `commit-tree` +
@@ -11773,6 +12034,53 @@ fn deserialize_blame_buffer_response(
     ))
 }
 
+/// What a `Push` request is really asking for.
+///
+/// `FORCE_WITHOUT_LEASE` is no longer sent: prost hands an unknown enum value back as the default
+/// one, so a server that predates the value would read it as `SET_UPSTREAM` and push something
+/// else entirely. A client that wants `--force` sends `FORCE` together with `force_without_lease`
+/// instead, which such a server ignores, leaving it on `--force-with-lease`. The old value is
+/// still honoured here for clients that predate the flag.
+fn push_options_from_proto(
+    options: Option<proto::push::PushOptions>,
+    force_without_lease: bool,
+) -> Option<PushOptions> {
+    Some(match (options?, force_without_lease) {
+        // The flag on its own is not enough: dropping the lease is only ever done because the
+        // request said `FORCE` as well.
+        (proto::push::PushOptions::SetUpstream, _) => PushOptions::SetUpstream,
+        (proto::push::PushOptions::Force, false) => PushOptions::Force,
+        (proto::push::PushOptions::Force, true)
+        | (proto::push::PushOptions::ForceWithoutLease, _) => PushOptions::ForceWithoutLease,
+    })
+}
+
+/// What the client asks a peer's server for when it wants a force push, paired so that the enum
+/// and the flag can never disagree. See [`push_options_from_proto`].
+fn push_options_to_proto(options: Option<PushOptions>) -> (Option<i32>, Option<bool>) {
+    match options {
+        None => (None, None),
+        Some(PushOptions::SetUpstream) => {
+            (Some(proto::push::PushOptions::SetUpstream as i32), None)
+        }
+        Some(PushOptions::Force) => (Some(proto::push::PushOptions::Force as i32), None),
+        Some(PushOptions::ForceWithoutLease) => {
+            (Some(proto::push::PushOptions::Force as i32), Some(true))
+        }
+    }
+}
+
+/// Whether a push that asked to drop the lease was answered by a server that never saw the ask.
+///
+/// The answer only carries the mark from a server new enough to have read the request, so its
+/// absence is the one signal that the push kept its lease after all.
+fn push_kept_lease_against_request(
+    force_without_lease: Option<bool>,
+    forced_without_lease: Option<bool>,
+) -> bool {
+    force_without_lease.unwrap_or(false) && forced_without_lease != Some(true)
+}
+
 fn log_source_to_proto(log_source: &LogSource) -> proto::GitLogSource {
     proto::GitLogSource {
         source: Some(match log_source {
@@ -12095,6 +12403,70 @@ mod tests {
             },
         );
         (delegate, prompt_receiver)
+    }
+
+    /// A force push without a lease has to survive meeting a server that predates the field it is
+    /// asked for with, and it may only ever fall back to the safer `--force-with-lease`.
+    #[test]
+    fn test_force_push_without_lease_over_proto() {
+        let (options, force_without_lease) =
+            push_options_to_proto(Some(PushOptions::ForceWithoutLease));
+        assert_eq!(
+            (options, force_without_lease),
+            (Some(proto::push::PushOptions::Force as i32), Some(true)),
+            "the enum stays at FORCE so that an old server reads something safe out of it"
+        );
+        assert_eq!(
+            push_options_to_proto(Some(PushOptions::Force)),
+            (Some(proto::push::PushOptions::Force as i32), None)
+        );
+        assert_eq!(push_options_to_proto(None), (None, None));
+
+        assert_eq!(
+            push_options_from_proto(Some(proto::push::PushOptions::Force), true),
+            Some(PushOptions::ForceWithoutLease),
+            "a server that reads the flag drops the lease"
+        );
+        assert_eq!(
+            push_options_from_proto(Some(proto::push::PushOptions::Force), false),
+            Some(PushOptions::Force),
+            "a server that ignores the flag keeps the lease rather than pushing something else"
+        );
+        assert_eq!(PushOptions::Force.flag(), "--force-with-lease");
+        assert_eq!(PushOptions::ForceWithoutLease.flag(), "--force");
+        assert_eq!(
+            push_options_from_proto(Some(proto::push::PushOptions::ForceWithoutLease), false),
+            Some(PushOptions::ForceWithoutLease),
+            "clients that predate the flag still get what they asked for"
+        );
+        assert_eq!(
+            push_options_from_proto(Some(proto::push::PushOptions::SetUpstream), true),
+            Some(PushOptions::SetUpstream),
+            "the flag alone never drops a lease"
+        );
+        assert_eq!(push_options_from_proto(None, true), None);
+
+        assert!(
+            push_kept_lease_against_request(Some(true), None),
+            "an answer with no mark on it came from a server that kept the lease"
+        );
+        assert!(!push_kept_lease_against_request(Some(true), Some(true)));
+        assert!(!push_kept_lease_against_request(None, None));
+
+        // Why `handle_push` reads the raw field rather than the generated accessor: an option
+        // this build cannot name has to be refused, not read as "push the branch".
+        let unknown_option = proto::Push {
+            options: Some(proto::push::PushOptions::ForceWithoutLease as i32 + 1),
+            ..Default::default()
+        };
+        assert_eq!(
+            unknown_option.options(),
+            proto::push::PushOptions::SetUpstream
+        );
+        assert_eq!(
+            proto::push::PushOptions::from_i32(unknown_option.options.unwrap_or_default()),
+            None
+        );
     }
 
     #[gpui::test]

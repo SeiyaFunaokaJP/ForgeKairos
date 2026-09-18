@@ -58,10 +58,10 @@ use terminal_view::terminal_panel::TerminalPanel;
 use text::Anchor;
 use theme_settings::{AgentBufferFontSize, AgentUiFontSize};
 use ui::{
-    Callout, CircularProgress, CommonAnimationExt, ContextMenu, ContextMenuEntry, CopyButton,
-    DecoratedIcon, DiffStat, Disclosure, Divider, DividerColor, IconDecoration, IconDecorationKind,
-    KeyBinding, PopoverMenu, PopoverMenuHandle, TintColor, Tooltip, WithScrollbar, prelude::*,
-    right_click_menu,
+    Callout, CircularProgress, CommonAnimationExt, ConfiguredApiCard, ContextMenu,
+    ContextMenuEntry, CopyButton, DecoratedIcon, DiffStat, Disclosure, Divider, DividerColor,
+    IconDecoration, IconDecorationKind, KeyBinding, PopoverMenu, PopoverMenuHandle, TintColor,
+    Tooltip, WithScrollbar, prelude::*, right_click_menu,
 };
 use util::{
     ResultExt, debug_panic, defer,
@@ -130,13 +130,108 @@ const RETRY_AGENT_START_LABEL: &str = "もう一度試す";
 /// How a test finds that button in the frame the view just drew.
 const RETRY_AGENT_START_SELECTOR: &str = "RETRY-AGENT-START";
 
-/// ADR-F53: what a sign-in this route may not perform is refused with.
-const SUBSCRIPTION_SIGN_IN_REFUSED: &str = "Claude のサブスクリプションでのサインインは、\
-     この接続方式では行えません。公式の Claude Code を使ってください。";
+/// ADR-F55: サブスクリプションでのサインインを設定で切っているエージェントで、
+/// それでも要求が届いたときに断る文言。
+const SUBSCRIPTION_SIGN_IN_REFUSED: &str = "サブスクリプションでのサインインは、\
+     このエージェントの設定 (`allow_subscription_sign_in`) で無効にされています。";
 
-/// How a test finds the guidance that replaces a sign-in on the ACP Claude
-/// agent's authentication card in the frame the view just drew.
-const API_KEY_ONLY_SELECTOR: &str = "AUTH-API-KEY-ONLY";
+/// ADR-F55: 「Claude Code でログイン (サブスクリプション)」。エージェントが
+/// 出す英語のラベルの代わりにこちらを出す (未改変の CLI 自身が Anthropic の
+/// 画面でサインインする、という導線であることを日本語で言い切るため)。
+const SUBSCRIPTION_SIGN_IN_LABEL: &str = "Claude Code でログイン (サブスクリプション)";
+
+/// How a test finds the fork's own part of an agent's authentication card —
+/// the note about a subscription and the API key field — in the frame the
+/// view just drew.
+const FORK_AUTH_NOTICE_SELECTOR: &str = "AUTH-FORK-NOTICE";
+
+/// How a test finds the button that starts the official CLI, which the card
+/// offers only where the agent advertises no sign-in of its own.
+const LAUNCH_CLAUDE_CODE_SELECTOR: &str = "AUTH-LAUNCH-CLAUDE-CODE";
+
+/// How a test finds the line the card adds when a key and a subscription
+/// sign-in are both on offer, which says which of the two the CLI takes.
+const API_KEY_WINS_SELECTOR: &str = "AUTH-API-KEY-WINS";
+
+/// ADR-F53 決定 4 / ADR-F55: 同じカードの API キー入力欄・保存ボタン・
+/// 「設定済み」の表示・「キーを削除」を、テストがその場のフレームから
+/// 見つけるための目印。
+const API_KEY_INPUT_SELECTOR: &str = "AUTH-API-KEY-INPUT";
+const API_KEY_SAVE_SELECTOR: &str = "AUTH-API-KEY-SAVE";
+const API_KEY_CONFIGURED_SELECTOR: &str = "AUTH-API-KEY-CONFIGURED";
+const API_KEY_REMOVE_SELECTOR: &str = "AUTH-API-KEY-REMOVE";
+const API_KEY_CANCEL_SELECTOR: &str = "AUTH-API-KEY-CANCEL";
+/// 保存中は「保存」の代わりにこちらが出るので、目印も別にする: テストは
+/// 「押せない」ことを disabled 属性ではなく、どちらが出ているかで見る。
+const API_KEY_SAVING_SELECTOR: &str = "AUTH-API-KEY-SAVING";
+
+/// ADR-F55: 認証カードに出す注記を決める、サブスクリプションのサインインの
+/// 状態。「出ている」と「出せない」を混ぜない: 切ったのか、エージェントが
+/// そもそも出していないのかで、利用者が次にすることが違うため。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SubscriptionSignIn {
+    /// カードにサインインのボタンが出ている。
+    Offered,
+    /// 設定 (`allow_subscription_sign_in: false`) で落とした。
+    TurnedOff,
+    /// エージェントがサインインのメソッドを出していない。
+    NotAdvertised,
+}
+
+impl SubscriptionSignIn {
+    /// How a test tells which of the three notices the card drew: the wording
+    /// differs by state and a bounds lookup cannot read it, so the state is
+    /// part of the mark.
+    fn notice_selector(self) -> &'static str {
+        match self {
+            Self::Offered => "AUTH-FORK-NOTICE-OFFERED",
+            Self::TurnedOff => "AUTH-FORK-NOTICE-TURNED-OFF",
+            Self::NotAdvertised => "AUTH-FORK-NOTICE-NOT-ADVERTISED",
+        }
+    }
+
+    /// 認証カードの 1 行の注記。3 つを別々の文言にするのは、利用者が次にする
+    /// ことが違うため: 出ているなら押す、切ってあるなら設定を戻す、出ていない
+    /// なら公式の CLI でログインする。
+    fn notice(self) -> &'static str {
+        match self {
+            Self::Offered => {
+                "サブスクリプション (Claude Pro / Max など) での利用は、\
+                 Anthropic が 2026-06-15 に「これまでどおり」と告知しています。\
+                 設定で無効にできます。"
+            }
+            Self::TurnedOff => {
+                "サブスクリプションでのサインインは、設定の\
+                 `allow_subscription_sign_in` で無効にしています。\
+                 API キーでの利用はこのまま使えます。"
+            }
+            Self::NotAdvertised => {
+                "このエージェントはサブスクリプションでのサインインを\
+                 出していません。サブスクリプションで使うには、公式の\
+                 Claude Code を起動してその画面でログインしてください。"
+            }
+        }
+    }
+}
+
+/// The fixed strings a finished sign-in prints, which the terminal running it
+/// is watched for.
+///
+/// ADR-F55 「やらないこと」: サインインの端末の出力はこの固定文字列と
+/// 照合するだけで、中身を解析しない・取り出さない・保存しない。トークンは
+/// CLI が自分の設定フォルダーへ書くもので、こちらは触れない。切り出して
+/// あるのは、それをテストで固定できるようにするため。
+fn login_success_patterns(method_id: &str) -> Vec<String> {
+    match method_id {
+        agent_servers::CLAUDE_SUBSCRIPTION_AUTH_METHOD | GEMINI_TERMINAL_AUTH_METHOD_ID => {
+            vec![
+                "Login successful".to_string(),
+                "Type your message".to_string(),
+            ]
+        }
+        _ => Vec::new(),
+    }
+}
 
 /// How a test finds one authentication method's button in the frame the view
 /// just drew, so that a method the card must not offer can be shown absent.
@@ -697,6 +792,20 @@ pub struct ConversationView {
     /// asked for it rather than replacing it (F1's `consent.error` shape), so
     /// the button that starts it is still there to try again with.
     agent_hosts_consent_error: Option<SharedString>,
+    /// ADR-F53 決定 4: API キーの入力欄。毎フレーム作り直さないようここに
+    /// 持つ。キーを `env` から読むエージェント
+    /// ([`agent_servers::api_key_variable`]) のビューだけが持ち、ほかは
+    /// `None`。
+    api_key_editor: Option<Entity<Editor>>,
+    /// API キーを保存できなかった理由。**キーそのものは決してここへ入れない**
+    /// (ここは画面に出る)。
+    api_key_error: Option<SharedString>,
+    /// 設定済みのキーを入れ替えている最中。設定済みのときは入力欄ではなく
+    /// 「設定済み」のカードを出すので、その切り替え。
+    api_key_editing: bool,
+    /// キーを書く / 消す仕事。どちらも同じ枠を使うので、片方が走っている
+    /// あいだはもう片方を始めない (settings.json への書き込みが交差しない)。
+    api_key_save_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -1011,6 +1120,21 @@ impl ConversationView {
 
         let thread_id = thread_id.unwrap_or_else(ThreadId::new);
 
+        // ADR-F53 決定 4: 入力欄を持つのは、キーを `env` から読むエージェント
+        // のビューだけ。ほかのビューに空の Editor を配らない。サインインを
+        // 出すかどうか (ADR-F55) とは無関係: 両方出ていても、キーを入れる
+        // 口は残る。
+        let api_key_editor = agent_servers::api_key_variable(agent.agent_id().0.as_ref())
+            .is_some()
+            .then(|| {
+                cx.new(|cx| {
+                    let mut editor = Editor::single_line(window, cx);
+                    editor.set_placeholder_text("sk-ant-…", window, cx);
+                    editor.set_masked(true, cx);
+                    editor
+                })
+            });
+
         Self {
             agent: agent.clone(),
             connection_store: connection_store.clone(),
@@ -1048,6 +1172,10 @@ impl ConversationView {
             request_elicitation_form_states: HashMap::default(),
             agent_hosts_consent_pending: false,
             agent_hosts_consent_error: None,
+            api_key_editor,
+            api_key_error: None,
+            api_key_editing: false,
+            api_key_save_task: None,
             _subscriptions: subscriptions,
             focus_handle: cx.focus_handle(),
         }
@@ -2497,11 +2625,15 @@ impl ConversationView {
         cx: &mut Context<Self>,
     ) {
         let agent_id = self.agent.agent_id();
-        // ADR-F53: the card offers no subscription sign-in for this agent, so
-        // nothing should ask for one; a keybinding or a card drawn before the
-        // agent was reconfigured still could, and it is refused here rather
-        // than at the terminal.
-        if agent_servers::is_subscription_auth_method(agent_id.0.as_ref(), method.0.as_ref()) {
+        // ADR-F55: the card leaves a subscription sign-in off an agent whose
+        // settings turn it off, so nothing should ask for one; a keybinding
+        // or a card drawn before the setting changed still could, and it is
+        // refused here rather than at the terminal.
+        if agent_servers::is_refused_subscription_auth_method(
+            agent_id.0.as_ref(),
+            method.0.as_ref(),
+            cx,
+        ) {
             let refusal = anyhow!(SUBSCRIPTION_SIGN_IN_REFUSED);
             match self.root_thread_view() {
                 Some(view) => view.update(cx, |view, cx| view.handle_thread_error(refusal, cx)),
@@ -2730,9 +2862,13 @@ impl ConversationView {
         window: &mut Window,
         cx: &mut App,
     ) -> Task<Result<()>> {
-        // ADR-F53: the last gate before a terminal is opened for a sign-in,
+        // ADR-F55: the last gate before a terminal is opened for a sign-in,
         // whatever asked for it.
-        if agent_servers::is_subscription_auth_method(agent_id.0.as_ref(), method.0.as_ref()) {
+        if agent_servers::is_refused_subscription_auth_method(
+            agent_id.0.as_ref(),
+            method.0.as_ref(),
+            cx,
+        ) {
             return Task::ready(Err(anyhow!(SUBSCRIPTION_SIGN_IN_REFUSED)));
         }
         let Some(terminal_panel) = workspace.read(cx).panel::<TerminalPanel>(cx) else {
@@ -2794,13 +2930,7 @@ impl ConversationView {
                     .await?
             };
 
-            let success_patterns = match method.0.as_ref() {
-                "claude-login" | GEMINI_TERMINAL_AUTH_METHOD_ID => vec![
-                    "Login successful".to_string(),
-                    "Type your message".to_string(),
-                ],
-                _ => Vec::new(),
-            };
+            let success_patterns = login_success_patterns(method.0.as_ref());
             if success_patterns.is_empty() {
                 // No success patterns specified: wait for the process to exit and check exit code
                 let exit_status = terminal
@@ -2899,22 +3029,36 @@ impl ConversationView {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let agent_id = self.agent.agent_id();
-        // ADR-F53: a subscription sign-in is not offered on this route, so it
-        // is left out of the card and the guidance below takes its place.
+        // ADR-F55: a subscription sign-in is offered again — the unmodified
+        // binary signs itself in and this IDE never sees the credentials —
+        // unless the agent's own settings turn it off, in which case it is
+        // left off the card as well as refused.
+        let sign_in_disabled =
+            agent_servers::subscription_sign_in_disabled(agent_id.0.as_ref(), cx);
         let offered_methods = || {
             connection
                 .auth_methods()
                 .iter()
                 .filter(|method| {
-                    !agent_servers::is_subscription_auth_method(
-                        agent_id.0.as_ref(),
-                        method.id().0.as_ref(),
-                    )
+                    !sign_in_disabled
+                        || !agent_servers::looks_like_subscription_sign_in(method.id().0.as_ref())
                 })
                 .collect::<Vec<_>>()
         };
         let auth_methods = offered_methods();
-        let show_api_key_only_notice = agent_servers::is_api_key_only_agent(agent_id.0.as_ref());
+        // ADR-F53 決定 4: キーを `env` から読むエージェントだけが、このフォーク
+        // の注記と入力欄を持つ。
+        let show_fork_auth_notice = agent_servers::api_key_variable(agent_id.0.as_ref()).is_some();
+        let subscription_sign_in =
+            if sign_in_disabled {
+                SubscriptionSignIn::TurnedOff
+            } else if connection.auth_methods().iter().any(|method| {
+                agent_servers::looks_like_subscription_sign_in(method.id().0.as_ref())
+            }) {
+                SubscriptionSignIn::Offered
+            } else {
+                SubscriptionSignIn::NotAdvertised
+            };
 
         let agent_display_name = self
             .agent_server_store
@@ -2925,7 +3069,7 @@ impl ConversationView {
         let show_fallback_description = auth_methods.len() > 1
             && description.is_none()
             && pending_auth_method.is_none()
-            && !show_api_key_only_notice;
+            && !show_fork_auth_notice;
 
         let auth_buttons = || {
             h_flex().justify_end().flex_wrap().gap_1().children(
@@ -2934,7 +3078,18 @@ impl ConversationView {
                     .enumerate()
                     .rev()
                     .map(|(ix, method)| {
-                        let (method_id, name) = (method.id().0.clone(), method.name().to_string());
+                        let method_id = method.id().0.clone();
+                        // ADR-F55: the vendor's label for the sign-in is
+                        // English and says nothing of where it happens. Only
+                        // this agent's is renamed: another vendor's sign-in is
+                        // not Claude Code's, whatever its id reads like.
+                        let name = if agent_id.0.as_ref() == agent_servers::CLAUDE_AGENT_ID
+                            && agent_servers::looks_like_subscription_sign_in(&method_id)
+                        {
+                            SUBSCRIPTION_SIGN_IN_LABEL.to_string()
+                        } else {
+                            method.name().to_string()
+                        };
                         let agent_telemetry_id = connection.telemetry_id();
                         let selector = auth_method_selector(&method_id);
 
@@ -3001,11 +3156,12 @@ impl ConversationView {
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
-                        } else if show_api_key_only_notice {
-                            // The agent's own description asks for a
-                            // subscription sign-in, which is exactly what this
-                            // route does not do, so it is replaced rather than
-                            // shown alongside the guidance.
+                        } else if show_fork_auth_notice {
+                            // The agent's own description is the vendor's
+                            // English text about signing in; the note below
+                            // says the same in Japanese and adds what this
+                            // fork does about it, so it replaces rather than
+                            // doubles it.
                             this
                         } else {
                             this.children(description.map(|desc| {
@@ -3017,8 +3173,9 @@ impl ConversationView {
                             }))
                         }
                     })
-                    .when(show_api_key_only_notice, |this| {
-                        this.gap_1().child(Self::render_api_key_only_notice())
+                    .when(show_fork_auth_notice, |this| {
+                        this.gap_1()
+                            .child(self.render_fork_auth_notice(subscription_sign_in, cx))
                     })
                     .when(auth_methods.len() > 1, |this| {
                         this.gap_1().child(auth_buttons())
@@ -3027,45 +3184,385 @@ impl ConversationView {
             .into_any_element()
     }
 
-    /// ADR-F53: what the ACP Claude agent's authentication card says in place
-    /// of a sign-in. A subscription is used by starting the official Claude
-    /// Code, which signs itself in; this route takes an API key from the
-    /// agent's own `env`.
-    fn render_api_key_only_notice() -> impl IntoElement {
+    /// ADR-F55: what this fork adds to an agent's authentication card — one
+    /// line about the subscription sign-in, and the API key field.
+    ///
+    /// サインインのボタン自体はカードの通常の認証メソッドの列が出す。
+    /// キーを入れる部分は [`Self::render_api_key_field`] が丸ごと持っているので、
+    /// ここは置き場所と注記だけを決める。
+    fn render_fork_auth_notice(
+        &self,
+        sign_in: SubscriptionSignIn,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        // ADR-F55: どちらを使うかを決めるのは起動される CLI で、この IDE では
+        // ない。両方そろっているカードで「ログイン」を押した利用者が、成功して
+        // なお API キー側に課金される、という取り違えだけを先回りして断る。
+        let api_key_configured = self.api_key_variable().is_some_and(|variable| {
+            agent_servers::has_env_var(self.agent.agent_id().0.as_ref(), variable, cx)
+        });
+
         v_flex()
-            .debug_selector(|| API_KEY_ONLY_SELECTOR.to_string())
+            .debug_selector(|| FORK_AUTH_NOTICE_SELECTOR.to_string())
             .gap_1()
             .child(
-                Label::new(
-                    "Claude のサブスクリプション (Pro / Max など) は、この接続方式では\
-                     使えません。公式の Claude Code を使ってください。",
-                )
-                .size(LabelSize::Small)
-                .color(Color::Muted),
+                div()
+                    .debug_selector(move || sign_in.notice_selector().to_string())
+                    .child(
+                        Label::new(sign_in.notice())
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    ),
             )
-            .child(
-                Label::new(
-                    "API キー (従量課金) で使う場合は、settings.json の \
-                     `agent_servers` → `claude-acp` → `env` に `ANTHROPIC_API_KEY` を\
-                     設定してください。",
-                )
-                .size(LabelSize::Small)
-                .color(Color::Muted),
+            .when(
+                sign_in == SubscriptionSignIn::Offered && api_key_configured,
+                |this| {
+                    this.child(
+                        div()
+                            .debug_selector(|| API_KEY_WINS_SELECTOR.to_string())
+                            .child(
+                                Label::new(
+                                    "API キーが設定されているときは、Claude Code は\
+                                     そちらを優先します。サブスクリプションで使うには\
+                                     キーを削除してください。",
+                                )
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                            ),
+                    )
+                },
             )
-            .child(
-                h_flex().justify_end().child(
-                    Button::new("launch-claude-code", "Claude Code を起動")
-                        .label_size(LabelSize::Small)
-                        .style(ButtonStyle::Tinted(TintColor::Accent))
-                        .on_click(|_, window, cx| {
-                            window.dispatch_action(
-                                zed_actions::terminal::LaunchClaudeCode { effort: None }
-                                    .boxed_clone(),
-                                cx,
-                            );
-                        }),
+            .children(self.render_api_key_field(cx))
+            .when(sign_in == SubscriptionSignIn::NotAdvertised, |this| {
+                this.child(
+                    h_flex()
+                        .justify_end()
+                        .debug_selector(|| LAUNCH_CLAUDE_CODE_SELECTOR.to_string())
+                        .child(
+                            Button::new("launch-claude-code", "Claude Code を起動")
+                                .label_size(LabelSize::Small)
+                                .style(ButtonStyle::Outlined)
+                                .on_click(|_, window, cx| {
+                                    window.dispatch_action(
+                                        zed_actions::terminal::LaunchClaudeCode { effort: None }
+                                            .boxed_clone(),
+                                        cx,
+                                    );
+                                }),
+                        ),
+                )
+            })
+    }
+
+    /// ADR-F53 決定 4: エージェントの `env` へ API キーを入れるための部品
+    /// 一式 (案内・マスクした 1 行の入力欄・「保存」・断り書き・設定済みの
+    /// 表示)。
+    ///
+    /// ここはエージェントがキーを `env` から読むかどうか
+    /// ([`agent_servers::api_key_variable`]) しか見ない。サインインを出すか
+    /// どうか (ADR-F55) とは独立していて、カードのどこへ
+    /// 置いてもよい。キーを読まないエージェントのビューは入力欄そのものを
+    /// 持たないので `None`。
+    fn render_api_key_field(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
+        let editor = self.api_key_editor.clone()?;
+        let variable = self.api_key_variable()?;
+        let configured = agent_servers::has_env_var(self.agent.agent_id().0.as_ref(), variable, cx);
+        let show_editor = !configured || self.api_key_editing;
+        let saving = self.api_key_save_task.is_some();
+
+        Some(
+            v_flex()
+                .gap_1()
+                .map(|this| {
+                    if show_editor {
+                        this.child(
+                            Label::new(
+                                "API キー (従量課金) で使う場合は、下の欄に入力して保存\
+                                 してください。",
+                            )
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                        )
+                        .child(
+                            Label::new(format!(
+                                "キーは settings.json の `agent_servers` → `{}` → `env` \
+                                 → `{variable}` に平文で保存されます。",
+                                self.agent.agent_id().0
+                            ))
+                            .size(LabelSize::Small)
+                            .color(Color::Warning),
+                        )
+                        .child(
+                            h_flex()
+                                .w_full()
+                                .gap_1()
+                                .capture_action(cx.listener(
+                                    |this, _: &editor::actions::Newline, window, cx| {
+                                        this.submit_api_key(window, cx);
+                                    },
+                                ))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .debug_selector(|| API_KEY_INPUT_SELECTOR.to_string())
+                                        .rounded_sm()
+                                        .border_1()
+                                        .border_color(cx.theme().colors().border)
+                                        .bg(cx.theme().colors().editor_background)
+                                        .px_1()
+                                        .py_0p5()
+                                        .text_xs()
+                                        .child(editor.into_any_element()),
+                                )
+                                .map(|this| {
+                                    // 保存中は押せないことを見せる: 以前は 2 度目の
+                                    // 押下が黙って捨てられ、何も起きていないように見えていた。
+                                    if saving {
+                                        this.child(
+                                            div()
+                                                .debug_selector(|| {
+                                                    API_KEY_SAVING_SELECTOR.to_string()
+                                                })
+                                                .child(
+                                                    Button::new("save-agent-api-key", "保存中…")
+                                                        .label_size(LabelSize::Small)
+                                                        .style(ButtonStyle::Outlined)
+                                                        .disabled(true),
+                                                ),
+                                        )
+                                    } else {
+                                        this.child(
+                                            div()
+                                                .debug_selector(|| {
+                                                    API_KEY_SAVE_SELECTOR.to_string()
+                                                })
+                                                .child(
+                                                    Button::new("save-agent-api-key", "保存")
+                                                        .label_size(LabelSize::Small)
+                                                        .style(ButtonStyle::Outlined)
+                                                        .on_click(cx.listener(
+                                                            |this, _, window, cx| {
+                                                                this.submit_api_key(window, cx);
+                                                            },
+                                                        )),
+                                                ),
+                                        )
+                                    }
+                                })
+                                // 設定済みのキーを「変更」したあと、保存せずに戻る道。
+                                // これが無いと `api_key_editing` が立ったまま残り、次に
+                                // カードを見たときに「設定済み」ではなく空欄が出る。
+                                .when(configured && !saving, |this| {
+                                    this.child(
+                                        div()
+                                            .debug_selector(|| API_KEY_CANCEL_SELECTOR.to_string())
+                                            .child(
+                                                Button::new("cancel-agent-api-key", "取り消し")
+                                                    .label_size(LabelSize::Small)
+                                                    .style(ButtonStyle::Subtle)
+                                                    .on_click(cx.listener(
+                                                        |this, _, window, cx| {
+                                                            this.cancel_api_key_edit(window, cx);
+                                                        },
+                                                    )),
+                                            ),
+                                    )
+                                }),
+                        )
+                    } else {
+                        this.child(
+                            h_flex()
+                                .w_full()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .debug_selector(|| API_KEY_CONFIGURED_SELECTOR.to_string())
+                                        .child(
+                                            ConfiguredApiCard::new(
+                                                "agent-api-key-configured",
+                                                "API キーは設定済みです (settings.json)",
+                                            )
+                                            .button_label("変更")
+                                            .on_click(
+                                                cx.listener(|this, _, window, cx| {
+                                                    this.api_key_editing = true;
+                                                    this.api_key_error = None;
+                                                    if let Some(editor) =
+                                                        this.api_key_editor.clone()
+                                                    {
+                                                        editor.update(cx, |editor, cx| {
+                                                            editor.set_text("", window, cx);
+                                                            // 「変更」を押した先は空の欄
+                                                            // だけなので、押した流れで
+                                                            // そのまま打てるようにする。
+                                                            window.focus(
+                                                                &editor.focus_handle(cx),
+                                                                cx,
+                                                            );
+                                                        });
+                                                    }
+                                                    cx.notify();
+                                                }),
+                                            ),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .debug_selector(|| API_KEY_REMOVE_SELECTOR.to_string())
+                                        .child(
+                                            Button::new("remove-agent-api-key", "キーを削除")
+                                                .label_size(LabelSize::Small)
+                                                .style(ButtonStyle::Outlined)
+                                                .disabled(saving)
+                                                .tooltip(Tooltip::text(
+                                                    "settings.json の env からこの変数を外します",
+                                                ))
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.remove_api_key(window, cx);
+                                                })),
+                                        ),
+                                ),
+                        )
+                    }
+                })
+                .children(
+                    self.api_key_error
+                        .clone()
+                        .map(|error| Label::new(error).size(LabelSize::Small).color(Color::Error)),
                 ),
-            )
+        )
+    }
+
+    /// ADR-F53 決定 4: このビューのエージェントが `env` から読む API キーの
+    /// 変数名。読まないエージェントでは `None`。
+    fn api_key_variable(&self) -> Option<&'static str> {
+        agent_servers::api_key_variable(self.agent.agent_id().0.as_ref())
+    }
+
+    /// ADR-F55: 「変更」をやめて「設定済み」の表示へ戻る。
+    ///
+    /// 入力欄の中身も消す: 書きかけのキーをビューに残しておかない。
+    /// 保存が走っている間は何もしない: その書き込みの結果が自分で
+    /// 表示を戻すので、途中で切り替えると結果と画面が食い違う。
+    fn cancel_api_key_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.api_key_save_task.is_some() {
+            return;
+        }
+        self.api_key_editing = false;
+        self.api_key_error = None;
+        if let Some(editor) = self.api_key_editor.clone() {
+            editor.update(cx, |editor, cx| {
+                editor.set_text("", window, cx);
+            });
+        }
+        cx.notify();
+    }
+
+    /// ADR-F55: 設定済みのキーを `agent_servers.<id>.env` から外す。
+    ///
+    /// 確認は取らない: 消しても失われるのは設定 1 行で、同じカードの入力欄から
+    /// すぐに入れ直せる。消せたらカードは「設定済み」から入力欄へ戻る
+    /// ([`Self::render_api_key_field`] が `has_env_var` を見ているため)。
+    fn remove_api_key(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(variable) = self.api_key_variable() else {
+            return;
+        };
+        if self.api_key_save_task.is_some() {
+            return;
+        }
+        let fs = self.project.read(cx).fs().clone();
+        let removed =
+            agent_servers::remove_env_var(self.agent.agent_id().0.as_ref(), variable, fs, cx);
+
+        self.api_key_error = None;
+        cx.notify();
+        self.api_key_save_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let result = removed.await;
+            this.update(cx, |this, cx| {
+                this.api_key_save_task = None;
+                match result {
+                    Ok(()) => {
+                        this.api_key_editing = false;
+                        this.api_key_error = None;
+                    }
+                    Err(error) => {
+                        this.api_key_error =
+                            Some(format!("API キーを削除できませんでした: {error}").into());
+                    }
+                }
+                cx.notify();
+            })
+            .log_err();
+        }));
+    }
+
+    /// ADR-F53 決定 4: 入力されたキーを `agent_servers.<id>.env` へ書く。
+    ///
+    /// キーの文字列はここから先へ持ち出さない: ログにもトーストにも載せず、
+    /// 保存できたら入力欄からも消す。画面に残す唯一の文字列は
+    /// [`Self::api_key_error`] で、そこへ値を入れることは決してない。
+    fn submit_api_key(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(editor) = self.api_key_editor.clone() else {
+            return;
+        };
+        let Some(variable) = self.api_key_variable() else {
+            return;
+        };
+        if self.api_key_save_task.is_some() {
+            return;
+        }
+        let key = editor.read(cx).text(cx);
+        let fs = self.project.read(cx).fs().clone();
+
+        let written = match agent_servers::set_env_var(
+            self.agent.agent_id().0.as_ref(),
+            variable,
+            &key,
+            fs,
+            cx,
+        ) {
+            Ok(written) => written,
+            Err(error) => {
+                self.api_key_error = Some(format!("{error}").into());
+                cx.notify();
+                return;
+            }
+        };
+
+        self.api_key_error = None;
+        cx.notify();
+        // 書き込みの失敗理由は設定側が作る文字列で、このコードが中身を決め
+        // られない。万一そこへ値が混ざっても画面には出ないよう、伏せてから
+        // 載せる。
+        let saved = key.trim().to_string();
+        self.api_key_save_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let result = written.await;
+            this.update_in(cx, |this, window, cx| {
+                this.api_key_save_task = None;
+                match result {
+                    Ok(()) => {
+                        this.api_key_editing = false;
+                        this.api_key_error = None;
+                        if let Some(editor) = this.api_key_editor.clone() {
+                            editor.update(cx, |editor, cx| {
+                                editor.set_text("", window, cx);
+                            });
+                        }
+                    }
+                    Err(error) => {
+                        let mut reason = format!("API キーを保存できませんでした: {error}");
+                        if !saved.is_empty() {
+                            reason = reason.replace(&saved, "***");
+                        }
+                        this.api_key_error = Some(reason.into());
+                    }
+                }
+                cx.notify();
+            })
+            .log_err();
+        }));
     }
 
     fn sync_request_elicitation_states(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -8199,11 +8696,34 @@ pub(crate) mod tests {
     const CLAUDE_SUBSCRIPTION_METHOD_SELECTOR: &str = "AUTH-METHOD-claude-login";
     const CLAUDE_ACP_API_KEY_METHOD_SELECTOR: &str = "AUTH-METHOD-anthropic-api-key";
 
-    /// ADR-F53: on this route the ACP Claude agent offers no sign-in of its
-    /// own — the subscription one is left off the card and the guidance takes
-    /// its place — and asking for it anyway, past the card, is refused.
+    /// `agent_servers.claude-acp.allow_subscription_sign_in` を書き換えて、
+    /// 設定が届くまで待つ。ビューが見るのと同じグローバルを通るので、
+    /// 設定からカードまでの経路ごと確かめられる。
+    async fn set_subscription_sign_in(
+        conversation_view: &Entity<ConversationView>,
+        allowed: bool,
+        cx: &mut VisualTestContext,
+    ) {
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        let written = cx.update(|_window, cx| {
+            agent_servers::set_subscription_sign_in_allowed(
+                agent_servers::CLAUDE_AGENT_ID,
+                allowed,
+                fs,
+                cx,
+            )
+        });
+        written.await.expect("設定を書ける");
+        cx.run_until_parked();
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+    }
+
+    /// ADR-F55: 未改変の `claude` が Anthropic のフローで自分でサインインする
+    /// 経路なので、サブスクリプションのログインは既定でカードに出る。
+    /// 設定で切るとカードから消え、カードを飛ばして要求しても断られる。
     #[gpui::test]
-    async fn the_acp_claude_offers_no_subscription_sign_in(cx: &mut TestAppContext) {
+    async fn the_acp_claudes_subscription_sign_in_follows_the_setting(cx: &mut TestAppContext) {
         init_test(cx);
 
         assert_eq!(
@@ -8227,23 +8747,66 @@ pub(crate) mod tests {
         )
         .await;
         add_to_workspace(conversation_view.clone(), cx);
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
         // A frame that reuses a cached pane records no `debug_selector`.
         cx.update(|window, _cx| window.refresh());
         cx.run_until_parked();
 
         assert!(
-            cx.debug_bounds(API_KEY_ONLY_SELECTOR).is_some(),
-            "the card says where a subscription is used instead"
+            cx.debug_bounds(FORK_AUTH_NOTICE_SELECTOR).is_some(),
+            "the card carries this fork's note and its key field"
         );
         assert!(
             cx.debug_bounds(CLAUDE_SUBSCRIPTION_METHOD_SELECTOR)
-                .is_none(),
-            "the subscription sign-in is not on the card"
+                .is_some(),
+            "the subscription sign-in is offered by default"
         );
         assert!(
             cx.debug_bounds(CLAUDE_ACP_API_KEY_METHOD_SELECTOR)
                 .is_some(),
-            "an API-key method is what this route is for, so it stays"
+            "an API-key method stays beside it"
+        );
+        assert!(
+            cx.debug_bounds(SubscriptionSignIn::Offered.notice_selector())
+                .is_some(),
+            "the note says the sign-in is offered"
+        );
+        assert!(
+            cx.debug_bounds(LAUNCH_CLAUDE_CODE_SELECTOR).is_none(),
+            "nothing sends the user to the CLI tab when the agent signs in here"
+        );
+
+        // 設定で切るとカードから消え、要求しても通らない。
+        // サインインが通るとカードそのものが消えるので、ボタンの有無を
+        // 見る確かめは全部ここで済ませてから最後にサインインする。
+        set_subscription_sign_in(&conversation_view, false, cx).await;
+
+        assert!(
+            cx.debug_bounds(CLAUDE_SUBSCRIPTION_METHOD_SELECTOR)
+                .is_none(),
+            "the sign-in the setting turns off is left off the card"
+        );
+        assert!(
+            cx.debug_bounds(CLAUDE_ACP_API_KEY_METHOD_SELECTOR)
+                .is_some(),
+            "an API-key method is unaffected by the setting"
+        );
+        assert!(
+            cx.debug_bounds(FORK_AUTH_NOTICE_SELECTOR).is_some(),
+            "the note and the key field stay"
+        );
+        assert!(
+            cx.debug_bounds(SubscriptionSignIn::TurnedOff.notice_selector())
+                .is_some(),
+            "turned off reads differently from never advertised: what the user \
+             does next is not the same"
+        );
+        assert!(
+            cx.debug_bounds(SubscriptionSignIn::Offered.notice_selector())
+                .is_none()
         );
 
         conversation_view.update_in(cx, |view, window, cx| {
@@ -8259,9 +8822,17 @@ pub(crate) mod tests {
             "the sign-in the card left off is refused when asked for anyway"
         );
 
+        // 戻せばまた出る。
+        set_subscription_sign_in(&conversation_view, true, cx).await;
+        assert!(
+            cx.debug_bounds(CLAUDE_SUBSCRIPTION_METHOD_SELECTOR)
+                .is_some(),
+            "turning it back on brings the sign-in back"
+        );
+
         conversation_view.update_in(cx, |view, window, cx| {
             view.authenticate(
-                acp::AuthMethodId::new(CLAUDE_ACP_API_KEY_METHOD),
+                acp::AuthMethodId::new(agent_servers::CLAUDE_SUBSCRIPTION_AUTH_METHOD),
                 window,
                 cx,
             );
@@ -8269,7 +8840,889 @@ pub(crate) mod tests {
         cx.run_until_parked();
         assert!(
             connection.is_authenticated(),
-            "the method the card does offer still works"
+            "the sign-in the card offers works"
+        );
+    }
+
+    /// ADR-F55: ベンダーがメソッドを改名しても (`Login`、`claude_login`)、
+    /// 設定で切ってあれば同じように消えて断られる。取りこぼすと、利用者が
+    /// 切ったはずの設定が黙って効かなくなる。
+    #[gpui::test]
+    async fn a_renamed_sign_in_is_turned_off_too(cx: &mut TestAppContext) {
+        init_test(cx);
+        const RENAMED: &str = "Login";
+
+        let connection =
+            AuthGatedAgentConnection::with_methods(&[RENAMED, CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) = setup_conversation_view(
+            ClaudeAcpAgentServer {
+                connection: connection.clone(),
+            },
+            cx,
+        )
+        .await;
+        add_to_workspace(conversation_view.clone(), cx);
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        const RENAMED_SELECTOR: &str = "AUTH-METHOD-Login";
+        assert_eq!(auth_method_selector(RENAMED), RENAMED_SELECTOR);
+        assert!(cx.debug_bounds(RENAMED_SELECTOR).is_some(), "既定では出る");
+        assert!(
+            cx.debug_bounds(SubscriptionSignIn::Offered.notice_selector())
+                .is_some(),
+            "改名されていてもサインインとして数える"
+        );
+
+        set_subscription_sign_in(&conversation_view, false, cx).await;
+        assert!(
+            cx.debug_bounds(RENAMED_SELECTOR).is_none(),
+            "改名されたサインインもカードから消える"
+        );
+        assert!(
+            cx.debug_bounds(CLAUDE_ACP_API_KEY_METHOD_SELECTOR)
+                .is_some(),
+            "鍵のメソッドは残る"
+        );
+
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.authenticate(acp::AuthMethodId::new(RENAMED), window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            !connection.is_authenticated(),
+            "カードを飛ばして要求しても断る"
+        );
+    }
+
+    /// ADR-F55: 鍵とサブスクリプションが両方そろっているカードでは、どちらが
+    /// 使われるかを 1 行足す。押せば署名はできるので、押した利用者が課金先を
+    /// 取り違えるのはここでしか止められない。キーを消せばその行も消える。
+    #[gpui::test]
+    async fn the_card_says_which_one_wins_when_both_are_set(cx: &mut TestAppContext) {
+        init_test(cx);
+        const KEY: &str = "sk-ant-api03-both";
+
+        let connection = AuthGatedAgentConnection::with_methods(&[
+            agent_servers::CLAUDE_SUBSCRIPTION_AUTH_METHOD,
+            CLAUDE_ACP_API_KEY_METHOD,
+        ]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        assert!(
+            cx.debug_bounds(SubscriptionSignIn::Offered.notice_selector())
+                .is_some(),
+            "サインインは出ている"
+        );
+        assert!(
+            cx.debug_bounds(API_KEY_WINS_SELECTOR).is_none(),
+            "キーが無いうちは優先順位の話をしない"
+        );
+
+        save_api_key(&conversation_view, KEY, cx).await;
+        assert_eq!(saved_api_key(cx).as_deref(), Some(KEY));
+        assert!(
+            cx.debug_bounds(API_KEY_WINS_SELECTOR).is_some(),
+            "両方そろったらどちらが使われるかを言う"
+        );
+
+        let remove = cx
+            .debug_bounds(API_KEY_REMOVE_SELECTOR)
+            .expect("設定済みのカードに「キーを削除」がある");
+        cx.simulate_click(remove.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        assert_eq!(saved_api_key(cx), None);
+        assert!(
+            cx.debug_bounds(API_KEY_WINS_SELECTOR).is_none(),
+            "キーを消せばその行も消える"
+        );
+        assert!(
+            cx.debug_bounds(SubscriptionSignIn::Offered.notice_selector())
+                .is_some(),
+            "サインインの注記は残る"
+        );
+    }
+
+    /// ADR-F55: 端末を開く直前の関門。カードを経ずに (キー割り当て・古い
+    /// フレーム・`/login`) ここへ来ても、設定で切ってあれば端末そのものを
+    /// 開かない。カードの認証メソッドはエージェント種別でこの経路を通らない
+    /// ので、ここは別に確かめる。
+    #[gpui::test]
+    async fn a_turned_off_sign_in_never_reaches_a_terminal(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let connection = AuthGatedAgentConnection::with_methods(&[
+            agent_servers::CLAUDE_SUBSCRIPTION_AUTH_METHOD,
+            CLAUDE_ACP_API_KEY_METHOD,
+        ]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+        cx.run_until_parked();
+
+        fn start_login(
+            conversation_view: &Entity<ConversationView>,
+            method: &str,
+            cx: &mut VisualTestContext,
+        ) -> Task<anyhow::Result<()>> {
+            let (workspace, project) = conversation_view.read_with(cx, |view, _cx| {
+                (
+                    view.workspace.upgrade().expect("ワークスペース"),
+                    view.project.clone(),
+                )
+            });
+            let login = acp_thread::build_terminal_auth_task(
+                "test-login".to_string(),
+                "ログイン".to_string(),
+                "claude".to_string(),
+                vec!["/login".to_string()],
+                HashMap::default(),
+            );
+            let method = acp::AuthMethodId::new(method.to_string());
+            cx.update(|window, cx| {
+                ConversationView::spawn_external_agent_login(
+                    login,
+                    workspace,
+                    project,
+                    AgentId::new(agent_servers::CLAUDE_AGENT_ID),
+                    method,
+                    false,
+                    false,
+                    None,
+                    window,
+                    cx,
+                )
+            })
+        }
+
+        // 既定では関門を素通りし、端末が無いことで初めて失敗する = 断り文句とは
+        // 別の理由。ここが同じ文言で失敗するなら、この確かめは同義反復になる。
+        let allowed = start_login(
+            &conversation_view,
+            agent_servers::CLAUDE_SUBSCRIPTION_AUTH_METHOD,
+            cx,
+        )
+        .await
+        .expect_err("このテスト環境には端末パネルが無い");
+        assert_ne!(
+            format!("{allowed}"),
+            SUBSCRIPTION_SIGN_IN_REFUSED,
+            "既定では関門で止めない"
+        );
+
+        set_subscription_sign_in(&conversation_view, false, cx).await;
+        let refused = start_login(
+            &conversation_view,
+            agent_servers::CLAUDE_SUBSCRIPTION_AUTH_METHOD,
+            cx,
+        )
+        .await
+        .expect_err("切ってあれば断る");
+        assert_eq!(
+            format!("{refused}"),
+            SUBSCRIPTION_SIGN_IN_REFUSED,
+            "端末を開く前に断る"
+        );
+
+        let key_method = start_login(&conversation_view, CLAUDE_ACP_API_KEY_METHOD, cx)
+            .await
+            .expect_err("このテスト環境には端末パネルが無い");
+        assert_ne!(
+            format!("{key_method}"),
+            SUBSCRIPTION_SIGN_IN_REFUSED,
+            "鍵のメソッドはこの設定に関係なく通る"
+        );
+    }
+
+    /// ADR-F55: エージェントがサインインを 1 つも出していないときは、「切った」
+    /// のではなく「出ていない」と言い、公式の CLI を起動する導線を添える。
+    #[gpui::test]
+    async fn a_card_without_a_sign_in_sends_the_user_to_the_cli(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view, cx);
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        assert!(
+            cx.debug_bounds(SubscriptionSignIn::NotAdvertised.notice_selector())
+                .is_some(),
+            "出ていないことを言う"
+        );
+        assert!(
+            cx.debug_bounds(LAUNCH_CLAUDE_CODE_SELECTOR).is_some(),
+            "公式の CLI を起動する導線がある"
+        );
+        assert!(
+            cx.debug_bounds(SubscriptionSignIn::Offered.notice_selector())
+                .is_none()
+        );
+    }
+
+    /// `agent_servers.claude-acp.env.ANTHROPIC_API_KEY` にいま入っている値。
+    /// `Registry { env }` の形まで固定して読む: 保存先が変われば落ちる。
+    fn saved_api_key(cx: &mut VisualTestContext) -> Option<String> {
+        saved_env_var(cx, agent_servers::CLAUDE_API_KEY_VARIABLE)
+    }
+
+    fn saved_env_var(cx: &mut VisualTestContext, name: &str) -> Option<String> {
+        cx.update(|_window, cx| {
+            cx.global::<SettingsStore>()
+                .get::<project::agent_server_store::AllAgentServersSettings>(None)
+                .get(agent_servers::CLAUDE_AGENT_ID)
+                .and_then(|agent| match agent {
+                    project::agent_server_store::CustomAgentServerSettings::Registry {
+                        env,
+                        ..
+                    } => env.get(name).cloned(),
+                    project::agent_server_store::CustomAgentServerSettings::Custom { .. } => None,
+                })
+        })
+    }
+
+    /// カードがいま画面に出しているうち、実装しだいで API キーが混ざりうる
+    /// 文字列 (断り書き・入力欄の中身)。ラベルは固定文なので含めない。
+    fn api_key_card_text(
+        conversation_view: &Entity<ConversationView>,
+        cx: &mut VisualTestContext,
+    ) -> String {
+        conversation_view.read_with(cx, |view, cx| {
+            format!(
+                "{}\n{}",
+                view.api_key_error.clone().unwrap_or_default(),
+                view.api_key_editor
+                    .as_ref()
+                    .map(|editor| editor.read(cx).text(cx))
+                    .unwrap_or_default(),
+            )
+        })
+    }
+
+    /// ADR-F53 決定 4: ACP Claude の認証カードは API キーを直接受け取り、
+    /// `agent_servers.claude-acp.env` へ書く。空欄は書かずに断り、保存した
+    /// キーは画面にもエラー文にも残さない。
+    #[gpui::test]
+    async fn the_acp_claude_card_takes_an_api_key(cx: &mut TestAppContext) {
+        init_test(cx);
+        const FIRST_KEY: &str = "sk-ant-api03-first-key";
+        const SECOND_KEY: &str = "sk-ant-api03-second-key";
+
+        let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        // A frame that reuses a cached pane records no `debug_selector`.
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+
+        assert!(
+            cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_some(),
+            "キーを入れる欄がカードにある"
+        );
+        assert!(
+            cx.debug_bounds(API_KEY_CONFIGURED_SELECTOR).is_none(),
+            "まだ何も設定されていない"
+        );
+
+        let save = cx
+            .debug_bounds(API_KEY_SAVE_SELECTOR)
+            .expect("保存ボタンがカードにある");
+        cx.simulate_click(save.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert_eq!(saved_api_key(cx), None, "空欄では何も書かない");
+        conversation_view.read_with(cx, |view, _cx| {
+            assert!(
+                view.api_key_error.is_some(),
+                "空欄を断った理由がカードに出る"
+            );
+        });
+
+        let editor = conversation_view.read_with(cx, |view, _cx| {
+            view.api_key_editor.clone().expect("入力欄を持っている")
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text(FIRST_KEY, window, cx);
+        });
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        let save = cx
+            .debug_bounds(API_KEY_SAVE_SELECTOR)
+            .expect("保存ボタンがカードにある");
+        cx.simulate_click(save.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+
+        assert_eq!(
+            saved_api_key(cx).as_deref(),
+            Some(FIRST_KEY),
+            "settings.json の agent_servers.claude-acp.env に入る"
+        );
+        let shown = api_key_card_text(&conversation_view, cx);
+        assert!(
+            !shown.contains(FIRST_KEY),
+            "保存したキーは画面に残さない: {shown:?}"
+        );
+        conversation_view.read_with(cx, |view, _cx| {
+            assert_eq!(view.api_key_error, None, "保存できたので理由は消える");
+        });
+
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds(API_KEY_CONFIGURED_SELECTOR).is_some(),
+            "設定済みの表示に変わる"
+        );
+        assert!(
+            cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_none(),
+            "設定済みのあいだは入力欄を出さない"
+        );
+
+        // 「変更」で入力欄が戻り、Enter でも同じ経路で保存できる。
+        conversation_view.update(cx, |view, cx| {
+            view.api_key_editing = true;
+            cx.notify();
+        });
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_some(),
+            "「変更」で入力欄が戻る"
+        );
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text(SECOND_KEY, window, cx);
+            let focus_handle = editor.focus_handle(cx);
+            window.focus(&focus_handle, cx);
+        });
+        cx.run_until_parked();
+        cx.dispatch_action(editor::actions::Newline);
+        cx.run_until_parked();
+
+        assert_eq!(
+            saved_api_key(cx).as_deref(),
+            Some(SECOND_KEY),
+            "Enter でも確定する"
+        );
+        let shown = api_key_card_text(&conversation_view, cx);
+        assert!(
+            !shown.contains(SECOND_KEY),
+            "入れ替えたキーも画面に残さない: {shown:?}"
+        );
+    }
+
+    /// 1 行の入力欄は貼り付けられた改行を畳んで見せるだけで中身には残すので、
+    /// 端を落としただけの値には改行が残りうる。壊れた環境変数を黙って書かない
+    /// こと、前後の空白は落として書くことを固定する。
+    #[gpui::test]
+    async fn an_api_key_that_is_not_one_line_is_refused(cx: &mut TestAppContext) {
+        init_test(cx);
+        const PASTED_KEY: &str = "sk-ant-api03-pasted\nfrom-a-document";
+        const PADDED_KEY: &str = "sk-ant-api03-padded";
+
+        let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        cx.run_until_parked();
+
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+        let editor = conversation_view.read_with(cx, |view, _cx| {
+            view.api_key_editor.clone().expect("入力欄を持っている")
+        });
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text(PASTED_KEY, window, cx);
+        });
+        conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
+        cx.run_until_parked();
+
+        assert_eq!(saved_api_key(cx), None, "改行を含む値は書かない");
+        conversation_view.read_with(cx, |view, _cx| {
+            let error = view
+                .api_key_error
+                .clone()
+                .expect("断った理由がカードに出る");
+            // 断られた値は直せるよう入力欄に残す。載ってはいけないのは、
+            // 入力欄と違ってマスクされない理由の文字列のほう。
+            assert!(
+                !error.contains("sk-ant-api03-pasted"),
+                "断り書きにキーを載せない: {error}"
+            );
+        });
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text(format!("  {PADDED_KEY}\t"), window, cx);
+        });
+        conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
+        cx.run_until_parked();
+
+        assert_eq!(
+            saved_api_key(cx).as_deref(),
+            Some(PADDED_KEY),
+            "前後の空白は落として書く"
+        );
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.text(cx)),
+            "",
+            "保存できたキーは入力欄にも残さない"
+        );
+    }
+
+    /// `agent_servers.claude-acp` が `custom` で、しかも env が既にあるとき。
+    /// キーを足すだけで、同じエージェントの他の env も、他のエージェントも、
+    /// 無関係な設定も潰さない。
+    #[gpui::test]
+    async fn saving_an_api_key_keeps_the_other_settings(cx: &mut TestAppContext) {
+        init_test(cx);
+        const KEY: &str = "sk-ant-api03-kept";
+        const EXISTING_SETTINGS: &str = r#"{
+  "buffer_font_size": 15,
+  "agent_servers": {
+    "claude-acp": {
+      "type": "custom",
+      "command": "/usr/bin/claude-code-acp",
+      "env": { "CLAUDE_CONFIG_DIR": "/tmp/keep-me" }
+    },
+    "gemini": {
+      "type": "registry",
+      "env": { "SURFACE": "keep-me-too" }
+    }
+  }
+}"#;
+
+        let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        cx.run_until_parked();
+
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+        fs.atomic_write(
+            ::paths::settings_file().to_path_buf(),
+            EXISTING_SETTINGS.to_string(),
+        )
+        .await
+        .expect("設定ファイルを置ける");
+
+        let editor = conversation_view.read_with(cx, |view, _cx| {
+            view.api_key_editor.clone().expect("入力欄を持っている")
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text(KEY, window, cx);
+        });
+        conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
+        cx.run_until_parked();
+
+        let written = fs
+            .load(::paths::settings_file())
+            .await
+            .expect("設定ファイルを読める");
+        conversation_view.read_with(cx, |view, _cx| {
+            assert_eq!(
+                view.api_key_error, None,
+                "書けたので理由は出ない: {written}"
+            );
+        });
+        for kept in [
+            "\"buffer_font_size\": 15",
+            "/tmp/keep-me",
+            "keep-me-too",
+            "/usr/bin/claude-code-acp",
+        ] {
+            assert!(written.contains(kept), "{kept} が消えた:\n{written}");
+        }
+        assert!(written.contains(KEY), "キーが入っていない:\n{written}");
+        assert!(
+            cx.update(|_window, cx| agent_servers::has_env_var(
+                agent_servers::CLAUDE_AGENT_ID,
+                agent_servers::CLAUDE_API_KEY_VARIABLE,
+                cx
+            )),
+            "custom 変種でも設定済みとして読める:\n{written}"
+        );
+    }
+
+    /// 設定ファイルが壊れていて書けないとき。黙って設定済みの顔をせず、
+    /// 理由をカードに出す。
+    #[gpui::test]
+    async fn a_settings_file_that_cannot_be_written_stops_the_save(cx: &mut TestAppContext) {
+        init_test(cx);
+        const KEY: &str = "sk-ant-api03-unwritable";
+        const BROKEN_SETTINGS: &str = "{ \"agent_servers\": ";
+
+        let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        cx.run_until_parked();
+
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+        fs.atomic_write(
+            ::paths::settings_file().to_path_buf(),
+            BROKEN_SETTINGS.to_string(),
+        )
+        .await
+        .expect("設定ファイルを置ける");
+
+        let editor = conversation_view.read_with(cx, |view, _cx| {
+            view.api_key_editor.clone().expect("入力欄を持っている")
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text(KEY, window, cx);
+        });
+        conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
+        cx.run_until_parked();
+
+        assert_eq!(
+            fs.load(::paths::settings_file())
+                .await
+                .expect("設定ファイルを読める"),
+            BROKEN_SETTINGS,
+            "壊れたファイルを書き換えない"
+        );
+        conversation_view.read_with(cx, |view, _cx| {
+            let error = view
+                .api_key_error
+                .clone()
+                .expect("書けなかった理由がカードに出る");
+            assert!(
+                error.starts_with("API キーを保存できませんでした"),
+                "理由が日本語で始まる: {error}"
+            );
+            assert!(!error.contains(KEY), "理由にキーを載せない: {error}");
+            assert!(
+                view.api_key_save_task.is_none(),
+                "失敗しても次の保存を受け付ける"
+            );
+        });
+    }
+
+    /// キーを `env` から読まないエージェントの認証カードには、入力欄そのものを
+    /// 出さない (空の Editor も持たない)。
+    #[gpui::test]
+    async fn only_an_agent_that_reads_the_key_gets_the_field(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let connection = AuthGatedAgentConnection::new();
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(connection), cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        conversation_view.read_with(cx, |view, _cx| {
+            assert!(
+                view.api_key_editor.is_none(),
+                "キーを読まないエージェントに入力欄は要らない"
+            );
+        });
+        // ADR-F55 で目印が増えた分もここに並べる: カードのどの部品も、キーを
+        // 読まないエージェントには出ない。
+        for selector in [
+            API_KEY_INPUT_SELECTOR,
+            API_KEY_SAVE_SELECTOR,
+            API_KEY_SAVING_SELECTOR,
+            API_KEY_CONFIGURED_SELECTOR,
+            API_KEY_REMOVE_SELECTOR,
+            API_KEY_CANCEL_SELECTOR,
+            API_KEY_WINS_SELECTOR,
+            FORK_AUTH_NOTICE_SELECTOR,
+            LAUNCH_CLAUDE_CODE_SELECTOR,
+        ] {
+            assert!(
+                cx.debug_bounds(selector).is_none(),
+                "{selector} は ACP Claude のカードだけのもの"
+            );
+        }
+    }
+
+    /// ADR-F55 「やらないこと」: サインインの端末は「終わったか」を見るために
+    /// だけ見られ、照合先は固定の文字列だけ。出力から何かを取り出す
+    /// 実装に変わればこの形は保てない。
+    #[test]
+    fn a_sign_in_is_watched_for_fixed_strings_only() {
+        let patterns = login_success_patterns(agent_servers::CLAUDE_SUBSCRIPTION_AUTH_METHOD);
+        assert_eq!(patterns, ["Login successful", "Type your message"]);
+        for pattern in &patterns {
+            let upper = pattern.to_uppercase();
+            assert!(
+                !upper.contains("TOKEN")
+                    && !upper.contains("KEY")
+                    && !upper.contains("OAUTH")
+                    && !pattern.contains('{'),
+                "the watcher matches a fixed line, it does not capture one: {pattern}"
+            );
+        }
+        assert!(
+            login_success_patterns(CLAUDE_ACP_API_KEY_METHOD).is_empty(),
+            "a key needs no terminal to watch"
+        );
+    }
+
+    /// カードにキーを保存させ、「設定済み」の表示まで進める。
+    async fn save_api_key(
+        conversation_view: &Entity<ConversationView>,
+        key: &str,
+        cx: &mut VisualTestContext,
+    ) {
+        let editor = conversation_view.read_with(cx, |view, _cx| {
+            view.api_key_editor.clone().expect("入力欄を持っている")
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text(key, window, cx);
+        });
+        conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
+        cx.run_until_parked();
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+    }
+
+    /// ADR-F55: 「変更」を押してから保存せずにやめられる。やめたら「設定済み」の
+    /// 表示へ戻り、入力欄に書きかけた値も保存済みのキーも残らない・変わらない。
+    #[gpui::test]
+    async fn the_acp_claude_card_cancels_an_edit(cx: &mut TestAppContext) {
+        init_test(cx);
+        const KEY: &str = "sk-ant-api03-kept";
+        const TYPED: &str = "sk-ant-api03-half-typed";
+
+        let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+
+        save_api_key(&conversation_view, KEY, cx).await;
+        assert!(
+            cx.debug_bounds(API_KEY_WINS_SELECTOR).is_none(),
+            "サインインが出ていないカードで「キーを削除すればサブスクで使える」とは言わない"
+        );
+        assert!(
+            cx.debug_bounds(API_KEY_CANCEL_SELECTOR).is_none(),
+            "設定済みの表示中は取り消すものが無い"
+        );
+
+        conversation_view.update(cx, |view, cx| {
+            view.api_key_editing = true;
+            cx.notify();
+        });
+        let editor = conversation_view.read_with(cx, |view, _cx| {
+            view.api_key_editor.clone().expect("入力欄を持っている")
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text(TYPED, window, cx);
+        });
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        let cancel = cx
+            .debug_bounds(API_KEY_CANCEL_SELECTOR)
+            .expect("変更中は「取り消し」が出る");
+        cx.simulate_click(cancel.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+
+        conversation_view.read_with(cx, |view, cx| {
+            assert!(!view.api_key_editing, "設定済みの表示へ戻る");
+            assert_eq!(
+                view.api_key_editor
+                    .as_ref()
+                    .map(|editor| editor.read(cx).text(cx))
+                    .unwrap_or_default(),
+                "",
+                "書きかけのキーは残さない"
+            );
+        });
+        assert_eq!(
+            saved_api_key(cx).as_deref(),
+            Some(KEY),
+            "取り消しても保存済みのキーはそのまま"
+        );
+
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds(API_KEY_CONFIGURED_SELECTOR).is_some(),
+            "「設定済み」の表示に戻る"
+        );
+        assert!(
+            cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_none(),
+            "入力欄は消える"
+        );
+    }
+
+    /// ADR-F55: 保存が走っているあいだは「保存中…」を出して押せなくする。
+    /// 以前は見た目が変わらず、2 度目の押下が黙って捨てられていた。
+    #[gpui::test]
+    async fn the_acp_claude_card_says_while_it_is_saving(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        assert!(
+            cx.debug_bounds(API_KEY_SAVE_SELECTOR).is_some(),
+            "何も走っていなければ「保存」"
+        );
+        assert!(cx.debug_bounds(API_KEY_SAVING_SELECTOR).is_none());
+
+        // 終わらない書き込みを置いて、保存中のフレームを見る。
+        conversation_view.update(cx, |view, cx| {
+            view.api_key_save_task = Some(cx.spawn(async move |_this, _cx| {
+                futures::future::pending::<()>().await;
+            }));
+            cx.notify();
+        });
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        assert!(
+            cx.debug_bounds(API_KEY_SAVING_SELECTOR).is_some(),
+            "保存中はそう言う"
+        );
+        assert!(
+            cx.debug_bounds(API_KEY_SAVE_SELECTOR).is_none(),
+            "押せる「保存」は出さない"
+        );
+
+        // その間にもう一度送っても、前の書き込みを踏みつぶさない。
+        let editor = conversation_view.read_with(cx, |view, _cx| {
+            view.api_key_editor.clone().expect("入力欄を持っている")
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text("sk-ant-api03-second-press", window, cx);
+        });
+        conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
+        cx.run_until_parked();
+        assert_eq!(saved_api_key(cx), None, "2 度目は何も書かない");
+
+        conversation_view.update(cx, |view, cx| {
+            view.api_key_save_task = None;
+            cx.notify();
+        });
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds(API_KEY_SAVE_SELECTOR).is_some(),
+            "終われば押せる「保存」に戻る"
+        );
+    }
+
+    /// ADR-F55: 設定済みのカードの「キーを削除」で `env` から変数が外れ、
+    /// カードは認証待ち (入力欄) に戻る。ほかの `env` は残る。
+    #[gpui::test]
+    async fn the_acp_claude_card_removes_a_saved_api_key(cx: &mut TestAppContext) {
+        init_test(cx);
+        const KEY: &str = "sk-ant-api03-to-be-removed";
+
+        let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+
+        // 同じ `env` に別の変数を先に置いておき、削除がそれを巻き込まない
+        // ことを確かめる。
+        let other = cx.update(|_window, cx| {
+            agent_servers::set_env_var(
+                agent_servers::CLAUDE_AGENT_ID,
+                "KEEP_ME",
+                "1",
+                fs.clone(),
+                cx,
+            )
+            .expect("値が空ではない")
+        });
+        other.await.expect("書ける");
+        cx.run_until_parked();
+
+        let editor = conversation_view.read_with(cx, |view, _cx| {
+            view.api_key_editor.clone().expect("入力欄を持っている")
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text(KEY, window, cx);
+        });
+        conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
+        cx.run_until_parked();
+        assert_eq!(saved_api_key(cx).as_deref(), Some(KEY));
+
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        let remove = cx
+            .debug_bounds(API_KEY_REMOVE_SELECTOR)
+            .expect("設定済みのカードに「キーを削除」がある");
+        cx.simulate_click(remove.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+
+        assert_eq!(saved_api_key(cx), None, "env から外れる");
+        assert_eq!(
+            saved_env_var(cx, "KEEP_ME").as_deref(),
+            Some("1"),
+            "ほかの env は残る"
+        );
+        conversation_view.read_with(cx, |view, _cx| {
+            assert_eq!(view.api_key_error, None, "削除できたので理由は出ない");
+        });
+
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds(API_KEY_CONFIGURED_SELECTOR).is_none(),
+            "「設定済み」の表示は消える"
+        );
+        assert!(
+            cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_some(),
+            "認証待ち (入力欄) に戻る"
         );
     }
 

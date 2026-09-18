@@ -127,7 +127,7 @@ pub fn git_hosting_provider_icon(provider_name: &str) -> IconName {
 }
 
 /// The source of an icon.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 enum IconSource {
     /// An SVG embedded in the Zed binary.
     Embedded(SharedString),
@@ -141,7 +141,10 @@ enum IconSource {
     ExternalSvg(SharedString),
 }
 
-#[derive(Clone, IntoElement, RegisterComponent)]
+// `Debug` / `PartialEq` so that callers which rebuild a list of icons every
+// frame can tell whether anything actually changed before asking for a
+// redraw.
+#[derive(Clone, Debug, PartialEq, IntoElement, RegisterComponent)]
 pub struct Icon {
     source: IconSource,
     color: Color,

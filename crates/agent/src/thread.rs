@@ -1,7 +1,8 @@
+use crate::db::DbPermissionJudgement;
 use crate::tool_permissions::{
-    PERMISSION_JUDGE_ERROR_REASON, PERMISSION_JUDGE_NO_INPUT_REASON,
-    PERMISSION_JUDGE_NO_MODEL_REASON, PERMISSION_JUDGE_SYSTEM_PROMPT, PERMISSION_JUDGE_TIMEOUT,
-    PERMISSION_JUDGE_TIMEOUT_REASON, PermissionJudgeContext, PermissionJudgeVerdict,
+    PERMISSION_JUDGE_ERROR_REASON, PERMISSION_JUDGE_NO_MODEL_REASON,
+    PERMISSION_JUDGE_SYSTEM_PROMPT, PERMISSION_JUDGE_TIMEOUT, PERMISSION_JUDGE_TIMEOUT_REASON,
+    PermissionJudgeCacheKey, PermissionJudgeContext, PermissionJudgeVerdict, ThreadPermissionJudge,
     build_permission_judge_prompt, parse_permission_judge_response,
 };
 use crate::{
@@ -930,6 +931,9 @@ pub enum ToolPermissionScope {
     ToolInput,
     SymlinkTarget,
     AgentSkills,
+    /// A write to the project's `.zed` folder or to the user's global
+    /// settings, which is always confirmed (ADR-F52 決定 6).
+    SensitiveSettings,
 }
 
 /// Japanese display name for a built-in Agent tool's internal name, used in the
@@ -989,6 +993,14 @@ impl ToolPermissionContext {
         self
     }
 
+    /// Marks a card about the project's `.zed` folder or the user's global
+    /// settings, so that it doesn't offer standing approvals it can't honour
+    /// (see [`Self::build_permission_options`]).
+    pub fn for_sensitive_settings(mut self) -> Self {
+        self.scope = ToolPermissionScope::SensitiveSettings;
+        self
+    }
+
     /// Marks a terminal command as one that will run inside the sandbox, so
     /// the permission rules can take the sandbox's own boundary into account
     /// (決定 2).
@@ -1042,8 +1054,15 @@ impl ToolPermissionContext {
             ]);
         }
 
-        // Skills always prompt, so offer only once-only allow/deny.
-        if self.scope == ToolPermissionScope::AgentSkills {
+        // Skills, the project's `.zed` folder and the global settings always
+        // prompt (ADR-F52 決定 6): `authorize_always_prompt` never reads the
+        // tool permissions for them. An "always" choice here would write a
+        // rule that this card and the next one both ignore — approval that
+        // silently does nothing — so only the once-only pair is offered.
+        if matches!(
+            self.scope,
+            ToolPermissionScope::AgentSkills | ToolPermissionScope::SensitiveSettings
+        ) {
             return acp_thread::PermissionOptions::Flat(vec![
                 acp::PermissionOption::new(
                     acp::PermissionOptionId::new("allow"),
@@ -1374,6 +1393,11 @@ pub struct Thread {
     /// already-granted permissions skip the approval prompt.
     /// Never persisted — lives and dies with this thread.
     sandbox_grants: Rc<RefCell<ThreadSandboxGrants>>,
+    /// The permission judge's thread-scoped memory (ADR-F52): verdicts already
+    /// given, and what it decided about each tool use. Shared with each tool
+    /// call's event stream, the same way the sandbox grants are; the verdicts
+    /// live and die with the thread, the decisions are persisted.
+    permission_judge: Rc<RefCell<ThreadPermissionJudge>>,
     /// The `<repo_map>` section of the system prompt and the inputs it was
     /// built from (the byte budget plus every worktree's scan id), so it is
     /// rebuilt only when the project actually changed rather than on every
@@ -1522,6 +1546,7 @@ impl Thread {
             inherits_parent_model_settings: true,
             sandboxed_terminal_temp_dir: None,
             sandbox_grants: Rc::new(RefCell::new(ThreadSandboxGrants::default())),
+            permission_judge: Rc::new(RefCell::new(ThreadPermissionJudge::default())),
             system_prompt_repo_map: None,
         }
     }
@@ -1666,6 +1691,15 @@ impl Thread {
         }
 
         let tool_call_id = scoped_tool_call_id(owning_message_ix, &tool_use.id);
+        // The judge's verdict is meta on the tool call, not part of the
+        // model-facing tool use, so rebuilding the call from the tool use alone
+        // would silently lose which calls ran without a human reviewing them
+        // (ADR-F52).
+        let permission_judge = self
+            .permission_judge
+            .borrow()
+            .judgement(&tool_use.id)
+            .map(|judgement| acp_thread::meta_with_permission_judge(judgement.to_details()));
         let output = tool_result
             .as_ref()
             .and_then(|result| result.output.clone());
@@ -1718,7 +1752,7 @@ impl Thread {
             if let Some(content) = replay_content {
                 fields = fields.content(content);
             }
-            stream.update_tool_call_fields(&tool_call_id, fields, None);
+            stream.update_tool_call_fields(&tool_call_id, fields, permission_judge);
             return;
         };
 
@@ -1747,6 +1781,7 @@ impl Thread {
                 Some(self.project.read(cx).fs().clone()),
                 cancellation_rx,
                 self.sandbox_grants.clone(),
+                self.permission_judge.clone(),
                 Some(cx.weak_entity()),
             );
             tool.replay(input, output, tool_event_stream, cx).log_err();
@@ -1757,7 +1792,7 @@ impl Thread {
             acp::ToolCallUpdateFields::new()
                 .status(status)
                 .raw_output(output),
-            None,
+            permission_judge,
         );
     }
 
@@ -1910,6 +1945,9 @@ impl Thread {
             sandbox_grants: Rc::new(RefCell::new(ThreadSandboxGrants::from_db(
                 &db_thread.sandbox_grants,
             ))),
+            permission_judge: Rc::new(RefCell::new(ThreadPermissionJudge::from_db(
+                &db_thread.permission_judgements,
+            ))),
             system_prompt_repo_map: None,
         }
     }
@@ -2011,6 +2049,7 @@ impl Thread {
             }),
             sandboxed_terminal_temp_dir: self.sandboxed_terminal_temp_dir.clone(),
             sandbox_grants: self.sandbox_grants.borrow().to_db(),
+            permission_judgements: self.permission_judge.borrow().to_db(),
         };
 
         cx.background_spawn(async move {
@@ -3785,6 +3824,7 @@ impl Thread {
             Some(fs),
             cancellation_rx,
             self.sandbox_grants.clone(),
+            self.permission_judge.clone(),
             Some(cx.weak_entity()),
         );
         tool_event_stream.update_fields(
@@ -5720,6 +5760,106 @@ pub fn sandbox_retry_permission_options(retries: usize) -> acp_thread::Permissio
 use acp_thread::UNSANDBOXED_COMMAND_ALLOW_OPTION_ID;
 pub use acp_thread::unsandboxed_command_permission_options;
 
+/// Writes the permission judge's state (ADR-F52) to both places that need it:
+/// the tool card's meta, and the thread's own record, which is what gets saved.
+///
+/// Deliberately usable without a `cx`, because
+/// [`PermissionJudgeInProgress`] has to write from `Drop`.
+struct PermissionJudgeRecorder {
+    stream: ThreadEventStream,
+    tool_call_id: acp::ToolCallId,
+    tool_use_id: LanguageModelToolUseId,
+    permission_judge: Rc<RefCell<ThreadPermissionJudge>>,
+    /// Filled in once the judge model has been resolved; stays empty when
+    /// there was nothing to judge with.
+    judge_model_id: RefCell<String>,
+}
+
+impl PermissionJudgeRecorder {
+    fn set_judge_model_id(&self, model_id: String) {
+        *self.judge_model_id.borrow_mut() = model_id;
+    }
+
+    fn record(&self, state: acp_thread::PermissionJudgeState, reason: String, reused: bool) {
+        let details = acp_thread::PermissionJudgeDetails {
+            state,
+            reason,
+            reused,
+        };
+        // Only a finished judgement is worth saving: a thread saved while one
+        // was still running would come back saying 「AI が判定中…」 about a
+        // call that ended long ago.
+        let judgement = (state != acp_thread::PermissionJudgeState::Judging).then(|| {
+            DbPermissionJudgement::new(
+                &details,
+                self.judge_model_id.borrow().clone(),
+                chrono::Utc::now(),
+            )
+        });
+        self.permission_judge
+            .borrow_mut()
+            .record_judgement(self.tool_use_id.clone(), judgement);
+        self.stream.update_tool_call_fields(
+            &self.tool_call_id,
+            acp::ToolCallUpdateFields::new(),
+            Some(acp_thread::meta_with_permission_judge(details)),
+        );
+    }
+}
+
+/// Marks a tool call as being judged, and — if the judgement is dropped before
+/// it produces a verdict — says so on the card instead of leaving 「AI が判定
+/// 中…」 there forever (ADR-F52).
+///
+/// Cancelling a turn drops the whole authorization task, so this is the only
+/// place the abandoned judgement can be noticed from the agent's side.
+struct PermissionJudgeInProgress<'a> {
+    recorder: &'a PermissionJudgeRecorder,
+    armed: bool,
+}
+
+impl<'a> PermissionJudgeInProgress<'a> {
+    fn arm(recorder: &'a PermissionJudgeRecorder) -> Self {
+        recorder.record(
+            acp_thread::PermissionJudgeState::Judging,
+            String::new(),
+            false,
+        );
+        Self {
+            recorder,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for PermissionJudgeInProgress<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.recorder.record(
+                acp_thread::PermissionJudgeState::Superseded,
+                acp_thread::PERMISSION_JUDGE_CANCELED_REASON.to_string(),
+                false,
+            );
+        }
+    }
+}
+
+/// Whether a tool's arguments carry anything the permission judge could weigh
+/// (ADR-F52). An absent, empty or argument-less input leaves only the tool's
+/// own name, which is not something the judge may approve a call on.
+fn tool_input_says_something(input: &serde_json::Value) -> bool {
+    match input {
+        serde_json::Value::Null => false,
+        serde_json::Value::Object(fields) => !fields.is_empty(),
+        serde_json::Value::Array(items) => !items.is_empty(),
+        _ => true,
+    }
+}
+
 #[derive(Clone)]
 pub struct ToolCallEventStream {
     tool_use_id: LanguageModelToolUseId,
@@ -5731,6 +5871,9 @@ pub struct ToolCallEventStream {
     cancellation_rx: watch::Receiver<bool>,
     /// Shared, thread-scoped sandbox grants (see [`Thread::sandbox_grants`]).
     sandbox_grants: Rc<RefCell<ThreadSandboxGrants>>,
+    /// Shared, thread-scoped permission judge memory (see
+    /// [`Thread::permission_judge`]).
+    permission_judge: Rc<RefCell<ThreadPermissionJudge>>,
     /// The owning thread, used to trigger a save when a "for this thread"
     /// sandbox grant is recorded so it survives reopening. `None` in tests and
     /// for streams not tied to a live thread.
@@ -5765,6 +5908,7 @@ impl ToolCallEventStream {
             None,
             cancellation_rx,
             sandbox_grants,
+            Rc::new(RefCell::new(ThreadPermissionJudge::default())),
             None,
         );
 
@@ -5786,6 +5930,7 @@ impl ToolCallEventStream {
             None,
             cancellation_rx,
             Rc::new(RefCell::new(ThreadSandboxGrants::default())),
+            Rc::new(RefCell::new(ThreadPermissionJudge::default())),
             None,
         );
 
@@ -5809,6 +5954,7 @@ impl ToolCallEventStream {
         fs: Option<Arc<dyn Fs>>,
         cancellation_rx: watch::Receiver<bool>,
         sandbox_grants: Rc<RefCell<ThreadSandboxGrants>>,
+        permission_judge: Rc<RefCell<ThreadPermissionJudge>>,
         thread: Option<WeakEntity<Thread>>,
     ) -> Self {
         Self {
@@ -5818,6 +5964,7 @@ impl ToolCallEventStream {
             fs,
             cancellation_rx,
             sandbox_grants,
+            permission_judge,
             thread,
         }
     }
@@ -5924,14 +6071,29 @@ impl ToolCallEventStream {
     ///
     /// Each label names only the scope: the dropdown shows it next to both the
     /// 許可 and 拒否 buttons.
+    ///
+    /// `judge_input` is the tool's actual arguments, for the "AI が判定" mode
+    /// (ADR-F52). Callers pass `None` when the arguments never arrived, and the
+    /// judge then refuses to answer rather than approving a call nobody — not
+    /// it, not the user — has seen. Arguments that say nothing (`null`, `{}`,
+    /// `[]`) are treated the same way.
     pub fn authorize_third_party_tool(
         &self,
         title: impl Into<String>,
         tool_id: String,
         display_name: String,
+        judge_input: Option<&serde_json::Value>,
         cx: &mut App,
     ) -> Task<Result<()>> {
         let title = title.into();
+        // The judge is told the tool's full id (`mcp:<server>:<tool>`), which
+        // says which server would run it, and the arguments as the server will
+        // receive them. Without arguments only the name is left to go on, and
+        // approving a name is exactly how an MCP server got past this gate
+        // before, so the judge is not asked and the user decides.
+        let judge_context = judge_input
+            .filter(|input| tool_input_says_something(input))
+            .map(|input| PermissionJudgeContext::new(tool_id.clone(), vec![input.to_string()]));
         let always_label = format!("MCP ツール {display_name} は常に");
         let options = acp_thread::PermissionOptions::Dropdown(vec![
             acp_thread::PermissionOptionChoice {
@@ -5971,12 +6133,14 @@ impl ToolCallEventStream {
                 decide_permission_from_settings(&tool_id, &[String::new()], settings)
             });
 
-        // A third-party tool is authorized before its input has even been
-        // received (the title is built from a null input), so the judge would
-        // be approving arguments nobody — not the judge, not the user — has
-        // seen. Passing no judge context makes "AI が判定" fall through to the
-        // usual prompt for MCP tools.
-        self.run_authorization_loop(title, options, None, Some(check_settings), None, cx)
+        self.run_authorization_loop(
+            title,
+            options,
+            None,
+            Some(check_settings),
+            judge_context,
+            cx,
+        )
     }
 
     /// Gate a tool call on user permission, driven by the agent's
@@ -6071,7 +6235,23 @@ impl ToolCallEventStream {
         // The card is the only place the user learns why a mode that approves
         // everything is asking, so the reason is part of the title rather than
         // left to the path for them to work out.
-        let title = format!("{} (プロジェクトの外)", title.into());
+        self.authorize_with_note(title, "プロジェクトの外", context, cx)
+    }
+
+    /// Like [`Self::authorize_outside_project`], but with the card's own
+    /// reason for asking in place of "outside the project" — for a relative
+    /// path that would land inside the project but names no worktree in
+    /// particular (決定 1). The permission rules are the same, because the
+    /// reason blanket approval can't reach it is the same: we would have to
+    /// pick a worktree on the user's behalf.
+    pub fn authorize_with_note(
+        &self,
+        title: impl Into<String>,
+        note: &str,
+        context: ToolPermissionContext,
+        cx: &mut App,
+    ) -> Task<Result<()>> {
+        let title = format!("{} ({note})", title.into());
         let mut options = context.build_permission_options();
         Self::drop_choices_binding_more_than_this_path(&mut options);
         let tool_name = context.tool_name.clone();
@@ -6785,21 +6965,16 @@ impl ToolCallEventStream {
         (worktree_roots, project_trusted)
     }
 
-    /// Records the judge's state on the tool call so the card can show it, both
-    /// while the judge is being asked and afterwards.
-    fn record_permission_judge(
-        stream: &ThreadEventStream,
-        tool_call_id: &acp::ToolCallId,
-        state: acp_thread::PermissionJudgeState,
-        reason: String,
-    ) {
-        stream.update_tool_call_fields(
-            tool_call_id,
-            acp::ToolCallUpdateFields::new(),
-            Some(acp_thread::meta_with_permission_judge(
-                acp_thread::PermissionJudgeDetails { state, reason },
-            )),
-        );
+    /// Builds the recorder the judge writes its state through, for one tool
+    /// call.
+    fn permission_judge_recorder(&self) -> PermissionJudgeRecorder {
+        PermissionJudgeRecorder {
+            stream: self.stream.clone(),
+            tool_call_id: self.tool_call_id.clone(),
+            tool_use_id: self.tool_use_id.clone(),
+            permission_judge: self.permission_judge.clone(),
+            judge_model_id: RefCell::new(String::new()),
+        }
     }
 
     /// Asks the permission judge model whether this tool action is safe
@@ -6813,8 +6988,7 @@ impl ToolCallEventStream {
     /// returns `None`, so a judge that cannot answer costs a prompt rather
     /// than an unreviewed tool call.
     async fn run_permission_judge(
-        stream: &ThreadEventStream,
-        tool_call_id: &acp::ToolCallId,
+        recorder: &PermissionJudgeRecorder,
         judge_context: Option<PermissionJudgeContext>,
         thread: &Option<WeakEntity<Thread>>,
         check_settings: &dyn Fn(&App) -> ToolPermissionDecision,
@@ -6822,29 +6996,56 @@ impl ToolCallEventStream {
         cx: &mut AsyncApp,
     ) -> Option<Result<()>> {
         let Some(mut judge_context) = judge_context else {
-            Self::record_permission_judge(
-                stream,
-                tool_call_id,
+            recorder.record(
                 acp_thread::PermissionJudgeState::Unsafe,
-                PERMISSION_JUDGE_NO_INPUT_REASON.to_string(),
+                acp_thread::PERMISSION_JUDGE_NO_ARGUMENTS_REASON.to_string(),
+                false,
             );
             return None;
         };
 
-        Self::record_permission_judge(
-            stream,
-            tool_call_id,
-            acp_thread::PermissionJudgeState::Judging,
-            String::new(),
-        );
-
+        // Both the worktree roots and the judge model are read here, inside the
+        // task: an MCP tool call authorizes itself from inside a `Thread`
+        // update, and reading the thread at that point would panic.
         let (worktree_roots, project_trusted) =
             cx.update(|cx| Self::permission_judge_project_context(thread, cx));
         judge_context.worktree_roots = worktree_roots;
         judge_context.project_trusted = project_trusted;
 
-        let mut judgement =
-            std::pin::pin!(Self::permission_judge_verdict(judge_context, cx.clone()).fuse());
+        let configured_model =
+            cx.update(|cx| LanguageModelRegistry::read_global(cx).permission_judge_model(cx));
+        if let Some(configured) = configured_model.as_ref() {
+            recorder.set_judge_model_id(configured.model.id().0.to_string());
+        }
+
+        // A verdict this thread already gave for exactly the same question is
+        // reused rather than paid for again (ADR-F52). With no model there is
+        // nothing to remember or to reuse, and an input too large for the judge
+        // to have been shown in full is deliberately not remembered either
+        // (see [`PermissionJudgeCacheKey::new`]); both fall through to a fresh
+        // judgement.
+        let cache_key = configured_model.as_ref().and_then(|configured| {
+            PermissionJudgeCacheKey::new(&judge_context, configured.model.id().0.to_string())
+        });
+        if let Some(cache_key) = cache_key.as_ref() {
+            let remembered = recorder
+                .permission_judge
+                .borrow()
+                .remembered_safe_reason(cache_key);
+            if let Some(reason) = remembered {
+                recorder.record(acp_thread::PermissionJudgeState::Safe, reason, true);
+                return Some(Ok(()));
+            }
+        }
+
+        // Armed only once the verdict can no longer come from memory: dropping
+        // the task from here on (the user cancels the turn) must leave the card
+        // saying the judgement was abandoned rather than still running.
+        let mut in_progress = PermissionJudgeInProgress::arm(recorder);
+
+        let mut judgement = std::pin::pin!(
+            Self::permission_judge_verdict(configured_model, judge_context, cx.clone()).fuse()
+        );
         let verdict = loop {
             let settings_changed = async {
                 if settings_rx.changed().await.is_err() {
@@ -6857,12 +7058,12 @@ impl ToolCallEventStream {
                     // The user changed the permission settings while the judge
                     // was thinking; the settings win and its answer is dropped.
                     let decision = cx.update(|cx| check_settings(cx));
-                    let superseded = |reason: &str| {
-                        Self::record_permission_judge(
-                            stream,
-                            tool_call_id,
+                    let mut superseded = |reason: &str| {
+                        in_progress.disarm();
+                        recorder.record(
                             acp_thread::PermissionJudgeState::Superseded,
                             reason.to_string(),
+                            false,
                         );
                     };
                     match decision {
@@ -6883,24 +7084,27 @@ impl ToolCallEventStream {
                 }
             }
         };
+        in_progress.disarm();
 
         match verdict {
             PermissionJudgeVerdict::Safe { reason } => {
-                Self::record_permission_judge(
-                    stream,
-                    tool_call_id,
-                    acp_thread::PermissionJudgeState::Safe,
-                    reason,
-                );
+                if let Some(cache_key) = cache_key {
+                    let permission_judge = recorder.permission_judge.clone();
+                    let reason = reason.clone();
+                    cx.update(|cx| {
+                        ThreadPermissionJudge::remember_safe(
+                            &permission_judge,
+                            cache_key,
+                            reason,
+                            cx,
+                        )
+                    });
+                }
+                recorder.record(acp_thread::PermissionJudgeState::Safe, reason, false);
                 Some(Ok(()))
             }
             PermissionJudgeVerdict::Unsafe { reason } => {
-                Self::record_permission_judge(
-                    stream,
-                    tool_call_id,
-                    acp_thread::PermissionJudgeState::Unsafe,
-                    reason,
-                );
+                recorder.record(acp_thread::PermissionJudgeState::Unsafe, reason, false);
                 None
             }
         }
@@ -6911,11 +7115,10 @@ impl ToolCallEventStream {
     /// the model and how long it took, but never the input, which can carry
     /// secrets.
     async fn permission_judge_verdict(
+        configured_model: Option<language_model::ConfiguredModel>,
         judge_context: PermissionJudgeContext,
         cx: AsyncApp,
     ) -> PermissionJudgeVerdict {
-        let configured_model =
-            cx.update(|cx| LanguageModelRegistry::read_global(cx).permission_judge_model(cx));
         let Some(configured_model) = configured_model else {
             log::info!(
                 "permission judge: tool={} verdict=UNSAFE model=<none> elapsed=0ms",
@@ -7019,6 +7222,7 @@ impl ToolCallEventStream {
         let stream = self.stream.clone();
         let tool_call_id = self.tool_call_id.clone();
         let thread = self.thread.clone();
+        let judge_recorder = needs_judge.then(|| self.permission_judge_recorder());
         let auto_resolution_outcomes = if check_settings.is_some() {
             match (
                 auto_resolve_permission_outcome(&options, true),
@@ -7043,15 +7247,14 @@ impl ToolCallEventStream {
                 })
             });
 
-            if needs_judge {
+            if let Some(judge_recorder) = judge_recorder.as_ref() {
                 let Some(check) = check_settings.as_ref() else {
                     return Err(anyhow!(
                         "the permission judge can only run for a settings-driven authorization"
                     ));
                 };
                 if let Some(result) = Self::run_permission_judge(
-                    &stream,
-                    &tool_call_id,
+                    judge_recorder,
                     judge_context,
                     &thread,
                     check.as_ref(),
@@ -7267,6 +7470,21 @@ pub struct ToolCallEventStreamReceiver(mpsc::UnboundedReceiver<Result<ThreadEven
 
 #[cfg(any(test, feature = "test-support"))]
 impl ToolCallEventStreamReceiver {
+    /// Panics if any event delivered so far is a permission card. The other
+    /// events (field updates, diffs) are expected and skipped, so a test can
+    /// assert that a tool ran without asking.
+    #[track_caller]
+    pub fn expect_no_authorization(&mut self) {
+        while let Ok(event) = self.0.try_recv() {
+            if let Ok(ThreadEvent::ToolCallAuthorization(authorization)) = event {
+                panic!(
+                    "確認カードが出た: {:?}",
+                    authorization.tool_call.fields.title
+                );
+            }
+        }
+    }
+
     pub async fn expect_authorization(&mut self) -> ToolCallAuthorization {
         let event = self.0.next().await;
         if let Some(Ok(ThreadEvent::ToolCallAuthorization(auth))) = event {
@@ -7308,6 +7526,20 @@ impl ToolCallEventStreamReceiver {
             return details;
         }
         panic!("Expected a permission judge update but got: {:?}", event);
+    }
+
+    /// The next permission judge update, if one is already queued. Used to
+    /// assert that no *further* update follows a verdict.
+    pub fn try_next_permission_judge(&mut self) -> Option<acp_thread::PermissionJudgeDetails> {
+        while let Ok(event) = self.0.try_recv() {
+            if let Ok(ThreadEvent::ToolCallUpdate(acp_thread::ToolCallUpdate::UpdateFields(update))) =
+                &event
+                && let Some(details) = acp_thread::permission_judge_from_meta(&update.meta)
+            {
+                return Some(details);
+            }
+        }
+        None
     }
 
     pub async fn expect_authorization_resolved(
@@ -8908,9 +9140,9 @@ mod tests {
         authorize.await.expect_err("nothing approved the tool call");
     }
 
-    /// An MCP tool is authorized before its arguments have arrived, so the
-    /// judge is never asked: approving on the tool's name alone would let an
-    /// MCP server run arguments nobody reviewed.
+    /// An MCP tool whose arguments never arrived is still authorized, but the
+    /// judge is not asked: approving on the tool's name alone would let an MCP
+    /// server run arguments nobody reviewed.
     #[gpui::test]
     async fn test_permission_judge_is_skipped_for_third_party_tools(cx: &mut TestAppContext) {
         let (event_stream, mut receiver, judge_model) = setup_permission_judge(cx, true);
@@ -8918,8 +9150,9 @@ mod tests {
         let authorize = cx.update(|cx| {
             event_stream.authorize_third_party_tool(
                 "ファイルを書き込む",
-                "mcp__files__write".to_string(),
+                "mcp:files:write".to_string(),
                 "write".to_string(),
+                None,
                 cx,
             )
         });
@@ -8928,7 +9161,7 @@ mod tests {
         assert_eq!(details.state, acp_thread::PermissionJudgeState::Unsafe);
         assert_eq!(
             details.reason,
-            crate::tool_permissions::PERMISSION_JUDGE_NO_INPUT_REASON
+            acp_thread::PERMISSION_JUDGE_NO_ARGUMENTS_REASON
         );
         cx.run_until_parked();
         assert_eq!(
@@ -8977,6 +9210,363 @@ mod tests {
             judge_model.completion_count(),
             1,
             "the judge was asked once and its answer dropped"
+        );
+    }
+
+    /// ADR-F52 A11 (d): cancelling the turn drops the whole authorization task
+    /// while the judge is still thinking. The card must say the judgement was
+    /// abandoned rather than 「AI が判定中…」 forever.
+    #[gpui::test]
+    async fn test_permission_judge_in_flight_is_superseded_when_dropped(cx: &mut TestAppContext) {
+        let (event_stream, mut receiver, _judge_model) = setup_permission_judge(cx, true);
+        let authorize = judge_a_build_command(&event_stream, cx);
+
+        assert_eq!(
+            receiver.expect_permission_judge().await.state,
+            acp_thread::PermissionJudgeState::Judging
+        );
+        cx.run_until_parked();
+
+        drop(authorize);
+        cx.run_until_parked();
+
+        let details = receiver.expect_permission_judge().await;
+        assert_eq!(details.state, acp_thread::PermissionJudgeState::Superseded);
+        assert_eq!(details.reason, acp_thread::PERMISSION_JUDGE_CANCELED_REASON);
+    }
+
+    /// A judgement that ran to a verdict must not also report itself abandoned
+    /// once the authorization task is dropped.
+    #[gpui::test]
+    async fn test_permission_judge_verdict_is_not_reported_as_abandoned(cx: &mut TestAppContext) {
+        let (event_stream, mut receiver, judge_model) = setup_permission_judge(cx, true);
+        let authorize = judge_a_build_command(&event_stream, cx);
+
+        receiver.expect_permission_judge().await;
+        cx.run_until_parked();
+        judge_model.send_last_completion_stream_text_chunk("SAFE\nビルドするだけです");
+        judge_model.end_last_completion_stream();
+        authorize.await.expect("a safe verdict must allow the call");
+
+        let details = receiver.expect_permission_judge().await;
+        assert_eq!(details.state, acp_thread::PermissionJudgeState::Safe);
+        assert_eq!(
+            receiver.try_next_permission_judge(),
+            None,
+            "a finished judgement must not also be reported as abandoned"
+        );
+    }
+
+    /// ADR-F52 A11 (c): the same question in the same thread is answered from
+    /// the remembered verdict, and the card says the answer was reused.
+    #[gpui::test]
+    async fn test_permission_judge_reuses_a_safe_verdict(cx: &mut TestAppContext) {
+        let (event_stream, mut receiver, judge_model) = setup_permission_judge(cx, true);
+
+        let authorize = judge_a_build_command(&event_stream, cx);
+        receiver.expect_permission_judge().await;
+        cx.run_until_parked();
+        judge_model.send_last_completion_stream_text_chunk("SAFE\nビルドするだけです");
+        judge_model.end_last_completion_stream();
+        authorize.await.expect("a safe verdict must allow the call");
+        let details = receiver.expect_permission_judge().await;
+        assert_eq!(details.state, acp_thread::PermissionJudgeState::Safe);
+        assert!(!details.reused, "the first verdict was freshly asked for");
+
+        let authorize = judge_a_build_command(&event_stream, cx);
+        let details = receiver.expect_permission_judge().await;
+        assert_eq!(details.state, acp_thread::PermissionJudgeState::Safe);
+        assert!(details.reused, "the second call must reuse the verdict");
+        assert_eq!(details.reason, "ビルドするだけです");
+        authorize
+            .await
+            .expect("the remembered verdict must allow the call");
+        cx.run_until_parked();
+        assert_eq!(
+            judge_model.completion_count(),
+            0,
+            "the judge must not be asked the same question twice"
+        );
+    }
+
+    /// A different command is a different question, so it is judged again.
+    #[gpui::test]
+    async fn test_permission_judge_does_not_reuse_across_commands(cx: &mut TestAppContext) {
+        let (event_stream, mut receiver, judge_model) = setup_permission_judge(cx, true);
+
+        let authorize = judge_a_build_command(&event_stream, cx);
+        receiver.expect_permission_judge().await;
+        cx.run_until_parked();
+        judge_model.send_last_completion_stream_text_chunk("SAFE\nビルドするだけです");
+        judge_model.end_last_completion_stream();
+        authorize.await.expect("a safe verdict must allow the call");
+        receiver.expect_permission_judge().await;
+
+        let authorize = cx.update(|cx| {
+            event_stream.authorize(
+                "cargo test",
+                ToolPermissionContext::new(TerminalTool::NAME, vec!["cargo test".into()]),
+                cx,
+            )
+        });
+        assert_eq!(
+            receiver.expect_permission_judge().await.state,
+            acp_thread::PermissionJudgeState::Judging
+        );
+        cx.run_until_parked();
+        assert_eq!(
+            judge_model.completion_count(),
+            1,
+            "a different command must be judged on its own"
+        );
+        drop(authorize);
+    }
+
+    /// An `UNSAFE` verdict is never remembered: the user's answer to the prompt
+    /// it caused — not the verdict — is the decision.
+    #[gpui::test]
+    async fn test_permission_judge_does_not_reuse_an_unsafe_verdict(cx: &mut TestAppContext) {
+        let (event_stream, mut receiver, judge_model) = setup_permission_judge(cx, true);
+
+        for round in 0..2 {
+            let authorize = judge_a_build_command(&event_stream, cx);
+            assert_eq!(
+                receiver.expect_permission_judge().await.state,
+                acp_thread::PermissionJudgeState::Judging
+            );
+            cx.run_until_parked();
+            assert_eq!(
+                judge_model.completion_count(),
+                1,
+                "round {round}: an unsafe verdict must be asked for again"
+            );
+            judge_model.send_last_completion_stream_text_chunk("UNSAFE\n外部に送信します");
+            judge_model.end_last_completion_stream();
+            assert_eq!(
+                receiver.expect_permission_judge().await.state,
+                acp_thread::PermissionJudgeState::Unsafe
+            );
+            let authorization = receiver.expect_authorization().await;
+            authorization
+                .response
+                .send(acp_thread::SelectedPermissionOutcome::new(
+                    acp::PermissionOptionId::new("allow"),
+                    acp::PermissionOptionKind::AllowOnce,
+                ))
+                .expect("the authorization channel should still be open");
+            authorize.await.expect("the user allowed the tool call");
+        }
+    }
+
+    /// Changing any setting drops every remembered verdict, so a verdict never
+    /// outlives the configuration it was made under.
+    #[gpui::test]
+    async fn test_permission_judge_forgets_verdicts_when_settings_change(cx: &mut TestAppContext) {
+        use gpui::UpdateGlobal as _;
+
+        let (event_stream, mut receiver, judge_model) = setup_permission_judge(cx, true);
+
+        let authorize = judge_a_build_command(&event_stream, cx);
+        receiver.expect_permission_judge().await;
+        cx.run_until_parked();
+        judge_model.send_last_completion_stream_text_chunk("SAFE\nビルドするだけです");
+        judge_model.end_last_completion_stream();
+        authorize.await.expect("a safe verdict must allow the call");
+        receiver.expect_permission_judge().await;
+
+        // Still 「AI が判定」, so the gate keeps reaching the judge — only the
+        // remembered verdict is dropped.
+        cx.update(|cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .agent
+                        .get_or_insert_default()
+                        .tool_permissions
+                        .get_or_insert_default()
+                        .default = Some(ToolPermissionMode::Auto);
+                });
+            });
+        });
+
+        let authorize = judge_a_build_command(&event_stream, cx);
+        assert_eq!(
+            receiver.expect_permission_judge().await.state,
+            acp_thread::PermissionJudgeState::Judging,
+            "the verdict must not survive a settings change"
+        );
+        cx.run_until_parked();
+        assert_eq!(
+            judge_model.completion_count(),
+            1,
+            "the judge must be asked again after the settings changed"
+        );
+        drop(authorize);
+    }
+
+    /// ADR-F52 A11 (b): an MCP tool's real arguments reach the judge, so
+    /// 「AI が判定」 decides on what the server will actually be asked to do.
+    #[gpui::test]
+    async fn test_permission_judge_reads_third_party_tool_input(cx: &mut TestAppContext) {
+        let (event_stream, mut receiver, judge_model) = setup_permission_judge(cx, true);
+
+        let input = serde_json::json!({ "path": "/repo/notes.md", "contents": "hello" });
+        let authorize = cx.update(|cx| {
+            event_stream.authorize_third_party_tool(
+                "MCP ツール `write` を実行",
+                "mcp:files:write".to_string(),
+                "write".to_string(),
+                Some(&input),
+                cx,
+            )
+        });
+
+        assert_eq!(
+            receiver.expect_permission_judge().await.state,
+            acp_thread::PermissionJudgeState::Judging
+        );
+        cx.run_until_parked();
+        let request = judge_model
+            .pending_completions()
+            .pop()
+            .expect("the judge model should have been asked");
+        let prompt = request
+            .messages
+            .last()
+            .expect("the judge prompt has a user message")
+            .string_contents();
+        assert!(
+            prompt.contains("/repo/notes.md") && prompt.contains("hello"),
+            "the judge must see the tool's real arguments: {prompt}"
+        );
+        assert!(
+            prompt.contains("mcp:files:write"),
+            "the judge must be told which server's tool it is: {prompt}"
+        );
+
+        judge_model.send_last_completion_stream_text_chunk("SAFE\nプロジェクト内の編集です");
+        judge_model.end_last_completion_stream();
+        authorize.await.expect("a safe verdict must allow the call");
+        assert_eq!(
+            receiver.expect_permission_judge().await.state,
+            acp_thread::PermissionJudgeState::Safe
+        );
+    }
+
+    /// An MCP tool called with no arguments gives the judge nothing but the
+    /// tool's own name to go on, and a name is what an MCP server once talked
+    /// its way past this gate with. Every empty shape of input is asked about
+    /// instead of judged (ADR-F52).
+    #[gpui::test]
+    async fn test_permission_judge_is_not_asked_about_an_empty_third_party_input(
+        cx: &mut TestAppContext,
+    ) {
+        for input in [
+            serde_json::json!({}),
+            serde_json::Value::Null,
+            serde_json::json!([]),
+        ] {
+            let (event_stream, mut receiver, judge_model) = setup_permission_judge(cx, true);
+            let authorize = cx.update(|cx| {
+                event_stream.authorize_third_party_tool(
+                    "MCP ツール `list` を実行",
+                    "mcp:files:list".to_string(),
+                    "list".to_string(),
+                    Some(&input),
+                    cx,
+                )
+            });
+
+            let details = receiver.expect_permission_judge().await;
+            assert_eq!(
+                details.state,
+                acp_thread::PermissionJudgeState::Unsafe,
+                "{input} carries nothing to judge"
+            );
+            assert_eq!(
+                details.reason,
+                acp_thread::PERMISSION_JUDGE_NO_ARGUMENTS_REASON
+            );
+            cx.run_until_parked();
+            assert_eq!(
+                judge_model.completion_count(),
+                0,
+                "the judge must not be asked to approve a tool's name: {input}"
+            );
+
+            let authorization = receiver.expect_authorization().await;
+            drop(authorization);
+            authorize
+                .await
+                .expect_err("nothing approved the tool call: {input}");
+        }
+    }
+
+    /// The judge's memory is thread-scoped, so another thread asking exactly
+    /// the same question pays for its own verdict (ADR-F52).
+    #[gpui::test]
+    async fn test_permission_judge_does_not_reuse_across_threads(cx: &mut TestAppContext) {
+        let (event_stream, mut receiver, judge_model) = setup_permission_judge(cx, true);
+
+        let authorize = judge_a_build_command(&event_stream, cx);
+        receiver.expect_permission_judge().await;
+        cx.run_until_parked();
+        judge_model.send_last_completion_stream_text_chunk("SAFE\nビルドするだけです");
+        judge_model.end_last_completion_stream();
+        authorize.await.expect("a safe verdict must allow the call");
+        receiver.expect_permission_judge().await;
+
+        let (other_thread_stream, mut other_receiver) = ToolCallEventStream::test();
+        let authorize = judge_a_build_command(&other_thread_stream, cx);
+        assert_eq!(
+            other_receiver.expect_permission_judge().await.state,
+            acp_thread::PermissionJudgeState::Judging,
+            "another thread must not inherit this thread's verdicts"
+        );
+        cx.run_until_parked();
+        assert_eq!(
+            judge_model.completion_count(),
+            1,
+            "another thread must ask for its own verdict"
+        );
+        drop(authorize);
+    }
+
+    /// A judgement still in flight is deliberately left out of what the thread
+    /// saves: a thread saved mid-judgement would come back saying 「AI が判定
+    /// 中…」 about a call that ended long ago. The finished verdict is saved.
+    #[gpui::test]
+    async fn test_permission_judge_saves_only_a_finished_judgement(cx: &mut TestAppContext) {
+        let (event_stream, mut receiver, judge_model) = setup_permission_judge(cx, true);
+        let permission_judge = event_stream.permission_judge.clone();
+
+        let authorize = judge_a_build_command(&event_stream, cx);
+        assert_eq!(
+            receiver.expect_permission_judge().await.state,
+            acp_thread::PermissionJudgeState::Judging
+        );
+        cx.run_until_parked();
+        assert!(
+            permission_judge.borrow().to_db().is_empty(),
+            "a judgement still running must not reach the thread's row"
+        );
+
+        judge_model.send_last_completion_stream_text_chunk("SAFE\nビルドするだけです");
+        judge_model.end_last_completion_stream();
+        authorize.await.expect("a safe verdict must allow the call");
+        receiver.expect_permission_judge().await;
+
+        let saved = permission_judge.borrow().to_db();
+        let judgement = saved
+            .get(&LanguageModelToolUseId::from("test_id"))
+            .expect("the finished verdict must reach the thread's row");
+        assert_eq!(judgement.state, acp_thread::PermissionJudgeState::Safe);
+        assert_eq!(judgement.reason, "ビルドするだけです");
+        assert!(!judgement.reused);
+        assert_eq!(
+            judgement.model_id,
+            judge_model.id().0.to_string(),
+            "the row names the model that judged"
         );
     }
 

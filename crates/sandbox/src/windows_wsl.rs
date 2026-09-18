@@ -754,9 +754,9 @@ pub async fn wrap_invocation<S: BuildHasher>(
     if let Some(forward) = permissions.ide_forward.as_ref() {
         ensure!(
             forward.inner_port != 0,
-            "the IDE port inside the sandbox must not be 0"
+            "サンドボックス内の IDE のポートが 0 です (内部エラー)"
         );
-        ensure_linux_absolute_path(&forward.rendezvous_path, "IDE rendezvous")?;
+        ensure_linux_absolute_path(&forward.rendezvous_path, "IDE の待ち合わせソケット")?;
     }
 
     // Mapping failures are bad requests (a path that doesn't exist or has a
@@ -1913,7 +1913,7 @@ fn installed_wsl_exe() -> Result<PathBuf> {
 fn ensure_linux_absolute_path(path: &str, description: &str) -> Result<()> {
     ensure!(
         path.starts_with('/') && !path.contains('\0'),
-        "the {description} path `{path}` is not an absolute Linux path"
+        "{description}が Linux の絶対パスではありません (内部エラー): {path:?}"
     );
     Ok(())
 }
@@ -2362,17 +2362,17 @@ pub async fn ide_bridge_invocation(
     lock: Option<(&str, &[u8])>,
     exclusive_directory: Option<&str>,
 ) -> Result<(PathBuf, Vec<String>, Vec<u8>)> {
-    ensure_linux_absolute_path(rendezvous_path, "IDE rendezvous")?;
+    ensure_linux_absolute_path(rendezvous_path, "IDE の待ち合わせソケット")?;
     if let Some((lock_file_path, lock_content)) = lock {
-        ensure_linux_absolute_path(lock_file_path, "IDE lock file")?;
+        ensure_linux_absolute_path(lock_file_path, "IDE のロックファイル")?;
         ensure!(
             lock_content.len() <= crate::MAX_IDE_LOCK_CONTENT,
-            "the IDE lock content is larger than {} bytes",
+            "IDE のロックファイルの中身が {} バイトを超えています (内部エラー)",
             crate::MAX_IDE_LOCK_CONTENT
         );
     }
     if let Some(directory) = exclusive_directory {
-        ensure_linux_absolute_path(directory, "IDE bridge exclusive directory")?;
+        ensure_linux_absolute_path(directory, "IDE ブリッジの占有フォルダー")?;
     }
     ensure_distro_registered(distro)?;
     let wsl_exe = installed_wsl_exe()?;
@@ -2417,27 +2417,6 @@ fn ide_bridge_command_line(
     args
 }
 
-/// ADR-F49: how long the bridge is given to say it is listening. The caller
-/// hands [`start_ide_bridge`] a timer of exactly this length, because this
-/// crate has no timer of its own — they come from the caller's executor so
-/// that tests stay deterministic.
-pub const IDE_BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// [`start_ide_bridge`] was turned away because another bridge — this Zed's or
-/// another's — holds the exclusive directory it was given. Its own error type
-/// so the caller can say the session already runs instead of showing a
-/// start-up failure.
-#[derive(Debug)]
-pub struct IdeBridgeSessionRunning;
-
-impl std::fmt::Display for IdeBridgeSessionRunning {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("この構成の IDE 連携の中継はすでに実行中です")
-    }
-}
-
-impl std::error::Error for IdeBridgeSessionRunning {}
-
 /// A running IDE bridge (ADR-F49): the `wsl.exe` process and the standard I/O
 /// that [`crate::spawn_bridge_mux`] takes apart.
 pub struct IdeBridge {
@@ -2474,10 +2453,7 @@ pub async fn start_ide_bridge(
     preamble: &[u8],
     ready_timeout: impl std::future::Future<Output = ()>,
 ) -> Result<IdeBridge> {
-    use crate::ide_bridge::{
-        BridgeStatus, SESSION_RUNNING_CODE, bridge_failure_message, parse_bridge_status,
-    };
-    use futures::{AsyncBufReadExt as _, FutureExt as _, StreamExt as _};
+    use crate::ide_bridge::{BridgeHost, wait_for_ide_bridge_ready};
     use smol::process::windows::CommandExt as _;
 
     const PREAMBLE_FAILED: &str = "IDE 連携の中継に接続情報を渡せませんでした";
@@ -2519,41 +2495,7 @@ pub async fn start_ide_bridge(
     stdin.write_all(preamble).await.context(PREAMBLE_FAILED)?;
     stdin.flush().await.context(PREAMBLE_FAILED)?;
 
-    let mut lines = futures::io::BufReader::new(stderr).lines();
-    // In a block of its own so that the borrow `setup` takes of `lines` ends
-    // before the logging future takes it over.
-    let ready = {
-        let setup = async {
-            while let Some(line) = lines.next().await {
-                let line = line.context("reading the IDE bridge's messages")?;
-                match parse_bridge_status(&line) {
-                    Some(BridgeStatus::Ready) => return Ok(()),
-                    Some(BridgeStatus::Failed {
-                        code: SESSION_RUNNING_CODE,
-                    }) => return Err(IdeBridgeSessionRunning.into()),
-                    Some(BridgeStatus::Failed { code }) => bail!(bridge_failure_message(code)),
-                    None => log::info!("[ide-bridge] {line}"),
-                }
-            }
-            bail!("IDE 連携の中継が準備を終える前に終了しました。")
-        };
-        futures::pin_mut!(setup);
-        futures::pin_mut!(ready_timeout);
-        match futures::future::select(setup, ready_timeout).await {
-            futures::future::Either::Left((outcome, _)) => outcome,
-            futures::future::Either::Right(((), _)) => Err(anyhow::anyhow!(
-                "IDE 連携の中継が {} 秒以内に準備を終えませんでした。",
-                IDE_BRIDGE_READY_TIMEOUT.as_secs()
-            )),
-        }
-    };
-    ready?;
-    let log = async move {
-        while let Some(Ok(line)) = lines.next().await {
-            log::info!("[ide-bridge] {line}");
-        }
-    }
-    .boxed();
+    let log = wait_for_ide_bridge_ready(stderr, BridgeHost::WslDistro, ready_timeout).await?;
     Ok(IdeBridge {
         child,
         stdin,
@@ -3692,7 +3634,7 @@ fn unique_suffix() -> String {
 fn ensure_safe_relative_path(relative: &str, description: &str) -> Result<()> {
     ensure!(
         !relative.is_empty() && relative.len() <= 200 && !relative.starts_with('/'),
-        "the {description} `{relative}` is not a relative path below the data directory"
+        "{description}がデータディレクトリ配下の相対パスではありません (内部エラー): {relative:?}"
     );
     for segment in relative.split('/') {
         ensure!(
@@ -3702,7 +3644,7 @@ fn ensure_safe_relative_path(relative: &str, description: &str) -> Result<()> {
                 && segment
                     .bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')),
-            "the {description} `{relative}` has an unusable component {segment:?}"
+            "{description}に使えない要素が含まれています (内部エラー): {relative:?} の {segment:?}"
         );
     }
     Ok(())
@@ -3715,7 +3657,7 @@ fn ensure_safe_relative_path(relative: &str, description: &str) -> Result<()> {
 fn linux_path_segments(path: &str, description: &str) -> Result<Vec<String>> {
     ensure!(
         !path.is_empty() && !path.starts_with('/') && !path.contains('\0'),
-        "the {description} `{path}` is not a relative path"
+        "{description}が相対パスではありません (内部エラー): {path:?}"
     );
     let mut segments = Vec::new();
     for segment in path.split('/') {
@@ -3724,13 +3666,13 @@ fn linux_path_segments(path: &str, description: &str) -> Result<Vec<String>> {
         }
         ensure!(
             segment != "..",
-            "the {description} `{path}` walks out of the package"
+            "{description}がパッケージの外を指しています (内部エラー): {path:?}"
         );
         segments.push(segment.to_string());
     }
     ensure!(
         !segments.is_empty(),
-        "the {description} `{path}` names nothing"
+        "{description}が何も指していません (内部エラー): {path:?}"
     );
     Ok(segments)
 }
@@ -3964,7 +3906,7 @@ async fn stage_runtime_archive(
     kind: WslArchiveKind,
     strip_top_level_directory: bool,
 ) -> Result<String> {
-    ensure_safe_relative_path(destination_relative_to_data_dir, "runtime destination")?;
+    ensure_safe_relative_path(destination_relative_to_data_dir, "ランタイムの配置先")?;
     let digest = normalized_sha256(expected_sha256)?;
     let Some(mode) = kind.script_mode() else {
         bail!(
@@ -4295,9 +4237,9 @@ async fn install_npm_package(
     allowed_hosts: Vec<String>,
     editor_network_allowlist: Option<Vec<String>>,
 ) -> Result<String> {
-    ensure_linux_absolute_path(node_directory, "Node.js")?;
+    ensure_linux_absolute_path(node_directory, "Node.js のインストール先")?;
     ensure_npm_package_spec(package_spec)?;
-    ensure_safe_relative_path(install_relative_to_data_dir, "npm install destination")?;
+    ensure_safe_relative_path(install_relative_to_data_dir, "npm パッケージの配置先")?;
     let runtime = WslRuntime::open(invoker, distro)?;
     let data_directory = runtime_data_directory(invoker, distro).await?;
     let destination = format!("{data_directory}/{install_relative_to_data_dir}");
@@ -4409,7 +4351,10 @@ async fn run_sandboxed_npm_install(
         fs: crate::SandboxFsPolicy::Restricted {
             writable_paths: vec![capture_wsl_location(staging, "npm の作業フォルダー")?],
             protected_paths: Vec::new(),
-            readable_paths: vec![capture_wsl_location(node_directory, "Node.js")?],
+            readable_paths: vec![capture_wsl_location(
+                node_directory,
+                "Node.js のインストール先",
+            )?],
         },
         network: crate::SandboxNetPolicy::Restricted {
             allowed_domains: allowed_hosts,
@@ -4510,7 +4455,7 @@ fn npm_failure_details(output: &std::process::Output) -> String {
 fn capture_wsl_location(path: &str, description: &str) -> Result<crate::HostFilesystemLocation> {
     ensure_linux_absolute_path(path, description)?;
     crate::HostFilesystemLocation::capture(Path::new(path))
-        .with_context(|| format!("naming the {description} path `{path}` for the sandbox"))
+        .with_context(|| format!("{description}のパスをサンドボックスへ渡せませんでした: {path:?}"))
 }
 
 /// Best effort: a leftover staging directory is also removed by the next
@@ -4559,7 +4504,7 @@ async fn read_npm_package_json(
     install_directory: &str,
     package_name: &str,
 ) -> Result<Option<String>> {
-    ensure_linux_absolute_path(install_directory, "npm install")?;
+    ensure_linux_absolute_path(install_directory, "npm パッケージのインストール先")?;
     ensure_npm_package_name(package_name)?;
     let runtime = WslRuntime::open(invoker, distro)?;
 
@@ -4572,7 +4517,7 @@ async fn read_npm_package_json(
         install_directory.to_string(),
         "node_modules".to_string(),
     ];
-    args.extend(linux_path_segments(package_name, "npm package")?);
+    args.extend(linux_path_segments(package_name, "npm パッケージ名")?);
     args.push("package.json".to_string());
     let output = runtime.run(&args, "npm パッケージの確認").await?;
     if !output.status.success() {
@@ -4634,7 +4579,7 @@ async fn npm_package_executable(
     package_name: &str,
     executable_relative: &str,
 ) -> Result<String> {
-    ensure_linux_absolute_path(install_directory, "npm install")?;
+    ensure_linux_absolute_path(install_directory, "npm パッケージのインストール先")?;
     ensure_npm_package_name(package_name)?;
     let runtime = WslRuntime::open(invoker, distro)?;
 
@@ -4647,10 +4592,10 @@ async fn npm_package_executable(
         install_directory.to_string(),
         "node_modules".to_string(),
     ];
-    args.extend(linux_path_segments(package_name, "npm package")?);
+    args.extend(linux_path_segments(package_name, "npm パッケージ名")?);
     args.extend(linux_path_segments(
         executable_relative,
-        "npm package executable",
+        "npm パッケージの実行ファイル",
     )?);
     let output = runtime
         .run(&args, "npm パッケージの実行ファイルの確認")
@@ -4782,13 +4727,13 @@ pub async fn ensure_wsl_agent_config_dir(
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
         "プロジェクトの識別子が不正です (内部エラー): {project_key:?}"
     );
-    ensure_safe_relative_path(folder_name, "agent folder")?;
+    ensure_safe_relative_path(folder_name, "エージェントのフォルダー名")?;
     ensure!(
         !folder_name.contains('/'),
         "エージェントのフォルダー名が単一の名前ではありません (内部エラー): {folder_name:?}"
     );
     for directory in directories_below {
-        ensure_safe_relative_path(directory, "agent folder entry")?;
+        ensure_safe_relative_path(directory, "エージェントのフォルダー内の項目")?;
     }
     ensure_distro_registered(distro)?;
     let wsl_exe = installed_wsl_exe()?;
@@ -4926,7 +4871,7 @@ async fn staged_runtime(
     destination_relative_to_data_dir: &str,
     marker: Option<&str>,
 ) -> Result<Option<String>> {
-    ensure_safe_relative_path(destination_relative_to_data_dir, "runtime destination")?;
+    ensure_safe_relative_path(destination_relative_to_data_dir, "ランタイムの配置先")?;
     let runtime = WslRuntime::open(invoker, distro)?;
     let data_directory = runtime_data_directory(invoker, distro).await?;
     let destination = format!("{data_directory}/{destination_relative_to_data_dir}");
@@ -4975,7 +4920,7 @@ async fn stage_runtime_file(
     expected_sha256: &str,
     executable: bool,
 ) -> Result<String> {
-    ensure_safe_relative_path(destination_relative_to_data_dir, "runtime destination")?;
+    ensure_safe_relative_path(destination_relative_to_data_dir, "ランタイムの配置先")?;
     ensure_agent_binary_name(file_name)?;
     let digest = normalized_sha256(expected_sha256)?;
     let runtime = WslRuntime::open(invoker, distro)?;
@@ -5072,7 +5017,7 @@ async fn runtime_executable(
     runtime_directory: &str,
     relative: &str,
 ) -> Result<String> {
-    ensure_linux_absolute_path(runtime_directory, "runtime")?;
+    ensure_linux_absolute_path(runtime_directory, "ランタイムのフォルダー")?;
     let runtime = WslRuntime::open(invoker, distro)?;
     let mut args = vec![
         "--exec".to_string(),
@@ -5082,7 +5027,7 @@ async fn runtime_executable(
         "zed-wsl-runtime-executable".to_string(),
         runtime_directory.to_string(),
     ];
-    args.extend(linux_path_segments(relative, "runtime executable")?);
+    args.extend(linux_path_segments(relative, "ランタイムの実行ファイル")?);
     let output = runtime
         .run(&args, "エージェントの実行ファイルの確認")
         .await?;
@@ -6165,6 +6110,21 @@ mod tests {
                 "/root/.claude-zed",
             ],
             "the lock content is not on the command line"
+        );
+        // ADR-F53: an SSH host's bridge is started from the same flags, so the
+        // two spellings cannot drift apart.
+        let from_ide_bridge = args
+            .iter()
+            .position(|argument| argument == crate::IDE_BRIDGE_FLAG)
+            .expect("the WSL invocation runs the helper as the bridge");
+        assert_eq!(
+            args.get(from_ide_bridge..).unwrap_or_default(),
+            crate::remote_ide_bridge_argv(
+                "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
+                Some("/root/.claude-zed/ide/45123.lock"),
+                Some("/root/.claude-zed"),
+            )
+            .expect("absolute host paths")
         );
         // The token rides on stdin instead, as a length-prefixed preamble.
         assert_eq!(

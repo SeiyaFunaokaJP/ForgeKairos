@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, sync::atomic::Ordering, time::Duration};
 
 use anyhow::{Context as _, Result};
 use editor::{Editor, EditorEvent};
@@ -21,7 +21,8 @@ use workspace::{
 };
 
 use crate::{
-    TabularDataPreviewPane, parser::TabularFormat, tabular_data_settings::TabularDataSettings,
+    TabularDataPreviewPane, grid_styles::key_value_store, parser::TabularFormat,
+    table_data_engine::StoredTableView, tabular_data_settings::TabularDataSettings,
 };
 
 /// `Editor` registers `language::Buffer` as its project item, and the registry keys its
@@ -114,6 +115,201 @@ impl TabularDataPreviewPane {
 
     pub(crate) fn entry_id(&self, cx: &App) -> Option<ProjectEntryId> {
         project::ProjectItem::entry_id(self.buffer(cx)?.read(cx), cx)
+    }
+}
+
+///// The filters and sorting kept between sessions /////
+
+/// How long a change waits before it is written back, so that clicking through
+/// a column's values does not write the stored row on every click.
+pub(crate) const FILTER_SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
+
+/// Prefix of the key value store row a file's filters and sorting live in.
+const FILTER_KEY_PREFIX: &str = "tabular_data_filters:";
+
+pub(crate) fn filters_key_for_editor(editor: &Entity<Editor>, cx: &App) -> Option<String> {
+    let buffer = editor.read(cx).buffer().read(cx).as_singleton()?;
+    let path = buffer.read(cx).file()?.as_local()?.abs_path(cx);
+    Some(format!("{FILTER_KEY_PREFIX}{}", path.to_string_lossy()))
+}
+
+impl TabularDataPreviewPane {
+    /// Called from [`TabularDataPreviewPane::apply_filter_sort`], which every
+    /// change to the filters or the sorting - and every reparse - goes through.
+    ///
+    /// Two grids open on the same file do not share their filters, unlike their
+    /// colors: narrowing one of two views of a table to look something up is
+    /// the point of having two, so the last one to change wins the stored row.
+    pub(crate) fn on_view_changed(&mut self, cx: &mut Context<Self>) {
+        self.announce_restored_view(cx);
+
+        if !self.engine.stored_view.load_started {
+            self.engine.stored_view.load_started = true;
+            self.engine.stored_view.key = filters_key_for_editor(self.editor(), cx);
+            self.load_stored_view(cx);
+            return;
+        }
+        self.save_stored_view(cx);
+    }
+
+    /// "Save as" gave the buffer a new path, and the view is stored under the
+    /// path rather than in the file.
+    pub(crate) fn on_filters_path_changed(&mut self, cx: &mut Context<Self>) {
+        let key = filters_key_for_editor(self.editor(), cx);
+        if self.engine.stored_view.key == key {
+            return;
+        }
+        let old_key = std::mem::replace(&mut self.engine.stored_view.key, key);
+        // Cancels any write still waiting to go to the old row, which the
+        // delete below is about to remove.
+        self.engine
+            .stored_view
+            .save_generation
+            .fetch_add(1, Ordering::SeqCst);
+
+        if let Some(old_key) = old_key
+            && let Some(store) = key_value_store(cx)
+        {
+            cx.background_spawn(async move {
+                if let Err(err) = store.delete_kvp(old_key).await {
+                    log::error!(
+                        "tabular data preview: failed to drop the old path's filters: {err}"
+                    );
+                }
+            })
+            .detach();
+        }
+
+        // Nothing is known about the new row - it may even hold a view stored
+        // for that path in an earlier session - so the write goes out whether
+        // or not the view itself has changed.
+        self.engine.forget_where_the_view_was_saved();
+        self.save_stored_view(cx);
+    }
+
+    fn announce_restored_view(&mut self, cx: &mut Context<Self>) {
+        if !self.engine.take_restored_notice() {
+            return;
+        }
+        let mut what = Vec::new();
+        if self.engine.has_any_filters() {
+            what.push("絞り込み");
+        }
+        if self.engine.applied_sorting.is_some() {
+            what.push("並べ替え");
+        }
+        // Everything the stored view named may have been on columns the file no
+        // longer has, in which case nothing was restored after all.
+        if what.is_empty() {
+            return;
+        }
+
+        let mut message = format!("前回の{}を復元しました", what.join("と"));
+        // A table too big to count here says only that it was restored: the
+        // number is worth a lot less than the frame it would cost.
+        if let Some(hidden) = self.engine.hidden_row_count()
+            && hidden > 0
+        {
+            message.push_str(&format!(" ({hidden} 行を非表示)"));
+        }
+        self.set_status_message(message, cx);
+    }
+
+    fn load_stored_view(&mut self, cx: &mut Context<Self>) {
+        let store = key_value_store(cx);
+        let (Some(key), Some(store)) = (self.engine.stored_view.key.clone(), store) else {
+            // Nothing to read from, so nothing is in flight either and the
+            // first change may be written (or dropped) right away.
+            self.engine
+                .mark_stored_view_saved(&StoredTableView::default());
+            return;
+        };
+
+        cx.spawn(async move |this, cx| {
+            let loaded = cx
+                .background_spawn(async move {
+                    let stored = match store.read_kvp(&key) {
+                        Ok(stored) => stored?,
+                        Err(err) => {
+                            log::error!(
+                                "tabular data preview: failed to read the stored filters: {err}"
+                            );
+                            return None;
+                        }
+                    };
+                    match serde_json::from_str::<StoredTableView>(&stored) {
+                        Ok(view) => Some(view),
+                        Err(err) => {
+                            log::error!(
+                                "tabular data preview: failed to parse the stored filters: {err}"
+                            );
+                            None
+                        }
+                    }
+                })
+                .await;
+
+            this.update(cx, |this, cx| {
+                let loaded = loaded.unwrap_or_default();
+                this.engine.mark_stored_view_saved(&loaded);
+                this.engine.restore_stored_view(loaded);
+                this.apply_filter_sort(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Writes the view back after a pause, and only when it differs from what
+    /// the store already holds: every reparse comes through here too, so a
+    /// keystroke in an unfiltered table must not schedule a write.
+    ///
+    /// The task holds its own copy and is detached, so closing the tab inside
+    /// the debounce still stores what the user narrowed the table to.
+    fn save_stored_view(&mut self, cx: &mut Context<Self>) {
+        let Some(current) = self.engine.take_unsaved_view() else {
+            return;
+        };
+
+        let payload = if current.is_empty() {
+            None
+        } else {
+            match serde_json::to_string(&current) {
+                Ok(payload) => Some(payload),
+                Err(err) => {
+                    log::error!("tabular data preview: failed to serialize the filters: {err}");
+                    return;
+                }
+            }
+        };
+
+        let store = key_value_store(cx);
+        let (Some(key), Some(store)) = (self.engine.stored_view.key.clone(), store) else {
+            return;
+        };
+        let generation = self
+            .engine
+            .stored_view
+            .save_generation
+            .fetch_add(1, Ordering::SeqCst)
+            + 1;
+        let save_generation = self.engine.stored_view.save_generation.clone();
+        let executor = cx.background_executor().clone();
+
+        cx.background_spawn(async move {
+            executor.timer(FILTER_SAVE_DEBOUNCE).await;
+            if save_generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            let written = match payload {
+                Some(payload) => store.write_kvp(key, payload).await,
+                None => store.delete_kvp(key).await,
+            };
+            if let Err(err) = written {
+                log::error!("tabular data preview: failed to store the filters: {err}");
+            }
+        })
+        .detach();
     }
 }
 
@@ -315,6 +511,10 @@ impl Item for TabularDataPreviewPane {
     /// Leaving a grid tab has to leave a navigation entry behind, or "go back" and
     /// "reopen closed tab" skip over it as if it had never been open.
     fn deactivated(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        // A tab that is no longer drawn has no mouse handlers left to see the
+        // button come up, so a drag it was left holding would never end and the
+        // task scrolling after it would never stop.
+        self.cancel_drag(cx);
         if let Some(nav_history) = self.nav_history.as_mut() {
             nav_history.push::<()>(None, None, cx);
         }

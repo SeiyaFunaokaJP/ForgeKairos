@@ -3,16 +3,46 @@ use agent_client_protocol::schema::v1 as acp;
 use anyhow::Result;
 use collections::{BTreeMap, HashMap};
 use context_server::{ContextServerId, client::NotificationSubscription};
-use futures::FutureExt as _;
+use futures::{FutureExt as _, future::FusedFuture};
 use gpui::{App, AppContext, AsyncApp, Context, Entity, EventEmitter, SharedString, Task};
 use language_model::{LanguageModelImage, LanguageModelImageExt, LanguageModelToolResultContent};
 use project::context_server_store::{ContextServerStatus, ContextServerStore};
+use std::future::Future;
 use std::sync::Arc;
 use util::{ResultExt, markdown::MarkdownEscaped};
 
 /// Maximum number of characters to show from a tool argument in the
 /// collapsed tool-call header. Longer values are truncated with an ellipsis.
 const MAX_INLINE_ARG_LEN: usize = 120;
+
+/// How long an MCP tool call waits for its arguments before raising the
+/// permission card without them (ADR-F52).
+///
+/// The card used to go up first and the arguments arrive afterwards, which left
+/// the judge — and the user — approving a call whose arguments nobody had seen.
+/// Waiting costs nothing in the normal case (the arguments are already on the
+/// way), and this bound only exists so a model that stops mid-tool-call can't
+/// turn a permission prompt into silence.
+const MCP_INPUT_WAIT_BEFORE_ASKING: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Waits for an MCP tool's arguments before the permission card goes up.
+///
+/// Returns `Ok(None)` when `wait` elapses first; `received` is then still
+/// pending and has to be awaited after the card is answered.
+async fn mcp_input_before_asking<InputReceived>(
+    received: &mut InputReceived,
+    wait: impl Future<Output = ()>,
+) -> Result<Option<serde_json::Value>>
+where
+    InputReceived: Future<Output = Result<serde_json::Value>> + FusedFuture + Unpin,
+{
+    let mut wait = std::pin::pin!(wait.fuse());
+    let mut received = received;
+    futures::select_biased! {
+        input = received => input.map(Some),
+        _ = wait => Ok(None),
+    }
+}
 
 /// Generates a tool ID for an MCP tool that can be used in settings.
 ///
@@ -356,19 +386,65 @@ impl AnyAgentTool for ContextServerTool {
             == Some(true);
         let tool_id = mcp_tool_id(&self.server_id.0, &self.tool.name);
         let display_name = self.tool.name.clone();
-        let initial_title = self.initial_title(serde_json::Value::Null, cx);
-        let authorize =
-            event_stream.authorize_third_party_tool(initial_title, tool_id, display_name, cx);
 
         cx.spawn(async move |cx| {
-            let input = input
-                .recv()
-                .await
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            // The permission card is raised only once the arguments have
+            // arrived, so both the title and the "AI が判定" verdict describe
+            // what the server will actually be asked to do (ADR-F52). If they
+            // never arrive the card still goes up, built from a null input and
+            // with nothing for the judge to look at, so a stalled model can't
+            // turn a permission prompt into silence — and if they turn up after
+            // that, the call is authorized a second time, with them (below).
+            let mut received = std::pin::pin!(input.recv().fuse());
+            let input = mcp_input_before_asking(
+                &mut received,
+                cx.background_executor().timer(MCP_INPUT_WAIT_BEFORE_ASKING),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
+            let authorize = cx.update(|cx| {
+                event_stream.authorize_third_party_tool(
+                    format_mcp_initial_title(
+                        &tool_name,
+                        input.as_ref().unwrap_or(&serde_json::Value::Null),
+                    ),
+                    tool_id.clone(),
+                    display_name.clone(),
+                    input.as_ref(),
+                    cx,
+                )
+            });
 
             authorize
                 .await
                 .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
+            let input = match input {
+                Some(input) => input,
+                None => {
+                    let input = received
+                        .await
+                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                    // What was approved above was the tool, not this call: the
+                    // card went up before these arguments existed. Asking again
+                    // now that there is something to look at is what keeps the
+                    // late arrival from becoming a call nobody — not the user,
+                    // not the judge — reviewed (ADR-F52).
+                    cx.update(|cx| {
+                        event_stream.authorize_third_party_tool(
+                            format_mcp_initial_title(&tool_name, &input),
+                            tool_id,
+                            display_name,
+                            Some(&input),
+                            cx,
+                        )
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                    input
+                }
+            };
 
             let Some(protocol) = server.client() else {
                 return Err(anyhow::anyhow!("Context server not initialized").into());
@@ -586,6 +662,56 @@ mod tests {
 
     // Note: Tests for MCP tool ID collision with built-in tools and permission
     // decisions are in crates/agent/src/tool_permissions.rs to avoid duplication.
+
+    /// ADR-F52 A11 (b): the permission card waits for the tool's arguments, so
+    /// its title and the judge's verdict are about what will actually run.
+    #[gpui::test]
+    async fn test_mcp_input_is_waited_for_before_asking(cx: &mut gpui::TestAppContext) {
+        let (mut sender, input) = ToolInput::<serde_json::Value>::test();
+        sender.send_full(serde_json::json!({ "path": "/repo/notes.md" }));
+
+        let executor = cx.background_executor.clone();
+        let arguments = cx
+            .background_executor
+            .spawn(async move {
+                let mut received = std::pin::pin!(input.recv().fuse());
+                mcp_input_before_asking(&mut received, executor.timer(MCP_INPUT_WAIT_BEFORE_ASKING))
+                    .await
+            })
+            .await
+            .expect("the arguments arrived");
+
+        assert_eq!(
+            arguments,
+            Some(serde_json::json!({ "path": "/repo/notes.md" })),
+            "the card must be built from the arguments the server will receive"
+        );
+    }
+
+    /// A model that stops mid-tool-call must not turn the permission prompt
+    /// into silence: the card still goes up, with nothing for the judge.
+    #[gpui::test]
+    async fn test_mcp_input_that_never_arrives_still_asks(cx: &mut gpui::TestAppContext) {
+        // Held so the channel stays open: this is the model going quiet, not
+        // the tool call being torn down.
+        let (_sender, input) = ToolInput::<serde_json::Value>::test();
+
+        let executor = cx.background_executor.clone();
+        let arguments = cx.background_executor.spawn(async move {
+            let mut received = std::pin::pin!(input.recv().fuse());
+            mcp_input_before_asking(&mut received, executor.timer(MCP_INPUT_WAIT_BEFORE_ASKING))
+                .await
+        });
+
+        cx.executor()
+            .advance_clock(MCP_INPUT_WAIT_BEFORE_ASKING + std::time::Duration::from_secs(1));
+
+        assert_eq!(
+            arguments.await.expect("waiting must not fail"),
+            None,
+            "the card must go up even when the arguments never arrive"
+        );
+    }
 
     #[test]
     fn test_format_mcp_initial_title_inlines_single_string_arg() {

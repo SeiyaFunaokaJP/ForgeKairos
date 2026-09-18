@@ -285,7 +285,8 @@ pub async fn resolve_creatable_global_skill_descendant_path(
 }
 
 /// Returns the kind of sensitive settings or agent skills location this path targets, if any:
-/// either inside a `.zed/` local-settings directory, inside `.agents/skills/`, or inside
+/// inside a `.zed/` local-settings directory, one of the two `.vscode` files Zed loads
+/// (see [`is_vscode_run_config_path`]), inside `.agents/skills/`, or inside
 /// the global config dir.
 ///
 /// `canonical_worktree_roots` should be the result of
@@ -308,6 +309,39 @@ pub async fn resolve_creatable_global_skill_descendant_path(
 /// like `~/projects/.zed/foo` doesn't classify every file inside it as
 /// `.zed/` local-settings — only files that have `.zed` (or
 /// `.agents/skills`) inside the worktree are flagged.
+/// Whether `path` names one of the two `.vscode` files Zed itself loads.
+///
+/// `.vscode/tasks.json` and `.vscode/launch.json` are imported as Zed tasks
+/// and debug configurations (`project_settings.rs`), so writing either one
+/// changes what the user's next run executes — the same kind of reach as
+/// `.zed/tasks.json`, and so the same "always confirm" treatment. The rest of
+/// `.vscode` (`settings.json`, `extensions.json`, …) is never read by Zed and
+/// is deliberately left alone.
+///
+/// Only a direct child of a `.vscode` directory counts, matching the
+/// `ends_with(".vscode/tasks.json")` test the settings loader uses. The
+/// comparison ignores ASCII case, so a case-insensitive filesystem can't slip
+/// a write past with `Tasks.json`.
+fn is_vscode_run_config_path(path: &Path) -> bool {
+    const RUN_CONFIG_FILE_NAMES: [&str; 2] = ["tasks.json", "launch.json"];
+
+    let Some(file_name) = path.file_name() else {
+        return false;
+    };
+    if !RUN_CONFIG_FILE_NAMES
+        .iter()
+        .any(|name| component_matches_ignore_ascii_case(file_name, name))
+    {
+        return false;
+    }
+
+    path.parent()
+        .and_then(Path::file_name)
+        .is_some_and(|parent| {
+            component_matches_ignore_ascii_case(parent, paths::local_vscode_folder_name())
+        })
+}
+
 pub async fn sensitive_settings_kind(
     path: &Path,
     canonical_worktree_roots: &[PathBuf],
@@ -321,6 +355,10 @@ pub async fn sensitive_settings_kind(
     if path.components().any(|component| {
         component_matches_ignore_ascii_case(component.as_os_str(), local_settings_folder)
     }) {
+        return Some(SensitiveSettingsKind::Local);
+    }
+
+    if is_vscode_run_config_path(path) {
         return Some(SensitiveSettingsKind::Local);
     }
 
@@ -340,6 +378,9 @@ pub async fn sensitive_settings_kind(
             if relative.components().any(|component| {
                 component_matches_ignore_ascii_case(component.as_os_str(), local_settings_folder)
             }) {
+                return Some(SensitiveSettingsKind::Local);
+            }
+            if is_vscode_run_config_path(relative) {
                 return Some(SensitiveSettingsKind::Local);
             }
             if is_agents_skills_path(relative) {
@@ -505,12 +546,14 @@ pub fn authorize_with_sensitive_settings(
     match kind {
         Some(SensitiveSettingsKind::Local) => event_stream.authorize_always_prompt(
             format!("{title} (プロジェクトの設定)"),
-            context,
+            context.for_sensitive_settings(),
             cx,
         ),
-        Some(SensitiveSettingsKind::Global) => {
-            event_stream.authorize_always_prompt(format!("{title} (設定)"), context, cx)
-        }
+        Some(SensitiveSettingsKind::Global) => event_stream.authorize_always_prompt(
+            format!("{title} (設定)"),
+            context.for_sensitive_settings(),
+            cx,
+        ),
         Some(SensitiveSettingsKind::AgentSkills) => event_stream.authorize_always_prompt(
             format!("{title} (エージェントのスキル)"),
             context.for_agent_skills(),
@@ -611,6 +654,126 @@ pub fn collect_symlink_escapes<'a>(
         escapes.push(escape);
     }
     escapes
+}
+
+/// Where a new path that [`resolve_project_path`] could not place would be
+/// created, and how many visible worktrees could hold it.
+pub(crate) struct NewPathPlacement {
+    /// The first visible worktree that holds the path's parent directory —
+    /// the one every tool that places a new path ends up picking, because
+    /// [`Project::find_project_path`] returns the first worktree in which the
+    /// parent exists.
+    pub project_path: ProjectPath,
+    /// How many visible worktrees hold that parent directory. More than one
+    /// means the path names no place in particular.
+    pub candidate_count: usize,
+}
+
+/// Where a path that [`resolve_project_path`] could not place would be created
+/// inside the project, if anywhere.
+///
+/// [`Project::find_project_path`] accepts a relative path only when the entry
+/// already exists or the path starts with a worktree's root name, so a plain
+/// new path such as `notes.md` or `src/new.rs` resolves nowhere, and ADR-F54
+/// 決定 3 then treats it as a path outside the project — a confirmation even
+/// in the mode that approves everything. Widening `find_project_path` would
+/// change what every caller of it means by a path, so the narrower question
+/// the permission card actually needs is asked here instead: where could this
+/// path be created, and is that one place or several?
+///
+/// An answer is returned only when the path is relative, is free of `..`,
+/// doesn't start with a worktree's root name, doesn't reach into a `.git`
+/// directory, names a last component, and at least one visible worktree
+/// already holds the directory it would be created in. Callers that must not
+/// choose for the user require [`NewPathPlacement::candidate_count`] to be 1:
+/// with two worktrees `notes.md` names no place in particular. Sensitive
+/// settings files are classified before this is consulted, so they keep their
+/// own prompt either way.
+///
+/// The parent is looked up and the last component appended to it exactly as
+/// [`crate::tools::edit_session`]'s create branch does, so the two agree on
+/// where the path lands.
+pub(crate) fn resolve_new_path_in_the_project(
+    project: &Project,
+    path: &Path,
+    cx: &App,
+) -> Option<NewPathPlacement> {
+    let path_style = project.path_style(cx);
+    let path_text = path.to_str()?;
+    if path_text.is_empty() || util::paths::is_absolute(path_text, path_style) {
+        return None;
+    }
+
+    // `RelPath::new` resolves `..` away, so the path as written is what
+    // decides: `a/../../b` must not become `b` here.
+    if path_text
+        .split(['/', '\\'])
+        .any(|segment| segment == ".." || segment.eq_ignore_ascii_case(".git"))
+    {
+        return None;
+    }
+
+    let file_name = path.file_name()?.to_str()?;
+    let file_name = util::rel_path::RelPath::from_unix_str(file_name).ok()?;
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    let parent_path = util::rel_path::RelPath::new(parent, path_style).ok()?;
+
+    let mut project_path = None;
+    let mut candidate_count = 0;
+    for worktree in project.visible_worktrees(cx) {
+        let worktree = worktree.read(cx);
+        // A path that starts with a root name is `find_project_path`'s own
+        // case; reaching here means it declined for some other reason, and
+        // guessing why is not this function's job.
+        if path
+            .strip_prefix(worktree.root_name().as_std_path())
+            .is_ok()
+        {
+            return None;
+        }
+        match worktree.entry_for_path(parent_path.as_ref()) {
+            // An external entry is a symlink whose target left the worktree,
+            // so the path wouldn't be created where it suggests.
+            Some(entry) if entry.is_dir() && !entry.is_external => {
+                candidate_count += 1;
+                project_path.get_or_insert_with(|| ProjectPath {
+                    worktree_id: worktree.id(),
+                    path: entry.path.join(file_name).into(),
+                });
+            }
+            _ => {}
+        }
+    }
+
+    Some(NewPathPlacement {
+        project_path: project_path?,
+        candidate_count,
+    })
+}
+
+/// The one place a new path could be created inside the project, or `None`
+/// when there is no such place or more than one (see
+/// [`resolve_new_path_in_the_project`]).
+pub(crate) fn resolve_one_new_path_in_the_project(
+    project: &Project,
+    path: &Path,
+    cx: &App,
+) -> Option<ProjectPath> {
+    resolve_new_path_in_the_project(project, path, cx)
+        .filter(|placement| placement.candidate_count == 1)
+        .map(|placement| placement.project_path)
+}
+
+/// The parenthetical a card about a new relative path gets when more than one
+/// visible worktree could hold it: the tools all silently take the first, so
+/// the card says which one that is rather than leaving the user to guess
+/// (決定 1).
+pub(crate) fn ambiguous_worktree_note(destination: &str, outcome: &str) -> String {
+    format!(
+        "どのワークツリーか曖昧: 承認すると {} に{}",
+        util::markdown::MarkdownInlineCode(destination),
+        outcome
+    )
 }
 
 /// Checks authorization for file edits, handling symlink escapes and
@@ -718,8 +881,16 @@ pub fn authorize_file_edit(
         let explicitly_allowed = matches!(decision, ToolPermissionDecision::Allow);
         // 決定 3: blanket approval reaches as far as the project, so a path
         // that resolves nowhere in it is never auto-approved — it is handed to
-        // `authorize_outside_project` below instead.
-        let in_project = resolved.is_ok();
+        // `authorize_outside_project` below instead. A new file that can only
+        // mean one place in the project is in the project even though the
+        // lookup couldn't name it (see `resolve_new_path_in_the_project`).
+        let placement = project_entity.read_with(cx, |project, cx| {
+            resolve_new_path_in_the_project(project, &path_owned, cx)
+        });
+        let in_project = resolved.is_ok()
+            || placement
+                .as_ref()
+                .is_some_and(|placement| placement.candidate_count == 1);
 
         // Check sensitive settings asynchronously. Short-circuit on the
         // raw-path fast paths to skip the canonicalization in
@@ -745,7 +916,8 @@ pub fn authorize_file_edit(
                     let context = ToolPermissionContext::new(
                         &tool_name,
                         vec![path_owned.to_string_lossy().to_string()],
-                    );
+                    )
+                    .for_sensitive_settings();
                     event_stream.authorize_always_prompt(
                         format!("{title} (プロジェクトの設定)"),
                         context,
@@ -759,7 +931,8 @@ pub fn authorize_file_edit(
                     let context = ToolPermissionContext::new(
                         &tool_name,
                         vec![path_owned.to_string_lossy().to_string()],
-                    );
+                    )
+                    .for_sensitive_settings();
                     event_stream.authorize_always_prompt(format!("{title} (設定)"), context, cx)
                 });
                 return authorize.await;
@@ -782,18 +955,31 @@ pub fn authorize_file_edit(
             None => {}
         }
 
-        match resolved {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                let authorize = cx.update(|cx| {
-                    let context = ToolPermissionContext::new(
-                        &tool_name,
-                        vec![path_owned.to_string_lossy().to_string()],
-                    );
-                    event_stream.authorize_outside_project(&title, context, cx)
-                });
-                authorize.await
-            }
+        if in_project {
+            Ok(())
+        } else {
+            // 決定 1: with several worktrees the write silently lands in the
+            // first one, so the card names it instead of claiming the path is
+            // outside the project.
+            let note = placement
+                .filter(|placement| placement.candidate_count >= 2)
+                .and_then(|placement| {
+                    project_entity.read_with(cx, |project, cx| {
+                        project.short_full_path_for_project_path(&placement.project_path, cx)
+                    })
+                })
+                .map(|destination| ambiguous_worktree_note(&destination, "書かれます"));
+            let authorize = cx.update(|cx| {
+                let context = ToolPermissionContext::new(
+                    &tool_name,
+                    vec![path_owned.to_string_lossy().to_string()],
+                );
+                match note {
+                    Some(note) => event_stream.authorize_with_note(&title, &note, context, cx),
+                    None => event_stream.authorize_outside_project(&title, context, cx),
+                }
+            });
+            authorize.await
         }
     })
 }

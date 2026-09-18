@@ -260,6 +260,7 @@ impl AgentServerStore {
                     env: Default::default(),
                     default_config_options: HashMap::default(),
                     favorite_config_option_values: HashMap::default(),
+                    allow_subscription_sign_in: None,
                 }),
             );
         });
@@ -796,12 +797,12 @@ impl AgentServerStore {
         if http_client::child_process_proxy().is_some() {
             http_client::apply_child_process_proxy_env(&mut env);
         }
-        // ADR-F53: the agent runs on this host, so the folder that keeps the
-        // official Claude Code CLI's sign-in off this route is this host's —
-        // the client cannot name it, since a path of the client's names
-        // nothing here. Only the start outside the sandbox uses it; the
-        // sandbox's own per-project folder is laid over the agent's
-        // environment when it is placed, below.
+        // ADR-F55: the agent runs on this host, so the folder that keeps this
+        // route out of the account's own `~/.claude` is this host's — the
+        // client cannot name it, since a path of the client's names nothing
+        // here. Only the start outside the sandbox uses it; the sandbox's own
+        // per-project folder, which the CLI session shares, is laid over the
+        // agent's environment when it is placed, below.
         if let Some(config_dir) = point_the_acp_claude_at_the_forks_folder(&profile, &mut env) {
             let fs = this.read_with(&cx, |this, _| match &this.state {
                 AgentServerStoreState::Local { fs, .. } => Some(fs.clone()),
@@ -1041,10 +1042,13 @@ fn agent_environment(
     env
 }
 
-/// ADR-F53: points the ACP Claude agent at the fork's own configuration
-/// folder **on the machine that starts it**, so that credentials the official
-/// Claude Code CLI on that machine is signed in with are not picked up by the
-/// Agent SDK this IDE drives. Answers with the folder where it named one, so
+/// ADR-F53, revised by ADR-F55: points the ACP Claude agent at the fork's own
+/// configuration folder **on the machine that starts it**, so that the
+/// account's `~/.claude` — the official CLI's credentials, global hooks, MCP
+/// servers and history — is neither read nor written by an agent this IDE
+/// starts. The agent signs itself in there instead. (In the sandbox the
+/// folder *is* the CLI session's, so one sign-in covers both; this is only the
+/// route that has no sandbox.) Answers with the folder where it named one, so
 /// that the caller can create it.
 ///
 /// The agent's own settings are already in `env` when this is reached and are
@@ -2088,6 +2092,9 @@ pub enum CustomAgentServerSettings {
         ///
         /// Default: {}
         favorite_config_option_values: HashMap<String, Vec<String>>,
+        /// ADR-F55: whether a subscription sign-in may be offered for this
+        /// agent. `None` is the default, which is that it may.
+        allow_subscription_sign_in: Option<bool>,
     },
     Registry {
         /// Additional environment variables to pass to the agent.
@@ -2112,6 +2119,9 @@ pub enum CustomAgentServerSettings {
         ///
         /// Default: {}
         favorite_config_option_values: HashMap<String, Vec<String>>,
+        /// ADR-F55: whether a subscription sign-in may be offered for this
+        /// agent. `None` is the default, which is that it may.
+        allow_subscription_sign_in: Option<bool>,
     },
 }
 
@@ -2157,6 +2167,22 @@ impl CustomAgentServerSettings {
                 .map(|v| v.as_slice()),
         }
     }
+
+    /// ADR-F55: whether the user turned a subscription sign-in off for this
+    /// agent. `None` where they said nothing, so that the caller decides what
+    /// saying nothing means rather than this answering for it.
+    pub fn allow_subscription_sign_in(&self) -> Option<bool> {
+        match self {
+            CustomAgentServerSettings::Custom {
+                allow_subscription_sign_in,
+                ..
+            }
+            | CustomAgentServerSettings::Registry {
+                allow_subscription_sign_in,
+                ..
+            } => *allow_subscription_sign_in,
+        }
+    }
 }
 
 impl From<settings::CustomAgentServerSettings> for CustomAgentServerSettings {
@@ -2169,6 +2195,7 @@ impl From<settings::CustomAgentServerSettings> for CustomAgentServerSettings {
                 default_mode,
                 default_config_options,
                 favorite_config_option_values,
+                allow_subscription_sign_in,
             } => CustomAgentServerSettings::Custom {
                 command: AgentServerCommand {
                     path: PathBuf::from(shellexpand::tilde(&path.to_string_lossy()).as_ref()),
@@ -2179,17 +2206,20 @@ impl From<settings::CustomAgentServerSettings> for CustomAgentServerSettings {
                 default_mode,
                 default_config_options,
                 favorite_config_option_values,
+                allow_subscription_sign_in,
             },
             settings::CustomAgentServerSettings::Registry {
                 env,
                 default_mode,
                 default_config_options,
                 favorite_config_option_values,
+                allow_subscription_sign_in,
             } => CustomAgentServerSettings::Registry {
                 env,
                 default_mode,
                 default_config_options,
                 favorite_config_option_values,
+                allow_subscription_sign_in,
             },
         }
     }
@@ -2344,9 +2374,10 @@ mod tests {
         );
     }
 
-    /// ADR-F53: an agent started on the host this project is connected to is
+    /// ADR-F55: an agent started on the host this project is connected to is
     /// pointed at that host's own folder, since the client's path names
     /// nothing there — and only the ACP Claude agent is pointed anywhere.
+    /// Outside the sandbox that folder is never the account's `~/.claude`.
     #[test]
     fn the_host_names_the_acp_claudes_folder_unless_the_agents_settings_do() {
         let mut env = HashMap::default();
@@ -2361,7 +2392,7 @@ mod tests {
         assert_ne!(
             named,
             paths::home_dir().join(".claude"),
-            "never the folder the official CLI signs in to"
+            "never the account's own folder, which the official CLI uses here"
         );
 
         let mut from_settings =
@@ -2819,6 +2850,7 @@ mod tests {
                                     default_mode: None,
                                     default_config_options: HashMap::default(),
                                     favorite_config_option_values: HashMap::default(),
+                                    allow_subscription_sign_in: None,
                                 }
                                 .into(),
                             )

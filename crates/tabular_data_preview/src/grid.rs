@@ -4,12 +4,14 @@
 //! The cell editor itself, the keyboard handlers and the structural operations
 //! live in [`crate::grid_editing`]; this module owns the state they work on.
 
-use std::{cell::Cell as MutableCell, collections::HashSet, ops::Range, rc::Rc, sync::Arc};
+use std::{
+    cell::Cell as MutableCell, collections::HashSet, ops::Range, rc::Rc, sync::Arc, time::Duration,
+};
 
 use editor::{Editor, EditorEvent};
 use gpui::{
-    AnyElement, Bounds, Entity, Focusable as _, ListOffset, Modifiers, MouseButton, Point,
-    Subscription, TextStyleRefinement, canvas,
+    AnyElement, Bounds, DispatchPhase, Entity, Focusable as _, ListOffset, Modifiers, MouseButton,
+    MouseMoveEvent, Point, Subscription, Task, TextStyleRefinement, canvas, point,
 };
 use settings::Settings as _;
 use theme_settings::ThemeSettings;
@@ -20,6 +22,7 @@ use crate::{
     edit_engine::RowRef,
     grid_editing::GridMenuTarget,
     grid_search::GridSearchState,
+    renderer::table_cell::CELL_FRAME_HEIGHT,
     types::{AnyColumn, DisplayRow, TableCell},
 };
 
@@ -297,6 +300,22 @@ pub(crate) struct GridState {
     pub(crate) drag: Option<GridDrag>,
     /// Where a fill or a border drag would land if the button came up now.
     pub(crate) drag_preview: Option<GridRect>,
+    /// Where the pointer was when it last moved with a drag in flight, in the
+    /// window's coordinates.
+    ///
+    /// Recorded from a window wide listener rather than from the cells' own
+    /// `on_mouse_move`, which stops firing the moment the pointer leaves the
+    /// table - which is exactly when the grid has to start scrolling after it.
+    pub(crate) drag_pointer: Option<Point<Pixels>>,
+    /// The last cell the drag actually reached, which is where the axis the
+    /// pointer is still inside of stays while the other one scrolls.
+    ///
+    /// `cursor` cannot stand in for it: a fill or a block move leaves the caret
+    /// where the selection was when the drag started.
+    pub(crate) drag_cell: Option<GridCell>,
+    /// Scrolls the grid while the pointer is held outside of it. Dropped when
+    /// the drag ends, which is what stops the scrolling.
+    pub(crate) autoscroll: Option<Task<()>>,
     pub(crate) context_menu: Option<(Entity<ContextMenu>, Point<Pixels>, Subscription)>,
     pub(crate) active_cell_bounds: Rc<BoundsProbe>,
     pub(crate) root_bounds: Rc<BoundsProbe>,
@@ -328,6 +347,12 @@ impl GridState {
                 &cell_editor.focus_handle(cx),
                 window,
                 |this, _event, window, cx| {
+                    // The button can no longer come up over the grid, so the
+                    // drag can no longer be committed; leaving its preview
+                    // rectangle painted would claim otherwise. The window going
+                    // inactive lands here too, which is what stops an
+                    // autoscroll whose mouse up went to another window.
+                    this.cancel_drag(cx);
                     this.commit_editing(window, cx);
                 },
             ),
@@ -347,6 +372,9 @@ impl GridState {
             search: GridSearchState::default(),
             drag: None,
             drag_preview: None,
+            drag_pointer: None,
+            drag_cell: None,
+            autoscroll: None,
             context_menu: None,
             active_cell_bounds: Rc::default(),
             root_bounds: Rc::default(),
@@ -401,11 +429,45 @@ pub(crate) fn cell_line_height(cx: &App) -> Pixels {
 /// How many rows a page key covers before the body has ever been laid out.
 pub(crate) const ROWS_PER_PAGE_BEFORE_LAYOUT: usize = 10;
 
-/// What the table draws around a row's line of text: the two pixel border every
-/// cell carries so that highlighting the caret's cell does not nudge the text of
-/// its neighbours, plus the line between two rows. Only used until the list has
-/// drawn a row to measure.
-const ROW_BORDER_HEIGHT: Pixels = px(5.);
+/// How often the grid scrolls on while the pointer is held outside of it, which
+/// is about once per frame on a 60Hz display.
+pub(crate) const AUTOSCROLL_TICK: Duration = Duration::from_millis(16);
+
+/// How much further outside the body the pointer has to be for the autoscroll to
+/// cover one more row per tick.
+const AUTOSCROLL_ROWS_STEP: Pixels = px(32.);
+
+/// Most rows one autoscroll tick covers. Excel holds a steady rate rather than
+/// picking up speed the longer the button is held, so this is a ceiling on the
+/// distance and not on an acceleration.
+const AUTOSCROLL_MAX_ROWS: usize = 3;
+
+/// The row identifier column, which the table pins to its left edge and which is
+/// therefore not part of what scrolls sideways.
+const PINNED_COLUMNS: usize = 1;
+
+/// How far `value` lies outside `start..end`, and zero while it is inside.
+///
+/// An axis that has not been laid out yet is not a rectangle the pointer can be
+/// outside of, so it reads as inside rather than as infinitely far out.
+fn overshoot(value: Pixels, start: Pixels, end: Pixels) -> Pixels {
+    if end <= start {
+        return px(0.);
+    }
+    if value < start {
+        value - start
+    } else if value > end {
+        value - end
+    } else {
+        px(0.)
+    }
+}
+
+/// How many rows one tick covers, from how far outside the body the pointer is.
+fn autoscroll_rows(overshoot: Pixels) -> usize {
+    let steps = (overshoot.abs() / AUTOSCROLL_ROWS_STEP).floor() as usize;
+    (1 + steps).min(AUTOSCROLL_MAX_ROWS)
+}
 
 /// Largest number of cells one grid operation may touch. Past this the vector
 /// of cells the operation builds costs more than the edit is worth, so the grid
@@ -1038,7 +1100,7 @@ impl TabularDataPreviewPane {
             .bounds_for_item(self.list_state.logical_scroll_top().item_ix)
             .map(|bounds| bounds.size.height)
             .filter(|height| *height > px(0.))
-            .unwrap_or(self.row_height + ROW_BORDER_HEIGHT)
+            .unwrap_or(self.row_height + CELL_FRAME_HEIGHT)
             .max(px(1.))
     }
 
@@ -1135,11 +1197,21 @@ impl TabularDataPreviewPane {
     /// Brings the caret's column inside the horizontally scrolling part of the
     /// table, which the pinned row identifier column is not part of.
     pub(crate) fn scroll_column_into_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        const PINNED_COLUMNS: usize = 1;
+        self.scroll_col_into_view(self.grid.cursor.col, window, cx);
+    }
+
+    /// The same for a column that is not the caret's, which is what the drag
+    /// autoscroll walks sideways.
+    fn scroll_col_into_view(
+        &mut self,
+        col: AnyColumn,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let rem_size = window.rem_size();
         let widths = self.column_widths.widths.read(cx);
         // The table column of a data column is offset by the row identifier column.
-        let table_col = self.grid.cursor.col.get() + PINNED_COLUMNS;
+        let table_col = col.get() + PINNED_COLUMNS;
         if table_col + 1 > widths.cols() {
             return;
         }
@@ -1209,6 +1281,9 @@ impl TabularDataPreviewPane {
     }
 
     pub(crate) fn on_cell_drag(&mut self, cell: GridCell, cx: &mut Context<Self>) {
+        if self.grid.drag.is_some() {
+            self.grid.drag_cell = Some(cell);
+        }
         match self.grid.drag {
             Some(GridDrag::Cells) => self.select_cell(cell, true, cx),
             Some(GridDrag::Fill { origin }) => self.update_fill_preview(origin, cell, cx),
@@ -1323,6 +1398,7 @@ impl TabularDataPreviewPane {
     pub(crate) fn end_drag(&mut self, modifiers: Modifiers, cx: &mut Context<Self>) {
         let drag = self.grid.drag.take();
         let preview = self.grid.drag_preview.take();
+        self.forget_drag();
         match (drag, preview) {
             (Some(GridDrag::Fill { origin }), Some(preview)) => {
                 self.commit_fill(origin, preview, modifiers.secondary(), cx);
@@ -1331,6 +1407,264 @@ impl TabularDataPreviewPane {
                 self.commit_block_move(origin, preview, modifiers.secondary(), cx);
             }
             _ => {}
+        }
+    }
+
+    /// Drops a drag without committing anything, reporting whether there was one
+    /// to drop.
+    ///
+    /// [`Self::end_drag`] is only reached by the button coming up over the
+    /// window. Escape, and the caret leaving the grid, end the gesture just as
+    /// surely, and a fill preview left painted until the next click told the
+    /// user that a fill was still armed.
+    pub(crate) fn cancel_drag(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.grid.drag.is_none() && self.grid.drag_preview.is_none() {
+            return false;
+        }
+        self.grid.drag = None;
+        self.grid.drag_preview = None;
+        self.forget_drag();
+        cx.notify();
+        true
+    }
+
+    /// Everything a finished drag leaves behind that is not the selection it
+    /// made: where the pointer was, how far it had got, and the task that was
+    /// scrolling after it.
+    fn forget_drag(&mut self) {
+        self.grid.drag_pointer = None;
+        self.grid.drag_cell = None;
+        self.grid.autoscroll = None;
+    }
+
+    ///// Autoscroll /////
+
+    /// Follows the pointer for as long as a drag is in flight, wherever in the
+    /// window it goes.
+    ///
+    /// The cells, the row headings and the column headings each listen for
+    /// moves of their own, but [`gpui::Div`]'s `on_mouse_move` only fires while
+    /// the pointer is inside the element's hitbox - which is the wrong side of
+    /// the edge, because a selection dragged off the table is exactly the one
+    /// that has to keep growing. A window wide listener, registered afresh out
+    /// of every frame's paint, sees the move wherever it lands.
+    pub(crate) fn drag_pointer_tracker(&self, cx: &Context<Self>) -> AnyElement {
+        let view = cx.entity().downgrade();
+        canvas(
+            |_bounds, _window, _cx| {},
+            move |_bounds, _state, window, _cx| {
+                window.on_mouse_event(
+                    move |event: &MouseMoveEvent, phase, window, cx: &mut App| {
+                        if phase != DispatchPhase::Bubble {
+                            return;
+                        }
+                        let held = event.pressed_button == Some(MouseButton::Left);
+                        // The pane is gone when the window is closing between
+                        // this frame and the move that follows it.
+                        view.update(cx, |this, cx| {
+                            if held {
+                                this.on_drag_pointer_moved(event.position, window, cx);
+                            } else {
+                                // The button is demonstrably up even though no
+                                // mouse up ever reached the grid, which is what
+                                // a pointer capture lost to another window
+                                // leaves behind. Nothing else would ever stop
+                                // the scrolling task, and a fill the user never
+                                // let go of over the grid must not be committed
+                                // by the next click either.
+                                this.cancel_drag(cx);
+                            }
+                        })
+                        .ok();
+                    },
+                );
+            },
+        )
+        .absolute()
+        .size_full()
+        .into_any_element()
+    }
+
+    fn on_drag_pointer_moved(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.grid.drag.is_none() {
+            return;
+        }
+        self.grid.drag_pointer = Some(position);
+        if self.grid.autoscroll.is_some() || self.autoscroll_overshoot(cx) == Point::default() {
+            return;
+        }
+        // The task runs until the drag ends rather than until the pointer comes
+        // back inside: a task that stopped itself would have to be dropped from
+        // inside its own future, and a tick that finds no overshoot costs two
+        // rectangle comparisons.
+        self.grid.autoscroll = Some(cx.spawn_in(window, async move |this, cx| {
+            loop {
+                cx.background_executor().timer(AUTOSCROLL_TICK).await;
+                let dragging = this.update_in(cx, |this, window, cx| {
+                    this.autoscroll_tick(window, cx);
+                    this.grid.drag.is_some()
+                });
+                if !matches!(dragging, Ok(true)) {
+                    break;
+                }
+            }
+        }));
+    }
+
+    /// How far outside the scrolling body the pointer is, per axis, in pixels.
+    /// Zero on an axis it is still inside of, negative before the axis' start.
+    ///
+    /// An axis a drag cannot grow along reads as zero whatever the pointer does,
+    /// which is not only pointless work: a drag down the row headings holds the
+    /// pointer over the pinned identifier column, which is outside the part of
+    /// the table that scrolls sideways, and one along the column headings holds
+    /// it above the list. Both would otherwise scroll away from the user for as
+    /// long as the button was held.
+    fn autoscroll_overshoot(&self, cx: &App) -> Point<Pixels> {
+        let Some(pointer) = self.grid.drag_pointer else {
+            return Point::default();
+        };
+        let (grows_sideways, grows_downwards) = match self.grid.drag {
+            None => return Point::default(),
+            Some(GridDrag::Rows) => (false, true),
+            Some(GridDrag::Columns) => (true, false),
+            Some(GridDrag::Cells | GridDrag::Fill { .. } | GridDrag::Move { .. }) => (true, true),
+        };
+        // The rows scroll inside the list, which the sticky heading row is not
+        // part of, and the columns inside the table's own scrollable area,
+        // which the pinned row identifier column is not part of. Measuring
+        // against the body as a whole would leave a pointer held over the
+        // heading - the way up out of a table - counting as inside.
+        let rows = self.list_state.viewport_bounds();
+        let columns = self
+            .table_interaction_state
+            .read(cx)
+            .horizontal_scroll_handle
+            .bounds();
+        point(
+            if grows_sideways {
+                overshoot(pointer.x, columns.left(), columns.right())
+            } else {
+                px(0.)
+            },
+            if grows_downwards {
+                overshoot(pointer.y, rows.top(), rows.bottom())
+            } else {
+                px(0.)
+            },
+        )
+    }
+
+    /// One step of the scrolling that follows a pointer held outside the grid.
+    ///
+    /// The selection is grown along with it: a view that moved while the
+    /// selection stayed behind would leave the user dragging a rectangle they
+    /// cannot see the end of.
+    fn autoscroll_tick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.grid.drag.is_none() || self.grid_is_empty() {
+            return;
+        }
+        let overshoot = self.autoscroll_overshoot(cx);
+        if overshoot == Point::default() {
+            return;
+        }
+
+        let mut target = self.grid.drag_cell.unwrap_or(self.grid.cursor);
+        if overshoot.y != px(0.) {
+            let rows = autoscroll_rows(overshoot.y);
+            let distance = self.drawn_row_height() * rows as f32;
+            self.list_state.scroll_by(if overshoot.y > px(0.) {
+                distance
+            } else {
+                -distance
+            });
+            target.row = self.row_at_the_scrolled_edge(overshoot.y > px(0.));
+        }
+        let scrolled_sideways = overshoot.x != px(0.);
+        if scrolled_sideways
+            && let Some(col) = self.column_past_the_edge(overshoot.x > px(0.), window, cx)
+        {
+            target.col = col;
+        }
+
+        let target = self.clamp_cell(target);
+        match self.grid.drag {
+            Some(GridDrag::Rows) => self.on_row_drag(target.row, cx),
+            Some(GridDrag::Columns) => self.on_column_drag(target.col, cx),
+            Some(_) => self.on_cell_drag(target, cx),
+            None => {}
+        }
+        if scrolled_sideways {
+            self.scroll_col_into_view(target.col, window, cx);
+        }
+        cx.notify();
+    }
+
+    /// The row now drawn against the edge the pointer went out of, which is as
+    /// far as the selection can follow it.
+    fn row_at_the_scrolled_edge(&self, downwards: bool) -> GridRow {
+        let top = self.list_state.logical_scroll_top();
+        if downwards {
+            // A viewport scrolled part way into its first row shows one row
+            // less of the rows below it.
+            let rows_shown = self.rows_per_page() - usize::from(top.offset_in_item > px(0.));
+            return GridRow::from_index(top.item_ix + rows_shown.max(1));
+        }
+        if top.item_ix == 0 && top.offset_in_item <= px(0.) {
+            // The list is as far up as it goes, and the only row left above its
+            // first is the heading, which is drawn in the sticky header rather
+            // than in the list.
+            return GridRow::Header;
+        }
+        GridRow::from_index(top.item_ix + 1)
+    }
+
+    /// The first column past the edge the pointer went out of, which is the one
+    /// the next tick reveals. Columns are walked one at a time rather than by a
+    /// distance, because their widths differ by an order of magnitude.
+    fn column_past_the_edge(
+        &self,
+        rightwards: bool,
+        window: &Window,
+        cx: &App,
+    ) -> Option<AnyColumn> {
+        let last_col = self.last_col_index();
+        let rem_size = window.rem_size();
+        let widths = self.column_widths.widths.read(cx);
+        // The width configuration is resynced a frame after the contents, so
+        // between the two it can still be describing fewer columns than the
+        // table now has.
+        if last_col + PINNED_COLUMNS + 1 >= widths.cols() {
+            return None;
+        }
+        let handle = &self
+            .table_interaction_state
+            .read(cx)
+            .horizontal_scroll_handle;
+        let viewport = handle.bounds().size.width;
+        if viewport <= px(0.) {
+            return None;
+        }
+        let scrolled = -handle.offset().x;
+        // `pinned_width(n)` is the total width of the first `n` table columns,
+        // which makes every column's edges a difference of two of them.
+        let scrollable_start = widths.pinned_width(PINNED_COLUMNS, rem_size);
+        let edge =
+            |col: usize| widths.pinned_width(col + PINNED_COLUMNS, rem_size) - scrollable_start;
+        if rightwards {
+            (0..=last_col)
+                .find(|col| edge(col + 1) > scrolled + viewport)
+                .map(AnyColumn)
+        } else {
+            (0..=last_col)
+                .rev()
+                .find(|col| edge(*col) < scrolled)
+                .map(AnyColumn)
         }
     }
 
@@ -1372,8 +1706,668 @@ impl TabularDataPreviewPane {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grid_editing::tests::open_grid;
-    use gpui::TestAppContext;
+    use crate::{grid_editing::tests::open_grid, renderer::table_cell::CELL_FRAME_DEBUG_SELECTOR};
+    use gpui::{Entity, TestAppContext, VisualTestContext};
+
+    ///// Drag autoscroll /////
+
+    /// More rows than the body can ever show at once, so that there is always
+    /// somewhere left to scroll to.
+    const AUTOSCROLL_FIXTURE_ROWS: usize = 400;
+
+    fn tall_fixture() -> String {
+        let mut contents = String::from("name,value");
+        for row in 0..AUTOSCROLL_FIXTURE_ROWS {
+            contents.push_str(&format!("\nrow{row},{row}"));
+        }
+        contents
+    }
+
+    /// Opens a table taller than the view with the pointer holding a cell drag
+    /// down on its first body row, and answers where the scrolling body is.
+    async fn start_a_drag_on_the_first_body_row(
+        cx: &mut TestAppContext,
+    ) -> (
+        Entity<TabularDataPreviewPane>,
+        VisualTestContext,
+        Bounds<Pixels>,
+    ) {
+        let (pane, _editor, mut cx) = open_grid(&tall_fixture(), cx).await;
+        cx.simulate_keystrokes("down");
+        cx.run_until_parked();
+
+        let cell = cx
+            .debug_bounds(CELL_FRAME_DEBUG_SELECTOR)
+            .expect("the caret's cell should have been drawn");
+        cx.simulate_mouse_down(cell.center(), MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+
+        let body = pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.grid.drag,
+                Some(GridDrag::Cells),
+                "the press should have started a cell drag"
+            );
+            assert_eq!(pane.list_state.logical_scroll_top().item_ix, 0);
+            assert_eq!(pane.selection_rect().last_row, 1);
+            pane.list_state.viewport_bounds()
+        });
+        assert!(
+            body.size.height > px(0.),
+            "the scrolling body should have been laid out ({body:?})"
+        );
+        (pane, cx, body)
+    }
+
+    /// Dragging off the bottom of the table keeps the selection going, the way
+    /// a spreadsheet does. Both halves matter: a view that scrolled while the
+    /// selection stood still would move the picture and nothing else.
+    #[gpui::test]
+    async fn dragging_below_the_body_scrolls_and_grows_the_selection(cx: &mut TestAppContext) {
+        let (pane, mut cx, body) = start_a_drag_on_the_first_body_row(cx).await;
+
+        cx.simulate_mouse_move(
+            point(body.center().x, body.bottom() + px(20.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            let scrolled = pane.list_state.logical_scroll_top().item_ix;
+            assert!(
+                scrolled > 0,
+                "the body should have scrolled down after the pointer left it"
+            );
+            let selection = pane.selection_rect();
+            assert!(
+                selection.last_row > scrolled,
+                "the selection should have followed the view down to the row now \
+                 drawn at the bottom edge (selection {selection:?}, scrolled to \
+                 row {scrolled})"
+            );
+        });
+    }
+
+    /// And back up again, which is the half that has to reach past the list's
+    /// first row into the sticky heading.
+    #[gpui::test]
+    async fn dragging_above_the_body_scrolls_back_up(cx: &mut TestAppContext) {
+        let (pane, mut cx, body) = start_a_drag_on_the_first_body_row(cx).await;
+
+        cx.simulate_mouse_move(
+            point(body.center().x, body.bottom() + px(20.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+        let scrolled_down =
+            pane.read_with(&cx, |pane, _| pane.list_state.logical_scroll_top().item_ix);
+        assert!(scrolled_down > 0);
+
+        cx.simulate_mouse_move(
+            point(body.center().x, body.top() - px(20.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(
+                pane.list_state.logical_scroll_top().item_ix < scrolled_down,
+                "the body should have scrolled back up once the pointer went out \
+                 of its top"
+            );
+        });
+    }
+
+    /// Nothing scrolls while the pointer is still over the table: the grid has
+    /// to move under the pointer only once the pointer has run out of grid.
+    #[gpui::test]
+    async fn a_drag_inside_the_body_never_autoscrolls(cx: &mut TestAppContext) {
+        let (pane, mut cx, body) = start_a_drag_on_the_first_body_row(cx).await;
+
+        cx.simulate_mouse_move(
+            point(body.center().x, body.bottom() - px(1.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(
+                pane.grid.autoscroll.is_none(),
+                "a pointer inside the body should not have started the autoscroll"
+            );
+            assert_eq!(
+                pane.list_state.logical_scroll_top().item_ix,
+                0,
+                "the body should not have scrolled"
+            );
+        });
+    }
+
+    /// The button coming up ends the gesture, and the scrolling with it.
+    #[gpui::test]
+    async fn releasing_the_button_stops_the_autoscroll(cx: &mut TestAppContext) {
+        let (pane, mut cx, body) = start_a_drag_on_the_first_body_row(cx).await;
+
+        let outside = point(body.center().x, body.bottom() + px(20.));
+        cx.simulate_mouse_move(outside, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+        let scrolled = pane.read_with(&cx, |pane, _| pane.list_state.logical_scroll_top().item_ix);
+        assert!(scrolled > 0);
+
+        cx.simulate_mouse_up(outside, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(pane.grid.drag.is_none());
+            assert!(pane.grid.autoscroll.is_none());
+            assert_eq!(
+                pane.list_state.logical_scroll_top().item_ix,
+                scrolled,
+                "the body should have stopped where the button came up"
+            );
+        });
+    }
+
+    /// Escape drops a fill that is still being dragged. Leaving its preview
+    /// rectangle painted told the user the fill was still armed, and it stayed
+    /// on screen until the next click.
+    #[gpui::test]
+    async fn escape_drops_a_drag_and_its_preview(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("name,value\nfirst,1\nsecond,2", cx).await;
+        cx.simulate_keystrokes("down");
+        cx.run_until_parked();
+
+        let handle = cx
+            .debug_bounds(crate::grid_fill::FILL_HANDLE_DEBUG_SELECTOR)
+            .expect("the caret's cell should carry the fill handle");
+        cx.simulate_mouse_down(handle.center(), MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert!(
+                matches!(pane.grid.drag, Some(GridDrag::Fill { .. })),
+                "the press on the handle should have started a fill ({:?})",
+                pane.grid.drag
+            );
+            assert!(pane.grid.drag_preview.is_some());
+        });
+
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(pane.grid.drag.is_none(), "escape should drop the drag");
+            assert!(
+                pane.grid.drag_preview.is_none(),
+                "escape should take the preview rectangle with it"
+            );
+        });
+    }
+
+    /// The caret leaving the grid ends the gesture too: the button can no
+    /// longer come up over a cell, so the fill can no longer be committed and
+    /// its preview has nothing left to promise.
+    #[gpui::test]
+    async fn losing_the_caret_drops_a_drag_and_its_preview(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("name,value\nfirst,1\nsecond,2", cx).await;
+        cx.simulate_keystrokes("down");
+        cx.run_until_parked();
+
+        let handle = cx
+            .debug_bounds(crate::grid_fill::FILL_HANDLE_DEBUG_SELECTOR)
+            .expect("the caret's cell should carry the fill handle");
+        cx.simulate_mouse_down(handle.center(), MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert!(pane.grid.drag_preview.is_some());
+        });
+
+        let grid_focus = pane.read_with(&cx, |pane, _| pane.focus_handle.clone());
+        cx.update(|window, cx| window.focus(&grid_focus, cx));
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(pane.grid.drag.is_none());
+            assert!(
+                pane.grid.drag_preview.is_none(),
+                "the preview should not outlive the caret leaving the cell editor"
+            );
+        });
+    }
+
+    /// A drag down the row headings holds the pointer over the pinned
+    /// identifier column, which is outside the part of the table that scrolls
+    /// sideways. Reading that as an overshoot would scroll the columns away
+    /// from the user for as long as the button was held.
+    #[gpui::test]
+    async fn a_row_heading_drag_never_scrolls_sideways(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid(&tall_fixture(), cx).await;
+        let (body, columns) = pane.read_with(&cx, |pane, cx| {
+            (
+                pane.list_state.viewport_bounds(),
+                pane.table_interaction_state
+                    .read(cx)
+                    .horizontal_scroll_handle
+                    .bounds(),
+            )
+        });
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.on_row_mouse_down(
+                GridRow::Body(DisplayRow(0)),
+                MouseButton::Left,
+                Modifiers::none(),
+                point(px(0.), px(0.)),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        cx.simulate_mouse_move(
+            point(columns.left() - px(20.), body.center().y),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.drag, Some(GridDrag::Rows));
+            assert!(
+                pane.grid.autoscroll.is_none(),
+                "the pinned identifier column is not somewhere a row drag has \
+                 run out of table"
+            );
+        });
+    }
+
+    /// The same the other way around: a drag along the column headings holds the
+    /// pointer above the list, which must not be read as asking to scroll up.
+    #[gpui::test]
+    async fn a_column_heading_drag_never_scrolls_up(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid(&tall_fixture(), cx).await;
+        let body = pane.read_with(&cx, |pane, _| pane.list_state.viewport_bounds());
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.on_column_mouse_down(
+                AnyColumn(0),
+                MouseButton::Left,
+                Modifiers::none(),
+                point(px(0.), px(0.)),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        cx.simulate_mouse_move(
+            point(body.center().x, body.top() - px(10.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(pane.grid.drag, Some(GridDrag::Columns));
+            assert!(
+                pane.grid.autoscroll.is_none(),
+                "the heading row is not somewhere a column drag has run out of \
+                 table"
+            );
+            assert_eq!(pane.list_state.logical_scroll_top().item_ix, 0);
+        });
+    }
+
+    /// The button coming up is the only thing that ends a drag, and the window
+    /// only sees it while it holds the pointer capture. Another window taking
+    /// the capture - a system dialog, a switch away mid drag - drops it without
+    /// a mouse up, and a scrolling task that only ever stops on one would then
+    /// run for the rest of the session.
+    #[gpui::test]
+    async fn a_move_without_the_button_ends_a_drag_that_was_never_released(
+        cx: &mut TestAppContext,
+    ) {
+        let (pane, mut cx, body) = start_a_drag_on_the_first_body_row(cx).await;
+
+        let outside = point(body.center().x, body.bottom() + px(20.));
+        cx.simulate_mouse_move(outside, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+        let scrolled = pane.read_with(&cx, |pane, _| pane.list_state.logical_scroll_top().item_ix);
+        assert!(scrolled > 0, "the autoscroll should be running");
+
+        // The same position, so that nothing but the missing button says the
+        // gesture is over.
+        cx.simulate_mouse_move(outside, None, Modifiers::none());
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(
+                pane.grid.drag.is_none(),
+                "a move with the button up should have ended the drag"
+            );
+            assert!(
+                pane.grid.autoscroll.is_none(),
+                "and taken the scrolling task with it"
+            );
+            assert_eq!(
+                pane.list_state.logical_scroll_top().item_ix,
+                scrolled,
+                "the body should have stopped where the button went up"
+            );
+        });
+    }
+
+    /// Runs a drag out of the bottom of the body and leaves the autoscroll
+    /// going, which is the state every way out of a drag has to be able to end.
+    async fn autoscroll_out_of_the_bottom(
+        cx: &mut TestAppContext,
+    ) -> (Entity<TabularDataPreviewPane>, VisualTestContext, usize) {
+        let (pane, mut cx, body) = start_a_drag_on_the_first_body_row(cx).await;
+        cx.simulate_mouse_move(
+            point(body.center().x, body.bottom() + px(20.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+        let scrolled = pane.read_with(&cx, |pane, _| {
+            assert!(pane.grid.autoscroll.is_some(), "the autoscroll should run");
+            pane.list_state.logical_scroll_top().item_ix
+        });
+        assert!(scrolled > 0);
+        (pane, cx, scrolled)
+    }
+
+    /// The window losing the pointer to another one is the other way a mouse up
+    /// never arrives: the button comes up over whatever took it.
+    #[gpui::test]
+    async fn deactivating_the_window_stops_the_autoscroll(cx: &mut TestAppContext) {
+        let (pane, mut cx, scrolled) = autoscroll_out_of_the_bottom(cx).await;
+
+        cx.deactivate_window();
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(pane.grid.drag.is_none());
+            assert!(pane.grid.autoscroll.is_none());
+            assert_eq!(
+                pane.list_state.logical_scroll_top().item_ix,
+                scrolled,
+                "a window that is no longer active should not still be scrolling"
+            );
+        });
+    }
+
+    /// And a tab switched away from stops being drawn, so neither its mouse up
+    /// handler nor the pointer tracker is left to notice the button coming up.
+    #[gpui::test]
+    async fn leaving_the_tab_stops_the_autoscroll(cx: &mut TestAppContext) {
+        let (pane, mut cx, scrolled) = autoscroll_out_of_the_bottom(cx).await;
+
+        pane.update_in(&mut cx, |pane, window, cx| {
+            workspace::item::Item::deactivated(pane, window, cx);
+        });
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(pane.grid.drag.is_none());
+            assert!(pane.grid.autoscroll.is_none());
+            assert_eq!(
+                pane.list_state.logical_scroll_top().item_ix,
+                scrolled,
+                "a tab that is no longer drawn should not still be scrolling"
+            );
+        });
+    }
+
+    /// A fill dropped by Escape while the pointer is still outside must not
+    /// leave the grid scrolling after a pointer that no longer owns it.
+    #[gpui::test]
+    async fn escape_with_the_pointer_outside_stops_the_autoscroll(cx: &mut TestAppContext) {
+        let (pane, mut cx, body) = start_a_drag_on_the_first_body_row(cx).await;
+
+        cx.simulate_mouse_move(
+            point(body.center().x, body.bottom() + px(20.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+        let scrolled = pane.read_with(&cx, |pane, _| pane.list_state.logical_scroll_top().item_ix);
+        assert!(scrolled > 0);
+
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            assert!(pane.grid.drag.is_none());
+            assert!(pane.grid.autoscroll.is_none());
+            assert_eq!(
+                pane.list_state.logical_scroll_top().item_ix,
+                scrolled,
+                "escape should have stopped the body where it stood"
+            );
+        });
+    }
+
+    /// Wider than the view, so that there is somewhere to scroll sideways to.
+    fn wide_fixture() -> String {
+        const COLUMNS: usize = 40;
+        let mut contents = (0..COLUMNS)
+            .map(|col| format!("column number {col}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        for row in 0..AUTOSCROLL_FIXTURE_ROWS {
+            contents.push('\n');
+            contents.push_str(
+                &(0..COLUMNS)
+                    .map(|col| format!("r{row}c{col}"))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
+        }
+        contents
+    }
+
+    /// A pointer taken past the bottom right corner overshoots both axes at
+    /// once, and a spreadsheet follows it on both.
+    #[gpui::test]
+    async fn dragging_past_the_corner_scrolls_both_ways(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid(&wide_fixture(), cx).await;
+        cx.simulate_keystrokes("down");
+        cx.run_until_parked();
+
+        let cell = cx
+            .debug_bounds(CELL_FRAME_DEBUG_SELECTOR)
+            .expect("the caret's cell should have been drawn");
+        cx.simulate_mouse_down(cell.center(), MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+
+        let (body, columns) = pane.read_with(&cx, |pane, cx| {
+            assert_eq!(pane.grid.drag, Some(GridDrag::Cells));
+            (
+                pane.list_state.viewport_bounds(),
+                pane.table_interaction_state
+                    .read(cx)
+                    .horizontal_scroll_handle
+                    .bounds(),
+            )
+        });
+
+        cx.simulate_mouse_move(
+            point(columns.right() + px(40.), body.bottom() + px(40.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, cx| {
+            let selection = pane.selection_rect();
+            assert!(
+                pane.list_state.logical_scroll_top().item_ix > 0,
+                "the corner should have scrolled the rows"
+            );
+            assert!(
+                selection.last_row > 1,
+                "and grown the selection down ({selection:?})"
+            );
+            assert!(
+                pane.table_interaction_state
+                    .read(cx)
+                    .horizontal_scroll_handle
+                    .offset()
+                    .x
+                    < px(0.),
+                "the corner should have scrolled the columns too"
+            );
+            assert!(
+                selection.last_col > 0,
+                "and grown the selection sideways ({selection:?})"
+            );
+        });
+    }
+
+    /// A table whose columns all fit has nowhere to go sideways, and a pointer
+    /// held off its right edge must not walk the selection past the last column
+    /// or move a view that cannot move.
+    #[gpui::test]
+    async fn a_table_that_fits_never_scrolls_sideways(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid(&tall_fixture(), cx).await;
+        cx.simulate_keystrokes("down");
+        cx.run_until_parked();
+
+        let cell = cx
+            .debug_bounds(CELL_FRAME_DEBUG_SELECTOR)
+            .expect("the caret's cell should have been drawn");
+        cx.simulate_mouse_down(cell.center(), MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        let columns = pane.read_with(&cx, |pane, cx| {
+            pane.table_interaction_state
+                .read(cx)
+                .horizontal_scroll_handle
+                .bounds()
+        });
+
+        cx.simulate_mouse_move(
+            point(columns.right() + px(50.), columns.center().y),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, cx| {
+            assert_eq!(
+                pane.table_interaction_state
+                    .read(cx)
+                    .horizontal_scroll_handle
+                    .offset()
+                    .x,
+                px(0.),
+                "there is nothing to the right of the last column"
+            );
+            let selection = pane.selection_rect();
+            assert!(
+                selection.last_col <= pane.last_col_index(),
+                "the selection should have stopped at the last column ({selection:?})"
+            );
+        });
+    }
+
+    /// A file of one body row has nowhere to scroll to, and the arithmetic that
+    /// walks to the row at the edge must not reach past it.
+    #[gpui::test]
+    async fn dragging_out_of_a_table_of_one_row_stays_on_that_row(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("name,value\nonly,1", cx).await;
+        cx.simulate_keystrokes("down");
+        cx.run_until_parked();
+
+        let cell = cx
+            .debug_bounds(CELL_FRAME_DEBUG_SELECTOR)
+            .expect("the caret's cell should have been drawn");
+        cx.simulate_mouse_down(cell.center(), MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        let body = pane.read_with(&cx, |pane, _| pane.list_state.viewport_bounds());
+
+        cx.simulate_mouse_move(
+            point(body.center().x, body.bottom() + px(30.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(AUTOSCROLL_TICK * 8);
+        cx.run_until_parked();
+
+        pane.read_with(&cx, |pane, _| {
+            let selection = pane.selection_rect();
+            assert_eq!(
+                selection.last_row,
+                pane.last_row_index(),
+                "the selection should have stopped at the one row there is \
+                 ({selection:?})"
+            );
+            // The selection clamps on its own, so the row the autoscroll asked
+            // for is what says whether it walked off the end of the table.
+            assert_eq!(
+                pane.grid.drag_cell.map(|cell| cell.row.index()),
+                Some(pane.last_row_index()),
+                "the autoscroll should not have asked for a row past the last"
+            );
+            assert_eq!(pane.list_state.logical_scroll_top().item_ix, 0);
+        });
+    }
+
+    #[test]
+    fn test_overshoot_is_zero_inside_and_signed_outside() {
+        assert_eq!(overshoot(px(50.), px(10.), px(100.)), px(0.));
+        assert_eq!(overshoot(px(10.), px(10.), px(100.)), px(0.));
+        assert_eq!(overshoot(px(100.), px(10.), px(100.)), px(0.));
+        assert_eq!(overshoot(px(120.), px(10.), px(100.)), px(20.));
+        assert_eq!(overshoot(px(4.), px(10.), px(100.)), px(-6.));
+        // An axis that has not been laid out is not a rectangle to be outside of.
+        assert_eq!(overshoot(px(120.), px(0.), px(0.)), px(0.));
+    }
+
+    #[test]
+    fn test_autoscroll_rows_grow_with_the_overshoot_and_then_stop() {
+        assert_eq!(autoscroll_rows(px(1.)), 1);
+        assert_eq!(autoscroll_rows(px(-1.)), 1);
+        assert_eq!(autoscroll_rows(px(40.)), 2);
+        assert_eq!(autoscroll_rows(px(-70.)), 3);
+        assert_eq!(autoscroll_rows(px(5000.)), AUTOSCROLL_MAX_ROWS);
+    }
 
     fn body_cell(row: usize, col: usize) -> GridCell {
         GridCell::new(GridRow::Body(DisplayRow(row)), AnyColumn(col))

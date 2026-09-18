@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use std::cmp::min;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,6 +20,7 @@ use gpui::{
     deferred, point, px,
 };
 use language::{Buffer, LanguageRegistry};
+use markdown::parser::{SCHEMES_THAT_RUN_CODE, link_destination_scheme};
 use markdown::{
     CodeBlockRenderer, CopyButtonVisibility, Markdown, MarkdownElement, MarkdownFont,
     MarkdownOptions, MarkdownStyle, MermaidLabelEditRequest,
@@ -95,6 +97,9 @@ struct MermaidLabelEditor {
     bounds: gpui::Bounds<Pixels>,
     /// Quotes the new text the way the token it replaces needs.
     encode: Box<dyn Fn(&str) -> String>,
+    /// Why the typed text cannot be written into this token at all, checked
+    /// before the edit rather than letting the diagram lose it silently.
+    write_refusal: Box<dyn Fn(&str) -> Option<&'static str>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -1178,6 +1183,31 @@ impl MarkdownPreviewView {
         ThemeRegistry::global(cx).get(&theme_name.0).ok()
     }
 
+    /// The style the preview renders with, in `markdown_preview_theme` when one
+    /// is set and in the editor's own theme otherwise.
+    fn preview_markdown_style(
+        preview_theme: &Option<Arc<Theme>>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> MarkdownStyle {
+        let mut markdown_style = if let Some(theme) = preview_theme {
+            MarkdownStyle::themed_with_overrides(
+                MarkdownFont::Preview,
+                theme.colors(),
+                theme.syntax(),
+                window,
+                cx,
+            )
+        } else {
+            MarkdownStyle::themed(MarkdownFont::Preview, window, cx)
+        };
+        // Only the preview follows this setting: hover popups and the agent
+        // panel build their own styles from the same `MarkdownStyle`.
+        markdown_style.soft_break_as_hard_break =
+            MarkdownPreviewSettings::get_global(cx).soft_break_as_hard_break;
+        markdown_style
+    }
+
     fn render_markdown_element(
         &self,
         preview_theme: &Option<Arc<Theme>>,
@@ -1202,21 +1232,7 @@ impl MarkdownPreviewView {
             project = Some(project_entity);
         }
 
-        let mut markdown_style = if let Some(theme) = preview_theme {
-            MarkdownStyle::themed_with_overrides(
-                MarkdownFont::Preview,
-                theme.colors(),
-                theme.syntax(),
-                window,
-                cx,
-            )
-        } else {
-            MarkdownStyle::themed(MarkdownFont::Preview, window, cx)
-        };
-        // Only the preview follows this setting: hover popups and the agent
-        // panel build their own styles from the same `MarkdownStyle`.
-        markdown_style.soft_break_as_hard_break =
-            MarkdownPreviewSettings::get_global(cx).soft_break_as_hard_break;
+        let markdown_style = Self::preview_markdown_style(preview_theme, window, cx);
 
         let mut markdown_element = MarkdownElement::new(self.markdown.clone(), markdown_style)
             .code_block_renderer(CodeBlockRenderer::Default {
@@ -1372,10 +1388,7 @@ impl MarkdownPreviewView {
     ) {
         let Some(source_range) = request.source_range() else {
             self.mermaid_label_editor = None;
-            self.report_mermaid_label_edit_refused(
-                "このラベルはソースの位置を特定できませんでした。",
-                cx,
-            );
+            self.report_mermaid_label_edit_refused(request.refusal_message(), cx);
             cx.notify();
             return;
         };
@@ -1400,12 +1413,18 @@ impl MarkdownPreviewView {
             ];
         window.focus(&focus_handle, cx);
 
+        let bounds = request.bounds;
+        let request = Rc::new(request);
         self.mermaid_label_editor = Some(MermaidLabelEditor {
             editor,
             source_range,
             source_text,
-            bounds: request.bounds,
-            encode: Box::new(move |new_label| request.encode(new_label)),
+            bounds,
+            encode: Box::new({
+                let request = request.clone();
+                move |new_label| request.encode(new_label)
+            }),
+            write_refusal: Box::new(move |new_label| request.write_refusal_message(new_label)),
             _subscriptions: subscriptions,
         });
         cx.notify();
@@ -1440,7 +1459,17 @@ impl MarkdownPreviewView {
             cx.notify();
             return;
         };
-        let new_text = (state.encode)(&state.editor.read(cx).text(cx));
+        let typed = state.editor.read(cx).text(cx);
+        // The field stays open and keeps the text, since the user has to change
+        // it for the edit to be possible at all.
+        if let Some(message) = (state.write_refusal)(&typed) {
+            self.mermaid_label_editor = Some(state);
+            self.report_mermaid_label_edit_refused(message, cx);
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+        let new_text = (state.encode)(&typed);
         let range =
             MultiBufferOffset(state.source_range.start)..MultiBufferOffset(state.source_range.end);
         let applied = source_editor.update(cx, |editor, cx| {
@@ -1594,6 +1623,27 @@ fn open_preview_url(
     window: &mut Window,
     cx: &mut App,
 ) {
+    // A Markdown link carries whatever destination it was written with, and the
+    // last step of this function hands an unrecognised scheme straight to the
+    // system opener. `<a href>` is already refused while the link is built, so
+    // this is where `[t](javascript:…)` is refused too.
+    if link_destination_scheme(&url)
+        .is_some_and(|scheme| SCHEMES_THAT_RUN_CODE.contains(&scheme.as_str()))
+    {
+        if let Some(workspace) = workspace.upgrade() {
+            workspace.update(cx, |workspace, cx| {
+                workspace.show_toast(
+                    Toast::new(
+                        NotificationId::unique::<LinkSchemeRefused>(),
+                        "このリンクの種類はプレビューから開けません",
+                    ),
+                    cx,
+                );
+            });
+        }
+        return;
+    }
+
     let decoded_path = urlencoding::decode(&url).unwrap_or_else(|_| Cow::Borrowed(&url));
 
     // Only `://` URLs skip local handling (a scheme check would misclassify `main.rs:2`); ambiguous links like `tel:123` are tried as files first, then fall back to the URL handler.
@@ -2208,6 +2258,9 @@ impl Render for MarkdownPreviewView {
 /// Identifies the toast shown when a label cannot be traced back to the source.
 struct MermaidLabelNotFound;
 
+/// Identifies the toast shown when a link's scheme is one the preview refuses.
+struct LinkSchemeRefused;
+
 impl SearchableItem for MarkdownPreviewView {
     type Match = Range<usize>;
 
@@ -2604,7 +2657,8 @@ mod tests {
     use editor::{Editor, MultiBufferOffset};
     use fs::FakeFs;
     use gpui::{
-        App, AppContext as _, Entity, Focusable as _, Modifiers, TestAppContext, WindowHandle, px,
+        App, AppContext as _, Entity, Focusable as _, Modifiers, TestAppContext, VisualTestContext,
+        WindowHandle, px,
     };
     use language::{Buffer, DiskState, Point};
     use project::{Project, ProjectPath};
@@ -2621,7 +2675,7 @@ mod tests {
         AppState, ItemId, MultiWorkspace, SaveIntent, Workspace, WorkspaceId, open_paths,
     };
 
-    use super::{MarkdownPreviewView, filter_non_rendered_matches, open_preview_url};
+    use super::{MarkdownPreviewView, SharedString, filter_non_rendered_matches, open_preview_url};
     use crate::markdown_preview_settings::MarkdownPreviewSettings;
     use gpui::BorrowAppContext as _;
     use settings::{Settings as _, SettingsStore};
@@ -2650,6 +2704,54 @@ mod tests {
                 "turning the setting off returns the preview to CommonMark"
             );
         });
+    }
+
+    /// A view with nothing in it, so the style can be built against a real
+    /// window without dragging a workspace along.
+    struct StyleTestView;
+
+    impl gpui::Render for StyleTestView {
+        fn render(
+            &mut self,
+            _window: &mut gpui::Window,
+            _cx: &mut gpui::Context<Self>,
+        ) -> impl gpui::IntoElement {
+            gpui::div()
+        }
+    }
+
+    #[gpui::test]
+    fn the_preview_style_follows_the_soft_break_setting(cx: &mut TestAppContext) {
+        let _app_state = init_test(cx);
+        let (_view, cx) = cx.add_window_view(|_window, _cx| StyleTestView);
+
+        let soft_break_as_hard_break = |cx: &mut VisualTestContext| {
+            cx.update(|window, cx| {
+                MarkdownPreviewView::preview_markdown_style(&None, window, cx)
+                    .soft_break_as_hard_break
+            })
+        };
+
+        assert!(
+            soft_break_as_hard_break(cx),
+            "the shipped defaults render a single newline as a line break"
+        );
+
+        cx.update(|_window, cx| {
+            cx.update_global::<SettingsStore, _>(|settings, cx| {
+                settings.update_user_settings(cx, |settings| {
+                    settings
+                        .markdown_preview
+                        .get_or_insert_default()
+                        .soft_break_as_hard_break = Some(false);
+                });
+            });
+        });
+
+        assert!(
+            !soft_break_as_hard_break(cx),
+            "turning the setting off has to reach the style the preview renders with"
+        );
     }
 
     #[test]
@@ -2833,6 +2935,88 @@ mod tests {
                 path: rel_path("images/root.png").into(),
             })
         );
+    }
+
+    #[gpui::test]
+    async fn refuses_to_open_a_link_whose_scheme_runs_code(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({"docs": {"guide.md": "x\n"}, "src": {"main.rs": "first\nsecond\n"}}),
+        )
+        .await;
+        let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+        register_markdown_language(&project, cx);
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let workspace =
+            multi_workspace.read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone());
+        let workspace_weak = workspace.downgrade();
+
+        let click = |url: &str, cx: &mut VisualTestContext| {
+            let url: SharedString = url.to_string().into();
+            multi_workspace.update_in(cx, |_, window, cx| {
+                open_preview_url(
+                    url,
+                    None,
+                    Some(PathBuf::from(path!("/project/docs"))),
+                    None,
+                    &workspace_weak,
+                    window,
+                    cx,
+                );
+            });
+            cx.run_until_parked();
+        };
+
+        // A destination the system opener would run rather than open, in each of
+        // the spellings that hide the scheme from a plain `find(':')`.
+        for url in [
+            "javascript:alert(1)",
+            "JavaScript:alert(1)",
+            "javascript%3Aalert(1)",
+            "data:text/html,<b>x</b>",
+            "vbscript:x",
+            "\tjavascript:alert(1)",
+        ] {
+            workspace.update(cx, |workspace, cx| workspace.clear_all_notifications(cx));
+            click(url, cx);
+
+            assert!(
+                !workspace.read_with(cx, |workspace, _| workspace.notification_ids().is_empty()),
+                "{url} should say why it was not opened"
+            );
+            assert!(
+                workspace.read_with(cx, |workspace, cx| workspace.active_item(cx).is_none()),
+                "{url} should open nothing"
+            );
+        }
+
+        // Everything else still goes through, scheme or not.
+        workspace.update(cx, |workspace, cx| workspace.clear_all_notifications(cx));
+        click("../src/main.rs:2", cx);
+        assert!(
+            workspace.read_with(cx, |workspace, _| workspace.notification_ids().is_empty()),
+            "a relative path is not refused"
+        );
+        assert!(
+            workspace.read_with(cx, |workspace, cx| workspace
+                .active_item(cx)
+                .and_then(|item| item.downcast::<Editor>())
+                .is_some()),
+            "the file it points at is opened"
+        );
+
+        for url in ["mailto:a@example.com", "https://example.com", "#anchor"] {
+            workspace.update(cx, |workspace, cx| workspace.clear_all_notifications(cx));
+            click(url, cx);
+            assert!(
+                workspace.read_with(cx, |workspace, _| workspace.notification_ids().is_empty()),
+                "{url} is not one of the refused schemes"
+            );
+        }
     }
 
     #[gpui::test]
@@ -4351,6 +4535,50 @@ mod tests {
         assert_eq!(
             editor.read_with(cx, |editor, cx| editor.buffer().read(cx).read(cx).text()),
             DIAGRAM
+        );
+    }
+
+    /// merman drops a quotation mark from an ER relationship's label instead of
+    /// decoding the entity it has to be written as, so writing one would make it
+    /// disappear from the diagram without a word. The field stays open with the
+    /// text still in it, since the user has to change it to get anywhere.
+    #[gpui::test]
+    async fn mermaid_label_edit_refuses_a_character_the_slot_cannot_hold(cx: &mut TestAppContext) {
+        let (multi_workspace, preview, editor) = open_preview_over(DIAGRAM, cx).await;
+        let request = label_request(DIAGRAM, "old").as_er_relationship_for_test();
+
+        multi_workspace
+            .update(cx, |_, window, cx| {
+                preview.update(cx, |preview, cx| {
+                    preview.open_mermaid_label_editor(request, window, cx);
+                    preview
+                        .mermaid_label_editor
+                        .as_ref()
+                        .expect("the field should be open")
+                        .editor
+                        .update(cx, |field, cx| field.set_text("言う \"はい\"", window, cx));
+                    preview.confirm_mermaid_label_edit(&menu::Confirm, window, cx);
+                    assert!(
+                        preview.mermaid_label_editor.is_some(),
+                        "the field has to stay open so the text can be corrected"
+                    );
+                    // A label the slot can hold goes through as usual.
+                    preview
+                        .mermaid_label_editor
+                        .as_ref()
+                        .expect("the field should be open")
+                        .editor
+                        .update(cx, |field, cx| field.set_text("言う はい", window, cx));
+                    preview.confirm_mermaid_label_edit(&menu::Confirm, window, cx);
+                });
+            })
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.buffer().read(cx).read(cx).text()),
+            DIAGRAM.replace("old", "\"言う はい\""),
+            "the refused text must not have been written, and the next one must"
         );
     }
 

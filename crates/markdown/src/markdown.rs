@@ -94,6 +94,7 @@ pub struct MermaidLabelEditRequest {
     source_range: Option<Range<usize>>,
     source_text: SharedString,
     quoting: crate::mermaid_source::MermaidLabelQuoting,
+    refusal: Option<crate::mermaid_source::MermaidLabelRefusal>,
     /// What the label says now, ready to be put in an input field.
     pub current_label: SharedString,
     /// The label's box in window coordinates, for positioning that field.
@@ -121,8 +122,54 @@ impl MermaidLabelEditRequest {
 
     /// Writes `new_label` in the form the token it replaces expects, quoting it
     /// when it would otherwise close its delimiter.
+    ///
+    /// An element that has no label token at all is given one by rewriting the
+    /// id it is drawn with, so the result may repeat [`Self::source_text`].
     pub fn encode(&self, new_label: &str) -> String {
-        crate::mermaid_source::encode_label(new_label, self.quoting)
+        crate::mermaid_source::encode_label(new_label, self.quoting, &self.source_text)
+    }
+
+    /// Why this label cannot be edited, for the consumer to show when
+    /// [`Self::source_range`] is `None`. It says nothing about a label that
+    /// does have a range.
+    pub fn refusal_message(&self) -> &'static str {
+        use crate::mermaid_source::MermaidLabelRefusal;
+        match self.refusal {
+            Some(MermaidLabelRefusal::SharedByGroup) => {
+                "この線のラベルは複数のつながりで共有されているため、ここでは編集できません。"
+            }
+            Some(MermaidLabelRefusal::NoLabelToken) => {
+                "この要素は ID がそのまま図に出ています。表示名を変えるには「Mermaid 図を編集」から説明や別名を付けてください。"
+            }
+            Some(MermaidLabelRefusal::EmptyLabel) => {
+                "空のラベルはここでは編集できません。「Mermaid 図を編集」から文字を書き加えてください。"
+            }
+            Some(MermaidLabelRefusal::NotLocated) | None => {
+                "このラベルはソースの位置を特定できませんでした。"
+            }
+        }
+    }
+
+    /// Why `new_label` cannot be written into the token this request replaces,
+    /// for the consumer to show instead of applying the edit.
+    ///
+    /// merman drops a quotation mark from an ER relationship's label rather than
+    /// decoding the entity it has to be written as, and a bare one would end the
+    /// string, so one cannot be drawn there at all. Writing it anyway would make
+    /// it disappear without a word.
+    pub fn write_refusal_message(&self, new_label: &str) -> Option<&'static str> {
+        (self.quoting == crate::mermaid_source::MermaidLabelQuoting::ErLabel
+            && new_label.contains('"'))
+        .then_some("ER 図の関係ラベルには引用符 (\") を書けません。別の記号に置き換えてください。")
+    }
+
+    /// The same request, for the one slot a label cannot hold every character
+    /// in, so a consumer's handling of [`Self::write_refusal_message`] can be
+    /// tested without building an ER diagram to double-click.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn as_er_relationship_for_test(mut self) -> Self {
+        self.quoting = crate::mermaid_source::MermaidLabelQuoting::ErLabel;
+        self
     }
 
     /// The request a double-click on a `A[…]` label raises, so a consumer can
@@ -133,6 +180,9 @@ impl MermaidLabelEditRequest {
         current_label: impl Into<SharedString>,
         bounds: Bounds<Pixels>,
     ) -> Self {
+        let refusal = source
+            .is_none()
+            .then_some(crate::mermaid_source::MermaidLabelRefusal::NotLocated);
         Self {
             source_range: source.as_ref().map(|(range, _)| range.clone()),
             source_text: source
@@ -140,6 +190,7 @@ impl MermaidLabelEditRequest {
                 .unwrap_or_default()
                 .into(),
             quoting: crate::mermaid_source::MermaidLabelQuoting::Delimited,
+            refusal,
             current_label: current_label.into(),
             bounds,
         }

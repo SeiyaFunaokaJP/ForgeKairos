@@ -1,4 +1,5 @@
-//! サンドボックス (WSL) の中で動く Claude Code CLI 用の IDE セッション (ADR-F49 決定 3・4)。
+//! サンドボックス (WSL・SSH 接続先) の中で動く Claude Code CLI 用の IDE セッション
+//! (ADR-F49 決定 3・4、ADR-F53)。
 //!
 //! ホストの [`crate::IdeServer`] と同じ WebSocket / JSON-RPC を話す (トランスポートと
 //! ディスパッチは共通の [`crate::run_connection`]) が、
@@ -45,6 +46,30 @@ use crate::{IDE_NAME, IdeServerRegistry, OpenTransport};
 
 /// サンドボックスのロックファイルに書く pid。理由は [`sandbox_lock_file_contents`]。
 const SANDBOX_LOCK_PID: u32 = 0;
+
+/// サンドボックスのセッションを受けられないプロジェクトか (受けられるなら `None`)。
+///
+/// ADR-F49 のローカルのプロジェクトに加え、ADR-F53 では SSH リモート (接続先の
+/// `remote_server`) も受ける。断るのは 2 つ:
+///
+/// - collab の相手として開いているプロジェクト (`is_local` でも `is_via_remote_server`
+///   でもない)。ファイルを見られるのはホストだけで、実体の確認 (`verify_agent_read`) も
+///   ホストへは届かない
+/// - collab で共有中のプロジェクト (`remote_id` あり)。差分タブと診断は共有相手にも見える
+pub(crate) fn session_project_refusal(
+    is_local: bool,
+    is_via_remote_server: bool,
+    is_shared_over_collab: bool,
+) -> Option<&'static str> {
+    if !is_local && !is_via_remote_server {
+        return Some("the project is opened over collab, whose host owns the files");
+    }
+    if is_shared_over_collab {
+        return Some("the project is shared over collab, so others would see the session");
+    }
+    None
+}
+
 /// 1 セッションで同時に処理する要求。
 const MAX_IN_FLIGHT_REQUESTS: usize = 8;
 /// 1 本の接続で、相手に届け終えていない応答 (処理中を含む)。
@@ -336,8 +361,12 @@ impl SandboxIdeSession {
     }
 
     /// セッションをワークスペースに結び付ける。差分タブと診断はこのプロジェクトのものを
-    /// 使うので、ローカルで共有もしていない (collab の相手に見えない) もので、セッションの
+    /// 使うので、共有していない (collab の相手に見えない) プロジェクトで、セッションの
     /// ルートがすべてそのワークツリーであるときだけ受ける。
+    ///
+    /// ADR-F53: SSH リモートのプロジェクトも受ける。ファイルを持っているのは接続先なので、
+    /// パスの実体確認はクライアントの FS ではなく接続先で行う ([`crate::tools`])。collab は
+    /// 受けない ([`session_project_refusal`])。
     fn attach(
         &mut self,
         workspace: WeakEntity<Workspace>,
@@ -347,27 +376,30 @@ impl SandboxIdeSession {
             .upgrade()
             .context("the workspace closed before the session started")?;
         let project = workspace.read(cx).project().clone();
-        let (is_private_local, worktree_paths) = {
+        let (refusal, worktree_paths) = {
             let project = project.read(cx);
             let worktree_paths = project
                 .visible_worktrees(cx)
                 .map(|worktree| worktree.read(cx).abs_path())
                 .collect::<Vec<_>>();
             (
-                project.is_local() && project.remote_id().is_none(),
+                session_project_refusal(
+                    project.is_local(),
+                    project.is_via_remote_server(),
+                    project.remote_id().is_some(),
+                ),
                 worktree_paths,
             )
         };
-        anyhow::ensure!(
-            is_private_local,
-            "the project is not a local project that only this machine sees"
-        );
+        if let Some(refusal) = refusal {
+            anyhow::bail!(refusal);
+        }
         let roots = self.paths.roots();
         let roots_are_worktrees = !roots.is_empty()
             && roots.iter().all(|root| {
                 worktree_paths
                     .iter()
-                    .any(|worktree_path| path_mapping::same_location(root, worktree_path))
+                    .any(|worktree_path| path_mapping::same_place(&self.paths, root, worktree_path))
             });
         anyhow::ensure!(
             roots_are_worktrees,
@@ -480,7 +512,7 @@ impl SandboxIdeSession {
             .paths
             .roots()
             .iter()
-            .any(|root| path_mapping::same_location(root, &worktree.abs_path()));
+            .any(|root| path_mapping::same_place(&self.paths, root, &worktree.abs_path()));
         let entry = file
             .entry_id
             .and_then(|entry_id| worktree.entry_for_id(entry_id))?;

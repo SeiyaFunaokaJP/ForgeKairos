@@ -108,6 +108,7 @@ use multi_buffer::{
     Anchor, AnchorRangeExt, MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16,
     MultiBufferPoint, MultiBufferRow, MultiBufferSnapshot, RowInfo, ToOffset, ToPoint,
 };
+use parking_lot::Mutex;
 use project::project_settings::DiagnosticSeverity;
 use project::{InlayId, lsp_store::LspFoldingRange, lsp_store::TokenType};
 use serde::Deserialize;
@@ -241,6 +242,9 @@ pub struct DisplayMap {
     pub(crate) diagnostics_max_severity: DiagnosticSeverity,
     pub(crate) companion: Option<(WeakEntity<DisplayMap>, Entity<Companion>)>,
     lsp_folding_crease_ids: HashMap<BufferId, Vec<CreaseId>>,
+    /// The one walk of a Markdown document every snapshot of this map answers
+    /// its `<details>` and setext heading folds from.
+    markdown_scan_cache: MarkdownScanCache,
 }
 
 pub(crate) struct Companion {
@@ -412,6 +416,7 @@ impl DisplayMap {
             masked: false,
             companion: None,
             lsp_folding_crease_ids: HashMap::default(),
+            markdown_scan_cache: MarkdownScanCache::default(),
         }
     }
 
@@ -666,6 +671,7 @@ impl DisplayMap {
             masked: self.masked,
             use_lsp_folding_ranges: !self.lsp_folding_crease_ids.is_empty(),
             fold_placeholder: self.fold_placeholder.clone(),
+            markdown_scan_cache: self.markdown_scan_cache.clone(),
         }
     }
 
@@ -690,6 +696,7 @@ impl DisplayMap {
             masked: self.masked,
             use_lsp_folding_ranges: !self.lsp_folding_crease_ids.is_empty(),
             fold_placeholder: self.fold_placeholder.clone(),
+            markdown_scan_cache: self.markdown_scan_cache.clone(),
         }
     }
 
@@ -1516,6 +1523,17 @@ const MARKDOWN_DETAILS_SCAN_LIMIT: u32 = 2_000;
 /// and a scan cut short by it offers no fold rather than a wrong one.
 const MARKDOWN_DETAILS_SCAN_CHAR_LIMIT: usize = 400_000;
 
+/// How many characters the whole-document walk behind [`MarkdownScan`] reads
+/// before it gives up.
+///
+/// The walk is redone once for every version of the buffer, so this is what a
+/// keystroke in a Markdown file costs at worst — where the limit above is what
+/// one row costs on every frame. A million characters is twice the largest
+/// document this fork's own notes run to and a few milliseconds of walking; a
+/// file past it keeps the bounded per-row behaviour rather than paying for a
+/// walk on every edit.
+const MARKDOWN_DOCUMENT_SCAN_CHAR_LIMIT: usize = 1_000_000;
+
 /// The fold a Markdown heading row offers: the heading line stays visible and
 /// its body — nested headings included — is hidden.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1523,6 +1541,92 @@ pub struct MarkdownHeadingFold {
     /// The `#` count, 1 to 6.
     pub level: u32,
     pub range: Range<MultiBufferPoint>,
+}
+
+/// One walk of a Markdown document, kept on the [`DisplayMap`] and shared with
+/// every [`DisplaySnapshot`] taken from it.
+///
+/// The gutter asks for a crease once per visible row and `editor::FoldAll` once
+/// per row of the buffer, so neither pairing `<details>` tags nor working out
+/// where a setext heading's body ends can afford a walk per row. Walking once
+/// per version of the buffer and answering every row from the result is what
+/// lets the `<details>` fold drop [`MARKDOWN_DETAILS_SCAN_LIMIT`] rather than
+/// raise it.
+pub(crate) type MarkdownScanCache = Arc<Mutex<MarkdownScanCacheState>>;
+
+#[derive(Default)]
+pub(crate) struct MarkdownScanCacheState {
+    /// What [`Self::scan`] was taken from, kept even when the walk gave up, so
+    /// that a document too large to walk is not walked again for every row.
+    key: Option<MarkdownScanKey>,
+    scan: Option<MarkdownScan>,
+    /// How many walks have been run. Only the tests read this, to pin down that
+    /// drawing a screenful of gutter costs one walk and not one per row.
+    walks: usize,
+    /// How many times the rows have been handed out by
+    /// [`DisplaySnapshot::markdown_rows_from`]. Only the tests read this, to
+    /// pin down that a walk reads the document once — a second reading is what
+    /// looking for the end of the frontmatter separately would cost on a
+    /// document that opens with a delimiter and never closes it.
+    #[cfg(any(test, feature = "test-support"))]
+    row_passes: usize,
+}
+
+struct MarkdownScan {
+    /// Each `<details>` row with the row closing it, sorted. A disclosure that
+    /// is never closed is paired with the last row of the buffer, which is how
+    /// far it folds.
+    details_pairs: Vec<(u32, u32)>,
+    /// The fold of each setext heading, in document order, anchored on the
+    /// heading's underline row.
+    setext_headings: Vec<MarkdownHeadingFold>,
+}
+
+/// What a [`MarkdownScan`] was taken from.
+///
+/// Only a singleton buffer is walked: the rows of a multi-excerpt multibuffer
+/// move when excerpts come and go and nothing in the snapshot counts that, so
+/// there would be no way to tell a stale walk from a current one. The
+/// `<details>` fold falls back to its bounded per-row scan there, and the
+/// setext heading fold — which has no bounded form — is not offered at all.
+#[derive(PartialEq, Eq)]
+struct MarkdownScanKey {
+    buffer_id: BufferId,
+    version: clock::Global,
+    /// Diff hunks expanded into a singleton multibuffer move its rows without
+    /// touching the buffer's own version, and this is what counts those.
+    edit_count: usize,
+}
+
+/// A heading the lexical walk found, whatever its syntax.
+struct MarkdownHeadingRow {
+    /// The first row of the heading: its `#` line, or a setext heading's text.
+    /// The section it opens starts here, so this is one row past the end of the
+    /// body of the section before it.
+    start_row: u32,
+    /// The row the fold hangs off, which stays visible: the same row for an ATX
+    /// heading, and the underline for a setext one (ADR §5.10 decision 6).
+    anchor_row: u32,
+    level: u32,
+    is_setext: bool,
+}
+
+impl MarkdownScan {
+    /// The row the `<details>` opened on `open_row` is closed on, or `None`
+    /// when the walk pairs no disclosure with that row.
+    fn details_close_row(&self, open_row: u32) -> Option<u32> {
+        // A row carrying two opening tags is paired twice, and the fold the row
+        // offers is the outer one's — the last of the two, since it closes
+        // later.
+        let index = self
+            .details_pairs
+            .partition_point(|(row, _)| *row <= open_row)
+            .checked_sub(1)?;
+        match self.details_pairs.get(index) {
+            Some((row, close_row)) if *row == open_row => Some(*close_row),
+            _ => None,
+        }
+    }
 }
 
 /// `Some(level)` when `line` is an ATX heading line, following the CommonMark
@@ -1572,6 +1676,89 @@ fn markdown_fence_delimiter(line: &str) -> Option<(char, usize)> {
     Some((marker, length))
 }
 
+/// `Some(level)` when `line` is a setext heading underline: up to three spaces
+/// of indent and then nothing but `=` (level 1) or `-` (level 2), trailing
+/// whitespace aside.
+///
+/// A line of dashes is also how a thematic break is written, and CommonMark
+/// resolves that in favour of the heading whenever the line above is a
+/// paragraph — which is what [`markdown_setext_heading_text`] decides.
+fn markdown_setext_underline_level(line: &str) -> Option<u32> {
+    let after_indent = line.trim_start_matches(' ');
+    if line.len() - after_indent.len() > 3 {
+        return None;
+    }
+    let marker = after_indent.chars().next()?;
+    let level = match marker {
+        '=' => 1,
+        '-' => 2,
+        _ => return None,
+    };
+    let length = after_indent
+        .chars()
+        .take_while(|character| *character == marker)
+        .count();
+    after_indent
+        .get(length..)
+        .is_some_and(|rest| rest.trim().is_empty())
+        .then_some(level)
+}
+
+/// Whether `line` can be the text of a setext heading, which is what turns the
+/// `=` or `-` line under it into an underline rather than a thematic break or a
+/// list.
+///
+/// CommonMark arrives at a paragraph by elimination — it is what is left once
+/// every other kind of block has been ruled out — so this rules the same ones
+/// out. A line that is itself an underline is rejected because the paragraph
+/// above it already claimed it.
+fn markdown_setext_heading_text(line: &str) -> bool {
+    let after_indent = line.trim_start_matches(' ');
+    // Four columns of indent make the line indented code instead, and a leading
+    // tab is four columns on its own.
+    if line.len() - after_indent.len() > 3 || after_indent.starts_with('\t') {
+        return false;
+    }
+    if after_indent.trim().is_empty() {
+        return false;
+    }
+    if markdown_atx_heading_level(line).is_some()
+        || markdown_fence_delimiter(line).is_some()
+        || markdown_setext_underline_level(line).is_some()
+    {
+        return false;
+    }
+    // A block quote or an HTML block interrupts a paragraph, so a line of
+    // dashes under one of them is a thematic break.
+    if after_indent.starts_with(['>', '<']) {
+        return false;
+    }
+    !markdown_starts_list_item(after_indent)
+}
+
+/// Whether `after_indent` — a line whose leading spaces have already been
+/// removed — starts with a bullet or an ordered list marker.
+fn markdown_starts_list_item(after_indent: &str) -> bool {
+    let mut characters = after_indent.chars();
+    let Some(first) = characters.next() else {
+        return false;
+    };
+    if matches!(first, '-' | '*' | '+') {
+        return matches!(characters.next(), None | Some(' ') | Some('\t'));
+    }
+    // CommonMark allows at most nine digits in an ordered list marker.
+    let digits = after_indent
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .count();
+    if !(1..=9).contains(&digits) {
+        return false;
+    }
+    let mut rest = after_indent.get(digits..).unwrap_or_default().chars();
+    matches!(rest.next(), Some('.') | Some(')'))
+        && matches!(rest.next(), None | Some(' ') | Some('\t'))
+}
+
 /// Whether `line` opens an HTML block with a `<details>` tag: up to three spaces
 /// of indent and then the tag. CommonMark needs the tag at the start of the line
 /// for the disclosure to be a block of its own; a `<details>` in the middle of a
@@ -1593,15 +1780,14 @@ fn markdown_details_block_open(line: &str) -> bool {
             .is_some_and(markdown_tag_name_ends)
 }
 
-/// Walks the `<details>` and `</details>` tags of `line` in document order,
-/// applying each to `depth`, and returns `true` once the disclosure the scan
-/// started from is closed. Order matters because one line can close one
-/// disclosure and open the next.
-fn markdown_details_tags(line: &str, depth: &mut usize) -> bool {
+/// Hands the `<details>` and `</details>` tags of `line` to `visit` in document
+/// order, `true` for an opening tag, and stops once `visit` returns `true`.
+/// Order matters because one line can close one disclosure and open the next.
+fn markdown_details_tags_in(line: &str, mut visit: impl FnMut(bool) -> bool) {
     // Almost every row the scan walks is prose, and this runs on all of them,
     // so the copy below is only made once a tag could possibly be there.
     if !line.contains('<') {
-        return false;
+        return;
     }
     // Lowercasing ASCII keeps every byte offset, so the slices below stay on
     // character boundaries.
@@ -1622,19 +1808,32 @@ fn markdown_details_tags(line: &str, depth: &mut usize) -> bool {
             continue;
         }
         if let Some(after) = rest.strip_prefix("</details") {
-            if markdown_tag_name_ends(after) && *depth > 0 {
-                *depth -= 1;
-                if *depth == 0 {
-                    return true;
-                }
+            if markdown_tag_name_ends(after) && visit(false) {
+                return;
             }
         } else if let Some(after) = rest.strip_prefix("<details")
             && markdown_tag_name_ends(after)
+            && visit(true)
         {
-            *depth += 1;
+            return;
         }
     }
-    false
+}
+
+/// Applies the `<details>` and `</details>` tags of `line` to `depth`, and
+/// returns `true` once the disclosure the scan started from is closed.
+fn markdown_details_tags(line: &str, depth: &mut usize) -> bool {
+    let mut closed = false;
+    markdown_details_tags_in(line, |opens| {
+        if opens {
+            *depth += 1;
+        } else if *depth > 0 {
+            *depth -= 1;
+            closed = *depth == 0;
+        }
+        closed
+    });
+    closed
 }
 
 fn markdown_tag_name_ends(after_name: &str) -> bool {
@@ -1660,6 +1859,10 @@ pub struct DisplaySnapshot {
     /// When true, LSP folding ranges are used via the crease map and the
     /// indent-based fallback in `crease_for_buffer_row` is skipped.
     pub(crate) use_lsp_folding_ranges: bool,
+    /// Shared with the [`DisplayMap`] this snapshot was taken from, so that the
+    /// document is walked once per version of the buffer rather than once per
+    /// snapshot.
+    markdown_scan_cache: MarkdownScanCache,
 }
 
 impl DisplaySnapshot {
@@ -2438,22 +2641,27 @@ impl DisplaySnapshot {
     /// frame.
     ///
     /// Returns whether every row through `end_row` was reached. A walk stopped
-    /// by [`MARKDOWN_DETAILS_SCAN_CHAR_LIMIT`] has seen no further than it got,
-    /// so its caller cannot conclude anything about the rows beyond.
+    /// by `char_budget` has seen no further than it got, so its caller cannot
+    /// conclude anything about the rows beyond.
     fn markdown_rows_from(
         &self,
         start_row: u32,
         end_row: u32,
+        char_budget: usize,
         mut visit: impl FnMut(u32, &str) -> bool,
     ) -> bool {
         if start_row > end_row {
             return true;
         }
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            self.markdown_scan_cache.lock().row_passes += 1;
+        }
 
         let mut row = start_row;
         let mut line = String::new();
         let mut line_length = 0;
-        let mut budget = MARKDOWN_DETAILS_SCAN_CHAR_LIMIT;
+        let mut budget = char_budget;
         for character in self.buffer_snapshot().chars_at(Point::new(start_row, 0)) {
             if budget == 0 {
                 return false;
@@ -2475,6 +2683,219 @@ impl DisplaySnapshot {
         // the branch above.
         visit(row, &line);
         true
+    }
+
+    /// The key a [`MarkdownScan`] of this snapshot would be filed under, or
+    /// `None` when the buffer is one that must not be walked at all — see
+    /// [`MarkdownScanKey`].
+    fn markdown_scan_key(&self) -> Option<MarkdownScanKey> {
+        let snapshot = self.buffer_snapshot();
+        let buffer = snapshot.as_singleton()?;
+        if buffer
+            .language()
+            .is_none_or(|language| language.name() != MARKDOWN_LANGUAGE_NAME)
+        {
+            return None;
+        }
+        Some(MarkdownScanKey {
+            buffer_id: buffer.remote_id(),
+            version: buffer.version().clone(),
+            edit_count: snapshot.edit_count(),
+        })
+    }
+
+    /// Hands the walk of this Markdown document to `read`, running it first when
+    /// the one in hand was taken from another version of the buffer. `None` when
+    /// there is no walk to be had: another language, a multi-excerpt
+    /// multibuffer, or a document past
+    /// [`MARKDOWN_DOCUMENT_SCAN_CHAR_LIMIT`].
+    ///
+    /// `read` takes what it needs out of the walk rather than the walk being
+    /// handed back, because the cache is shared and is held locked while it is
+    /// read.
+    fn with_markdown_scan<T>(&self, read: impl FnOnce(&MarkdownScan) -> T) -> Option<T> {
+        let key = self.markdown_scan_key()?;
+        {
+            let cache = self.markdown_scan_cache.lock();
+            if cache.key.as_ref() == Some(&key) {
+                return cache.scan.as_ref().map(read);
+            }
+        }
+        // The walk runs with the cache unlocked. `parking_lot::Mutex` is not
+        // reentrant, so anything the walk came to ask a fold for would hang
+        // rather than misbehave, and walking under the lock is what would make
+        // that a hang. The cost is that two snapshots of the same version that
+        // miss at the same time both walk and store the same answer; the folds
+        // are asked for from the foreground thread a row at a time, so the
+        // second walk is a possibility rather than something that happens.
+        let scan = self.markdown_document_scan();
+        let mut cache = self.markdown_scan_cache.lock();
+        cache.walks += 1;
+        cache.scan = scan;
+        cache.key = Some(key);
+        cache.scan.as_ref().map(read)
+    }
+
+    /// How many times this snapshot's document has been walked, which is what
+    /// the tests weigh a screenful of gutter against.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn markdown_document_walks(&self) -> usize {
+        self.markdown_scan_cache.lock().walks
+    }
+
+    /// How many times the rows of this snapshot's document have been handed out
+    /// by [`Self::markdown_rows_from`], which is what the tests weigh a walk
+    /// against: one walk is meant to be one reading of the document.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn markdown_row_passes(&self) -> usize {
+        self.markdown_scan_cache.lock().row_passes
+    }
+
+    /// Walks the document once and works out everything the Markdown folds need
+    /// to answer row by row: where each `<details>` is closed, and what each
+    /// setext heading's underline folds away.
+    ///
+    /// `None` when the walk ran past [`MARKDOWN_DOCUMENT_SCAN_CHAR_LIMIT`]: it
+    /// has seen nothing of the rows beyond, and a half-walked document would
+    /// pair a disclosure with the wrong row rather than with none.
+    fn markdown_document_scan(&self) -> Option<MarkdownScan> {
+        let snapshot = self.buffer_snapshot();
+        let max_row = snapshot.max_row().0;
+        // `tree-sitter-md` reads a metadata block only when the very first line
+        // is the delimiter and a *later* line closes it — an unclosed `---`
+        // parses as a thematic break — and the walk applies the same rule.
+        // Without it the closing `---` reads as the underline of a setext
+        // heading whose text is the last metadata line, and offers to fold the
+        // whole document away.
+        //
+        // Whether the block is closed is only known once the close turns up, so
+        // the walk takes the rows that may be metadata as ordinary ones and
+        // throws away what it made of them if it finds the close. Looking for
+        // the close first would read every row of a document that opens with a
+        // delimiter and never closes it a second time.
+        let mut frontmatter_delimiter = match self.markdown_line(0).trim_end() {
+            "---" => Some("---"),
+            "+++" => Some("+++"),
+            _ => None,
+        };
+
+        let mut open_fence: Option<(char, usize)> = None;
+        let mut open_details_rows: Vec<u32> = Vec::new();
+        let mut details_pairs: Vec<(u32, u32)> = Vec::new();
+        let mut headings: Vec<MarkdownHeadingRow> = Vec::new();
+        // Where the run of paragraph rows ending on the row before the one
+        // being visited began. CommonMark makes the whole paragraph the text of
+        // the setext heading its underline closes, so that is where the heading
+        // starts; taking the row above the underline instead would leave the
+        // section above folding all but the last line of the heading away.
+        let mut heading_text_start_row: Option<u32> = None;
+
+        let complete = self.markdown_rows_from(
+            0,
+            max_row,
+            MARKDOWN_DOCUMENT_SCAN_CHAR_LIMIT,
+            |row, line| {
+                // The opening delimiter is on row zero, so only a row below it
+                // can be the close that turns those rows into metadata.
+                if let Some(delimiter) = frontmatter_delimiter
+                    && row > 0
+                    && line.trim_end() == delimiter
+                {
+                    frontmatter_delimiter = None;
+                    open_fence = None;
+                    open_details_rows.clear();
+                    details_pairs.clear();
+                    headings.clear();
+                    heading_text_start_row = None;
+                    return false;
+                }
+
+                // Inside a fenced code block every line is an example: a `#` is
+                // not a heading, a row of dashes is not an underline, and a
+                // `</details>` closes nothing.
+                if let Some((marker, length)) = open_fence {
+                    if is_closing_fence(line, marker, length) {
+                        open_fence = None;
+                    }
+                    heading_text_start_row = None;
+                    return false;
+                }
+                if let Some(fence) = markdown_fence_delimiter(line) {
+                    open_fence = Some(fence);
+                    heading_text_start_row = None;
+                    return false;
+                }
+
+                if let Some(level) = markdown_atx_heading_level(line) {
+                    headings.push(MarkdownHeadingRow {
+                        start_row: row,
+                        anchor_row: row,
+                        level,
+                        is_setext: false,
+                    });
+                } else if let Some(text_start_row) = heading_text_start_row
+                    && let Some(level) = markdown_setext_underline_level(line)
+                {
+                    headings.push(MarkdownHeadingRow {
+                        start_row: text_start_row,
+                        anchor_row: row,
+                        level,
+                        is_setext: true,
+                    });
+                }
+
+                markdown_details_tags_in(line, |opens| {
+                    if opens {
+                        open_details_rows.push(row);
+                    } else if let Some(open_row) = open_details_rows.pop() {
+                        details_pairs.push((open_row, row));
+                    }
+                    false
+                });
+
+                heading_text_start_row = if markdown_setext_heading_text(line) {
+                    Some(heading_text_start_row.unwrap_or(row))
+                } else {
+                    None
+                };
+                false
+            },
+        );
+        if !complete {
+            return None;
+        }
+
+        // A disclosure that is never closed still has a body to hide, and the
+        // extent it hides runs to the end of the buffer.
+        details_pairs.extend(
+            open_details_rows
+                .into_iter()
+                .map(|open_row| (open_row, max_row)),
+        );
+        details_pairs.sort_unstable();
+
+        let setext_headings = headings
+            .iter()
+            .enumerate()
+            .filter(|(_, heading)| heading.is_setext)
+            .filter_map(|(index, heading)| {
+                // A section runs until a heading of its own level or shallower,
+                // so a deeper one on the way is part of the body and folds with
+                // it.
+                let last_body_row = headings
+                    .get(index + 1..)
+                    .unwrap_or_default()
+                    .iter()
+                    .find(|next| next.level <= heading.level)
+                    .map_or(max_row, |next| next.start_row.saturating_sub(1));
+                self.markdown_heading_fold_through(heading.anchor_row, heading.level, last_body_row)
+            })
+            .collect();
+
+        Some(MarkdownScan {
+            details_pairs,
+            setext_headings,
+        })
     }
 
     /// Whether the syntax layer at the start of `row` is the Markdown layer
@@ -2518,17 +2939,31 @@ impl DisplaySnapshot {
         level: u32,
         section_end: MultiBufferPoint,
     ) -> Option<MarkdownHeadingFold> {
-        let snapshot = self.buffer_snapshot();
-
-        // A section ends where the next one begins, and the blank lines before
-        // that read as separating the two rather than as the body's tail, so
-        // neither is folded away.
-        let mut end_row = if section_end.column == 0 {
+        // A section ends where the next one begins, so its end lands at the
+        // start of a row that is no longer part of it.
+        let last_body_row = if section_end.column == 0 {
             section_end.row.saturating_sub(1)
         } else {
             section_end.row
-        }
-        .min(snapshot.max_row().0);
+        };
+        self.markdown_heading_fold_through(heading_row, level, last_body_row)
+    }
+
+    /// The fold a heading offers once the last row of its body is known.
+    ///
+    /// `heading_row` is the row that stays visible — the `#` line of an ATX
+    /// heading, the underline of a setext one — so the fold starts at its end.
+    /// The blank lines before the next heading read as separating the two
+    /// rather than as the tail of the body, so none of them is folded away.
+    fn markdown_heading_fold_through(
+        &self,
+        heading_row: u32,
+        level: u32,
+        last_body_row: u32,
+    ) -> Option<MarkdownHeadingFold> {
+        let snapshot = self.buffer_snapshot();
+
+        let mut end_row = last_body_row.min(snapshot.max_row().0);
         while end_row > heading_row && snapshot.is_line_blank(MultiBufferRow(end_row)) {
             end_row -= 1;
         }
@@ -2556,7 +2991,8 @@ impl DisplaySnapshot {
     /// which is why a `#` line inside a fenced code block is rejected.
     ///
     /// Setext headings (`===` / `---` underlines) are left out: `tree-sitter-md`
-    /// does not open a `section` for them, so there is no extent to fold.
+    /// does not open a `section` for them, so there is no extent to fold here.
+    /// [`Self::markdown_setext_heading_fold`] answers for those.
     pub fn markdown_heading_fold(&self, buffer_row: MultiBufferRow) -> Option<MarkdownHeadingFold> {
         let level = self.markdown_heading_level_at(buffer_row.0)?;
 
@@ -2578,12 +3014,42 @@ impl DisplaySnapshot {
         self.markdown_heading_fold_extent(buffer_row.0, level, section_end)
     }
 
-    /// Every ATX Markdown heading fold in the buffer, in document order.
+    /// The fold a setext Markdown heading offers, asked on its underline row.
+    ///
+    /// `tree-sitter-md` opens a `section` from an `atx_heading` only — its
+    /// `_section1`..`_section6` rules all start with one — so the extent
+    /// [`Self::markdown_heading_fold`] reads off the tree does not exist for a
+    /// setext heading, and the whole-document walk works it out lexically
+    /// instead.
+    ///
+    /// ADR §5.10 decision 6 keeps the heading itself visible, and a setext
+    /// heading is two lines: the fold starts at the end of the underline, which
+    /// is therefore also the row the gutter offers it on.
+    pub fn markdown_setext_heading_fold(
+        &self,
+        buffer_row: MultiBufferRow,
+    ) -> Option<MarkdownHeadingFold> {
+        // The gutter asks for a crease per visible row and `editor::FoldAll`
+        // for every row in the buffer, of whatever language, but nothing here
+        // reads the row: [`Self::markdown_scan_key`] turns away every buffer
+        // that is not a Markdown singleton before that.
+        self.with_markdown_scan(|scan| {
+            scan.setext_headings
+                .binary_search_by_key(&buffer_row.0, |heading| heading.range.start.row)
+                .ok()
+                .and_then(|index| scan.setext_headings.get(index).cloned())
+        })
+        .flatten()
+    }
+
+    /// Every Markdown heading fold in the buffer, in document order.
     ///
     /// Folding a whole file needs every heading at once, and asking
     /// [`Self::markdown_heading_fold`] row by row would set up one tree-sitter
     /// query per heading; this walks the tree once instead, so a document with
-    /// thousands of headings stays a single pass.
+    /// thousands of headings stays a single pass. The setext headings come from
+    /// the whole-document walk, which is where they are worked out in either
+    /// case, so the two forms cannot disagree.
     pub fn markdown_heading_folds(&self) -> Vec<MarkdownHeadingFold> {
         let snapshot = self.buffer_snapshot();
         let mut folds = snapshot
@@ -2608,6 +3074,10 @@ impl DisplaySnapshot {
                 )
             })
             .collect::<Vec<_>>();
+        folds.extend(
+            self.with_markdown_scan(|scan| scan.setext_headings.clone())
+                .unwrap_or_default(),
+        );
         // A nested section's match completes before the section enclosing it,
         // so the query hands these back child-first rather than in the order
         // the headings appear.
@@ -2695,7 +3165,7 @@ impl DisplaySnapshot {
     ///
     /// A CommonMark HTML block ends at the first blank line, so the opening tag,
     /// the body and `</details>` are separate blocks and no tree-sitter node
-    /// spans the pair. The tags are matched by scanning forward instead,
+    /// spans the pair. The tags are matched by walking the rows instead,
     /// skipping fenced code blocks so that a `</details>` quoted in an example
     /// closes nothing.
     fn markdown_details_fold(
@@ -2713,46 +3183,67 @@ impl DisplaySnapshot {
             return None;
         }
 
-        let snapshot = self.buffer_snapshot();
-        let max_row = snapshot.max_row().0;
-        let scan_end = max_row.min(buffer_row.0.saturating_add(MARKDOWN_DETAILS_SCAN_LIMIT));
-        let mut open_fence = None;
-        let mut close_row = None;
-        let reached_scan_end = self.markdown_rows_from(buffer_row.0 + 1, scan_end, |row, line| {
-            match open_fence {
-                Some((marker, length)) => {
-                    if is_closing_fence(line, marker, length) {
-                        open_fence = None;
-                    }
-                }
-                None => {
-                    if let Some(fence) = markdown_fence_delimiter(line) {
-                        open_fence = Some(fence);
-                    } else if markdown_details_tags(line, &mut depth) {
-                        close_row = Some(row);
-                        return true;
-                    }
-                }
-            }
-            false
-        });
-
-        let end_row = match close_row {
-            Some(row) => row,
-            // An unclosed `<details>` still has a body to hide, but only the
-            // scan that reached the end of the buffer rather than one of its
-            // own limits knows that there is no closing tag further down.
-            None if reached_scan_end && scan_end == max_row => max_row,
-            None => return None,
+        let end_row = match self.with_markdown_scan(|scan| scan.details_close_row(buffer_row.0)) {
+            Some(close_row) => close_row?,
+            None => self.markdown_details_close_row_nearby(buffer_row.0, depth)?,
         };
         if end_row <= buffer_row.0 {
             return None;
         }
 
+        let snapshot = self.buffer_snapshot();
         Some(
             MultiBufferPoint::new(buffer_row.0, snapshot.line_len(buffer_row))
                 ..MultiBufferPoint::new(end_row, snapshot.line_len(MultiBufferRow(end_row))),
         )
+    }
+
+    /// Where the disclosure opened on `open_row` at `depth` is closed, found by
+    /// walking forward at most [`MARKDOWN_DETAILS_SCAN_LIMIT`] rows.
+    ///
+    /// This is what answers where no whole-document walk is kept — a
+    /// multi-excerpt multibuffer, or a document too large to walk on every edit.
+    /// The gutter asks once per visible row and `editor::FoldAll` once per row
+    /// of the buffer, so a disclosure that is never closed must not walk a large
+    /// file to its end each time it is drawn; past the limit it offers no fold
+    /// rather than a wrong one.
+    fn markdown_details_close_row_nearby(&self, open_row: u32, mut depth: usize) -> Option<u32> {
+        let max_row = self.buffer_snapshot().max_row().0;
+        let scan_end = max_row.min(open_row.saturating_add(MARKDOWN_DETAILS_SCAN_LIMIT));
+        let mut open_fence = None;
+        let mut close_row = None;
+        let reached_scan_end = self.markdown_rows_from(
+            open_row + 1,
+            scan_end,
+            MARKDOWN_DETAILS_SCAN_CHAR_LIMIT,
+            |row, line| {
+                match open_fence {
+                    Some((marker, length)) => {
+                        if is_closing_fence(line, marker, length) {
+                            open_fence = None;
+                        }
+                    }
+                    None => {
+                        if let Some(fence) = markdown_fence_delimiter(line) {
+                            open_fence = Some(fence);
+                        } else if markdown_details_tags(line, &mut depth) {
+                            close_row = Some(row);
+                            return true;
+                        }
+                    }
+                }
+                false
+            },
+        );
+
+        match close_row {
+            Some(row) => Some(row),
+            // An unclosed `<details>` still has a body to hide, but only a walk
+            // that reached the end of the buffer rather than one of its own
+            // limits knows that there is no closing tag further down.
+            None if reached_scan_end && scan_end == max_row => Some(max_row),
+            None => None,
+        }
     }
 
     /// Whether `row` sits inside a fenced code block, where a `<details>` tag is
@@ -2834,6 +3325,16 @@ impl DisplaySnapshot {
             }
         } else if !self.is_line_folded(MultiBufferRow(start.row))
             && let Some(heading) = self.markdown_heading_fold(buffer_row)
+        {
+            Some(Crease::Inline {
+                range: heading.range,
+                placeholder: self.fold_placeholder.clone(),
+                render_toggle: None,
+                render_trailer: None,
+                metadata: None,
+            })
+        } else if !self.is_line_folded(MultiBufferRow(start.row))
+            && let Some(heading) = self.markdown_setext_heading_fold(buffer_row)
         {
             Some(Crease::Inline {
                 range: heading.range,

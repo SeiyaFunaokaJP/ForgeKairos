@@ -130,6 +130,7 @@ impl FakeGitRepositoryState {
                     "rev-parse --verify --quiet REBASE_HEAD",
                     "rev-parse --verify --quiet CHERRY_PICK_HEAD",
                     "rev-parse --verify --quiet REVERT_HEAD",
+                    "rev-parse --verify --quiet MERGE_HEAD",
                 ]
                 .into_iter()
                 .map(|args| {
@@ -141,7 +142,28 @@ impl FakeGitRepositoryState {
                             exit_code: Some(1),
                         },
                     )
-                }),
+                })
+                // No ref found means the probe goes on to look for leftover conflicts, which a
+                // fresh fake repository doesn't have either, and then for the detached HEAD a
+                // rebase leaves behind. A fresh fake repository is on a branch.
+                .chain([
+                    (
+                        "diff --name-only --diff-filter=U".to_string(),
+                        GitCommandOutput {
+                            stdout: String::new(),
+                            stderr: String::new(),
+                            exit_code: Some(0),
+                        },
+                    ),
+                    (
+                        "rev-parse --abbrev-ref HEAD".to_string(),
+                        GitCommandOutput {
+                            stdout: "main\n".to_string(),
+                            stderr: String::new(),
+                            exit_code: Some(0),
+                        },
+                    ),
+                ]),
             ),
             run_command_log: Vec::new(),
             run_command_envs: Vec::new(),
@@ -1644,11 +1666,24 @@ impl GitRepository for FakeGitRepository {
         async move {
             let hash_query = commit_hash_search_query(search_args.query.as_str())
                 .map(|query| query.to_ascii_lowercase());
-            let message_query = if search_args.case_sensitive {
-                search_args.query.to_string()
-            } else {
-                search_args.query.to_lowercase()
+            let fold_case = |text: &str| {
+                if search_args.case_sensitive {
+                    text.to_string()
+                } else {
+                    text.to_lowercase()
+                }
             };
+            // Like the real backend, which leaves `--grep` out entirely rather than passing the
+            // empty pattern that would match every commit.
+            let message_query =
+                (!search_args.query.is_empty()).then(|| fold_case(search_args.query.as_str()));
+            let author_query = search_args.author_filter()?.map(fold_case);
+
+            // As in the real backend, a search with nothing to match on finds nothing rather
+            // than everything.
+            if author_query.is_none() && message_query.is_none() {
+                return Ok(());
+            }
 
             let matching_shas = self.fs.with_git_state(&self.dot_git_path, false, |state| {
                 state
@@ -1658,6 +1693,17 @@ impl GitRepository for FakeGitRepository {
                         let FakeCommitDataEntry::Success(commit_data) = entry else {
                             return None;
                         };
+                        if let Some(author_query) = author_query.as_ref() {
+                            // `--author` matches the whole author header, so the address counts
+                            // as well as the name.
+                            let matches_author = fold_case(commit_data.author_name.as_str())
+                                .contains(author_query)
+                                || fold_case(commit_data.author_email.as_str())
+                                    .contains(author_query);
+                            if !matches_author {
+                                return None;
+                            }
+                        }
                         if let Some(hash_query) = hash_query.as_ref() {
                             return sha
                                 .to_string()
@@ -1665,12 +1711,12 @@ impl GitRepository for FakeGitRepository {
                                 .starts_with(hash_query)
                                 .then_some(*sha);
                         }
-                        let message = if search_args.case_sensitive {
-                            commit_data.message.to_string()
-                        } else {
-                            commit_data.message.to_lowercase()
+                        let Some(message_query) = message_query.as_ref() else {
+                            return Some(*sha);
                         };
-                        message.contains(&message_query).then_some(*sha)
+                        fold_case(commit_data.message.as_str())
+                            .contains(message_query)
+                            .then_some(*sha)
                     })
                     .collect::<Vec<_>>()
             })?;

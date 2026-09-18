@@ -595,6 +595,7 @@ fn render_registry_agent_button(
                             default_mode: None,
                             default_config_options: HashMap::default(),
                             favorite_config_option_values: HashMap::default(),
+                            allow_subscription_sign_in: None,
                         }
                     });
                 }

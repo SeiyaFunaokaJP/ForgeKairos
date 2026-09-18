@@ -88,6 +88,7 @@ fn install_registry_agent(agent_id: &str, window: &mut Window, cx: &mut App) {
                 env: Default::default(),
                 default_config_options: HashMap::default(),
                 favorite_config_option_values: HashMap::default(),
+                allow_subscription_sign_in: None,
             }
         });
     });
@@ -276,13 +277,15 @@ impl RegistryInstallStatus {
     }
 }
 
-/// ADR-F53: what this fork has to add to a registry entry's own description.
-/// The registry's text is the vendor's and says nothing of this route's
-/// limits, so the one entry that has one says so next to it.
+/// ADR-F55: what this fork has to add to a registry entry's own description.
+/// The registry's text is the vendor's and says nothing of how this route
+/// is authenticated, so the one entry that has something to say says it
+/// next to it.
 fn fork_agent_note(agent_id: &str) -> Option<&'static str> {
     (agent_id == agent_servers::CLAUDE_AGENT_ID).then_some(
-        "API キー専用: サブスクリプション (Claude Pro / Max など) では使えません。\
-         サブスクリプションは公式の Claude Code をご利用ください。",
+        "サブスクリプションまたは API キー: サインインは Claude Code 自身の\
+         画面で行われ、Zed は認証情報を扱いません。設定でサブスクリプションを\
+         無効にできます。",
     )
 }
 

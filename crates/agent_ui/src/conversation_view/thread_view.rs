@@ -1594,11 +1594,11 @@ impl ThreadView {
         let text = text.trim();
         if text == "/login" || text == "/logout" {
             let connection = thread.read(cx).connection().clone();
-            // ADR-F53: an agent this fork restricts to an API key has the same
-            // card to show whether or not it advertises a sign-in, so `/login`
-            // reaches the guidance rather than going to the agent as a prompt.
+            // ADR-F55: an agent whose key this fork takes on the card has the
+            // same card to show whether or not it advertises a sign-in, so
+            // `/login` reaches it rather than going to the agent as a prompt.
             let can_login = !connection.auth_methods().is_empty()
-                || agent_servers::is_api_key_only_agent(connection.agent_id().0.as_ref());
+                || agent_servers::api_key_variable(connection.agent_id().0.as_ref()).is_some();
             // Does the agent have a specific logout command? Prefer that in case they need to reset internal state.
             let logout_supported = text == "/logout"
                 && self
@@ -8401,11 +8401,33 @@ impl ThreadView {
                 Color::Muted,
                 SharedString::from("AI が判定中…"),
             ),
+            // A reused verdict says so, so the line is never read as a fresh
+            // review of this call (ADR-F52).
+            acp_thread::PermissionJudgeState::Safe if judge.reused => (
+                IconName::AiZed,
+                Color::Info,
+                SharedString::from(format!(
+                    "AI 判定: 安全 (自動実行、前回の判定を再利用) — {}",
+                    judge.reason
+                )),
+            ),
             acp_thread::PermissionJudgeState::Safe => (
                 IconName::AiZed,
                 Color::Info,
                 SharedString::from(format!("AI 判定: 安全 (自動実行) — {}", judge.reason)),
             ),
+            // A call the judge was never asked about is not a call it called
+            // dangerous, so it doesn't get the warning the verdict wears
+            // (ADR-F52).
+            acp_thread::PermissionJudgeState::Unsafe
+                if judge.reason == acp_thread::PERMISSION_JUDGE_NO_ARGUMENTS_REASON =>
+            {
+                (
+                    IconName::AiZed,
+                    Color::Muted,
+                    SharedString::from(format!("AI 判定: 対象外 — {}", judge.reason)),
+                )
+            }
             acp_thread::PermissionJudgeState::Unsafe => (
                 IconName::Warning,
                 Color::Warning,

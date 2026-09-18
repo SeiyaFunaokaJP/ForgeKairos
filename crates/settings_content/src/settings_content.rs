@@ -558,8 +558,8 @@ impl strum::VariantNames for BaseKeymapContent {
         "Atom",
         "TextMate",
         "Emacs (ベータ)",
-        "Cursor",
-        "None",
+        "Cursor (ベータ)",
+        "なし",
     ];
 }
 
@@ -1677,6 +1677,33 @@ impl std::fmt::Display for DelayMs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `settings_ui`'s dropdown pairs [`strum::VariantArray`] with
+    /// [`strum::VariantNames`] **by index**, and the names here are written by
+    /// hand rather than derived, so a label added or dropped while translating
+    /// them would silently move every later label onto the wrong keymap.
+    #[test]
+    fn every_base_keymap_variant_has_exactly_one_label() {
+        let labels = <BaseKeymapContent as strum::VariantNames>::VARIANTS;
+        assert_eq!(
+            labels.len(),
+            <BaseKeymapContent as strum::VariantArray>::VARIANTS.len()
+        );
+        // The beta keymaps are spelled the same here as in
+        // `BaseKeymap::OPTIONS`, which is the onboarding picker's copy of the
+        // same list; two settings screens naming one keymap differently is how
+        // a user ends up thinking they are two.
+        assert!(labels.contains(&"Emacs (ベータ)"), "{labels:?}");
+        assert!(labels.contains(&"Cursor (ベータ)"), "{labels:?}");
+        assert_eq!(
+            labels
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            labels.len(),
+            "two keymaps sharing a label would be two rows the user cannot tell apart"
+        );
+    }
 
     /// ADR-F27's setting lives in a `"remote"` object, next to a
     /// [`RemoteSettingsContent`] that serde *flattens* onto the same level.

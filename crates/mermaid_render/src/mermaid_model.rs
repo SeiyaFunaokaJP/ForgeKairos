@@ -3,8 +3,9 @@
 //!
 //! Every diagram kind has a module of its own ([`crate::flowchart_model`],
 //! [`crate::pie_model`], [`crate::state_model`], [`crate::sequence_model`],
-//! [`crate::er_model`]) with the same three functions — `is_<kind>_source`,
-//! `parse_<kind>` and `emit_<kind>` — and they all keep the same two promises:
+//! [`crate::er_model`], [`crate::class_model`], [`crate::gantt_model`]) with the
+//! same three functions — `is_<kind>_source`, `parse_<kind>` and `emit_<kind>` —
+//! and they all keep the same two promises:
 //!
 //! - Emitting is idempotent from its second application, so opening and
 //!   confirming the editor twice does not keep rewriting the fence.
@@ -19,11 +20,13 @@
 
 use anyhow::{Result, bail};
 
+use crate::class_model::{ClassDocument, emit_class, is_class_source, parse_class};
 use crate::er_model::{ErDocument, emit_er, is_er_source, parse_er};
 use crate::flowchart_model::{
     FlowchartDocument, PreservedLine, PreservedPosition, emit_flowchart, is_flowchart_source,
     parse_flowchart,
 };
+use crate::gantt_model::{GanttDocument, emit_gantt, is_gantt_source, parse_gantt};
 use crate::pie_model::{PieDocument, emit_pie, is_pie_source, parse_pie};
 use crate::sequence_model::{SequenceDocument, emit_sequence, is_sequence_source, parse_sequence};
 use crate::state_model::{StateDocument, emit_state, is_state_source, parse_state};
@@ -40,16 +43,20 @@ pub enum MermaidDiagramKind {
     State,
     Sequence,
     Er,
+    Class,
+    Gantt,
 }
 
 impl MermaidDiagramKind {
     /// Every kind, in the order the editor's menus list them.
-    pub const ALL: [MermaidDiagramKind; 5] = [
+    pub const ALL: [MermaidDiagramKind; 7] = [
         MermaidDiagramKind::Flowchart,
         MermaidDiagramKind::Pie,
         MermaidDiagramKind::State,
         MermaidDiagramKind::Sequence,
         MermaidDiagramKind::Er,
+        MermaidDiagramKind::Class,
+        MermaidDiagramKind::Gantt,
     ];
 
     pub fn label(self) -> &'static str {
@@ -59,6 +66,8 @@ impl MermaidDiagramKind {
             Self::State => "状態遷移図",
             Self::Sequence => "シーケンス図",
             Self::Er => "ER 図",
+            Self::Class => "クラス図",
+            Self::Gantt => "ガントチャート",
         }
     }
 }
@@ -71,6 +80,8 @@ pub enum MermaidDocument {
     State(StateDocument),
     Sequence(SequenceDocument),
     Er(ErDocument),
+    Class(ClassDocument),
+    Gantt(GanttDocument),
 }
 
 impl MermaidDocument {
@@ -83,6 +94,8 @@ impl MermaidDocument {
             MermaidDiagramKind::State => Self::State(StateDocument::empty()),
             MermaidDiagramKind::Sequence => Self::Sequence(SequenceDocument::empty()),
             MermaidDiagramKind::Er => Self::Er(ErDocument::empty()),
+            MermaidDiagramKind::Class => Self::Class(ClassDocument::empty()),
+            MermaidDiagramKind::Gantt => Self::Gantt(GanttDocument::empty()),
         }
     }
 
@@ -93,6 +106,8 @@ impl MermaidDocument {
             Self::State(_) => MermaidDiagramKind::State,
             Self::Sequence(_) => MermaidDiagramKind::Sequence,
             Self::Er(_) => MermaidDiagramKind::Er,
+            Self::Class(_) => MermaidDiagramKind::Class,
+            Self::Gantt(_) => MermaidDiagramKind::Gantt,
         }
     }
 
@@ -104,21 +119,25 @@ impl MermaidDocument {
             Self::State(document) => emit_state(document),
             Self::Sequence(document) => emit_sequence(document),
             Self::Er(document) => emit_er(document),
+            Self::Class(document) => emit_class(document),
+            Self::Gantt(document) => emit_gantt(document),
         }
     }
 
     /// Why the document cannot be written back as a diagram Mermaid accepts, in
     /// Japanese, or `None` when it can.
     ///
-    /// Only the two kinds whose items refer to each other across the whole
+    /// Only the kinds whose items refer to each other across the whole
     /// document — a message names a participant, a relationship names an
-    /// entity — can be brought into a state that emitting would spoil; the
-    /// others are checked field by field by the editor.
+    /// entity, a task starts after another task — can be brought into a state
+    /// that emitting would spoil; the others are checked field by field by the
+    /// editor.
     pub fn structure_error(&self) -> Option<String> {
         match self {
             Self::Sequence(document) => document.structure_error(),
             Self::Er(document) => document.structure_error(),
-            Self::Flowchart(_) | Self::Pie(_) | Self::State(_) => None,
+            Self::Gantt(document) => document.structure_error(),
+            Self::Flowchart(_) | Self::Pie(_) | Self::State(_) | Self::Class(_) => None,
         }
     }
 }
@@ -144,6 +163,12 @@ pub fn detect_kind(source: &str) -> Option<MermaidDiagramKind> {
     if is_er_source(source) {
         return Some(MermaidDiagramKind::Er);
     }
+    if is_class_source(source) {
+        return Some(MermaidDiagramKind::Class);
+    }
+    if is_gantt_source(source) {
+        return Some(MermaidDiagramKind::Gantt);
+    }
     None
 }
 
@@ -158,6 +183,8 @@ pub fn parse_document(source: &str) -> Result<MermaidDocument> {
         Some(MermaidDiagramKind::State) => parse_state(source).map(MermaidDocument::State),
         Some(MermaidDiagramKind::Sequence) => parse_sequence(source).map(MermaidDocument::Sequence),
         Some(MermaidDiagramKind::Er) => parse_er(source).map(MermaidDocument::Er),
+        Some(MermaidDiagramKind::Class) => parse_class(source).map(MermaidDocument::Class),
+        Some(MermaidDiagramKind::Gantt) => parse_gantt(source).map(MermaidDocument::Gantt),
         None => {
             bail!("この図は構造化エディターに対応していません。テキストのまま編集してください。")
         }
@@ -350,13 +377,17 @@ mod tests {
                 Some(MermaidDiagramKind::Sequence),
             ),
             ("erDiagram\n  A ||--o{ B : x", Some(MermaidDiagramKind::Er)),
+            ("classDiagram\n  class A", Some(MermaidDiagramKind::Class)),
+            (
+                "gantt\n  A :a, 2026-01-01, 7d",
+                Some(MermaidDiagramKind::Gantt),
+            ),
             (
                 "---\ntitle: t\n---\n%%{init: {\"theme\": \"dark\"}}%%\n%% メモ\npie\n  \"a\" : 1",
                 Some(MermaidDiagramKind::Pie),
             ),
             ("", None),
             ("%% メモだけ", None),
-            ("classDiagram\n  class A", None),
             ("mindmap\n  root", None),
         ] {
             assert_eq!(detect_kind(source), expected, "for {source}");
@@ -371,6 +402,8 @@ mod tests {
             "stateDiagram-v2\n    [*] --> Idle\n    Idle --> [*]",
             "sequenceDiagram\n    participant A\n    participant B\n    A->>B: 依頼",
             "erDiagram\n    CUSTOMER {\n        string name\n    }\n    CUSTOMER ||--o{ ORDER : places",
+            "classDiagram\n    class 動物 {\n        +鳴く() void\n    }\n    動物 <|-- 犬",
+            "gantt\n    dateFormat YYYY-MM-DD\n    section 設計\n    要件定義 :req, 2026-01-06, 5d",
         ] {
             let document = parse_document(source)
                 .unwrap_or_else(|error| panic!("`{source}` should parse: {error}"));
@@ -406,7 +439,7 @@ mod tests {
 
     #[test]
     fn a_kind_with_no_model_at_all_is_refused() {
-        for source in ["classDiagram\n  class A", "mindmap\n  root", "gantt"] {
+        for source in ["mindmap\n  root", "journey\n  title x"] {
             let error = parse_document(source)
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));

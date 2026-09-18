@@ -114,6 +114,10 @@ extend-ignore-re = [
     # Used in truncating tests to ensure byte-length vs char like in café
     "caf…",
     '\[elete\]',
+    # Rust `\u{XXXX}` escapes spell Japanese text as hex, and the hex
+    # digits read as words (`\u{5ba2}` in the word for customer trips `ba`).
+    # The escape body never holds prose.
+    '\\u\{[0-9a-fA-F]{1,6}\}',
     "GHIzJ",
 ]
 check-filename = true

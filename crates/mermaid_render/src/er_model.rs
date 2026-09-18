@@ -1114,15 +1114,13 @@ mod tests {
     /// `merman` writes an ER label's font stack into a `style` attribute after
     /// escaping its quotes, and then trims a trailing `;` off the declaration —
     /// which is the `;` of the last `&quot;` when the stack ends with a quoted
-    /// font name, leaving an SVG no XML parser accepts. Zed's own font stacks
-    /// end with `sans-serif`, so these tests render with a plain family rather
-    /// than with the long fallback list of `MermaidTheme::default`.
+    /// font name, leaving an SVG no XML parser accepts. `unescape_attribute_value`
+    /// puts that `;` back, so these render with the long fallback stack of
+    /// `MermaidTheme::default` — the one the preview really uses — instead of
+    /// working around it with a plain family, and go red again if that repair
+    /// is ever lost.
     fn assert_renders(source: &str) {
-        let theme = MermaidTheme {
-            font_family: "sans-serif".to_string(),
-            ..MermaidTheme::default()
-        };
-        let svg = render_to_svg(source, &theme)
+        let svg = render_to_svg(source, &MermaidTheme::default())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),

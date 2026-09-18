@@ -12,7 +12,7 @@
 //! property of that order, so dragging upwards out of `1, 2, 3` extrapolates
 //! backwards to `0, -1, -2` rather than continuing to `4, 5, 6`.
 
-use gpui::{AnyElement, CursorStyle, MouseButton, MouseDownEvent, actions};
+use gpui::{AnyElement, CursorStyle, Hsla, MouseButton, MouseDownEvent, actions};
 use ui::{div, prelude::*};
 
 use crate::{
@@ -36,8 +36,13 @@ actions!(
 const FILL_HANDLE_SIZE: Pixels = px(6.);
 
 /// How wide the band along the selection's border is that grabs the block
-/// instead of starting a new selection.
-const MOVE_BORDER_WIDTH: Pixels = px(3.);
+/// instead of starting a new selection. It lies over the outline below and has
+/// to stay wider than it, or the line the user aims at would be partly outside
+/// the band that answers.
+const MOVE_BORDER_WIDTH: Pixels = px(4.);
+
+/// How thick the line around each selected block is.
+pub(crate) const SELECTION_OUTLINE_WIDTH: Pixels = px(2.);
 
 /// How thick the outline is that shows where a fill or a move would land.
 const DRAG_PREVIEW_WIDTH: Pixels = px(2.);
@@ -147,22 +152,42 @@ fn numeric_series(source: &[String]) -> Option<(Vec<CellNumber>, i128)> {
     Some((numbers, step.unwrap_or(0)))
 }
 
+/// What a fill is allowed to make of the series it recognises.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FillRule {
+    /// Dragging the fill handle: a run of values is extended, and a lone date
+    /// is a series of its own.
+    Extend,
+    /// The same drag with Excel's Ctrl held, which flips the default both ways:
+    /// a lone number becomes a counted series, and everything that would have
+    /// been extended is stamped as a plain copy instead.
+    Invert,
+    /// Ctrl+D and Ctrl+R, which say "put this line over the rest of the block"
+    /// and nothing more. Filling a column of dates down must not quietly write
+    /// the week after them.
+    Copy,
+}
+
 /// The values a fill writes, in the order it writes them: the first is the cell
 /// next to the source block in the direction the pointer went.
 ///
 /// `source` is always in the grid's own order, whichever way the fill goes.
-/// `invert` is Excel's Ctrl, which flips the default both ways: a single number
-/// becomes a counted series, and a series is stamped as a plain copy.
 pub(crate) fn fill_values(
     source: &[String],
     count: usize,
     forward: bool,
-    invert: bool,
+    rule: FillRule,
 ) -> Vec<String> {
     if source.is_empty() || count == 0 {
         return Vec::new();
     }
-    if let Some(values) = numeric_fill(source, count, forward, invert) {
+    // Dates are read before numbers: only a spelling with a separator or a
+    // weekday's name in it is a date, so a run of digits like `20260918` is
+    // still the number it looks like.
+    if let Some(values) = date_fill(source, count, forward, rule) {
+        return values;
+    }
+    if let Some(values) = numeric_fill(source, count, forward, rule) {
         return values;
     }
     // Repeating stamps the whole block again and again, which going backwards
@@ -184,11 +209,15 @@ fn numeric_fill(
     source: &[String],
     count: usize,
     forward: bool,
-    invert: bool,
+    rule: FillRule,
 ) -> Option<Vec<String>> {
     let (numbers, step) = numeric_series(source)?;
     let single = numbers.len() == 1;
-    let extend = if single { invert } else { !invert };
+    let extend = match rule {
+        FillRule::Extend => !single,
+        FillRule::Invert => single,
+        FillRule::Copy => false,
+    };
     if !extend {
         return None;
     }
@@ -215,6 +244,415 @@ fn numeric_fill(
         values.push(CellNumber { scaled, decimals }.to_text());
     }
     Some(values)
+}
+
+/// The dates `source` spells out, counted on their own format's scale, together
+/// with the step in days between them. `None` when a value is not a date, when
+/// the values are not all spelled the same way - one series cannot be written
+/// back in two spellings - or when the steps are uneven.
+fn date_series(source: &[String]) -> Option<(dates::DateFormat, Vec<i64>, i64)> {
+    let parsed: Vec<(dates::DateFormat, i64)> = source
+        .iter()
+        .map(|value| dates::parse(value))
+        .collect::<Option<_>>()?;
+    let (format, _) = *parsed.first()?;
+    if parsed.iter().any(|(other, _)| *other != format) {
+        return None;
+    }
+    let days: Vec<i64> = parsed.iter().map(|(_, days)| *days).collect();
+
+    let mut step = None;
+    for pair in days.windows(2) {
+        let [previous, next] = pair else {
+            continue;
+        };
+        let difference = next.checked_sub(*previous)?;
+        let difference = match format.cycle() {
+            // A weekday, and a date written without a year, run round a cycle:
+            // the step from Saturday to Sunday is one day forwards rather than
+            // six backwards.
+            Some(cycle) => difference.rem_euclid(cycle),
+            None => difference,
+        };
+        match step {
+            None => step = Some(difference),
+            Some(step) if step == difference => {}
+            Some(_) => return None,
+        }
+    }
+    // A single date has no step of its own, and a spreadsheet's answer for one
+    // dragged date is the day after it.
+    Some((format, days, step.unwrap_or(1)))
+}
+
+/// Excel's date fill. A date is the one kind of value a drag extends without
+/// being asked, so Ctrl here means the opposite of what it means for a number:
+/// it asks for the plain copy instead.
+fn date_fill(
+    source: &[String],
+    count: usize,
+    forward: bool,
+    rule: FillRule,
+) -> Option<Vec<String>> {
+    if rule != FillRule::Extend {
+        return None;
+    }
+    let (format, days, step) = date_series(source)?;
+    if format.needs_a_run() && days.len() < 2 {
+        return None;
+    }
+    let anchor = if forward {
+        *days.last()?
+    } else {
+        *days.first()?
+    };
+
+    let mut values = Vec::with_capacity(count);
+    for offset in 1..=count {
+        let delta = step.checked_mul(i64::try_from(offset).ok()?)?;
+        let day = if forward {
+            anchor.checked_add(delta)?
+        } else {
+            anchor.checked_sub(delta)?
+        };
+        // A date the spelling cannot hold - a year of five digits - takes the
+        // whole fill back to copying rather than writing one value in a shape
+        // the column does not use.
+        values.push(format.spell(day)?);
+    }
+    Some(values)
+}
+
+/// Dates as a cell spells them, which is what a fill has to read and write back
+/// in: the same separator, the same zero padding, the same language.
+///
+/// Only a whole date with a separator in it, or a weekday written out by name,
+/// counts - a value carrying a time of day is left to the copying rule, a run of
+/// digits stays a number, and a spelling that could be read two ways (`9/18`,
+/// `26/9/1`) is refused rather than guessed at - which is what keeps this from
+/// quietly rewriting values that were never dates.
+mod dates {
+    use chrono::{Datelike as _, NaiveDate};
+
+    /// The year a date written without one is worked out in. It is deliberately
+    /// not a leap year: with no year given there is nothing to say whether
+    /// `2月29日` exists, so it is left to the copying rule.
+    const YEARLESS_REFERENCE_YEAR: i32 = 2001;
+    const DAYS_IN_YEARLESS_REFERENCE_YEAR: i64 = 365;
+    const DAYS_IN_WEEK: i64 = 7;
+
+    /// Sunday first, which is the order [`chrono`] counts weekdays in and the
+    /// order a Japanese calendar prints them in.
+    const JAPANESE_WEEKDAYS: [&str; 7] = ["日", "月", "火", "水", "木", "金", "土"];
+    const ENGLISH_WEEKDAYS: [(&str, &str); 7] = [
+        ("Sun", "Sunday"),
+        ("Mon", "Monday"),
+        ("Tue", "Tuesday"),
+        ("Wed", "Wednesday"),
+        ("Thu", "Thursday"),
+        ("Fri", "Friday"),
+        ("Sat", "Saturday"),
+    ];
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) enum DateFormat {
+        /// `2026-09-18`, `2026/9/1`: a four digit year, then the month and the
+        /// day, each either zero padded or not.
+        Ordered {
+            separator: char,
+            month_padded: bool,
+            day_padded: bool,
+        },
+        /// `2026年9月18日`, and `9月18日` without the year.
+        Japanese {
+            has_year: bool,
+            month_padded: bool,
+            day_padded: bool,
+        },
+        Weekday(WeekdayStyle),
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) enum WeekdayStyle {
+        /// `日`
+        JapaneseShort,
+        /// `日曜日`
+        JapaneseLong,
+        /// `Sun`, in whichever case the cell wrote it.
+        EnglishShort(LetterCase),
+        /// `Sunday`.
+        EnglishLong(LetterCase),
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) enum LetterCase {
+        Lower,
+        Upper,
+        Capitalized,
+    }
+
+    impl DateFormat {
+        /// How long the cycle is that this format's values run round, for the
+        /// formats with no year to carry them past its end.
+        pub(super) fn cycle(self) -> Option<i64> {
+            match self {
+                DateFormat::Ordered { .. } | DateFormat::Japanese { has_year: true, .. } => None,
+                DateFormat::Japanese {
+                    has_year: false, ..
+                } => Some(DAYS_IN_YEARLESS_REFERENCE_YEAR),
+                DateFormat::Weekday(_) => Some(DAYS_IN_WEEK),
+            }
+        }
+
+        /// Whether one cell of this format could just as easily be something
+        /// else, so that only a run of them is read as a series.
+        ///
+        /// A weekday written as one kanji is an ordinary word as well: 金 is
+        /// money, 水 is water, 土 is soil, 日 is a day or the sun. A column of
+        /// those dragged down must not quietly become a calendar. `日曜日`,
+        /// `Sun` and `Sunday` are nothing but weekdays, so one of them is
+        /// enough.
+        pub(super) fn needs_a_run(self) -> bool {
+            matches!(self, DateFormat::Weekday(WeekdayStyle::JapaneseShort))
+        }
+
+        /// Writes a value of this format's own scale back out in it, or `None`
+        /// when the value falls outside what the spelling can hold.
+        pub(super) fn spell(self, value: i64) -> Option<String> {
+            match self {
+                DateFormat::Ordered {
+                    separator,
+                    month_padded,
+                    day_padded,
+                } => {
+                    let date = date_from_days(value)?;
+                    Some(format!(
+                        "{:04}{separator}{}{separator}{}",
+                        date.year(),
+                        component(date.month(), month_padded),
+                        component(date.day(), day_padded),
+                    ))
+                }
+                DateFormat::Japanese {
+                    has_year: true,
+                    month_padded,
+                    day_padded,
+                } => {
+                    let date = date_from_days(value)?;
+                    Some(format!(
+                        "{:04}年{}月{}日",
+                        date.year(),
+                        component(date.month(), month_padded),
+                        component(date.day(), day_padded),
+                    ))
+                }
+                DateFormat::Japanese {
+                    has_year: false,
+                    month_padded,
+                    day_padded,
+                } => {
+                    let ordinal = value.rem_euclid(DAYS_IN_YEARLESS_REFERENCE_YEAR);
+                    let ordinal = u32::try_from(ordinal).ok()?.checked_add(1)?;
+                    let date = NaiveDate::from_yo_opt(YEARLESS_REFERENCE_YEAR, ordinal)?;
+                    Some(format!(
+                        "{}月{}日",
+                        component(date.month(), month_padded),
+                        component(date.day(), day_padded),
+                    ))
+                }
+                DateFormat::Weekday(style) => {
+                    let index = usize::try_from(value.rem_euclid(DAYS_IN_WEEK)).ok()?;
+                    spell_weekday(style, index)
+                }
+            }
+        }
+    }
+
+    /// The date `value` spells, counted on its format's own scale, together
+    /// with that format.
+    pub(super) fn parse(value: &str) -> Option<(DateFormat, i64)> {
+        let value = value.trim();
+        parse_ordered(value)
+            .or_else(|| parse_japanese(value))
+            .or_else(|| parse_weekday(value))
+    }
+
+    fn parse_ordered(value: &str) -> Option<(DateFormat, i64)> {
+        let separator = ['-', '/'].into_iter().find(|&candidate| {
+            // The first of the two that appears at all decides; a value mixing
+            // them splits into too many pieces below and is refused.
+            value.contains(candidate)
+        })?;
+        let mut parts = value.split(separator);
+        let year = parse_year(parts.next()?)?;
+        let (month, month_padding) = parse_component(parts.next()?)?;
+        let (day, day_padding) = parse_component(parts.next()?)?;
+        if parts.next().is_some() {
+            return None;
+        }
+        let date = NaiveDate::from_ymd_opt(year, month, day)?;
+        let iso = separator == '-';
+        Some((
+            DateFormat::Ordered {
+                separator,
+                month_padded: pads(month_padding, day_padding, iso),
+                day_padded: pads(day_padding, month_padding, iso),
+            },
+            i64::from(date.num_days_from_ce()),
+        ))
+    }
+
+    fn parse_japanese(value: &str) -> Option<(DateFormat, i64)> {
+        // Split on the characters themselves rather than on byte offsets: every
+        // one of them is three bytes long.
+        let (year, rest) = match value.split_once('年') {
+            Some((year, rest)) => (Some(parse_year(year)?), rest),
+            None => (None, value),
+        };
+        let (month, rest) = rest.split_once('月')?;
+        let day = rest.strip_suffix('日')?;
+        let (month, month_padding) = parse_component(month)?;
+        let (day, day_padding) = parse_component(day)?;
+        let date = NaiveDate::from_ymd_opt(year.unwrap_or(YEARLESS_REFERENCE_YEAR), month, day)?;
+        let format = DateFormat::Japanese {
+            has_year: year.is_some(),
+            month_padded: pads(month_padding, day_padding, false),
+            day_padded: pads(day_padding, month_padding, false),
+        };
+        let days = match year {
+            Some(_) => i64::from(date.num_days_from_ce()),
+            None => i64::from(date.ordinal0()),
+        };
+        Some((format, days))
+    }
+
+    fn parse_weekday(value: &str) -> Option<(DateFormat, i64)> {
+        if let Some(index) = JAPANESE_WEEKDAYS.iter().position(|day| *day == value) {
+            return Some((
+                DateFormat::Weekday(WeekdayStyle::JapaneseShort),
+                index as i64,
+            ));
+        }
+        if let Some(stem) = value.strip_suffix("曜日")
+            && let Some(index) = JAPANESE_WEEKDAYS.iter().position(|day| *day == stem)
+        {
+            return Some((
+                DateFormat::Weekday(WeekdayStyle::JapaneseLong),
+                index as i64,
+            ));
+        }
+        for (index, (short, long)) in ENGLISH_WEEKDAYS.iter().enumerate() {
+            if let Some(case) = letter_case(value, long) {
+                return Some((
+                    DateFormat::Weekday(WeekdayStyle::EnglishLong(case)),
+                    index as i64,
+                ));
+            }
+            if let Some(case) = letter_case(value, short) {
+                return Some((
+                    DateFormat::Weekday(WeekdayStyle::EnglishShort(case)),
+                    index as i64,
+                ));
+            }
+        }
+        None
+    }
+
+    /// Exactly four digits, so that `9/1/2026` and `26/9/1` - which could be
+    /// read two ways round - are refused rather than guessed at.
+    fn parse_year(value: &str) -> Option<i32> {
+        if value.len() != 4 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        value.parse().ok()
+    }
+
+    /// Whether a month or a day was written with a leading zero, which is the
+    /// half of the spelling a fill has to carry over.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Padding {
+        /// One digit, so there is plainly no zero in front of it: `9`.
+        Absent,
+        /// Two digits, the first of them a zero: `09`.
+        Present,
+        /// Two digits of its own, like `18`: written the same way whether or
+        /// not the column pads, so this one value cannot say.
+        Unknown,
+    }
+
+    fn parse_component(value: &str) -> Option<(u32, Padding)> {
+        if value.is_empty() || value.len() > 2 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        let padding = match (value.len(), value.starts_with('0')) {
+            (1, _) => Padding::Absent,
+            (_, true) => Padding::Present,
+            (_, false) => Padding::Unknown,
+        };
+        Some((value.parse().ok()?, padding))
+    }
+
+    /// Whether a component is written with a leading zero, taking the other
+    /// component's word for it when its own two digits cannot say - `2026-01-31`
+    /// pads its day, because the month beside it is padded - and the format's
+    /// own convention when neither can: a dash is ISO 8601, which always pads,
+    /// while a slash and 年月日 are the local short date, which does not.
+    fn pads(padding: Padding, other: Padding, convention: bool) -> bool {
+        match (padding, other) {
+            (Padding::Present, _) => true,
+            (Padding::Absent, _) => false,
+            (Padding::Unknown, Padding::Present) => true,
+            (Padding::Unknown, Padding::Absent) => false,
+            (Padding::Unknown, Padding::Unknown) => convention,
+        }
+    }
+
+    fn component(value: u32, padded: bool) -> String {
+        if padded {
+            format!("{value:02}")
+        } else {
+            format!("{value}")
+        }
+    }
+
+    /// The date `days` days into the common era, refused unless it has the four
+    /// digit year every one of these spellings writes.
+    fn date_from_days(days: i64) -> Option<NaiveDate> {
+        let date = NaiveDate::from_num_days_from_ce_opt(i32::try_from(days).ok()?)?;
+        (1..=9999).contains(&date.year()).then_some(date)
+    }
+
+    fn spell_weekday(style: WeekdayStyle, index: usize) -> Option<String> {
+        match style {
+            WeekdayStyle::JapaneseShort => Some((*JAPANESE_WEEKDAYS.get(index)?).to_owned()),
+            WeekdayStyle::JapaneseLong => Some(format!("{}曜日", JAPANESE_WEEKDAYS.get(index)?)),
+            WeekdayStyle::EnglishShort(case) => Some(cased(ENGLISH_WEEKDAYS.get(index)?.0, case)),
+            WeekdayStyle::EnglishLong(case) => Some(cased(ENGLISH_WEEKDAYS.get(index)?.1, case)),
+        }
+    }
+
+    /// Which case `value` writes `canonical` in, or `None` when it is not that
+    /// word at all - or writes it in a case no fill could carry over, like
+    /// `sUNDAY`.
+    fn letter_case(value: &str, canonical: &str) -> Option<LetterCase> {
+        if value == canonical {
+            Some(LetterCase::Capitalized)
+        } else if value == canonical.to_lowercase() {
+            Some(LetterCase::Lower)
+        } else if value == canonical.to_uppercase() {
+            Some(LetterCase::Upper)
+        } else {
+            None
+        }
+    }
+
+    fn cased(name: &str, case: LetterCase) -> String {
+        match case {
+            LetterCase::Capitalized => name.to_owned(),
+            LetterCase::Lower => name.to_lowercase(),
+            LetterCase::Upper => name.to_uppercase(),
+        }
+    }
 }
 
 /// Which way a fill went and how far, read off the block it started on and the
@@ -402,6 +840,21 @@ impl TabularDataPreviewPane {
         invert: bool,
         cx: &mut Context<Self>,
     ) {
+        let rule = if invert {
+            FillRule::Invert
+        } else {
+            FillRule::Extend
+        };
+        self.commit_fill_with(origin, filled, rule, cx);
+    }
+
+    fn commit_fill_with(
+        &mut self,
+        origin: GridRect,
+        filled: GridRect,
+        rule: FillRule,
+        cx: &mut Context<Self>,
+    ) {
         let Some(axis) = fill_axis(origin, filled) else {
             return;
         };
@@ -433,7 +886,7 @@ impl TabularDataPreviewPane {
                     })
                     .collect()
             };
-            for (offset, value) in fill_values(&source, axis.extent, axis.forward, invert)
+            for (offset, value) in fill_values(&source, axis.extent, axis.forward, rule)
                 .into_iter()
                 .enumerate()
             {
@@ -509,7 +962,7 @@ impl TabularDataPreviewPane {
                 ..filled
             }
         };
-        self.commit_fill(origin, filled, false, cx);
+        self.commit_fill_with(origin, filled, FillRule::Copy, cx);
     }
 
     ///// Move /////
@@ -594,25 +1047,114 @@ impl TabularDataPreviewPane {
         ));
         self.grid.cursor =
             GridCell::new(GridRow::from_index(rect.last_row), AnyColumn(rect.last_col));
-        self.grid.selection_kind = GridSelectionKind::Cells;
+        self.grid.selection_kind = self.kind_of(rect);
         self.notify_search_of_caret(cx);
+    }
+
+    /// What the selection is anchored to once a gesture has moved or stretched
+    /// it. Whole rows stay whole rows and whole columns whole columns, so that
+    /// filling a selected row downwards leaves rows selected rather than
+    /// quietly turning them into a cell range the next Delete would treat
+    /// differently.
+    ///
+    /// A kind is only kept while the rectangle it landed on really is what that
+    /// kind means, because rows and columns are stored as two corners and drawn
+    /// back out across the whole table: keeping `Rows` on a rectangle that is
+    /// not the full width would widen the selection behind the user's back.
+    fn kind_of(&self, rect: GridRect) -> GridSelectionKind {
+        let spans_every_col = rect.first_col == 0 && rect.last_col == self.last_col_index();
+        let spans_every_row =
+            rect.first_row == self.first_row_index() && rect.last_row == self.last_row_index();
+        let keeps_its_shape = match self.grid.selection_kind {
+            GridSelectionKind::Cells => false,
+            GridSelectionKind::Rows => spans_every_col,
+            GridSelectionKind::Columns => spans_every_row,
+            GridSelectionKind::All => spans_every_col && spans_every_row,
+        };
+        if keeps_its_shape {
+            self.grid.selection_kind
+        } else {
+            GridSelectionKind::Cells
+        }
     }
 
     ///// Rendering /////
 
-    /// The parts of these two gestures that hang off one body cell: the
-    /// invisible bands that grab the selection's border, the fill handle at its
-    /// corner, and the outline of where a drag in flight would land.
+    /// The parts of the selection and of these two gestures that hang off one
+    /// body cell: the line around each selected block, the invisible bands that
+    /// grab that line to move the block, the fill handle at its corner, and the
+    /// outline of where a drag in flight would land.
     ///
     /// All of them are absolutely positioned, so the cell's wrapper has to be a
     /// flex container, and they are ordered so that the fill handle is painted
     /// last: at the bottom right corner it shares a cell with two border bands,
-    /// and the later hitbox is the one the pointer finds.
+    /// and the later hitbox is the one the pointer finds. The bands come after
+    /// the line they grab for the same reason - they are transparent, so the
+    /// line still shows through them.
     pub(crate) fn grid_drag_overlays(&self, cell: GridCell, cx: &Context<Self>) -> Vec<AnyElement> {
-        let mut overlays = self.render_move_border_bands(cell, cx);
+        let mut overlays = self.render_selection_outline(cell, cx);
+        overlays.extend(self.render_move_border_bands(cell, cx));
         overlays.extend(self.render_drag_preview_edges(cell, cx));
         overlays.extend(self.render_fill_handle(cell, cx));
         overlays
+    }
+
+    /// Whether `cell` is drawn with the caret's own border, which is the border
+    /// a single cell block's outline would only thicken.
+    pub(crate) fn draws_active_cell_border(&self, cell: GridCell) -> bool {
+        self.grid.cursor == cell && self.grid.context_menu.is_none()
+    }
+
+    /// The line around every selected block, drawn one cell at a time.
+    ///
+    /// The faint background on each selected cell says which cells are in the
+    /// selection but not where one block ends and the next begins, which is
+    /// what a spreadsheet's solid border around the block says - and what the
+    /// band that grabs the block to move it needs the user to be able to aim at.
+    fn render_selection_outline(&self, cell: GridCell, cx: &Context<Self>) -> Vec<AnyElement> {
+        if self.grid_is_empty() {
+            return Vec::new();
+        }
+        let color = cx.theme().colors().border_focused;
+        // This runs once per drawn cell, and a single block is nearly every
+        // frame, so that case must not build the vector of blocks to answer.
+        if !self.has_multiple_selection_ranges() {
+            return self.block_outline_edges(0, self.selection_rect(), cell, color);
+        }
+        self.selection_rects()
+            .into_iter()
+            .enumerate()
+            .flat_map(|(block, rect)| self.block_outline_edges(block, rect, cell, color))
+            .collect()
+    }
+
+    fn block_outline_edges(
+        &self,
+        block: usize,
+        rect: GridRect,
+        cell: GridCell,
+        color: Hsla,
+    ) -> Vec<AnyElement> {
+        if !rect.contains(cell.row, cell.col) {
+            return Vec::new();
+        }
+        // A block of one cell that the caret is on is already outlined by the
+        // caret's own border; a second line on top of it would only make that
+        // border look thicker than it is anywhere else.
+        if rect.row_count() == 1 && rect.col_count() == 1 && self.draws_active_cell_border(cell) {
+            return Vec::new();
+        }
+        sides_of(rect, cell)
+            .into_iter()
+            .map(|side| {
+                side.place(div(), SELECTION_OUTLINE_WIDTH)
+                    .bg(color)
+                    .when(side.is_named_segment(rect, cell), |this| {
+                        this.debug_selector(move || selection_outline_debug_selector(block, side))
+                    })
+                    .into_any_element()
+            })
+            .collect()
     }
 
     fn render_fill_handle(&self, cell: GridCell, cx: &Context<Self>) -> Option<AnyElement> {
@@ -708,6 +1250,32 @@ impl BorderSide {
             BorderSide::Right => element.right_0().top_0().bottom_0().w(width),
         }
     }
+
+    fn index(self) -> usize {
+        match self {
+            BorderSide::Top => 0,
+            BorderSide::Bottom => 1,
+            BorderSide::Left => 2,
+            BorderSide::Right => 3,
+        }
+    }
+
+    /// Whether the piece of this side that runs along `cell` is the one a test
+    /// names.
+    ///
+    /// A side is drawn one cell at a time, so naming every piece would leave
+    /// several of them sharing a name. The piece in the block's own corner is
+    /// the one named: the top and the left are taken from the block's first
+    /// cell, the bottom and the right from its last, which between them pin all
+    /// four corners of the block.
+    fn is_named_segment(self, rect: GridRect, cell: GridCell) -> bool {
+        match self {
+            BorderSide::Top => cell.col.get() == rect.first_col,
+            BorderSide::Bottom => cell.col.get() == rect.last_col,
+            BorderSide::Left => cell.row.index() == rect.first_row,
+            BorderSide::Right => cell.row.index() == rect.last_row,
+        }
+    }
 }
 
 /// Which of `rect`'s outer sides run along `cell`, which is how a rectangle
@@ -750,6 +1318,43 @@ fn step_from(origin: GridRect, forward: bool, vertical: bool, distance: usize) -
 /// selection ends. `debug_selector` compiles away outside of tests.
 pub(crate) const FILL_HANDLE_DEBUG_SELECTOR: &str = "tabular-grid-fill-handle";
 
+/// The same for the four sides of a selected block's outline, by block and then
+/// by [`BorderSide::index`].
+///
+/// Only the first few blocks are named, because a test naming more than that
+/// would be unreadable anyway; the outline itself is drawn around every one.
+pub(crate) const SELECTION_OUTLINE_DEBUG_SELECTORS: [[&str; 4]; 3] = [
+    [
+        "tabular-grid-selection-outline-0-top",
+        "tabular-grid-selection-outline-0-bottom",
+        "tabular-grid-selection-outline-0-left",
+        "tabular-grid-selection-outline-0-right",
+    ],
+    [
+        "tabular-grid-selection-outline-1-top",
+        "tabular-grid-selection-outline-1-bottom",
+        "tabular-grid-selection-outline-1-left",
+        "tabular-grid-selection-outline-1-right",
+    ],
+    [
+        "tabular-grid-selection-outline-2-top",
+        "tabular-grid-selection-outline-2-bottom",
+        "tabular-grid-selection-outline-2-left",
+        "tabular-grid-selection-outline-2-right",
+    ],
+];
+
+/// A name from [`SELECTION_OUTLINE_DEBUG_SELECTORS`], or an unused one for a
+/// block past the end of it.
+fn selection_outline_debug_selector(block: usize, side: BorderSide) -> String {
+    SELECTION_OUTLINE_DEBUG_SELECTORS
+        .get(block)
+        .and_then(|sides| sides.get(side.index()))
+        .copied()
+        .unwrap_or("tabular-grid-selection-outline-unnamed")
+        .to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -761,15 +1366,15 @@ mod tests {
     #[test]
     fn test_a_single_value_is_copied() {
         assert_eq!(
-            fill_values(&values(&["x"]), 3, true, false),
+            fill_values(&values(&["x"]), 3, true, FillRule::Extend),
             values(&["x", "x", "x"])
         );
         assert_eq!(
-            fill_values(&values(&["7"]), 2, true, false),
+            fill_values(&values(&["7"]), 2, true, FillRule::Extend),
             values(&["7", "7"])
         );
         assert_eq!(
-            fill_values(&values(&["7"]), 2, false, false),
+            fill_values(&values(&["7"]), 2, false, FillRule::Extend),
             values(&["7", "7"])
         );
     }
@@ -777,18 +1382,18 @@ mod tests {
     #[test]
     fn test_ctrl_counts_a_single_number_up() {
         assert_eq!(
-            fill_values(&values(&["7"]), 3, true, true),
+            fill_values(&values(&["7"]), 3, true, FillRule::Invert),
             values(&["8", "9", "10"])
         );
         // Upwards the same gesture counts back, because the series is read over
         // the grid's own order.
         assert_eq!(
-            fill_values(&values(&["7"]), 3, false, true),
+            fill_values(&values(&["7"]), 3, false, FillRule::Invert),
             values(&["6", "5", "4"])
         );
         // A word has no number to count, so Ctrl changes nothing.
         assert_eq!(
-            fill_values(&values(&["x"]), 2, true, true),
+            fill_values(&values(&["x"]), 2, true, FillRule::Invert),
             values(&["x", "x"])
         );
     }
@@ -796,19 +1401,19 @@ mod tests {
     #[test]
     fn test_an_even_series_is_extended() {
         assert_eq!(
-            fill_values(&values(&["1", "2", "3"]), 3, true, false),
+            fill_values(&values(&["1", "2", "3"]), 3, true, FillRule::Extend),
             values(&["4", "5", "6"])
         );
         assert_eq!(
-            fill_values(&values(&["1", "2", "3"]), 3, false, false),
+            fill_values(&values(&["1", "2", "3"]), 3, false, FillRule::Extend),
             values(&["0", "-1", "-2"])
         );
         assert_eq!(
-            fill_values(&values(&["10", "20"]), 2, true, false),
+            fill_values(&values(&["10", "20"]), 2, true, FillRule::Extend),
             values(&["30", "40"])
         );
         assert_eq!(
-            fill_values(&values(&["3", "2", "1"]), 2, true, false),
+            fill_values(&values(&["3", "2", "1"]), 2, true, FillRule::Extend),
             values(&["0", "-1"])
         );
     }
@@ -818,15 +1423,15 @@ mod tests {
     #[test]
     fn test_a_decimal_series_keeps_its_decimals() {
         assert_eq!(
-            fill_values(&values(&["1.10", "1.20"]), 2, true, false),
+            fill_values(&values(&["1.10", "1.20"]), 2, true, FillRule::Extend),
             values(&["1.30", "1.40"])
         );
         assert_eq!(
-            fill_values(&values(&["1", "1.5"]), 2, true, false),
+            fill_values(&values(&["1", "1.5"]), 2, true, FillRule::Extend),
             values(&["2.0", "2.5"])
         );
         assert_eq!(
-            fill_values(&values(&["0.1", "0.2", "0.3"]), 1, true, false),
+            fill_values(&values(&["0.1", "0.2", "0.3"]), 1, true, FillRule::Extend),
             values(&["0.4"])
         );
     }
@@ -834,20 +1439,20 @@ mod tests {
     #[test]
     fn test_an_uneven_or_non_numeric_block_repeats() {
         assert_eq!(
-            fill_values(&values(&["1", "2", "4"]), 4, true, false),
+            fill_values(&values(&["1", "2", "4"]), 4, true, FillRule::Extend),
             values(&["1", "2", "4", "1"])
         );
         assert_eq!(
-            fill_values(&values(&["a", "b"]), 3, true, false),
+            fill_values(&values(&["a", "b"]), 3, true, FillRule::Extend),
             values(&["a", "b", "a"])
         );
         // Going backwards the block is stamped bottom up.
         assert_eq!(
-            fill_values(&values(&["a", "b", "c"]), 4, false, false),
+            fill_values(&values(&["a", "b", "c"]), 4, false, FillRule::Extend),
             values(&["c", "b", "a", "c"])
         );
         assert_eq!(
-            fill_values(&values(&["1", "", "3"]), 2, true, false),
+            fill_values(&values(&["1", "", "3"]), 2, true, FillRule::Extend),
             values(&["1", ""])
         );
     }
@@ -857,7 +1462,7 @@ mod tests {
     #[test]
     fn test_ctrl_copies_a_series_instead_of_extending_it() {
         assert_eq!(
-            fill_values(&values(&["1", "2"]), 4, true, true),
+            fill_values(&values(&["1", "2"]), 4, true, FillRule::Invert),
             values(&["1", "2", "1", "2"])
         );
     }
@@ -866,7 +1471,7 @@ mod tests {
     fn test_values_too_long_to_scale_are_copied() {
         let account = "1234567890123456789012345678901";
         assert_eq!(
-            fill_values(&values(&[account]), 2, true, true),
+            fill_values(&values(&[account]), 2, true, FillRule::Invert),
             values(&[account, account])
         );
     }
@@ -874,15 +1479,521 @@ mod tests {
     #[test]
     fn test_a_negative_series_crosses_zero() {
         assert_eq!(
-            fill_values(&values(&["-2", "-1"]), 4, true, false),
+            fill_values(&values(&["-2", "-1"]), 4, true, FillRule::Extend),
             values(&["0", "1", "2", "3"])
         );
     }
 
     #[test]
     fn test_nothing_to_write() {
-        assert!(fill_values(&values(&["a"]), 0, true, false).is_empty());
-        assert!(fill_values(&[], 3, true, false).is_empty());
+        assert!(fill_values(&values(&["a"]), 0, true, FillRule::Extend).is_empty());
+        assert!(fill_values(&[], 3, true, FillRule::Extend).is_empty());
+    }
+
+    ///// Dates /////
+
+    /// One date is a series of its own, which is the one place a drag extends
+    /// without being asked - and where Ctrl therefore means the copy.
+    #[test]
+    fn test_a_single_date_steps_by_a_day() {
+        assert_eq!(
+            fill_values(&values(&["2026-09-18"]), 3, true, FillRule::Extend),
+            values(&["2026-09-19", "2026-09-20", "2026-09-21"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2026-09-18"]), 2, false, FillRule::Extend),
+            values(&["2026-09-17", "2026-09-16"])
+        );
+    }
+
+    #[test]
+    fn test_ctrl_copies_a_date_instead_of_stepping_it() {
+        assert_eq!(
+            fill_values(&values(&["2026-09-18"]), 2, true, FillRule::Invert),
+            values(&["2026-09-18", "2026-09-18"])
+        );
+        assert_eq!(
+            fill_values(
+                &values(&["2026-09-18", "2026-09-20"]),
+                3,
+                true,
+                FillRule::Invert
+            ),
+            values(&["2026-09-18", "2026-09-20", "2026-09-18"])
+        );
+    }
+
+    /// Ctrl+D and Ctrl+R put the first line over the rest of the block and say
+    /// nothing about series, so a column of dates filled down is that date
+    /// again rather than the week after it.
+    #[test]
+    fn test_filling_within_a_selection_copies_a_date() {
+        assert_eq!(
+            fill_values(&values(&["2026-09-18"]), 2, true, FillRule::Copy),
+            values(&["2026-09-18", "2026-09-18"])
+        );
+        assert_eq!(
+            fill_values(&values(&["1", "2"]), 3, true, FillRule::Copy),
+            values(&["1", "2", "1"])
+        );
+    }
+
+    /// The separator and the zero padding are the source's, not this code's.
+    #[test]
+    fn test_a_date_is_written_back_the_way_it_was_spelled() {
+        assert_eq!(
+            fill_values(&values(&["2026/9/1"]), 2, true, FillRule::Extend),
+            values(&["2026/9/2", "2026/9/3"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2026/09/01"]), 2, true, FillRule::Extend),
+            values(&["2026/09/02", "2026/09/03"])
+        );
+        // Two digits of their own are not padding, so a day that grows into
+        // them stays in the unpadded spelling.
+        assert_eq!(
+            fill_values(&values(&["2026/9/9"]), 1, true, FillRule::Extend),
+            values(&["2026/9/10"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2026-1-1"]), 1, true, FillRule::Extend),
+            values(&["2026-1-2"])
+        );
+        // The month says the column pads even where the day alone could not.
+        assert_eq!(
+            fill_values(&values(&["2026-01-31"]), 1, true, FillRule::Extend),
+            values(&["2026-02-01"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2026/09/1"]), 1, true, FillRule::Extend),
+            values(&["2026/09/2"])
+        );
+        // Where neither can, the separator does: a dash is ISO 8601 and pads,
+        // a slash is the local short date and does not.
+        assert_eq!(
+            fill_values(&values(&["2026-10-31"]), 1, true, FillRule::Extend),
+            values(&["2026-11-01"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2026/10/31"]), 1, true, FillRule::Extend),
+            values(&["2026/11/1"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2026年10月31日"]), 1, true, FillRule::Extend),
+            values(&["2026年11月1日"])
+        );
+    }
+
+    #[test]
+    fn test_a_date_crosses_months_leap_days_and_years() {
+        assert_eq!(
+            fill_values(&values(&["2026-01-31"]), 1, true, FillRule::Extend),
+            values(&["2026-02-01"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2024-02-28"]), 2, true, FillRule::Extend),
+            values(&["2024-02-29", "2024-03-01"])
+        );
+        // 2026 is not a leap year, so the same drag skips the 29th.
+        assert_eq!(
+            fill_values(&values(&["2026-02-28"]), 1, true, FillRule::Extend),
+            values(&["2026-03-01"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2026-12-31"]), 1, true, FillRule::Extend),
+            values(&["2027-01-01"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2026-01-01"]), 1, false, FillRule::Extend),
+            values(&["2025-12-31"])
+        );
+    }
+
+    #[test]
+    fn test_an_even_run_of_dates_sets_the_step() {
+        assert_eq!(
+            fill_values(
+                &values(&["2026-09-01", "2026-09-08"]),
+                2,
+                true,
+                FillRule::Extend
+            ),
+            values(&["2026-09-15", "2026-09-22"])
+        );
+        assert_eq!(
+            fill_values(
+                &values(&["2026-09-15", "2026-09-22"]),
+                2,
+                false,
+                FillRule::Extend
+            ),
+            values(&["2026-09-08", "2026-09-01"])
+        );
+        // An uneven run is not a series, so the block is stamped again instead.
+        assert_eq!(
+            fill_values(
+                &values(&["2026-09-01", "2026-09-08", "2026-09-10"]),
+                2,
+                true,
+                FillRule::Extend
+            ),
+            values(&["2026-09-01", "2026-09-08"])
+        );
+    }
+
+    #[test]
+    fn test_japanese_dates_keep_their_shape() {
+        assert_eq!(
+            fill_values(&values(&["2026年9月30日"]), 1, true, FillRule::Extend),
+            values(&["2026年10月1日"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2026年09月30日"]), 1, true, FillRule::Extend),
+            values(&["2026年10月01日"])
+        );
+    }
+
+    /// A date written without a year has no year to move into, so it cycles
+    /// inside one: the last day of the year steps to the first.
+    #[test]
+    fn test_a_date_without_a_year_cycles() {
+        assert_eq!(
+            fill_values(&values(&["12月31日"]), 2, true, FillRule::Extend),
+            values(&["1月1日", "1月2日"])
+        );
+        assert_eq!(
+            fill_values(&values(&["1月1日"]), 1, false, FillRule::Extend),
+            values(&["12月31日"])
+        );
+        // A run that crosses the end of the year is an even one for the same
+        // reason a run that crosses the end of the week is.
+        assert_eq!(
+            fill_values(
+                &values(&["12月30日", "12月31日", "1月1日"]),
+                2,
+                true,
+                FillRule::Extend
+            ),
+            values(&["1月2日", "1月3日"])
+        );
+        // Whether February has a 29th is a question about a year, so the one
+        // day that depends on it is left to the copying rule.
+        assert_eq!(
+            fill_values(&values(&["2月29日"]), 1, true, FillRule::Extend),
+            values(&["2月29日"])
+        );
+        assert_eq!(
+            fill_values(&values(&["2月28日"]), 1, true, FillRule::Extend),
+            values(&["3月1日"])
+        );
+    }
+
+    #[test]
+    fn test_weekdays_cycle_in_the_words_they_were_written_in() {
+        assert_eq!(
+            fill_values(&values(&["木", "金"]), 3, true, FillRule::Extend),
+            values(&["土", "日", "月"])
+        );
+        assert_eq!(
+            fill_values(&values(&["日曜日"]), 1, false, FillRule::Extend),
+            values(&["土曜日"])
+        );
+        assert_eq!(
+            fill_values(&values(&["Fri"]), 2, true, FillRule::Extend),
+            values(&["Sat", "Sun"])
+        );
+        assert_eq!(
+            fill_values(&values(&["friday"]), 1, true, FillRule::Extend),
+            values(&["saturday"])
+        );
+        assert_eq!(
+            fill_values(&values(&["FRI"]), 1, true, FillRule::Extend),
+            values(&["SAT"])
+        );
+        // Two weekdays set the step the same way two dates do, counting the
+        // short way round the week.
+        assert_eq!(
+            fill_values(&values(&["月", "水"]), 3, true, FillRule::Extend),
+            values(&["金", "日", "火"])
+        );
+        // A run that crosses the end of the week is still an even one: the step
+        // from Saturday to Sunday is a day forwards, not six backwards.
+        assert_eq!(
+            fill_values(&values(&["金", "土", "日"]), 2, true, FillRule::Extend),
+            values(&["月", "火"])
+        );
+        // A case no fill could carry over is not a weekday at all.
+        assert_eq!(
+            fill_values(&values(&["fRIday"]), 1, true, FillRule::Extend),
+            values(&["fRIday"])
+        );
+    }
+
+    #[test]
+    fn test_what_is_not_a_date_is_left_to_the_other_rules() {
+        // A day the calendar does not have is neither a date nor a number.
+        assert_eq!(
+            fill_values(&values(&["2026/9/31"]), 2, true, FillRule::Extend),
+            values(&["2026/9/31", "2026/9/31"])
+        );
+        // Without a separator it is a plain number, and Ctrl still counts it.
+        assert_eq!(
+            fill_values(&values(&["20260918"]), 1, true, FillRule::Extend),
+            values(&["20260918"])
+        );
+        assert_eq!(
+            fill_values(&values(&["20260918"]), 1, true, FillRule::Invert),
+            values(&["20260919"])
+        );
+        // A time of day is out of scope.
+        assert_eq!(
+            fill_values(&values(&["2026-09-18 10:00"]), 1, true, FillRule::Extend),
+            values(&["2026-09-18 10:00"])
+        );
+        // Two digits could be a year or a day, so they are refused rather than
+        // guessed at.
+        assert_eq!(
+            fill_values(&values(&["26/9/1"]), 1, true, FillRule::Extend),
+            values(&["26/9/1"])
+        );
+        // One series cannot be written back in two spellings.
+        assert_eq!(
+            fill_values(
+                &values(&["2026-09-01", "2026/09/02"]),
+                1,
+                true,
+                FillRule::Extend
+            ),
+            values(&["2026-09-01"])
+        );
+        assert_eq!(
+            fill_values(
+                &values(&["2026-09-01", "2026-9-2"]),
+                1,
+                true,
+                FillRule::Extend
+            ),
+            values(&["2026-09-01"])
+        );
+        // A negative number starts with the character a date is split on.
+        assert_eq!(
+            fill_values(&values(&["-3", "-2"]), 2, true, FillRule::Extend),
+            values(&["-1", "0"])
+        );
+    }
+
+    /// A spelling that could just as well be something else is not taken for a
+    /// date: a fill that quietly read one as a date would count the wrong thing
+    /// up, and there is no way for the user to see that it had.
+    #[test]
+    fn test_a_spelling_that_could_be_read_two_ways_is_not_a_date() {
+        // A year and a month with no day, which is also how a subtraction and a
+        // range are written.
+        assert_eq!(
+            fill_values(&values(&["2026-09"]), 2, true, FillRule::Extend),
+            values(&["2026-09", "2026-09"])
+        );
+        // A month and a day with no year, which is also a fraction and a ratio.
+        assert_eq!(
+            fill_values(&values(&["9/18"]), 2, true, FillRule::Extend),
+            values(&["9/18", "9/18"])
+        );
+        assert_eq!(
+            fill_values(&values(&["1/2"]), 2, true, FillRule::Extend),
+            values(&["1/2", "1/2"])
+        );
+        // Two of them in a row do not make a series either.
+        assert_eq!(
+            fill_values(&values(&["1/2", "1/3"]), 2, true, FillRule::Extend),
+            values(&["1/2", "1/3"])
+        );
+    }
+
+    /// Two dates set a step in days and nothing more. Excel does not pull the
+    /// series onto the end of each month - a month is not a fixed number of
+    /// days - and neither does this: the month end is where the count lands, not
+    /// where it is dragged to.
+    #[test]
+    fn test_two_dates_step_by_days_rather_than_by_months() {
+        assert_eq!(
+            fill_values(
+                &values(&["2026/1/31", "2026/2/28"]),
+                2,
+                true,
+                FillRule::Extend
+            ),
+            values(&["2026/3/28", "2026/4/25"])
+        );
+        assert_eq!(
+            fill_values(
+                &values(&["2026-01-31", "2026-02-28"]),
+                1,
+                false,
+                FillRule::Extend
+            ),
+            values(&["2026-01-03"])
+        );
+    }
+
+    /// A date the spelling cannot hold takes the whole fill back to copying,
+    /// rather than leaving some cells stepped and the rest of the column in a
+    /// shape it never used.
+    #[test]
+    fn test_a_date_past_the_end_of_the_spelling_is_copied() {
+        assert_eq!(
+            fill_values(&values(&["9999-12-31"]), 2, true, FillRule::Extend),
+            values(&["9999-12-31", "9999-12-31"])
+        );
+        // The same date one step in is still a date.
+        assert_eq!(
+            fill_values(&values(&["9999-12-30"]), 1, true, FillRule::Extend),
+            values(&["9999-12-31"])
+        );
+        assert_eq!(
+            fill_values(&values(&["0001-01-01"]), 1, false, FillRule::Extend),
+            values(&["0001-01-01"])
+        );
+    }
+
+    /// The spellings this code cannot read come back byte for byte. Every one of
+    /// them is multibyte where a date is not, which is where a reader written in
+    /// byte offsets would either cut a character in half or take the wrong piece
+    /// for the month.
+    #[test]
+    fn test_a_spelling_this_code_cannot_read_is_copied_as_it_stands() {
+        for value in [
+            "２０２６年９月１８日",
+            "２０２６/９/１８",
+            "１月２日",
+            "18日9月",
+            "月日",
+            "年",
+            "0月0日",
+            "2026年0月1日",
+            "ＳＵＮ",
+            "Ｓun",
+            "日曜日曜日",
+            "😀",
+            "",
+            "   ",
+        ] {
+            assert_eq!(
+                fill_values(&values(&[value]), 2, true, FillRule::Extend),
+                values(&[value, value]),
+                "{value:?} is not a date this code can write back"
+            );
+            assert_eq!(
+                fill_values(&values(&[value]), 2, false, FillRule::Extend),
+                values(&[value, value]),
+                "{value:?} is not a date this code can write back, either way"
+            );
+        }
+    }
+
+    /// Ctrl is the copy for a date whichever way the drag went, and backwards a
+    /// copy is stamped bottom up the way any other block is.
+    #[test]
+    fn test_ctrl_backwards_stamps_a_date_block_bottom_up() {
+        assert_eq!(
+            fill_values(&values(&["2026-09-18"]), 2, false, FillRule::Invert),
+            values(&["2026-09-18", "2026-09-18"])
+        );
+        assert_eq!(
+            fill_values(
+                &values(&["2026-09-18", "2026-09-19"]),
+                3,
+                false,
+                FillRule::Invert
+            ),
+            values(&["2026-09-19", "2026-09-18", "2026-09-19"])
+        );
+        assert_eq!(
+            fill_values(&values(&["金", "土"]), 3, false, FillRule::Invert),
+            values(&["土", "金", "土"])
+        );
+    }
+
+    /// A week of cells comes back to the day it started on, in the word the cell
+    /// used, and a drag upwards runs the week backwards.
+    #[test]
+    fn test_a_weekday_comes_back_round_the_week() {
+        assert_eq!(
+            fill_values(&values(&["Sunday"]), 7, true, FillRule::Extend),
+            values(&[
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday"
+            ])
+        );
+        assert_eq!(
+            fill_values(&values(&["Fri"]), 3, false, FillRule::Extend),
+            values(&["Thu", "Wed", "Tue"])
+        );
+        assert_eq!(
+            fill_values(&values(&["日曜日"]), 7, false, FillRule::Extend),
+            values(&[
+                "土曜日",
+                "金曜日",
+                "木曜日",
+                "水曜日",
+                "火曜日",
+                "月曜日",
+                "日曜日"
+            ])
+        );
+    }
+
+    /// A weekday written as one kanji is an ordinary word as well - 金 is money,
+    /// 水 is water - so one cell of it is not a series. A run of them is: no
+    /// column of money reads 月, 火, 水 down the page by accident.
+    ///
+    /// The spellings that are nothing but a weekday are a series on their own,
+    /// the way a date is.
+    #[test]
+    fn test_one_kanji_alone_is_a_word_rather_than_a_weekday() {
+        for word in ["金", "水", "土", "日", "月", "火", "木"] {
+            assert_eq!(
+                fill_values(&values(&[word]), 2, true, FillRule::Extend),
+                values(&[word, word]),
+                "{word} on its own is a word, not the start of a week"
+            );
+            assert_eq!(
+                fill_values(&values(&[word]), 2, false, FillRule::Extend),
+                values(&[word, word]),
+                "{word} on its own is a word upwards too"
+            );
+        }
+        // Two of them in a row are a week, and the second one is what says so.
+        assert_eq!(
+            fill_values(&values(&["月", "火"]), 3, true, FillRule::Extend),
+            values(&["水", "木", "金"])
+        );
+        assert_eq!(
+            fill_values(&values(&["金", "金"]), 2, true, FillRule::Extend),
+            values(&["金", "金"])
+        );
+        // A spelling that can only be a weekday needs no second cell.
+        assert_eq!(
+            fill_values(&values(&["日曜日"]), 1, true, FillRule::Extend),
+            values(&["月曜日"])
+        );
+        assert_eq!(
+            fill_values(&values(&["Sun"]), 1, true, FillRule::Extend),
+            values(&["Mon"])
+        );
+        assert_eq!(
+            fill_values(&values(&["Sunday"]), 1, true, FillRule::Extend),
+            values(&["Monday"])
+        );
+        // Neither does a date, which has a separator to tell it apart.
+        assert_eq!(
+            fill_values(&values(&["2026-09-18"]), 1, true, FillRule::Extend),
+            values(&["2026-09-19"])
+        );
     }
 
     fn rect(first_row: usize, last_row: usize, first_col: usize, last_col: usize) -> GridRect {
@@ -1532,5 +2643,153 @@ mod tests {
         cx.run_until_parked();
 
         assert_eq!(buffer_text(&editor, &mut cx), "1,a\n1,b\n1,c");
+    }
+
+    ///// Dates, end to end /////
+
+    #[gpui::test]
+    async fn test_dragging_the_handle_steps_a_date_by_a_day(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("d\n2026-09-18\nx\nx", cx).await;
+
+        select(&pane, body_cell(0, 0), body_cell(0, 0), &mut cx);
+        drag_fill_handle(&pane, body_cell(2, 0), Modifiers::none(), &mut cx);
+
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "d\n2026-09-18\n2026-09-19\n2026-09-20"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_ctrl_on_release_copies_a_date_instead_of_stepping_it(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("d\n2026-09-18\nx\nx", cx).await;
+
+        select(&pane, body_cell(0, 0), body_cell(0, 0), &mut cx);
+        drag_fill_handle(&pane, body_cell(2, 0), Modifiers::secondary_key(), &mut cx);
+
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "d\n2026-09-18\n2026-09-18\n2026-09-18"
+        );
+    }
+
+    /// Ctrl+D copies the first line over the rest of the block, and a column of
+    /// dates is no exception: the key the user reached for says "the same
+    /// value", not "the days after it".
+    #[gpui::test]
+    async fn test_ctrl_d_copies_a_date_rather_than_counting_it(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("d\n2026-09-18\nx\nx", cx).await;
+
+        select(&pane, body_cell(0, 0), body_cell(2, 0), &mut cx);
+        cx.simulate_keystrokes("ctrl-d");
+        cx.run_until_parked();
+
+        assert_eq!(
+            buffer_text(&editor, &mut cx),
+            "d\n2026-09-18\n2026-09-18\n2026-09-18"
+        );
+    }
+
+    /// A weekday runs through the week and round again, which is a multibyte
+    /// spelling read and written back whole. Two cells are what say the column
+    /// holds weekdays at all, since one kanji on its own is an ordinary word.
+    #[gpui::test]
+    async fn test_dragging_the_handle_runs_through_the_week(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("曜日\n木\n金\nx\nx", cx).await;
+
+        select(&pane, body_cell(0, 0), body_cell(1, 0), &mut cx);
+        drag_fill_handle(&pane, body_cell(3, 0), Modifiers::none(), &mut cx);
+
+        assert_eq!(buffer_text(&editor, &mut cx), "曜日\n木\n金\n土\n日");
+    }
+
+    /// The same column with only one kanji in it is left alone: a cell holding
+    /// 金 is as likely to be money as it is to be Friday.
+    #[gpui::test]
+    async fn test_dragging_one_kanji_copies_it(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("金額\n金\nx\nx", cx).await;
+
+        select(&pane, body_cell(0, 0), body_cell(0, 0), &mut cx);
+        drag_fill_handle(&pane, body_cell(2, 0), Modifiers::none(), &mut cx);
+
+        assert_eq!(buffer_text(&editor, &mut cx), "金額\n金\n金\n金");
+    }
+
+    ///// What a gesture leaves selected /////
+
+    /// A fill dragged out of selected rows leaves rows selected. Turning them
+    /// into a cell range would quietly change what the next Delete, or the next
+    /// color, covers.
+    #[gpui::test]
+    async fn test_a_fill_dragged_out_of_selected_rows_keeps_them_rows(cx: &mut TestAppContext) {
+        let (pane, editor, mut cx) = open_grid("a,b\n1,2\n,\n,", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_row_selection(GridRow::Body(DisplayRow(0)), SelectionChange::Replace, cx);
+        });
+        drag_fill_handle(&pane, body_cell(2, 1), Modifiers::none(), &mut cx);
+
+        assert_eq!(buffer_text(&editor, &mut cx), "a,b\n1,2\n1,2\n1,2");
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.grid.selection_kind,
+                GridSelectionKind::Rows,
+                "the rows the fill grew into are still selected as rows"
+            );
+            let rect = pane.selection_rect();
+            assert_eq!((rect.first_row, rect.last_row), (1, 3));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_a_fill_dragged_out_of_a_selected_column_keeps_it_a_column(
+        cx: &mut TestAppContext,
+    ) {
+        let (pane, editor, mut cx) = open_grid("a,b\n1,\n2,", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_column_selection(AnyColumn(0), SelectionChange::Replace, cx);
+        });
+        drag_fill_handle(
+            &pane,
+            GridCell::new(GridRow::Body(DisplayRow(1)), AnyColumn(1)),
+            Modifiers::none(),
+            &mut cx,
+        );
+
+        // A whole column carries its heading, and a sideways drag has no rule
+        // about headings the way Ctrl+D does, so the heading is copied too.
+        assert_eq!(buffer_text(&editor, &mut cx), "a,a\n1,1\n2,2");
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.grid.selection_kind,
+                GridSelectionKind::Columns,
+                "the columns the fill grew into are still selected as columns"
+            );
+        });
+    }
+
+    /// A gesture that lands on a rectangle its selection's kind cannot mean
+    /// leaves a plain cell range behind: rows and columns are stored as two
+    /// corners and drawn back out across the whole table, so keeping the kind
+    /// would widen the selection behind the user's back.
+    #[gpui::test]
+    async fn test_a_kind_that_no_longer_fits_the_rectangle_falls_back_to_cells(
+        cx: &mut TestAppContext,
+    ) {
+        let (pane, _editor, mut cx) = open_grid("a,b,c\n1,2,3\n4,5,6", cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_row_selection(GridRow::Body(DisplayRow(0)), SelectionChange::Replace, cx);
+            assert_eq!(pane.grid.selection_kind, GridSelectionKind::Rows);
+
+            pane.select_rect(rect(1, 2, 0, 1), cx);
+            assert_eq!(
+                pane.grid.selection_kind,
+                GridSelectionKind::Cells,
+                "two of the three columns are not whole rows"
+            );
+            assert_eq!(pane.selection_rect(), rect(1, 2, 0, 1));
+        });
     }
 }

@@ -1,7 +1,7 @@
 use super::tool_permissions::{
-    authorize_symlink_escapes, canonicalize_worktree_roots, collect_symlink_escapes,
-    resolve_creatable_global_skill_descendant_path, resolve_global_skill_descendant_path,
-    sensitive_settings_kind,
+    ambiguous_worktree_note, authorize_symlink_escapes, canonicalize_worktree_roots,
+    collect_symlink_escapes, resolve_creatable_global_skill_descendant_path,
+    resolve_global_skill_descendant_path, resolve_new_path_in_the_project, sensitive_settings_kind,
 };
 use crate::{
     AgentTool, ToolCallEventStream, ToolInput, ToolPermissionDecision,
@@ -135,15 +135,55 @@ impl AgentTool for CopyPathTool {
             )
             .await);
 
+            // A destination that doesn't exist yet resolves nowhere, so
+            // `find_project_path` alone would call a copy that stays inside
+            // the project "outside the project" — and then refuse it after
+            // the user approved. Place it where exactly one worktree could
+            // hold it (ADR-F54 決定 3).
+            // The count is kept because the card below promises a specific
+            // worktree when there is more than one candidate, and approving
+            // that card has to put the copy there rather than refuse it.
+            let (destination_project_path, destination_candidate_count) =
+                project.read_with(cx, |project, cx| {
+                    match project.find_project_path(&input.destination_path, cx) {
+                        Some(project_path) => (Some(project_path), 1),
+                        None => match resolve_new_path_in_the_project(
+                            project,
+                            Path::new(&input.destination_path),
+                            cx,
+                        ) {
+                            Some(placement) => {
+                                (Some(placement.project_path), placement.candidate_count)
+                            }
+                            None => (None, 0),
+                        },
+                    }
+                });
+
             // 決定 3: either end outside every worktree root is never
             // approved by the mode alone. A sensitive location always prompts
             // anyway, so it is left to the sensitive-settings path below.
             let outside_project = sensitive_kind.is_none()
-                && project.read_with(cx, |project, cx| {
-                    [&input.source_path, &input.destination_path]
-                        .into_iter()
-                        .any(|path| project.find_project_path(path, cx).is_none())
-                });
+                && (destination_candidate_count != 1
+                    || project.read_with(cx, |project, cx| {
+                        project.find_project_path(&input.source_path, cx).is_none()
+                    }));
+
+            // 決定 1: when several worktrees could hold the destination the
+            // copy silently lands in the first, so the card names it rather
+            // than claiming the path is outside the project.
+            let ambiguous_destination_note = destination_project_path
+                .as_ref()
+                // `outside_project` is what carries "the sensitive-settings card
+                // isn't the one being shown": overriding that card here would
+                // offer a standing approval for a settings file.
+                .filter(|_| outside_project && destination_candidate_count >= 2)
+                .and_then(|project_path| {
+                    project.read_with(cx, |project, cx| {
+                        project.short_full_path_for_project_path(project_path, cx)
+                    })
+                })
+                .map(|destination| ambiguous_worktree_note(&destination, "コピーされます"));
 
             // A judged decision reaches the same authorization call, which
             // re-evaluates the settings and runs the judge there; treating it
@@ -170,7 +210,9 @@ impl AgentTool for CopyPathTool {
                         vec![input.source_path.clone(), input.destination_path.clone()],
                     );
                     let title = format!("{src} を {dest} にコピー");
-                    if outside_project {
+                    if let Some(note) = &ambiguous_destination_note {
+                        event_stream.authorize_with_note(&title, note, context, cx)
+                    } else if outside_project {
                         event_stream.authorize_outside_project(&title, context, cx)
                     } else {
                         authorize_with_sensitive_settings(
@@ -211,13 +253,13 @@ impl AgentTool for CopyPathTool {
                 {
                     global_destination_path
                 } else {
+                    let project_path = destination_project_path.clone().ok_or_else(|| {
+                        format!(
+                            "Destination path {} was outside the project.",
+                            input.destination_path
+                        )
+                    })?;
                     project.read_with(cx, |project, cx| {
-                        let project_path = project.find_project_path(&input.destination_path, cx).ok_or_else(|| {
-                            format!(
-                                "Destination path {} was outside the project.",
-                                input.destination_path
-                            )
-                        })?;
                         project.absolute_path(&project_path, cx).ok_or_else(|| {
                             format!(
                                 "Destination path {} could not be resolved.",
@@ -258,19 +300,22 @@ impl AgentTool for CopyPathTool {
 
             // ADR-F50: the copy lands in the destination's worktree.
             let noted = project.update(cx, |project, cx| {
-                project
-                    .find_project_path(&input.destination_path, cx)
-                    .map(|destination| project.note_agent_write_to_project_path(&destination, cx))
+                destination_project_path
+                    .as_ref()
+                    .map(|destination| project.note_agent_write_to_project_path(destination, cx))
             });
             if let Some(noted) = noted {
                 noted.await;
             }
+            // The destination the card was about is the destination we copy
+            // to: re-resolving it here would drop the new-path placement and
+            // refuse the copy after the user approved it.
             let copy_task = project.update(cx, |project, cx| {
                 match project
                     .find_project_path(&input.source_path, cx)
                     .and_then(|project_path| project.entry_for_path(&project_path, cx))
                 {
-                    Some(entity) => match project.find_project_path(&input.destination_path, cx) {
+                    Some(entity) => match destination_project_path.clone() {
                         Some(project_path) => Ok(project.copy_entry(entity.id, project_path, cx)),
                         None => Err(format!(
                             "Destination path {} was outside the project.",
@@ -325,6 +370,48 @@ mod tests {
             settings.tool_permissions.default = settings::ToolPermissionMode::Allow;
             AgentSettings::override_global(settings, cx);
         });
+    }
+
+    /// 決定 3: a copy whose destination doesn't exist yet resolves nowhere,
+    /// but with one worktree it plainly stays in the project — it used to be
+    /// called "outside the project" on the card and then refused after the
+    /// user approved it.
+    #[gpui::test]
+    async fn test_copy_path_to_new_relative_destination_stays_in_the_project(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root"), json!({ "a.txt": "中身" }))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/root").as_ref()], cx).await;
+        cx.executor().run_until_parked();
+
+        let tool = Arc::new(CopyPathTool::new(project));
+        let (event_stream, mut event_rx) = ToolCallEventStream::test();
+        let result = cx
+            .update(|cx| {
+                tool.run(
+                    ToolInput::resolved(CopyPathToolInput {
+                        source_path: "a.txt".to_string(),
+                        destination_path: "b.txt".to_string(),
+                    }),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await;
+        assert!(result.is_ok(), "{result:?}");
+        event_rx.expect_no_authorization();
+        assert_eq!(
+            fs.load(path!("/root/a.txt").as_ref()).await.unwrap(),
+            "中身"
+        );
+        assert_eq!(
+            fs.load(path!("/root/b.txt").as_ref()).await.unwrap(),
+            "中身"
+        );
     }
 
     #[gpui::test]

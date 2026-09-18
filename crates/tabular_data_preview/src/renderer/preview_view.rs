@@ -58,7 +58,8 @@ impl Render for TabularDataPreviewPane {
                         }),
                     )
                     .child(self.render_grid_body(cx))
-                    .child(self.bounds_probe(&self.grid.body_bounds.clone(), cx)),
+                    .child(self.bounds_probe(&self.grid.body_bounds.clone(), cx))
+                    .child(self.drag_pointer_tracker(cx)),
             );
 
         let render_prep_duration = render_prep_start.elapsed();

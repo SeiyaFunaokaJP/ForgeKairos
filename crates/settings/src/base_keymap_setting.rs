@@ -74,25 +74,25 @@ impl Display for BaseKeymap {
 impl BaseKeymap {
     #[cfg(target_os = "macos")]
     pub const OPTIONS: [(&'static str, Self); 8] = [
-        ("Zed (Default)", Self::Zed),
+        ("Zed (既定)", Self::Zed),
         ("VS Code", Self::VSCode),
         ("Atom", Self::Atom),
         ("JetBrains", Self::JetBrains),
         ("Sublime Text", Self::SublimeText),
-        ("Emacs (beta)", Self::Emacs),
+        ("Emacs (ベータ)", Self::Emacs),
         ("TextMate", Self::TextMate),
-        ("Cursor", Self::Cursor),
+        ("Cursor (ベータ)", Self::Cursor),
     ];
 
     #[cfg(not(target_os = "macos"))]
     pub const OPTIONS: [(&'static str, Self); 7] = [
-        ("Zed (Default)", Self::Zed),
+        ("Zed (既定)", Self::Zed),
         ("VS Code", Self::VSCode),
         ("Atom", Self::Atom),
         ("JetBrains", Self::JetBrains),
         ("Sublime Text", Self::SublimeText),
-        ("Emacs (beta)", Self::Emacs),
-        ("Cursor", Self::Cursor),
+        ("Emacs (ベータ)", Self::Emacs),
+        ("Cursor (ベータ)", Self::Cursor),
     ];
 
     pub fn asset_path(&self) -> Option<&'static str> {
@@ -139,5 +139,53 @@ impl BaseKeymap {
 impl Settings for BaseKeymap {
     fn from_settings(s: &crate::settings_content::SettingsContent) -> Self {
         s.base_keymap.unwrap().into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_option_name_resolves_back_to_its_own_variant() {
+        // `from_names` takes the label the onboarding picker showed and looks
+        // it up in `OPTIONS` again, keeping the *first* entry that carries it
+        // and otherwise falling back to `Zed`. Two labels that collide would
+        // therefore hand the user a keymap they did not pick, without any
+        // error — the one way translating the labels can go wrong.
+        for (name, value) in BaseKeymap::OPTIONS {
+            assert_eq!(BaseKeymap::from_names(name), value, "name: {name}");
+        }
+    }
+
+    #[test]
+    fn the_translated_picker_labels_stay_translated() {
+        // The picker (`onboarding::base_keymap_picker`) and the command
+        // palette are the only places these strings show up, so nothing else
+        // would notice them turning back into English on an upstream-shaped
+        // edit.
+        let names = BaseKeymap::names().collect::<Vec<_>>();
+        assert!(names.contains(&"Zed (既定)"), "{names:?}");
+        assert!(names.contains(&"Emacs (ベータ)"), "{names:?}");
+        assert!(names.contains(&"Cursor (ベータ)"), "{names:?}");
+        // The vendors' own spellings are left alone, and typing them still
+        // finds the row: the picker matches on these strings.
+        assert!(names.contains(&"VS Code"), "{names:?}");
+        assert!(
+            names.iter().all(|name| !name.contains("(beta)")),
+            "{names:?}"
+        );
+    }
+
+    #[test]
+    fn the_telemetry_display_stays_in_english() {
+        // `Display` is what `base_keymap_picker.rs` and `main.rs` report to
+        // telemetry (ADR §5.11); translating it would change the values Zed
+        // Industries already collects, so only `OPTIONS` (this UI's labels)
+        // and `BaseKeymapContent::VARIANTS` (the settings UI's) are Japanese.
+        assert_eq!(BaseKeymap::Zed.to_string(), "Zed");
+        assert_eq!(BaseKeymap::Emacs.to_string(), "Emacs (beta)");
+        assert_eq!(BaseKeymap::Cursor.to_string(), "Cursor (beta)");
+        assert_eq!(BaseKeymap::None.to_string(), "None");
     }
 }

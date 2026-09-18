@@ -4,6 +4,7 @@ use crate::{
     commit_tooltip::CommitAvatar,
     commit_view::CommitView,
     git_status_icon,
+    rewrite_range_modal::{self, RewriteCommitRow, RewriteRangeModal},
 };
 use collections::{BTreeMap, BTreeSet, HashMap, HashSet, IndexSet};
 use editor::Editor;
@@ -13,7 +14,7 @@ use git::{
     parse_git_remote_url,
     repository::{
         Branch, InitialGraphCommitData, LogOrder, LogSource, RepoPath, ResetMode, SearchCommitArgs,
-        TagDistance, TagInfo, Worktree as GitWorktree,
+        TagDistance, TagInfo, Worktree as GitWorktree, split_commit_search_query,
     },
     status::{FileStatus, StatusCode, TrackedStatus},
 };
@@ -593,6 +594,8 @@ actions!(
         ScrollDown,
         /// Toggles the selected commit's changed files between flat and tree views.
         ToggleChangedFilesView,
+        /// 選択したコミットの並べ替え・まとめる・メッセージの変更・捨てるをまとめて編集します。
+        EditSelectedCommits,
     ]
 );
 
@@ -768,6 +771,117 @@ fn apply_selection_gesture(
             (range.collect(), anchor)
         }
     }
+}
+
+/// A toast from somewhere that only holds a weak handle to the workspace.
+fn report_to_workspace(
+    workspace: &WeakEntity<Workspace>,
+    message: String,
+    icon: IconName,
+    color: Color,
+    cx: &mut App,
+) {
+    workspace
+        .update(cx, |workspace, cx| {
+            let toast = StatusToast::new(message, cx, move |this, _cx| {
+                this.icon(Icon::new(icon).size(IconSize::Small).color(color))
+                    .dismiss_button(true)
+            });
+            workspace.toggle_status_toast(toast, cx);
+        })
+        .ok();
+}
+
+/// Puts the branch back where it stood before a rewrite.
+///
+/// `reset --hard` cannot itself be taken back from the UI, so this refuses unless the working tree
+/// is clean and HEAD is still exactly the commit the rewrite produced: anything else means there
+/// is work here that the reset would throw away without the user having asked.
+fn undo_rewrite(
+    repository: Entity<Repository>,
+    workspace: WeakEntity<Workspace>,
+    old_head: String,
+    new_head: String,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let (head, dirty) = {
+        let repository = repository.read(cx);
+        (
+            repository
+                .head_commit
+                .as_ref()
+                .map(|commit| commit.sha.to_string()),
+            repository
+                .cached_status()
+                .any(|entry| entry.status.has_changes()),
+        )
+    };
+    if head.as_deref() != Some(new_head.as_str()) {
+        report_to_workspace(
+            &workspace,
+            "書き換えの後に HEAD が動いているため、ここからは戻せません。git reflog から手で戻してください。"
+                .to_string(),
+            IconName::Warning,
+            Color::Warning,
+            cx,
+        );
+        return;
+    }
+    if dirty {
+        report_to_workspace(
+            &workspace,
+            "未コミットの変更があるため戻せません。コミットかスタッシュしてからやり直してください。"
+                .to_string(),
+            IconName::Warning,
+            Color::Warning,
+            cx,
+        );
+        return;
+    }
+    let short_old: String = old_head.chars().take(git::SHORT_SHA_LENGTH).collect();
+    let short_new: String = new_head.chars().take(git::SHORT_SHA_LENGTH).collect();
+    let confirmation = window.prompt(
+        gpui::PromptLevel::Warning,
+        "並べ替える前の状態に戻しますか?",
+        Some(&format!(
+            "現在の先頭 {short_new} を捨てて {short_old} に戻します (git reset --hard)。\n\
+             並べ替えでできたコミットは reflog からしか辿れなくなります。"
+        )),
+        &["戻す", "キャンセル"],
+        cx,
+    );
+    cx.spawn(async move |cx| {
+        if confirmation.await.unwrap_or(1) != 0 {
+            return;
+        }
+        let receiver = repository.update(cx, |repository, cx| {
+            repository.reset_to(old_head, ResetMode::Hard, cx)
+        });
+        let (message, failed) = match receiver.await {
+            Ok(Ok(output)) if output.succeeded() => (format!("{short_old} に戻しました。"), false),
+            Ok(Ok(output)) => (
+                format!("元に戻せませんでした\n{}", output.failure_message()),
+                true,
+            ),
+            Ok(Err(error)) => (format!("元に戻せませんでした\n{error:#}"), true),
+            Err(_) => return,
+        };
+        cx.update(|cx| {
+            report_to_workspace(
+                &workspace,
+                message,
+                if failed {
+                    IconName::XCircle
+                } else {
+                    IconName::GitBranch
+                },
+                if failed { Color::Error } else { Color::Muted },
+                cx,
+            );
+        });
+    })
+    .detach();
 }
 
 /// Whether the picked rows are one unbroken chain of commits, which is what
@@ -1820,7 +1934,7 @@ impl GitGraph {
 
         let search_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("コミットを検索…", window, cx);
+            editor.set_placeholder_text("コミットを検索… (著者:名前 で絞り込み)", window, cx);
             editor
         });
 
@@ -2454,7 +2568,10 @@ impl GitGraph {
             editor.set_text_style_refinement(Default::default());
         });
 
-        if query.as_str().is_empty() {
+        let (author, message_query) = split_commit_search_query(query.as_str());
+        // Whitespace on its own leaves nothing to match on, which is the same as an empty box
+        // rather than a search that would find every commit.
+        if author.is_none() && message_query.is_empty() {
             self.search_state.state = QueryState::Empty;
             cx.notify();
             return;
@@ -2466,7 +2583,8 @@ impl GitGraph {
             repo.search_commits(
                 self.log_source.clone(),
                 SearchCommitArgs {
-                    query: query.clone(),
+                    query: message_query.into(),
+                    author: author.map(SharedString::from),
                     case_sensitive: self.search_state.case_sensitive,
                 },
                 request_tx,
@@ -4580,6 +4698,278 @@ impl GitGraph {
         .detach();
     }
 
+    /// The picked commits, oldest first, with what the todo editor shows for each. A subject git
+    /// has not handed over yet falls back to the SHA rather than shifting the rows out of step
+    /// with the commits they stand for.
+    fn selected_commits_oldest_first(&mut self, cx: &mut Context<Self>) -> Vec<RewriteCommitRow> {
+        let shas = self
+            .selected_rows()
+            .into_iter()
+            .rev()
+            .filter_map(|row| self.graph_data.commits.get(row))
+            .map(|commit| commit.data.sha)
+            .collect::<Vec<_>>();
+        let Some(repository) = self.get_repository(cx) else {
+            return Vec::new();
+        };
+        repository.update(cx, |repository, cx| {
+            shas.iter()
+                .map(|sha| match repository.fetch_commit_data(*sha, false, cx) {
+                    CommitDataState::Loaded(data) => RewriteCommitRow {
+                        sha: sha.to_string(),
+                        subject: data.subject.clone(),
+                        message: data.message.clone(),
+                    },
+                    CommitDataState::Loading(_) => RewriteCommitRow {
+                        sha: sha.to_string(),
+                        subject: SharedString::from(sha.display_short()),
+                        message: SharedString::default(),
+                    },
+                })
+                .collect()
+        })
+    }
+
+    /// Opens the todo editor for the picked range: the same conditions as squashing, because the
+    /// rewrite replays the range onto the branch that is checked out.
+    fn open_rewrite_range_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let rows: BTreeSet<usize> = self.selected_rows().into_iter().collect();
+        if rows.len() < 2 {
+            self.report_refused(
+                "並べ替えるコミットを 2 件以上選んでください。".to_string(),
+                cx,
+            );
+            return;
+        }
+        if !is_contiguous_commit_range(&self.graph_data.commits, &rows) {
+            self.report_refused(
+                "連続した範囲を選んでください。マージコミットを含む範囲は書き換えられません。"
+                    .to_string(),
+                cx,
+            );
+            return;
+        }
+        if !self.selection_is_on_current_branch(cx) {
+            self.report_refused(
+                "現在のブランチ上のコミットを選んでください。".to_string(),
+                cx,
+            );
+            return;
+        }
+        if self.worktree_is_dirty(cx) {
+            self.report_dirty_worktree("コミットの編集", cx);
+            return;
+        }
+        let (Some(newest), Some(oldest)) = (rows.iter().next(), rows.iter().next_back()) else {
+            return;
+        };
+        let (Some(newest), Some(oldest)) = (
+            self.graph_data.commits.get(*newest),
+            self.graph_data.commits.get(*oldest),
+        ) else {
+            return;
+        };
+        let newest_sha = newest.data.sha.to_string();
+        let oldest_sha = oldest.data.sha.to_string();
+        let commits = self.selected_commits_oldest_first(cx);
+        // Every commit of the range has to have a row: a commit the list left out would be one
+        // git is told to leave out of the rewritten history, without the user having said so.
+        if commits.len() != rows.len() {
+            self.report_refused(
+                "選択したコミットを読み込めませんでした。少し待ってからもう一度お試しください。"
+                    .to_string(),
+                cx,
+            );
+            return;
+        }
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let graph = cx.weak_entity();
+        workspace.update(cx, |workspace, cx| {
+            workspace.toggle_modal(window, cx, |window, cx| {
+                RewriteRangeModal::new(
+                    commits,
+                    Box::new(move |groups, window, cx| {
+                        graph
+                            .update(cx, |graph, cx| {
+                                graph.rewrite_range(
+                                    oldest_sha.clone(),
+                                    newest_sha.clone(),
+                                    groups,
+                                    window,
+                                    cx,
+                                );
+                            })
+                            .ok();
+                    }),
+                    window,
+                    cx,
+                )
+            });
+        });
+    }
+
+    /// Confirms the rewrite the todo editor collected and runs it.
+    fn rewrite_range(
+        &mut self,
+        oldest_sha: String,
+        newest_sha: String,
+        groups: Vec<git::repository::RewriteGroup>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+        let scratch_branch = git::repository::rewrite_scratch_branch_name(&newest_sha);
+        let (branch, work_directory_abs_path, old_head) = {
+            let repository = repository.read(cx);
+            (
+                repository
+                    .branch
+                    .as_ref()
+                    .map(|branch| branch.name().to_string()),
+                repository.work_directory_abs_path.clone(),
+                repository
+                    .head_commit
+                    .as_ref()
+                    .map(|commit| commit.sha.to_string()),
+            )
+        };
+        let Some(branch) = branch else {
+            self.report_refused(
+                "detached HEAD では並べ替えられません。先にブランチに切り替えてください。"
+                    .to_string(),
+                cx,
+            );
+            return;
+        };
+        let kept = groups.len();
+        let detail = format!(
+            "書き換えた後は {kept} 件のコミットになり、それぞれの SHA が変わります。\n\
+             書き換えるのは現在のブランチ「{branch}」です。\
+             作業は一時ブランチ「{scratch_branch}」の上で行い、「{branch}」は最後にそこへ付け替えます (成功したら一時ブランチは削除します)。\n\
+             プッシュ済みのブランチなら、この後に強制プッシュが必要です。"
+        );
+        let confirmation = window.prompt(
+            gpui::PromptLevel::Warning,
+            "選択したコミットをこの内容で書き換えますか?",
+            Some(&detail),
+            &["書き換える", "キャンセル"],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if confirmation.await.unwrap_or(1) != 0 {
+                return;
+            }
+            // Written before anything runs, and awaited: if the rewrite stops on a conflict it
+            // parks the user on the scratch branch, and the panel's banner can only take them back
+            // to a branch that was remembered first.
+            cx.update(|cx| {
+                rewrite_range_modal::remember_rewrite_origin(
+                    &work_directory_abs_path,
+                    &scratch_branch,
+                    &branch,
+                    cx,
+                )
+            })
+            .await;
+            let receiver = repository.update(cx, |repository, cx| {
+                repository.rewrite_range(oldest_sha, newest_sha, groups, cx)
+            });
+            let result = receiver.await;
+            let succeeded = matches!(&result, Ok(Ok(output)) if output.succeeded());
+            if succeeded {
+                cx.update(|cx| {
+                    rewrite_range_modal::forget_rewrite_origin(
+                        &work_directory_abs_path,
+                        &scratch_branch,
+                        cx,
+                    )
+                })
+                .await;
+            }
+            // The branch has moved by now, so this is the commit the "undo" below has to find HEAD
+            // at before it resets anything.
+            let new_head = if succeeded {
+                let receiver = repository.update(cx, |repository, _cx| {
+                    repository.run_git_command(vec!["rev-parse".into(), "HEAD".into()], None)
+                });
+                match receiver.await {
+                    Ok(Ok(output)) if output.succeeded() => {
+                        Some(output.stdout.trim().to_string()).filter(|sha| !sha.is_empty())
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            this.update(cx, |this, cx| {
+                match (succeeded, old_head) {
+                    (true, Some(old_head)) => {
+                        this.report_rewrite_succeeded(repository, old_head, new_head, cx)
+                    }
+                    _ => this.report_git_result("コミットの並べ替え", result, cx),
+                }
+                this.invalidate_state(cx);
+                this.fetch_initial_graph_data(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Says the rewrite worked and names the commit the branch pointed at before it, which is what
+    /// the user needs to find the old history in the reflog.
+    ///
+    /// The toast's button is the same thing done for them, and it is deliberately narrow: only a
+    /// clean working tree with HEAD still at the commit the rewrite produced, so that it cannot
+    /// throw away work done afterwards.
+    fn report_rewrite_succeeded(
+        &self,
+        repository: Entity<Repository>,
+        old_head: String,
+        new_head: Option<String>,
+        cx: &mut App,
+    ) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let short_old: String = old_head.chars().take(git::SHORT_SHA_LENGTH).collect();
+        let message = format!(
+            "コミットの並べ替え: 完了しました\n元の先頭: {short_old} (reflog から戻せます)"
+        );
+        workspace.update(cx, |workspace, cx| {
+            let host = cx.weak_entity();
+            let toast = StatusToast::new(message, cx, move |this, _cx| {
+                let this = this
+                    .icon(
+                        Icon::new(IconName::GitBranch)
+                            .size(IconSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .dismiss_button(true);
+                let Some(new_head) = new_head else {
+                    return this;
+                };
+                // Long enough to read and decide: the button runs `reset --hard`.
+                this.auto_dismiss(false)
+                    .action("元に戻す…", move |window, cx| {
+                        undo_rewrite(
+                            repository.clone(),
+                            host.clone(),
+                            old_head.clone(),
+                            new_head.clone(),
+                            window,
+                            cx,
+                        );
+                    })
+            });
+            workspace.toggle_status_toast(toast, cx);
+        });
+    }
+
     fn report_dirty_worktree(&self, operation: &str, cx: &mut App) {
         self.report_refused(
             format!("{operation}の前に、未コミットの変更をコミットかスタッシュしてください。"),
@@ -5027,6 +5417,33 @@ impl GitGraph {
                 (true, false) => menu.item(
                     ContextMenuEntry::new(
                         "1 つにまとめる (squash) — 現在のブランチ上のコミットを選んでください",
+                    )
+                    .disabled(true),
+                ),
+            };
+            // The todo editor rewrites the same range squashing does, so it is offered under the
+            // same two conditions.
+            menu = match (contiguous, on_current_branch) {
+                (true, true) => menu.entry(
+                    format!("選択した {count} 件を並べ替え / まとめる / 捨てる…"),
+                    Some(EditSelectedCommits.boxed_clone()),
+                    {
+                        let graph = graph.clone();
+                        move |window, cx| {
+                            graph
+                                .update(cx, |graph, cx| graph.open_rewrite_range_modal(window, cx));
+                        }
+                    },
+                ),
+                (false, _) => menu.item(
+                    ContextMenuEntry::new(
+                        "並べ替え / まとめる / 捨てる — 連続した範囲を選んでください",
+                    )
+                    .disabled(true),
+                ),
+                (true, false) => menu.item(
+                    ContextMenuEntry::new(
+                        "並べ替え / まとめる / 捨てる — 現在のブランチ上のコミットを選んでください",
                     )
                     .disabled(true),
                 ),
@@ -5670,6 +6087,9 @@ impl Render for GitGraph {
             .on_action(cx.listener(Self::scroll_down))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::toggle_changed_files_view))
+            .on_action(cx.listener(|this, _: &EditSelectedCommits, window, cx| {
+                this.open_rewrite_range_modal(window, cx);
+            }))
             .on_action(cx.listener(Self::focus_next_tab_stop))
             .on_action(cx.listener(Self::focus_previous_tab_stop))
             .on_action(cx.listener(|this, _: &SelectNextMatch, _window, cx| {
@@ -7995,8 +8415,8 @@ mod tests {
                     CommitData {
                         sha: third_sha,
                         parents: smallvec![],
-                        author_name: "Author".into(),
-                        author_email: "author@example.com".into(),
+                        author_name: "山田 太郎".into(),
+                        author_email: "yamada@example.com".into(),
                         commit_timestamp: 3,
                         subject: "Update docs".into(),
                         message: "Update docs".into(),
@@ -8053,6 +8473,39 @@ mod tests {
         git_graph.read_with(&*cx, |graph, _| {
             assert_eq!(graph.search_matches_for_test(), vec![third_sha]);
         });
+
+        // The `著者:` prefix is a filter rather than text to look for in the message.
+        for (query, expected) in [
+            ("著者:山田", vec![third_sha]),
+            ("著者:\"山田 太郎\"", vec![third_sha]),
+            ("author:yamada@example.com", vec![third_sha]),
+            ("著者:山田 docs", vec![third_sha]),
+            ("著者:山田 feature", vec![]),
+            ("author:Author feature", vec![first_sha]),
+            ("山田", vec![]),
+            // The author narrows a hash prefix search too, rather than either one winning.
+            ("著者:山田 0303030", vec![third_sha]),
+            ("author:Author 0303030", vec![]),
+            ("author：山田", vec![third_sha]),
+            ("著者:\"未閉じ", vec![]),
+            ("著者:山田太郎", vec![]),
+            // A prefix with no value after it is message text, not a filter matching everyone.
+            ("著者:", vec![]),
+            ("author::", vec![]),
+            ("   ", vec![]),
+        ] {
+            git_graph.update(cx, |graph, cx| {
+                graph.search_for_test(query.into(), cx);
+            });
+            cx.run_until_parked();
+            git_graph.read_with(&*cx, |graph, _| {
+                assert_eq!(
+                    graph.search_matches_for_test(),
+                    expected,
+                    "unexpected matches for {query:?}"
+                );
+            });
+        }
     }
 
     #[gpui::test]

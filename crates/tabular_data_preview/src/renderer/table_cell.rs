@@ -72,7 +72,7 @@ impl TabularDataPreviewPane {
         vertical_alignment: VerticalAlignment,
         cx: &Context<TabularDataPreviewPane>,
     ) -> AnyElement {
-        let is_active = self.grid.cursor == cell && self.grid.context_menu.is_none();
+        let is_active = self.draws_active_cell_border(cell);
         let needs_probe = self.overlay_cell() == cell;
         let is_selected = self.selection_contains(cell.row, cell.col);
         let colors = cx.theme().colors();
@@ -489,6 +489,237 @@ mod tests {
         assert_eq!(
             editor.size.width, heading.size.width,
             "the editor should be as wide as the heading cell"
+        );
+    }
+}
+
+/// The line drawn around each selected block, which is measured against the
+/// cells it is supposed to trace.
+#[cfg(test)]
+mod band_7a {
+    use gpui::{Bounds, Pixels, TestAppContext, VisualTestContext, px};
+
+    use super::{CELL_FRAME_DEBUG_SELECTOR, TabularDataPreviewPane};
+    use crate::{
+        grid::{GridCell, GridRow, SelectionChange},
+        grid_editing::tests::open_grid,
+        grid_fill::{SELECTION_OUTLINE_DEBUG_SELECTORS, SELECTION_OUTLINE_WIDTH},
+        types::{AnyColumn, DisplayRow},
+    };
+
+    const FIXTURE: &str = "name,value,note\nalphabetical,1,x\nbetabetical,2,y";
+
+    fn body_cell(row: usize, col: usize) -> GridCell {
+        GridCell::new(GridRow::Body(DisplayRow(row)), AnyColumn(col))
+    }
+
+    /// The four sides of one block, in [`SELECTION_OUTLINE_DEBUG_SELECTORS`]'s
+    /// own order: top, bottom, left, right.
+    fn outline(cx: &mut VisualTestContext, block: usize) -> [Option<Bounds<Pixels>>; 4] {
+        let names = SELECTION_OUTLINE_DEBUG_SELECTORS
+            .get(block)
+            .expect("the test only names blocks the grid names too");
+        [
+            cx.debug_bounds(names[0]),
+            cx.debug_bounds(names[1]),
+            cx.debug_bounds(names[2]),
+            cx.debug_bounds(names[3]),
+        ]
+    }
+
+    fn drawn_sides(cx: &mut VisualTestContext, block: usize) -> usize {
+        outline(cx, block)
+            .iter()
+            .filter(|side| side.is_some())
+            .count()
+    }
+
+    #[track_caller]
+    fn side(sides: [Option<Bounds<Pixels>>; 4], index: usize, name: &str) -> Bounds<Pixels> {
+        sides
+            .get(index)
+            .copied()
+            .flatten()
+            .unwrap_or_else(|| panic!("the block's {name} should have been drawn"))
+    }
+
+    fn select(
+        pane: &gpui::Entity<TabularDataPreviewPane>,
+        from: GridCell,
+        to: GridCell,
+        cx: &mut VisualTestContext,
+    ) {
+        pane.update(cx, |pane, cx| {
+            pane.change_cell_selection(from, SelectionChange::Replace, cx);
+            pane.change_cell_selection(to, SelectionChange::Extend, cx);
+        });
+        cx.run_until_parked();
+    }
+
+    /// The four sides have to land on the block's own outer edges. A line drawn
+    /// a cell short, or one cell's border repeated on every cell of the block,
+    /// says something different about where the selection ends - which is the
+    /// whole reason the line is there.
+    ///
+    /// The caret's cell is the only one a test can measure, so the block is
+    /// selected once from each end: its top and left are read off its first
+    /// cell, its bottom and right off its last.
+    #[gpui::test]
+    async fn the_outline_traces_the_edges_of_the_selected_block(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid(FIXTURE, cx).await;
+
+        select(&pane, body_cell(1, 2), body_cell(0, 1), &mut cx);
+        assert_eq!(
+            drawn_sides(&mut cx, 0),
+            4,
+            "a block has four sides, each named once"
+        );
+        let first_cell = cx
+            .debug_bounds(CELL_FRAME_DEBUG_SELECTOR)
+            .expect("the caret should be on the block's first cell");
+        assert!(
+            first_cell.size.width > px(0.) && first_cell.size.height > px(0.),
+            "the cell was drawn with no size ({first_cell:?})"
+        );
+        let sides = outline(&mut cx, 0);
+        let top = side(sides, 0, "top");
+        let left = side(sides, 2, "left");
+        assert_eq!(
+            top.origin, first_cell.origin,
+            "the top should start at the block's top left corner ({top:?})"
+        );
+        assert_eq!(top.size.width, first_cell.size.width);
+        assert_eq!(top.size.height, SELECTION_OUTLINE_WIDTH);
+        assert_eq!(
+            left.origin, first_cell.origin,
+            "the left should start at the block's top left corner ({left:?})"
+        );
+        assert_eq!(left.size.height, first_cell.size.height);
+        assert_eq!(left.size.width, SELECTION_OUTLINE_WIDTH);
+
+        // The same block with the caret at the other end of it.
+        select(&pane, body_cell(0, 1), body_cell(1, 2), &mut cx);
+        assert_eq!(drawn_sides(&mut cx, 0), 4);
+        let last_cell = cx
+            .debug_bounds(CELL_FRAME_DEBUG_SELECTOR)
+            .expect("the caret should be on the block's last cell");
+        let sides = outline(&mut cx, 0);
+        let bottom = side(sides, 1, "bottom");
+        let right = side(sides, 3, "right");
+        assert_eq!(
+            bottom.bottom_right(),
+            last_cell.bottom_right(),
+            "the bottom should end at the block's bottom right corner ({bottom:?})"
+        );
+        assert_eq!(bottom.size.width, last_cell.size.width);
+        assert_eq!(bottom.size.height, SELECTION_OUTLINE_WIDTH);
+        assert_eq!(
+            right.bottom_right(),
+            last_cell.bottom_right(),
+            "the right should end at the block's bottom right corner ({right:?})"
+        );
+        assert_eq!(right.size.height, last_cell.size.height);
+        assert_eq!(right.size.width, SELECTION_OUTLINE_WIDTH);
+
+        // The block reaches over two cells, so its outline is wider and taller
+        // than the one cell each side was measured against.
+        assert!(
+            right.origin.x > top.origin.x + top.size.width
+                && bottom.origin.y > left.origin.y + left.size.height,
+            "the four sides should stand around the block rather than around one \
+             cell of it ({top:?} {left:?} {bottom:?} {right:?})"
+        );
+    }
+
+    /// One selected cell under the caret already has a border of its own, and a
+    /// second line on top of it would make that one cell look thicker than the
+    /// caret's border is anywhere else.
+    #[gpui::test]
+    async fn a_single_cell_under_the_caret_is_left_to_its_own_border(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid(FIXTURE, cx).await;
+
+        select(&pane, body_cell(0, 0), body_cell(0, 0), &mut cx);
+        assert_eq!(
+            drawn_sides(&mut cx, 0),
+            0,
+            "the caret's own border is the outline of a block of one cell"
+        );
+
+        // Reaching one cell further makes it a block, which is outlined.
+        select(&pane, body_cell(0, 0), body_cell(1, 0), &mut cx);
+        assert_eq!(drawn_sides(&mut cx, 0), 4);
+    }
+
+    /// Every block of a multiple selection is outlined, which is what tells one
+    /// block from the next: the faint background behind the cells cannot.
+    #[gpui::test]
+    async fn every_selected_block_gets_its_own_outline(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid(FIXTURE, cx).await;
+
+        pane.update(&mut cx, |pane, cx| {
+            pane.change_cell_selection(body_cell(0, 0), SelectionChange::Replace, cx);
+            pane.change_cell_selection(body_cell(1, 1), SelectionChange::Add, cx);
+            pane.change_cell_selection(body_cell(1, 2), SelectionChange::Extend, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            drawn_sides(&mut cx, 0),
+            4,
+            "the block the caret left behind is outlined too"
+        );
+        assert_eq!(drawn_sides(&mut cx, 1), 4, "and so is the current one");
+
+        // The first block is one cell, so its four sides close around that one
+        // cell rather than reaching to the other block.
+        let first = outline(&mut cx, 0);
+        let (top, bottom) = (side(first, 0, "top"), side(first, 1, "bottom"));
+        let (left, right) = (side(first, 2, "left"), side(first, 3, "right"));
+        assert_eq!(top.origin, left.origin);
+        assert_eq!(bottom.bottom_right(), right.bottom_right());
+        assert_eq!(top.size.width, bottom.size.width);
+        assert_eq!(left.size.height, right.size.height);
+        assert!(top.size.width > px(0.) && left.size.height > px(0.));
+
+        let second = outline(&mut cx, 1);
+        assert_ne!(
+            side(second, 0, "top").origin,
+            top.origin,
+            "the two blocks should be outlined where they each are"
+        );
+    }
+
+    /// A selection is counted in the rows the user can see, so under a filter
+    /// the outline has to close around the rows on screen rather than reach
+    /// down to where the block's last row sits in the file - the hidden row in
+    /// between is not drawn at all, and a line measured against the file would
+    /// have nothing to land on.
+    #[gpui::test]
+    async fn the_outline_closes_around_the_rows_a_filter_leaves_on_screen(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_grid("k,v\na,1\nb,2\na,3", cx).await;
+        pane.update(&mut cx, |pane, cx| {
+            pane.toggle_filter(AnyColumn(0), Some("a".into()), cx);
+        });
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| assert_eq!(pane.body_row_count(), 2));
+
+        // The two rows still showing are the file's second and fourth lines.
+        select(&pane, body_cell(0, 0), body_cell(1, 1), &mut cx);
+        assert_eq!(drawn_sides(&mut cx, 0), 4);
+
+        let last_cell = cx
+            .debug_bounds(CELL_FRAME_DEBUG_SELECTOR)
+            .expect("the caret should be on the block's last visible cell");
+        let sides = outline(&mut cx, 0);
+        let top = side(sides, 0, "top");
+        let bottom = side(sides, 1, "bottom");
+        assert_eq!(bottom.bottom_right().y, last_cell.bottom_right().y);
+        let height = bottom.bottom_right().y - top.origin.y;
+        assert!(
+            height > last_cell.size.height && height < last_cell.size.height * 2.5,
+            "the block is the two rows on screen, not the three lines of the \
+             file ({height:?} against a row of {:?})",
+            last_cell.size.height
         );
     }
 }

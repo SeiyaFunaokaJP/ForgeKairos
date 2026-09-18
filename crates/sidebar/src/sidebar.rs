@@ -8182,7 +8182,10 @@ fn dump_single_workspace(workspace: &Workspace, output: &mut String, cx: &gpui::
             writeln!(output, "Active thread: (none)").ok();
         }
 
-        let background_threads = panel.retained_threads();
+        // ADR-F36 Phase B 以降、パネルのペインのタブに載ったスレッドは
+        // `retained_threads` に入らない。それだけを数えると、裏で走っている
+        // スレッドを診断が 0 本と言ってしまう。
+        let background_threads = panel.background_threads().collect::<Vec<_>>();
         if !background_threads.is_empty() {
             writeln!(
                 output,

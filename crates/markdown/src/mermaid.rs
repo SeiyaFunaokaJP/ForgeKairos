@@ -342,6 +342,7 @@ impl CachedMermaidDiagram {
         render_image: Option<Arc<RenderImage>>,
         fallback_image: Option<Arc<RenderImage>>,
         parsed_svg: Option<Arc<ParsedSvg>>,
+        geometry: Option<Arc<DiagramGeometry>>,
     ) -> Self {
         let result = Arc::new(OnceLock::new());
         if let Some(render_image) = render_image {
@@ -351,10 +352,14 @@ impl CachedMermaidDiagram {
         if let Some(parsed_svg) = parsed_svg {
             let _ = parsed_svg_cell.set(parsed_svg);
         }
+        let geometry_cell = Arc::new(OnceLock::new());
+        if let Some(geometry) = geometry {
+            let _ = geometry_cell.set(geometry);
+        }
         Self {
             render_image: result,
             parsed_svg: parsed_svg_cell,
-            geometry: Arc::new(OnceLock::new()),
+            geometry: geometry_cell,
             fallback_image: fallback_image.map(|image| (image, 1.0)),
             rasterized_scale: 1.0,
             _task: Task::ready(()),
@@ -1064,6 +1069,11 @@ pub(crate) enum MermaidLabelTarget {
         /// source order.
         occurrence: usize,
     },
+    /// A connection of a diagram whose SVG numbers its connections instead of
+    /// naming their ends (a state diagram's transitions).
+    Transition {
+        index: usize,
+    },
 }
 
 /// Maps a point in window coordinates onto the diagram's own `viewBox`.
@@ -1128,10 +1138,13 @@ fn mermaid_label_at(geometry: &DiagramGeometry, point: Point<f32>) -> Option<Mer
             .label_rect
             .is_some_and(|rect| rect_contains(rect, point))
         {
-            return Some(MermaidLabelTarget::Edge {
-                from: edge.from.clone().into(),
-                to: edge.to.clone().into(),
-                occurrence: edge.occurrence,
+            return Some(match edge.statement_index {
+                Some(index) => MermaidLabelTarget::Transition { index },
+                None => MermaidLabelTarget::Edge {
+                    from: edge.from.clone().into(),
+                    to: edge.to.clone().into(),
+                    occurrence: edge.occurrence,
+                },
             });
         }
     }
@@ -1164,6 +1177,11 @@ fn mermaid_label_rect(geometry: &DiagramGeometry, target: &MermaidLabelTarget) -
                     && edge.occurrence == *occurrence
             })
             .and_then(|edge| edge.label_rect),
+        MermaidLabelTarget::Transition { index } => geometry
+            .edges
+            .iter()
+            .find(|edge| edge.statement_index == Some(*index))
+            .and_then(|edge| edge.label_rect),
     }
 }
 
@@ -1191,13 +1209,19 @@ fn mermaid_rendered_label(geometry: &DiagramGeometry, target: &MermaidLabelTarge
             })
             .and_then(|edge| edge.label.clone())
             .unwrap_or_default(),
+        MermaidLabelTarget::Transition { index } => geometry
+            .edges
+            .iter()
+            .find(|edge| edge.statement_index == Some(*index))
+            .and_then(|edge| edge.label.clone())
+            .unwrap_or_default(),
     }
 }
 
 fn mermaid_source_span(
     fence_body: &str,
     target: &MermaidLabelTarget,
-) -> Option<mermaid_source::MermaidLabelSpan> {
+) -> mermaid_source::MermaidLabelLookup {
     match target {
         MermaidLabelTarget::Node { node_id } => {
             mermaid_source::find_node_label(fence_body, node_id)
@@ -1207,6 +1231,9 @@ fn mermaid_source_span(
             to,
             occurrence,
         } => mermaid_source::find_edge_label(fence_body, from, to, *occurrence),
+        MermaidLabelTarget::Transition { index } => {
+            mermaid_source::find_transition_label(fence_body, *index)
+        }
     }
 }
 
@@ -1250,6 +1277,10 @@ fn render_mermaid_image(
             "mermaid-label-hit-layer",
             source_offset,
         ))
+        // The layer covers exactly the raster, so a test can map a label's
+        // `viewBox` rectangle onto the window without knowing the layout above
+        // it. Outside a debug build the selector compiles to nothing.
+        .debug_selector(|| format!("mermaid-label-hit-layer-{source_offset}"))
         .absolute()
         .top_0()
         .left_0()
@@ -1328,11 +1359,12 @@ fn render_mermaid_image(
                 };
                 let span = mermaid_source_span(&fence_body, &target);
                 let request = MermaidLabelEditRequest {
-                    source_range: span.as_ref().map(|span| {
+                    source_range: span.as_ref().ok().map(|span| {
                         (content_start + span.range.start)..(content_start + span.range.end)
                     }),
                     source_text: span
                         .as_ref()
+                        .ok()
                         .and_then(|span| fence_body.get(span.range.clone()))
                         .unwrap_or_default()
                         .to_string()
@@ -1340,9 +1372,10 @@ fn render_mermaid_image(
                     quoting: span
                         .as_ref()
                         .map_or(MermaidLabelQuoting::Delimited, |span| span.quoting),
+                    refusal: span.as_ref().err().copied(),
                     current_label: match &span {
-                        Some(span) => span.label.clone().into(),
-                        None => mermaid_rendered_label(&geometry, &target).into(),
+                        Ok(span) => span.label.clone().into(),
+                        Err(_) => mermaid_rendered_label(&geometry, &target).into(),
                     },
                     bounds: label_bounds,
                 };
@@ -1413,6 +1446,7 @@ mod tests {
                     from: "A".into(),
                     to: "B".into(),
                     occurrence: 0,
+                    statement_index: None,
                     label: Some("\u{306f}\u{3044}".into()),
                     label_rect: Some([90.0, 30.0, 20.0, 10.0]),
                 }],
@@ -1592,7 +1626,7 @@ mod tests {
                         node_id: "missing".into()
                     }
                 ),
-                None
+                Err(crate::mermaid_source::MermaidLabelRefusal::NotLocated)
             );
         }
     }
@@ -1676,6 +1710,250 @@ mod tests {
             markdown.mermaid_hovered_label(999).is_none()
         }));
         drop(subscription);
+    }
+
+    /// The one test that drives the whole path: a double-click on the raster
+    /// has to land on the label under the pointer and reach the consumer with
+    /// the token the fence spells it with. Every piece below it is tested on
+    /// its own, but nothing else checks that the geometry, the hit layer's
+    /// bounds and the source scan agree about which label was clicked.
+    #[gpui::test]
+    fn test_double_clicking_a_label_reaches_the_callback(cx: &mut TestAppContext) {
+        struct TestWindow;
+
+        impl Render for TestWindow {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+            }
+        }
+
+        struct EditableMermaid {
+            markdown: Entity<Markdown>,
+            requests: Rc<RefCell<Vec<Recorded>>>,
+        }
+
+        impl Render for EditableMermaid {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let requests = self.requests.clone();
+                div().child(
+                    MarkdownElement::new(self.markdown.clone(), MarkdownStyle::default())
+                        .code_block_renderer(CodeBlockRenderer::Default {
+                            copy_button_visibility: CopyButtonVisibility::Hidden,
+                            wrap_button_visibility: WrapButtonVisibility::Hidden,
+                            border: false,
+                        })
+                        .on_mermaid_label_edit(move |request, _window, _cx| {
+                            requests.borrow_mut().push((
+                                request.source_range(),
+                                request.source_text().to_string(),
+                                request.current_label.to_string(),
+                                request.refusal_message(),
+                            ));
+                        }),
+                )
+            }
+        }
+
+        /// What the field opens on when the token could not be found at all.
+        const NOT_LOCATED: &str = "\u{3053}\u{306e}\u{30e9}\u{30d9}\u{30eb}\u{306f}\u{30bd}\u{30fc}\u{30b9}\u{306e}\u{4f4d}\u{7f6e}\u{3092}\u{7279}\u{5b9a}\u{3067}\u{304d}\u{307e}\u{305b}\u{3093}\u{3067}\u{3057}\u{305f}\u{3002}";
+        type Recorded = (Option<std::ops::Range<usize>>, String, String, &'static str);
+
+        ensure_theme_initialized(cx);
+        let source = concat!(
+            "```mermaid\n",
+            "flowchart LR\n",
+            "  A[\u{958b}\u{59cb}] -->|\u{306f}\u{3044}| B[\u{7d42}\u{4e86}]\n",
+            "  A & B -->|\u{5171}\u{6709}| C[\u{6b21}]\n",
+            "```",
+        );
+
+        let (_, cx) = cx.add_window_view(|_, _| TestWindow);
+        let markdown = cx.new(|cx| {
+            Markdown::new_with_options(
+                source.into(),
+                None,
+                None,
+                MarkdownOptions {
+                    render_mermaid_diagrams: true,
+                    ..Default::default()
+                },
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        let (source_offset, contents) = markdown.read_with(cx, |markdown, _| {
+            let (offset, diagram) = markdown
+                .parsed_markdown
+                .mermaid_diagrams
+                .iter()
+                .next()
+                .expect("the fence should have been extracted");
+            (*offset, diagram.contents.clone())
+        });
+        assert_eq!(source_offset, 0, "the fence starts the document");
+
+        // The raster and the geometry are the ones merman produces, so the
+        // boxes the test clicks in are the ones the user sees.
+        let (image, geometry) = markdown.update(cx, |_, cx| {
+            let (svg, geometry) = mermaid_render::render_to_svg_with_geometry(
+                &contents.contents,
+                &super::build_mermaid_theme(cx),
+            )
+            .expect("the diagram should render");
+            let parsed = Arc::new(
+                cx.svg_renderer()
+                    .parse_svg(svg.as_bytes())
+                    .expect("the SVG should parse"),
+            );
+            let image = cx
+                .svg_renderer()
+                .render_parsed(&parsed, 1.0)
+                .expect("the SVG should rasterize");
+            (image, Arc::new(geometry))
+        });
+        markdown.update(cx, |markdown, _| {
+            markdown.mermaid_state.cache.insert(
+                contents.clone(),
+                Arc::new(CachedMermaidDiagram::new_for_test(
+                    Some(image),
+                    None,
+                    None,
+                    Some(geometry.clone()),
+                )),
+            );
+            markdown.mermaid_state.order = vec![contents.clone()];
+        });
+
+        let requests = Rc::new(RefCell::new(Vec::new()));
+        let center_of = |rect: [f32; 4], bounds: gpui::Bounds<Pixels>| {
+            let scale = f32::from(bounds.size.width) / geometry.view_box[2];
+            point(
+                bounds.origin.x + px((rect[0] + rect[2] / 2.0 - geometry.view_box[0]) * scale),
+                bounds.origin.y + px((rect[1] + rect[3] / 2.0 - geometry.view_box[1]) * scale),
+            )
+        };
+        let draw = |cx: &mut gpui::VisualTestContext| {
+            let markdown = markdown.clone();
+            let requests = requests.clone();
+            cx.draw(
+                Default::default(),
+                size(px(600.0), px(600.0)),
+                move |_, cx| {
+                    cx.new(|_| EditableMermaid { markdown, requests })
+                        .into_any_element()
+                },
+            );
+            cx.debug_bounds("mermaid-label-hit-layer-0")
+                .expect("the hit layer should have been painted over the raster")
+        };
+
+        let node = geometry
+            .nodes
+            .iter()
+            .find(|node| node.node_id == "B")
+            .expect("B should be mapped");
+        let bounds = draw(cx);
+        cx.simulate_event(gpui::MouseDownEvent {
+            position: center_of(node.rect, bounds),
+            button: gpui::MouseButton::Left,
+            modifiers: Default::default(),
+            click_count: 2,
+            first_mouse: false,
+        });
+        let expected = source
+            .find("\u{7d42}\u{4e86}")
+            .expect("the label is in the source");
+        assert_eq!(
+            requests.borrow().as_slice(),
+            [(
+                Some(expected..expected + "\u{7d42}\u{4e86}".len()),
+                "\u{7d42}\u{4e86}".to_string(),
+                "\u{7d42}\u{4e86}".to_string(),
+                NOT_LOCATED
+            )],
+            "double-clicking B should offer the token B is drawn with"
+        );
+
+        // An edge label is a target of its own, and a single click is not an
+        // edit at all.
+        requests.borrow_mut().clear();
+        let edge_rect = geometry
+            .edges
+            .first()
+            .and_then(|edge| edge.label_rect)
+            .expect("the edge label should be mapped");
+        let bounds = draw(cx);
+        cx.simulate_event(gpui::MouseDownEvent {
+            position: center_of(edge_rect, bounds),
+            button: gpui::MouseButton::Left,
+            modifiers: Default::default(),
+            click_count: 1,
+            first_mouse: false,
+        });
+        assert!(
+            requests.borrow().is_empty(),
+            "a single click must not open the field"
+        );
+        let bounds = draw(cx);
+        cx.simulate_event(gpui::MouseDownEvent {
+            position: center_of(edge_rect, bounds),
+            button: gpui::MouseButton::Left,
+            modifiers: Default::default(),
+            click_count: 2,
+            first_mouse: false,
+        });
+        let expected = source
+            .find("\u{306f}\u{3044}")
+            .expect("the label is in the source");
+        assert_eq!(
+            requests.borrow().as_slice(),
+            [(
+                Some(expected..expected + "\u{306f}\u{3044}".len()),
+                "\u{306f}\u{3044}".to_string(),
+                "\u{306f}\u{3044}".to_string(),
+                NOT_LOCATED
+            )]
+        );
+
+        // The two connections an `&` group expands to are drawn with one token,
+        // so the request carries the reason instead of a range to overwrite.
+        requests.borrow_mut().clear();
+        let shared_rect = geometry
+            .edges
+            .iter()
+            .find(|edge| edge.label.as_deref() == Some("\u{5171}\u{6709}"))
+            .and_then(|edge| edge.label_rect)
+            .expect("the shared label should be mapped");
+        let bounds = draw(cx);
+        cx.simulate_event(gpui::MouseDownEvent {
+            position: center_of(shared_rect, bounds),
+            button: gpui::MouseButton::Left,
+            modifiers: Default::default(),
+            click_count: 2,
+            first_mouse: false,
+        });
+        assert_eq!(
+            requests.borrow().as_slice(),
+            [(
+                None,
+                String::new(),
+                "\u{5171}\u{6709}".to_string(),
+                "\u{3053}\u{306e}\u{7dda}\u{306e}\u{30e9}\u{30d9}\u{30eb}\u{306f}\u{8907}\u{6570}\u{306e}\u{3064}\u{306a}\u{304c}\u{308a}\u{3067}\u{5171}\u{6709}\u{3055}\u{308c}\u{3066}\u{3044}\u{308b}\u{305f}\u{3081}\u{3001}\u{3053}\u{3053}\u{3067}\u{306f}\u{7de8}\u{96c6}\u{3067}\u{304d}\u{307e}\u{305b}\u{3093}\u{3002}"
+            )]
+        );
+
+        // Nothing is offered where no label is drawn.
+        requests.borrow_mut().clear();
+        let bounds = draw(cx);
+        cx.simulate_event(gpui::MouseDownEvent {
+            position: point(bounds.origin.x + px(1.0), bounds.bottom() - px(1.0)),
+            button: gpui::MouseButton::Left,
+            modifiers: Default::default(),
+            click_count: 2,
+            first_mouse: false,
+        });
+        assert!(requests.borrow().is_empty(), "the corner holds no label");
     }
 
     fn ensure_theme_initialized(cx: &mut TestAppContext) {
@@ -1896,6 +2174,7 @@ mod tests {
                 Some(mock_render_image(cx)),
                 None,
                 None,
+                None,
             )),
         );
         cache.insert(
@@ -1904,12 +2183,14 @@ mod tests {
                 Some(svg_b.clone()),
                 None,
                 None,
+                None,
             )),
         );
         cache.insert(
             mermaid_contents("graph C"),
             Arc::new(CachedMermaidDiagram::new_for_test(
                 Some(mock_render_image(cx)),
+                None,
                 None,
                 None,
             )),
@@ -1933,12 +2214,14 @@ mod tests {
                 Some(mock_render_image(cx)),
                 None,
                 None,
+                None,
             )),
         );
         cache.insert(
             mermaid_contents("graph C"),
             Arc::new(CachedMermaidDiagram::new_for_test(
                 Some(mock_render_image(cx)),
+                None,
                 None,
                 None,
             )),
@@ -1963,6 +2246,7 @@ mod tests {
                 Some(mock_render_image(cx)),
                 None,
                 None,
+                None,
             )),
         );
         cache.insert(
@@ -1971,12 +2255,14 @@ mod tests {
                 None,
                 Some(original_svg.clone()),
                 None,
+                None,
             )),
         );
         cache.insert(
             mermaid_contents("graph C"),
             Arc::new(CachedMermaidDiagram::new_for_test(
                 Some(mock_render_image(cx)),
+                None,
                 None,
                 None,
             )),
@@ -2009,12 +2295,14 @@ mod tests {
                 Some(svg_a.clone()),
                 None,
                 None,
+                None,
             )),
         );
         cache.insert(
             mermaid_contents("graph B"),
             Arc::new(CachedMermaidDiagram::new_for_test(
                 Some(mock_render_image(cx)),
+                None,
                 None,
                 None,
             )),
@@ -2052,6 +2340,7 @@ mod tests {
                 Some(original_image.clone()),
                 None,
                 Some(parsed_svg),
+                None,
             )),
         );
 
@@ -2131,6 +2420,7 @@ mod tests {
                     Some(original_image.clone()),
                     None,
                     Some(parsed_svg),
+                    None,
                 )),
             );
         });
@@ -2278,6 +2568,7 @@ mod tests {
                     Some(image),
                     None,
                     Some(parsed_svg),
+                    None,
                 )),
             );
             markdown
@@ -2338,6 +2629,7 @@ mod tests {
                     Some(image),
                     None,
                     Some(parsed_svg),
+                    None,
                 )),
             );
             markdown
@@ -2568,6 +2860,7 @@ mod tests {
                 contents.clone(),
                 Arc::new(CachedMermaidDiagram::new_for_test(
                     Some(render_image),
+                    None,
                     None,
                     None,
                 )),

@@ -16793,6 +16793,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "buffer_diff",
+ "chrono",
  "clock",
  "command_palette_hooks",
  "db",

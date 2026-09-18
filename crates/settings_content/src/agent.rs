@@ -885,6 +885,15 @@ pub enum CustomAgentServerSettings {
         /// Default: {}
         #[serde(default, skip_serializing_if = "HashMap::is_empty")]
         favorite_config_option_values: HashMap<String, Vec<String>>,
+        /// このエージェントがサブスクリプションでのサインイン (`/login` などの
+        /// 認証メソッド) を出してよいか (ADR-F55)。
+        ///
+        /// `false` にすると、そのエージェントのサインインは認証カードから消え、
+        /// 別の経路から要求されても断られます。API キーでの利用はこの設定に
+        /// 関係なく使えます。
+        ///
+        /// Default: true
+        allow_subscription_sign_in: Option<bool>,
     },
     // Used for the ACP extension migration
     #[serde(alias = "extension")]
@@ -914,6 +923,15 @@ pub enum CustomAgentServerSettings {
         /// Default: {}
         #[serde(default, skip_serializing_if = "HashMap::is_empty")]
         favorite_config_option_values: HashMap<String, Vec<String>>,
+        /// このエージェントがサブスクリプションでのサインイン (`/login` などの
+        /// 認証メソッド) を出してよいか (ADR-F55)。
+        ///
+        /// `false` にすると、そのエージェントのサインインは認証カードから消え、
+        /// 別の経路から要求されても断られます。API キーでの利用はこの設定に
+        /// 関係なく使えます。
+        ///
+        /// Default: true
+        allow_subscription_sign_in: Option<bool>,
     },
 }
 

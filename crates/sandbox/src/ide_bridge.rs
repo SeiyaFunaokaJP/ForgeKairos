@@ -32,6 +32,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use futures::FutureExt as _;
@@ -762,34 +763,72 @@ async fn write_to_bridge<W: AsyncWrite + Unpin>(
 }
 
 // ===========================================================================
-// The bridge process inside WSL (`--ide-bridge`)
+// The bridge process (`--ide-bridge`), and how the side that starts it reads
+// the lines it prints while it sets up
 // ===========================================================================
 
 /// Opens the lines the bridge writes on stderr to say how its setup went:
 /// `zed-ide-bridge: ready`, or `zed-ide-bridge: <code>: <detail>` before it
-/// exits. Read by whoever started it (`windows_wsl::start_ide_bridge`), which
-/// runs on Windows while the bridge runs in the distro, so both sides name it
-/// here rather than each spelling it out. Neither side exists on macOS, where
-/// this module is compiled for its frame protocol alone.
-#[cfg(any(target_os = "windows", target_os = "linux", test))]
+/// exits. Read by whoever started it — `windows_wsl::start_ide_bridge` on
+/// Windows for a bridge in the distro, or
+/// [`wait_for_ide_bridge_ready`] on any client for a bridge on an SSH host
+/// (ADR-F53) — so both sides name it here rather than each spelling it out.
 pub(crate) const BRIDGE_STATUS_MARKER: &str = "zed-ide-bridge";
 
 /// What the bridge reports when another bridge — this Zed's or another's —
 /// already holds the exclusive directory it was given.
-#[cfg(any(target_os = "windows", target_os = "linux", test))]
 pub(crate) const SESSION_RUNNING_CODE: &str = "session-running";
 
+/// ADR-F49: how long the bridge is given to say it is listening. The caller
+/// hands [`wait_for_ide_bridge_ready`] a timer of exactly this length, because
+/// this crate has no timer of its own — they come from the caller's executor so
+/// that tests stay deterministic.
+pub const IDE_BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Starting the bridge was refused because another bridge — this Zed's or
+/// another's — holds the exclusive directory it was given. Its own error type
+/// so the caller can say the session already runs instead of showing a
+/// start-up failure.
+#[derive(Debug)]
+pub struct IdeBridgeSessionRunning;
+
+impl std::fmt::Display for IdeBridgeSessionRunning {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("この構成の IDE 連携の中継はすでに実行中です")
+    }
+}
+
+impl std::error::Error for IdeBridgeSessionRunning {}
+
+/// ADR-F53: which Linux the bridge runs on, for the reasons shown to the user.
+/// Everything else about starting it is the same on both.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BridgeHost {
+    /// A distribution of this machine's WSL (ADR-F49 第 1 段).
+    WslDistro,
+    /// The Linux host of an SSH-remote project (ADR-F53).
+    RemoteHost,
+}
+
+impl BridgeHost {
+    /// Names the machine whose home directory a reason is about, as the
+    /// possessive that reads in front of a path.
+    fn home_of(self) -> &'static str {
+        match self {
+            Self::WslDistro => "WSL の",
+            Self::RemoteHost => "接続先の",
+        }
+    }
+}
+
 /// A line of the bridge's stderr that says how its setup went, or `None` for
-/// any other line (its own logging). Read on the side that started the bridge,
-/// which is Windows.
-#[cfg(any(target_os = "windows", test))]
+/// any other line (its own logging). Read on the side that started the bridge.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum BridgeStatus<'a> {
     Ready,
     Failed { code: &'a str },
 }
 
-#[cfg(any(target_os = "windows", test))]
 pub(crate) fn parse_bridge_status(line: &str) -> Option<BridgeStatus<'_>> {
     let rest = line
         .trim_end()
@@ -804,29 +843,90 @@ pub(crate) fn parse_bridge_status(line: &str) -> Option<BridgeStatus<'_>> {
         .then_some(BridgeStatus::Failed { code })
 }
 
-/// The Japanese reason for a bridge setup failure `code`.
-#[cfg(any(target_os = "windows", test))]
-pub(crate) fn bridge_failure_message(code: &str) -> String {
-    let reason = match code {
-        "bad-args" => "IDE 連携の中継の起動引数が不正です (内部エラー)。",
-        "signals-failed" => "IDE 連携の中継のシグナル処理を設定できませんでした。",
-        "home-unknown" => {
-            "WSL のホームディレクトリを特定できないため、IDE 連携の中継を起動できませんでした。"
-        }
-        "rendezvous-failed" => {
+/// The Japanese reason for a bridge setup failure `code`, on `host`.
+pub(crate) fn bridge_failure_message(code: &str, host: BridgeHost) -> String {
+    let home = host.home_of();
+    match code {
+        "bad-args" => "IDE 連携の中継の起動引数が不正です (内部エラー)。".to_string(),
+        "signals-failed" => "IDE 連携の中継のシグナル処理を設定できませんでした。".to_string(),
+        "home-unknown" => format!(
+            "{home}ホームディレクトリを特定できないため、IDE 連携の中継を起動できませんでした。"
+        ),
+        "rendezvous-failed" => format!(
             "IDE 連携の受け渡し用のソケットを作成できませんでした \
-             (WSL の ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
-        }
-        "lock-preamble-failed" => "IDE 連携の中継に接続情報を渡せませんでした。",
-        "lock-file-failed" => {
-            "IDE 連携のロックファイルを作成できませんでした (WSL の ~/.zed-jp-enhance-claude の\
+             ({home} ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
+        ),
+        "lock-preamble-failed" => "IDE 連携の中継に接続情報を渡せませんでした。".to_string(),
+        "lock-file-failed" => format!(
+            "IDE 連携のロックファイルを作成できませんでした ({home} ~/.zed-jp-enhance-claude の\
              所有者と権限、シンボリックリンクになっていないかを確認してください)。"
-        }
-        other => {
-            return format!("IDE 連携の中継を起動できませんでした (不明な理由: {other})。");
+        ),
+        other => format!("IDE 連携の中継を起動できませんでした (不明な理由: {other})。"),
+    }
+}
+
+/// ADR-F49 / ADR-F53: read the bridge's `stderr` until it says it is listening.
+///
+/// Returns the future that goes on logging those lines: spawn it on an executor
+/// that lives as long as the bridge, both because the lines are worth having
+/// and because the stderr pipe filling up would stall the bridge.
+///
+/// `ready_timeout` is a timer of [`IDE_BRIDGE_READY_TIMEOUT`] from the caller's
+/// executor. When it fires first the returned error says so, and the caller
+/// dropping the child is what kills the bridge. The error is
+/// [`IdeBridgeSessionRunning`] when another bridge holds the exclusive
+/// directory, and otherwise carries the Japanese reason the bridge reported.
+///
+/// Only lines that open with [`BRIDGE_STATUS_MARKER`] are read as status, so a
+/// login banner or an `ssh` warning mixed into the stream is logged and
+/// stepped over.
+pub async fn wait_for_ide_bridge_ready<R>(
+    stderr: R,
+    host: BridgeHost,
+    ready_timeout: impl std::future::Future<Output = ()>,
+) -> Result<BoxFuture<'static, ()>>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+{
+    use futures::AsyncBufReadExt as _;
+
+    let mut lines = futures::io::BufReader::new(stderr).lines();
+    // In a block of its own so that the borrow `setup` takes of `lines` ends
+    // before the logging future takes it over.
+    let ready = {
+        let setup = async {
+            while let Some(line) = lines.next().await {
+                let line = line.context("reading the IDE bridge's messages")?;
+                match parse_bridge_status(&line) {
+                    Some(BridgeStatus::Ready) => return Ok(()),
+                    Some(BridgeStatus::Failed {
+                        code: SESSION_RUNNING_CODE,
+                    }) => return Err(IdeBridgeSessionRunning.into()),
+                    Some(BridgeStatus::Failed { code }) => {
+                        bail!(bridge_failure_message(code, host))
+                    }
+                    None => log::info!("[ide-bridge] {line}"),
+                }
+            }
+            bail!("IDE 連携の中継が準備を終える前に終了しました。")
+        };
+        futures::pin_mut!(setup);
+        futures::pin_mut!(ready_timeout);
+        match futures::future::select(setup, ready_timeout).await {
+            Either::Left((outcome, _)) => outcome,
+            Either::Right(((), _)) => Err(anyhow!(
+                "IDE 連携の中継が {} 秒以内に準備を終えませんでした。",
+                IDE_BRIDGE_READY_TIMEOUT.as_secs()
+            )),
         }
     };
-    reason.to_string()
+    ready?;
+    Ok(async move {
+        while let Some(Ok(line)) = lines.next().await {
+            log::info!("[ide-bridge] {line}");
+        }
+    }
+    .boxed())
 }
 
 #[cfg(target_os = "linux")]
@@ -2662,19 +2762,136 @@ mod tests {
             "lock-preamble-failed",
             "lock-file-failed",
         ] {
-            let message = bridge_failure_message(code);
+            let message = bridge_failure_message(code, BridgeHost::WslDistro);
             assert!(
                 !message.contains("不明な理由") && !message.contains(code),
                 "{code}: {message}"
             );
         }
-        assert!(bridge_failure_message("new-code").contains("new-code"));
+        assert!(bridge_failure_message("new-code", BridgeHost::WslDistro).contains("new-code"));
+        // ADR-F53 の共通化で WSL 側の文面が 1 文字も変わらないこと (「WSL の」のあとが
+        // ASCII のパスなら分かち書きし、日本語が続くなら詰める)。
+        assert_eq!(
+            bridge_failure_message("home-unknown", BridgeHost::WslDistro),
+            "WSL のホームディレクトリを特定できないため、IDE 連携の中継を起動できませんでした。"
+        );
+        assert_eq!(
+            bridge_failure_message("rendezvous-failed", BridgeHost::WslDistro),
+            "IDE 連携の受け渡し用のソケットを作成できませんでした \
+             (WSL の ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
+        );
+        assert_eq!(
+            bridge_failure_message("lock-file-failed", BridgeHost::WslDistro),
+            "IDE 連携のロックファイルを作成できませんでした (WSL の ~/.zed-jp-enhance-claude の\
+             所有者と権限、シンボリックリンクになっていないかを確認してください)。"
+        );
+        // ADR-F53: the same codes, said about the machine the bridge is on.
+        for code in ["home-unknown", "rendezvous-failed", "lock-file-failed"] {
+            assert!(
+                bridge_failure_message(code, BridgeHost::WslDistro).contains("WSL の"),
+                "{code}"
+            );
+            let remote = bridge_failure_message(code, BridgeHost::RemoteHost);
+            assert!(
+                remote.contains("接続先の") && !remote.contains("WSL"),
+                "{code}: {remote}"
+            );
+        }
         // The one the Windows side turns into "the session already runs".
         assert_eq!(
             parse_bridge_status("zed-ide-bridge: session-running: another IDE bridge serves /x"),
             Some(BridgeStatus::Failed {
                 code: SESSION_RUNNING_CODE
             })
+        );
+    }
+
+    /// A stderr that never produces a line, so that only the caller's timer can
+    /// end the wait.
+    struct NeverReads;
+
+    impl AsyncRead for NeverReads {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _context: &mut Context<'_>,
+            _buffer: &mut [u8],
+        ) -> Poll<std::io::Result<usize>> {
+            Poll::Pending
+        }
+    }
+
+    /// ADR-F49 / ADR-F53: the bridge's readiness is read from its own status
+    /// lines alone — a login banner, an `ssh` warning or the bridge's own
+    /// logging is stepped over — and every way the setup can end short of
+    /// "ready" comes back as a reason rather than as success.
+    #[test]
+    fn the_bridge_is_waited_for_by_its_status_lines_alone() {
+        use futures::executor::block_on;
+
+        let wait = |stderr: &'static [u8], host| {
+            block_on(wait_for_ide_bridge_ready(
+                futures::io::Cursor::new(stderr.to_vec()),
+                host,
+                futures::future::pending(),
+            ))
+        };
+
+        // `BoxFuture` は `Debug` ではないので、`expect` / `expect_err` は使えない。
+        let reason = |outcome: Result<BoxFuture<'static, ()>>| match outcome {
+            Ok(_) => panic!("the bridge was taken as ready"),
+            Err(error) => error,
+        };
+
+        let Ok(log) = wait(
+            b"Welcome to Ubuntu 24.04.3 LTS (GNU/Linux 6.8.0-45-generic x86_64)\n\
+              Warning: Permanently added 'host' to the list of known hosts.\n\
+              [ide-bridge] listening on /root/.cache/zed-jp-enhance/ide/s1/bridge.sock\n\
+              zed-ide-bridge: ready\n\
+              [ide-bridge] a connection arrived\n",
+            BridgeHost::RemoteHost,
+        ) else {
+            panic!("a banner and the bridge's own logging are not status lines");
+        };
+        // Whatever follows "ready" is the caller's to go on logging.
+        block_on(log);
+
+        let running = reason(wait(
+            b"zed-ide-bridge: session-running: another IDE bridge serves /root/.x\n",
+            BridgeHost::RemoteHost,
+        ));
+        assert!(
+            running.is::<IdeBridgeSessionRunning>(),
+            "the caller has to be able to say the session already runs: {running:#}"
+        );
+
+        let failed = reason(wait(
+            b"zed-ide-bridge: lock-file-failed: permission denied\n",
+            BridgeHost::RemoteHost,
+        ));
+        assert_eq!(
+            format!("{failed}"),
+            bridge_failure_message("lock-file-failed", BridgeHost::RemoteHost)
+        );
+
+        let gone = reason(wait(
+            b"Connection to host closed by remote host.\n",
+            BridgeHost::RemoteHost,
+        ));
+        assert!(
+            format!("{gone}").contains("準備を終える前に終了しました"),
+            "{gone}"
+        );
+
+        // The timer the caller hands in is the only clock this crate has.
+        let timed_out = reason(block_on(wait_for_ide_bridge_ready(
+            NeverReads,
+            BridgeHost::RemoteHost,
+            futures::future::ready(()),
+        )));
+        assert!(
+            format!("{timed_out}")
+                .contains(&format!("{} 秒以内", IDE_BRIDGE_READY_TIMEOUT.as_secs())),
+            "{timed_out}"
         );
     }
 

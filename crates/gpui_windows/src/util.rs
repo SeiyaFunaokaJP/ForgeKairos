@@ -103,6 +103,7 @@ pub(crate) fn load_cursor(style: CursorStyle) -> Option<HCURSOR> {
     static SIZENWSE: OnceLock<SafeCursor> = OnceLock::new();
     static SIZENESW: OnceLock<SafeCursor> = OnceLock::new();
     static NO: OnceLock<SafeCursor> = OnceLock::new();
+    static SIZEALL: OnceLock<SafeCursor> = OnceLock::new();
     let (lock, name) = match style {
         CursorStyle::IBeam | CursorStyle::IBeamCursorForVerticalLayout => (&IBEAM, IDC_IBEAM),
         CursorStyle::Crosshair => (&CROSS, IDC_CROSS),
@@ -118,6 +119,12 @@ pub(crate) fn load_cursor(style: CursorStyle) -> Option<HCURSOR> {
         CursorStyle::ResizeUpLeftDownRight => (&SIZENWSE, IDC_SIZENWSE),
         CursorStyle::ResizeUpRightDownLeft => (&SIZENESW, IDC_SIZENESW),
         CursorStyle::OperationNotAllowed => (&NO, IDC_NO),
+        // Windows ships no open or closed hand, and falling through to the
+        // arrow would leave the places that can be picked up and dragged -
+        // the band along a spreadsheet selection, an image being panned -
+        // looking like anything else. The four way arrow is what Windows
+        // itself shows for "this can be moved".
+        CursorStyle::OpenHand | CursorStyle::ClosedHand => (&SIZEALL, IDC_SIZEALL),
         _ => (&ARROW, IDC_ARROW),
     };
     Some(
@@ -215,4 +222,35 @@ where
             .log_err();
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_cursor;
+    use gpui::CursorStyle;
+
+    /// A style that has no cursor of its own falls through to the plain arrow,
+    /// which tells the user nothing: the band along a spreadsheet selection,
+    /// which is there to be picked up and dragged, would look like every other
+    /// part of the grid.
+    #[test]
+    fn a_hand_that_grabs_gets_a_cursor_of_its_own() {
+        let arrow = load_cursor(CursorStyle::Arrow).expect("the arrow is always loadable");
+        let open_hand = load_cursor(CursorStyle::OpenHand).expect("an open hand needs a cursor");
+        assert_ne!(
+            Some(arrow),
+            Some(open_hand),
+            "an open hand must not fall through to the default arrow"
+        );
+        assert_eq!(
+            load_cursor(CursorStyle::ClosedHand),
+            Some(open_hand),
+            "holding the thing being dragged shows the same cursor as hovering it"
+        );
+        assert_ne!(
+            load_cursor(CursorStyle::PointingHand),
+            Some(open_hand),
+            "grabbing something is not the same gesture as following a link"
+        );
+    }
 }

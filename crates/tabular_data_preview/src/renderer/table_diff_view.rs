@@ -8,22 +8,23 @@
 use std::ops::Range;
 
 use anyhow::Result;
-use buffer_diff::BufferDiff;
+use buffer_diff::{BufferDiff, BufferDiffEvent};
+use chrono::{DateTime, Local};
 use editor::markdown_actions::display_width;
 use gpui::{
     Action as _, AnyElement, App, AppContext as _, Entity, EventEmitter, FocusHandle, Focusable,
     HighlightStyle, PathPromptOptions, ScrollHandle, ScrollStrategy, StyledText, Subscription,
-    Task, UniformListScrollHandle, actions, uniform_list,
+    Task, UniformListScrollHandle, WeakEntity, actions, uniform_list,
 };
 use language::{Buffer, BufferEvent};
 use project::{DirectoryLister, Project};
 use settings::Settings as _;
 use theme_settings::ThemeSettings;
 use ui::{
-    ActiveTheme as _, ButtonSize, Checkbox, ContextMenu, DropdownMenu, ElementId, Icon, IconButton,
-    IconName, IconSize, Label, LabelCommon as _, LabelSize, ScrollAxes, Scrollbars, SharedString,
-    StyledTypography as _, ToggleState, Tooltip, WithScrollbar as _, div, h_flex, prelude::*,
-    v_flex,
+    ActiveTheme as _, Button, ButtonSize, ButtonStyle, Checkbox, ContextMenu, DropdownMenu,
+    ElementId, Icon, IconButton, IconName, IconSize, Label, LabelCommon as _, LabelSize,
+    ScrollAxes, Scrollbars, SharedString, StyledTypography as _, ToggleState, Tooltip,
+    WithScrollbar as _, div, h_flex, prelude::*, v_flex,
 };
 use workspace::{
     Workspace,
@@ -35,14 +36,15 @@ use crate::{
     grid::{GridRect, GridRow, cell_line_height, column_label},
     renderer::table_cell::CELL_FRAME_HEIGHT,
     table_diff::{
-        CellCharDiff, DiffRow, DiffRowKind, DiffSide, TableDiff, cell_at, cell_char_diff,
+        CellCharDiff, ChangeStop, DiffRow, DiffRowKind, DiffSide, TableDiff, cell_at,
+        cell_char_diff,
     },
     types::AnyColumn,
 };
 
 actions!(
     tabular_data,
-    [DiffWithHead, DiffWithFile, DiffSelectedCells]
+    [DiffWithHead, DiffWithFile, DiffSelectedCells, RecomputeDiff]
 );
 
 /// How long an edit to the file is left to settle before the comparison is
@@ -82,13 +84,81 @@ enum PaneSide {
     Right,
 }
 
-/// Where the two sides of a comparison come from, which is what decides whether
-/// it follows the file as the user edits it.
+/// What the left pane is a view of, which is what lets it follow the version it
+/// was taken from rather than freeze at the moment the tab was opened.
+enum LeftSource {
+    /// The version git has committed. Held as the diff rather than as the text
+    /// it happened to hold, so that a commit, a checkout or a staged change
+    /// under the file moves the left pane with it.
+    Head(Entity<BufferDiff>),
+    /// Another file, held open as a buffer so that edits to it land here too.
+    File(Entity<Buffer>),
+}
+
+impl LeftSource {
+    /// The text this side holds now, or `None` when there is nothing to read it
+    /// out of any more - a file that stopped being tracked has no committed
+    /// version, and an empty left pane would read as every row having just been
+    /// added.
+    fn read(&self, cx: &App) -> Option<SharedString> {
+        match self {
+            LeftSource::Head(diff) => diff.read(cx).base_text_string(cx).map(SharedString::from),
+            // A buffer whose file was deleted or renamed away still reads as the
+            // text it last held, so the file being gone has to be asked about
+            // separately or the comparison would go on claiming to be against a
+            // file that is not there.
+            LeftSource::File(buffer) => {
+                let buffer = buffer.read(cx);
+                let file_is_gone = buffer
+                    .file()
+                    .is_some_and(|file| file.disk_state().is_deleted());
+                (!file_is_gone).then(|| buffer.text().into())
+            }
+        }
+    }
+}
+
+/// One of the two blocks of a cell comparison, as what it takes to read the
+/// block again rather than as the values it held.
+#[derive(Clone, Copy)]
+enum CellBlock {
+    /// A rectangle of the grid, read cell by cell at the positions it covers.
+    Rect(GridRect),
+    Clipboard,
+}
+
+/// Reads one block of a cell comparison out of the grid as it stands now.
+fn read_cell_block(
+    grid: &TabularDataPreviewPane,
+    block: CellBlock,
+    clipboard: &str,
+) -> Vec<Vec<SharedString>> {
+    match block {
+        CellBlock::Rect(rect) => rect
+            .rows()
+            .map(|row| {
+                rect.cols()
+                    .map(|col| grid.cell_value(GridRow::from_index(row), AnyColumn(col)))
+                    .collect()
+            })
+            .collect(),
+        CellBlock::Clipboard => vec![vec![clipboard.to_owned().into()]],
+    }
+}
+
+/// Where the two sides of a comparison come from, which is what decides how it
+/// is taken again.
 enum DiffSource {
-    /// Two whole tables as text. The right hand one is re-read from the buffer
-    /// whenever it changes, so the comparison keeps up with the grid beside it;
-    /// the left hand one is a committed version or another file and stands.
+    /// Two whole tables as text, both sides re-read whenever either of them
+    /// changes, so that the comparison keeps up with the grid beside it and
+    /// with whatever it is being compared against.
     Files {
+        left: LeftSource,
+        /// The last text the left hand side was successfully read as. A
+        /// committed version can go away under the comparison - the file may
+        /// stop being tracked - and an empty left pane would claim every row was
+        /// just added, so the last version that was there is kept and said to be
+        /// stale instead.
         left_text: SharedString,
         buffer: Entity<Buffer>,
         /// Read separately per side: the version committed for this same file is
@@ -97,11 +167,20 @@ enum DiffSource {
         /// `.csv` against a `.tsv` has to split each side its own way.
         left_delimiter: char,
         right_delimiter: char,
-        first_row_is_header: bool,
     },
-    /// Two blocks of cells lifted out of one grid, compared as they were when
-    /// the comparison was opened.
-    Cells,
+    /// Two blocks of cells lifted out of one grid. These do not follow the grid:
+    /// a block is a place in the table rather than a thing, and rows moving
+    /// under it would quietly change what the comparison is of. The user takes
+    /// it again when they want it again.
+    Cells {
+        /// Weak because the comparison outlives the grid's tab, which is exactly
+        /// the case "take it again" has to refuse rather than guess at.
+        grid: WeakEntity<TabularDataPreviewPane>,
+        left: CellBlock,
+        right: CellBlock,
+        left_rows: Vec<Vec<SharedString>>,
+        right_rows: Vec<Vec<SharedString>>,
+    },
 }
 
 /// The inputs of one comparison, owned so that it can be handed to a background
@@ -114,9 +193,10 @@ enum DiffInput {
         right_delimiter: char,
         first_row_is_header: bool,
     },
-    Sides {
-        left: DiffSide,
-        right: DiffSide,
+    Rows {
+        left_rows: Vec<Vec<SharedString>>,
+        right_rows: Vec<Vec<SharedString>>,
+        first_row_is_header: bool,
     },
 }
 
@@ -133,7 +213,14 @@ impl DiffInput {
                 DiffSide::parse(&left_text, left_delimiter, first_row_is_header),
                 DiffSide::parse(&right_text, right_delimiter, first_row_is_header),
             ),
-            DiffInput::Sides { left, right } => (left, right),
+            DiffInput::Rows {
+                left_rows,
+                right_rows,
+                first_row_is_header,
+            } => (
+                DiffSide::from_rows(left_rows, first_row_is_header),
+                DiffSide::from_rows(right_rows, first_row_is_header),
+            ),
         };
         let diff = TableDiff::compute(&left, &right);
         (left, right, diff)
@@ -146,9 +233,20 @@ pub(crate) struct TableDiffView {
     left_title: SharedString,
     right_title: SharedString,
     source: DiffSource,
+    /// Whether the first line of either side is read as a header. The grid's own
+    /// setting seeds it, and from then on it is the comparison's own: the grid's
+    /// tab can be closed while this one stays open.
+    first_row_is_header: bool,
     left: DiffSide,
     right: DiffSide,
     diff: TableDiff,
+    /// When the left hand side was last read, which the pane's title says so
+    /// that a comparison left open overnight does not read as being about the
+    /// version that is committed now.
+    left_taken_at: Option<DateTime<Local>>,
+    /// Set when the left hand side could not be read again and the pane is
+    /// showing the last version that could be.
+    left_is_stale: bool,
     /// Whether a comparison is in flight, which is all there is to show for a
     /// table big enough that aligning it takes a moment.
     is_computing: bool,
@@ -166,7 +264,7 @@ pub(crate) struct TableDiffView {
     /// the handle holds the offset, so a scroll in either pane moves both.
     horizontal_scroll: ScrollHandle,
     recompute_task: Option<Task<()>>,
-    _buffer_subscription: Option<Subscription>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl TableDiffView {
@@ -193,8 +291,8 @@ impl TableDiffView {
         });
 
         cx.spawn_in(window, async move |workspace, cx| {
-            let committed_text = load_committed_text(committed, cx).await;
-            let Some(committed_text) = committed_text else {
+            let committed = load_committed_diff(committed, cx).await;
+            let Some(committed) = committed else {
                 grid.update(cx, |grid, cx| {
                     grid.set_status_message(
                         "git の管理下にないか、まだ一度もコミットされていないファイルです",
@@ -207,11 +305,11 @@ impl TableDiffView {
             workspace
                 .update_in(cx, |workspace, window, cx| {
                     let view = cx.new(|cx| {
-                        Self::from_texts(
+                        Self::from_files(
                             format!("{name} ↔ HEAD").into(),
                             "HEAD".into(),
                             "現在".into(),
-                            committed_text.into(),
+                            LeftSource::Head(committed),
                             buffer,
                             delimiter,
                             delimiter,
@@ -281,15 +379,15 @@ impl TableDiffView {
                 .unwrap_or(delimiter);
 
             match load_project_file(project, &path, cx).await {
-                Ok(other_text) => {
+                Ok(other_buffer) => {
                     workspace
                         .update_in(cx, |workspace, window, cx| {
                             let view = cx.new(|cx| {
-                                Self::from_texts(
+                                Self::from_files(
                                     format!("{name} ↔ {other_name}").into(),
                                     other_name.clone(),
                                     name.clone().into(),
-                                    other_text.into(),
+                                    LeftSource::File(other_buffer),
                                     buffer,
                                     other_delimiter,
                                     delimiter,
@@ -349,10 +447,11 @@ impl TableDiffView {
         };
 
         let view = cx.new(|cx| {
-            Self::from_rows(
+            Self::from_cells(
                 comparison.title,
                 comparison.left_title,
                 comparison.right_title,
+                grid.downgrade(),
                 comparison.left,
                 comparison.right,
                 cx,
@@ -364,49 +463,82 @@ impl TableDiffView {
     ///// Construction /////
 
     #[allow(clippy::too_many_arguments)]
-    fn from_texts(
+    fn from_files(
         title: SharedString,
         left_title: SharedString,
         right_title: SharedString,
-        left_text: SharedString,
+        left: LeftSource,
         buffer: Entity<Buffer>,
         left_delimiter: char,
         right_delimiter: char,
         first_row_is_header: bool,
         cx: &mut Context<Self>,
     ) -> Self {
-        let subscription = cx.subscribe(&buffer, |this, _buffer, event, cx| {
+        let mut subscriptions = vec![cx.subscribe(&buffer, |this, _buffer, event, cx| {
             if matches!(
                 event,
                 BufferEvent::Edited { .. } | BufferEvent::Reloaded | BufferEvent::Saved
             ) {
                 this.recompute(true, cx);
             }
-        });
+        })];
+        match &left {
+            LeftSource::Head(diff) => {
+                subscriptions.push(cx.subscribe(diff, |this, _diff, event, cx| {
+                    let base_text_changed = match event {
+                        BufferDiffEvent::BaseTextChanged => true,
+                        BufferDiffEvent::DiffChanged(changed) => changed.base_text_changed,
+                    };
+                    if base_text_changed {
+                        this.recompute(true, cx);
+                    }
+                }));
+            }
+            LeftSource::File(other) => {
+                subscriptions.push(cx.subscribe(other, |this, _buffer, event, cx| {
+                    if matches!(
+                        event,
+                        BufferEvent::Edited { .. } | BufferEvent::Reloaded | BufferEvent::Saved
+                    ) {
+                        this.recompute(true, cx);
+                    }
+                }));
+            }
+        }
+
         let mut view = Self::empty(title, left_title, right_title, cx);
+        view.first_row_is_header = first_row_is_header;
         view.source = DiffSource::Files {
-            left_text,
+            left,
+            left_text: SharedString::default(),
             buffer,
             left_delimiter,
             right_delimiter,
-            first_row_is_header,
         };
-        view._buffer_subscription = Some(subscription);
+        view._subscriptions = subscriptions;
         view.recompute(false, cx);
         view
     }
 
-    fn from_rows(
+    #[allow(clippy::too_many_arguments)]
+    fn from_cells(
         title: SharedString,
         left_title: SharedString,
         right_title: SharedString,
-        left: DiffSide,
-        right: DiffSide,
+        grid: WeakEntity<TabularDataPreviewPane>,
+        left: CellComparisonSide,
+        right: CellComparisonSide,
         cx: &mut Context<Self>,
     ) -> Self {
         let mut view = Self::empty(title, left_title, right_title, cx);
-        view.left = left;
-        view.right = right;
+        view.source = DiffSource::Cells {
+            grid,
+            left: left.block,
+            right: right.block,
+            left_rows: left.rows,
+            right_rows: right.rows,
+        };
+        view.left_taken_at = Some(Local::now());
         view.recompute(false, cx);
         view
     }
@@ -422,10 +554,19 @@ impl TableDiffView {
             title,
             left_title,
             right_title,
-            source: DiffSource::Cells,
+            source: DiffSource::Cells {
+                grid: WeakEntity::new_invalid(),
+                left: CellBlock::Clipboard,
+                right: CellBlock::Clipboard,
+                left_rows: Vec::new(),
+                right_rows: Vec::new(),
+            },
+            first_row_is_header: false,
             left: DiffSide::default(),
             right: DiffSide::default(),
             diff: TableDiff::compute(&DiffSide::default(), &DiffSide::default()),
+            left_taken_at: None,
+            left_is_stale: false,
             is_computing: false,
             column_widths: Vec::new(),
             row_number_width: px(MINIMUM_COLUMN_WIDTH),
@@ -435,7 +576,7 @@ impl TableDiffView {
             list_scroll: UniformListScrollHandle::new(),
             horizontal_scroll: ScrollHandle::new(),
             recompute_task: None,
-            _buffer_subscription: None,
+            _subscriptions: Vec::new(),
         }
     }
 
@@ -446,25 +587,102 @@ impl TableDiffView {
     /// have settled rather than when the event arrives: an edit per keystroke
     /// would otherwise copy a large file on the UI thread on every one of them,
     /// which is exactly what the debounce is there to avoid.
-    fn diff_input(&self, cx: &App) -> DiffInput {
-        match &self.source {
+    fn diff_input(&mut self, cx: &App) -> DiffInput {
+        let first_row_is_header = self.first_row_is_header;
+        let mut left_was_read = true;
+        let input = match &mut self.source {
             DiffSource::Files {
+                left,
                 left_text,
                 buffer,
                 left_delimiter,
                 right_delimiter,
+            } => {
+                match left.read(cx) {
+                    Some(text) => *left_text = text,
+                    None => left_was_read = false,
+                }
+                DiffInput::Texts {
+                    left_text: left_text.clone(),
+                    right_text: buffer.read(cx).text().into(),
+                    left_delimiter: *left_delimiter,
+                    right_delimiter: *right_delimiter,
+                    first_row_is_header,
+                }
+            }
+            DiffSource::Cells {
+                left_rows,
+                right_rows,
+                ..
+            } => DiffInput::Rows {
+                left_rows: left_rows.clone(),
+                right_rows: right_rows.clone(),
                 first_row_is_header,
-            } => DiffInput::Texts {
-                left_text: left_text.clone(),
-                right_text: buffer.read(cx).text().into(),
-                left_delimiter: *left_delimiter,
-                right_delimiter: *right_delimiter,
-                first_row_is_header: *first_row_is_header,
             },
-            DiffSource::Cells => DiffInput::Sides {
-                left: self.left.clone(),
-                right: self.right.clone(),
-            },
+        };
+        if matches!(self.source, DiffSource::Files { .. }) {
+            self.left_is_stale = !left_was_read;
+            if left_was_read {
+                self.left_taken_at = Some(Local::now());
+            }
+        }
+        input
+    }
+
+    /// Takes both sides again from where they came from.
+    ///
+    /// The two file sides follow on their own, so this only does anything they
+    /// would not have done by themselves for a comparison of cells, which is a
+    /// place in a grid rather than a thing that can announce that it changed.
+    fn recompare(&mut self, cx: &mut Context<Self>) {
+        let blocks = match &self.source {
+            DiffSource::Cells {
+                grid, left, right, ..
+            } => Some((grid.clone(), *left, *right)),
+            DiffSource::Files { .. } => None,
+        };
+        if let Some((grid, left_block, right_block)) = blocks {
+            // The reason is already on the toolbar and in the button's tooltip,
+            // so a comparison that cannot be taken again leaves what it shows
+            // alone rather than emptying itself.
+            let Some(grid) = grid.upgrade() else {
+                return;
+            };
+            let clipboard = cx
+                .read_from_clipboard()
+                .and_then(|item| item.text())
+                .unwrap_or_default();
+            let (left, right) = grid.read_with(cx, |grid, _cx| {
+                (
+                    read_cell_block(grid, left_block, &clipboard),
+                    read_cell_block(grid, right_block, &clipboard),
+                )
+            });
+            if let DiffSource::Cells {
+                left_rows,
+                right_rows,
+                ..
+            } = &mut self.source
+            {
+                *left_rows = left;
+                *right_rows = right;
+            }
+            self.left_taken_at = Some(Local::now());
+        }
+        self.recompute(false, cx);
+    }
+
+    fn toggle_first_row_is_header(&mut self, cx: &mut Context<Self>) {
+        self.first_row_is_header = !self.first_row_is_header;
+        self.recompute(false, cx);
+    }
+
+    /// Whether the comparison can still be taken again, which a comparison of
+    /// cells stops being once the grid it read them out of is gone.
+    fn can_recompare(&self) -> bool {
+        match &self.source {
+            DiffSource::Files { .. } => true,
+            DiffSource::Cells { grid, .. } => grid.upgrade().is_some(),
         }
     }
 
@@ -500,11 +718,11 @@ impl TableDiffView {
         if self.shown_rows.is_some() {
             self.shown_rows = Some(self.diff.changed_row_indices());
         }
-        let blocks = self.diff.change_blocks();
+        let stops = self.diff.change_stops();
         self.current_change = self
             .current_change
-            .filter(|_| !blocks.is_empty())
-            .map(|change| change.min(blocks.len().saturating_sub(1)));
+            .filter(|_| !stops.is_empty())
+            .map(|change| change.min(stops.len().saturating_sub(1)));
     }
 
     fn shown_row_count(&self) -> usize {
@@ -540,22 +758,38 @@ impl TableDiffView {
     }
 
     fn go_to_change(&mut self, forward: bool, cx: &mut Context<Self>) {
-        let blocks = self.diff.change_blocks();
-        if blocks.is_empty() {
+        let stops = self.diff.change_stops();
+        if stops.is_empty() {
             return;
         }
         let change = match (self.current_change, forward) {
             (None, true) => 0,
-            (None, false) => blocks.len() - 1,
-            (Some(current), true) => (current + 1).min(blocks.len() - 1),
+            (None, false) => stops.len() - 1,
+            (Some(current), true) => (current + 1).min(stops.len() - 1),
             (Some(current), false) => current.saturating_sub(1),
         };
         self.current_change = Some(change);
-        if let Some(&row) = blocks.get(change) {
-            self.list_scroll
-                .scroll_to_item(self.shown_index_of(row), ScrollStrategy::Center);
+        match stops.get(change) {
+            // The header has a strip of its own above the list and is always on
+            // screen, so stopping at it means putting the top of the table under
+            // it rather than scrolling to a row.
+            Some(ChangeStop::Header) => self.list_scroll.scroll_to_item(0, ScrollStrategy::Top),
+            Some(&ChangeStop::Row(row)) => self
+                .list_scroll
+                .scroll_to_item(self.shown_index_of(row), ScrollStrategy::Center),
+            None => {}
         }
         cx.notify();
+    }
+
+    /// Which stop of how many "previous" and "next" are sitting on, which is the
+    /// only sign that a step landed on the header rather than doing nothing.
+    fn change_position(&self) -> Option<(usize, usize)> {
+        // Counting the stops walks every aligned row, of which there can be
+        // MAX_DIFF_ROWS, and the toolbar this is for is drawn on every frame.
+        let current = self.current_change?;
+        let stops = self.diff.change_stops().len();
+        (current < stops).then_some((current + 1, stops))
     }
 }
 
@@ -573,6 +807,9 @@ impl Render for TableDiffView {
             .bg(colors.editor_background)
             .font_buffer(cx)
             .text_size(ThemeSettings::get_global(cx).buffer_font_size(cx))
+            .on_action(cx.listener(|this, _: &RecomputeDiff, _window, cx| {
+                this.recompare(cx);
+            }))
             .child(self.render_toolbar(cx))
             .child(self.render_pane_titles(cx))
             .child(self.render_header_row(cx))
@@ -646,12 +883,48 @@ impl TableDiffView {
                     this.toggle_only_differences(cx);
                 })),
             )
+            .child(
+                Checkbox::new(
+                    ElementId::Name("tabular-diff-header-row".into()),
+                    if self.first_row_is_header {
+                        ToggleState::Selected
+                    } else {
+                        ToggleState::Unselected
+                    },
+                )
+                .label("先頭行を見出し")
+                .on_click(cx.listener(|this, _state, _window, cx| {
+                    this.toggle_first_row_is_header(cx);
+                })),
+            )
+            .child(self.render_recompare_button(cx))
             .child(div().flex_1())
+            .when_some(self.change_position(), |this, (current, total)| {
+                this.child(
+                    Label::new(format!("{current} / {total} 箇所目"))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+            })
             .child(
                 Label::new(counts)
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
+            .when_some(self.left_stale_reason(), |this, reason| {
+                this.child(
+                    Label::new(reason)
+                        .size(LabelSize::Small)
+                        .color(Color::Warning),
+                )
+            })
+            .when(!self.can_recompare(), |this| {
+                this.child(
+                    Label::new("元の表のタブが閉じているため、この比較は取り直せません")
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+            })
             .when(self.diff.truncated, |this| {
                 this.child(
                     Label::new(format!(
@@ -670,6 +943,64 @@ impl TableDiffView {
                 )
             })
             .into_any_element()
+    }
+
+    fn render_recompare_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let can_recompare = self.can_recompare();
+        Button::new(ElementId::Name("tabular-diff-recompare".into()), "再比較")
+            .style(ButtonStyle::Subtle)
+            .size(ButtonSize::Compact)
+            .start_icon(Icon::new(IconName::RotateCcw).size(IconSize::Small))
+            .disabled(!can_recompare)
+            .tooltip(Tooltip::text(if can_recompare {
+                "両側をもう一度読み直して比べます"
+            } else {
+                "元の表のタブが閉じているため取り直せません"
+            }))
+            .on_click(cx.listener(|this, _event, _window, cx| {
+                this.recompare(cx);
+            }))
+            .into_any_element()
+    }
+
+    /// What went missing under the left pane, when it is showing the last
+    /// version it could read rather than the one it is comparing against.
+    ///
+    /// The two sides go stale for different reasons and a comparison that only
+    /// said it was out of date would leave the user looking for the wrong thing.
+    fn left_stale_reason(&self) -> Option<SharedString> {
+        if !self.left_is_stale {
+            return None;
+        }
+        let reason = match &self.source {
+            DiffSource::Files {
+                left: LeftSource::Head(_),
+                ..
+            } => format!(
+                "{} にこのファイルがなくなりました (最後に読めた内容を表示しています)",
+                self.left_title
+            ),
+            DiffSource::Files {
+                left: LeftSource::File(_),
+                ..
+            } => format!(
+                "{} が見つかりません (最後に読めた内容を表示しています)",
+                self.left_title
+            ),
+            DiffSource::Cells { .. } => return None,
+        };
+        Some(reason.into())
+    }
+
+    /// The left pane's title with when its contents were read, which is what
+    /// says whether "HEAD" means the commit that is checked out now.
+    fn left_pane_title(&self) -> SharedString {
+        match self.left_taken_at {
+            Some(taken_at) => {
+                format!("{} ({} 取得)", self.left_title, taken_at.format("%H:%M")).into()
+            }
+            None => self.left_title.clone(),
+        }
     }
 
     fn render_pane_titles(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -693,7 +1024,7 @@ impl TableDiffView {
             .w_full()
             .bg(colors.surface_background)
             .font_ui(cx)
-            .child(title(self.left_title.clone()))
+            .child(title(self.left_pane_title()))
             .child(self.render_divider(cx))
             .child(title(self.right_title.clone()))
             .into_any_element()
@@ -1099,9 +1430,12 @@ fn column_widths(left: &DiffSide, right: &DiffSide, column_count: usize) -> Vec<
         .collect()
 }
 
+/// Wide enough for the largest number either pane puts in front of a row. That
+/// is the last row's line rather than the row count: one quoted line break puts
+/// the two apart.
 fn row_number_width(left: &DiffSide, right: &DiffSide) -> Pixels {
-    let rows = left.rows.len().max(right.rows.len()) + 1;
-    let digits = rows.to_string().len().max(2);
+    let last = left.last_row_number().max(right.last_row_number()).max(1);
+    let digits = last.to_string().len().max(2);
     px(digits as f32 * COLUMN_WIDTH_PER_CHARACTER + ROW_NUMBER_PADDING)
 }
 
@@ -1113,30 +1447,38 @@ fn file_name(buffer: &Entity<Buffer>, cx: &App) -> String {
         .unwrap_or_else(|| "無題".to_owned())
 }
 
-async fn load_committed_text(
+/// The diff holding the committed version, or `None` when there is no committed
+/// version to compare against.
+///
+/// The diff itself is what is kept rather than the text it holds right now: the
+/// project drops it as soon as nothing holds it, and holding it is what lets the
+/// left pane follow the commit that is checked out.
+async fn load_committed_diff(
     committed: Task<Result<Entity<BufferDiff>>>,
     cx: &mut gpui::AsyncWindowContext,
-) -> Option<String> {
+) -> Option<Entity<BufferDiff>> {
     let diff = committed
         .await
         .inspect_err(|error| log::error!("failed to load the committed table: {error}"))
         .ok()?;
-    diff.read_with(cx, |diff, cx| diff.base_text_string(cx))
+    let has_committed_version = diff.read_with(cx, |diff, cx| diff.base_text_string(cx).is_some());
+    has_committed_version.then_some(diff)
 }
 
+/// The other file, kept open as a buffer so that the comparison follows edits to
+/// it the same way it follows edits to the grid's own file.
 async fn load_project_file(
     project: Entity<Project>,
     path: &std::path::Path,
     cx: &mut gpui::AsyncApp,
-) -> Result<String> {
+) -> Result<Entity<Buffer>> {
     let project_path = cx
         .update(|cx| Workspace::project_path_for_path(project.clone(), path, false, cx))
         .await?
         .1;
-    let buffer = project
+    project
         .update(cx, |project, cx| project.open_buffer(project_path, cx))
-        .await?;
-    Ok(buffer.read_with(cx, |buffer, _cx| buffer.text()))
+        .await
 }
 
 /// What a comparison of two blocks of cells inside one grid is made of.
@@ -1144,8 +1486,41 @@ struct CellComparison {
     title: SharedString,
     left_title: SharedString,
     right_title: SharedString,
-    left: DiffSide,
-    right: DiffSide,
+    left: CellComparisonSide,
+    right: CellComparisonSide,
+}
+
+/// One side of it: the values as they were read, and where they were read from
+/// so that "再比較" can read them again.
+struct CellComparisonSide {
+    block: CellBlock,
+    rows: Vec<Vec<SharedString>>,
+}
+
+impl CellComparisonSide {
+    fn new(grid: &TabularDataPreviewPane, block: CellBlock, clipboard: &str) -> Self {
+        Self {
+            rows: read_cell_block(grid, block, clipboard),
+            block,
+        }
+    }
+
+    fn rect(grid: &TabularDataPreviewPane, rect: GridRect) -> Self {
+        Self::new(grid, CellBlock::Rect(rect), "")
+    }
+
+    /// One cell of the grid, which is a rectangle of one row and one column.
+    fn cell(grid: &TabularDataPreviewPane, row: usize, column: usize) -> Self {
+        Self::rect(
+            grid,
+            GridRect {
+                first_row: row,
+                last_row: row,
+                first_col: column,
+                last_col: column,
+            },
+        )
+    }
 }
 
 /// Reads the grid's selection as two things to compare.
@@ -1169,17 +1544,6 @@ fn cell_comparison(grid: &TabularDataPreviewPane, clipboard: &str) -> Option<Cel
     // pads whichever side runs out first.
     let blocks = grid.selection_rects();
     if let [left, right] = blocks.as_slice() {
-        let cells_of = |block: &GridRect| {
-            block
-                .rows()
-                .map(|row| {
-                    block
-                        .cols()
-                        .map(|col| grid.cell_value(GridRow::from_index(row), AnyColumn(col)))
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>()
-        };
         let address_of = |block: &GridRect| {
             SharedString::from(format!(
                 "{}{}:{}{}",
@@ -1192,8 +1556,8 @@ fn cell_comparison(grid: &TabularDataPreviewPane, clipboard: &str) -> Option<Cel
         let (left_title, right_title) = (address_of(left), address_of(right));
         return Some(CellComparison {
             title: format!("セルの比較 ({left_title} ↔ {right_title})").into(),
-            left: DiffSide::from_rows(cells_of(left)),
-            right: DiffSide::from_rows(cells_of(right)),
+            left: CellComparisonSide::rect(grid, *left),
+            right: CellComparisonSide::rect(grid, *right),
             left_title,
             right_title,
         });
@@ -1201,10 +1565,11 @@ fn cell_comparison(grid: &TabularDataPreviewPane, clipboard: &str) -> Option<Cel
 
     let column_of = |column: usize| SharedString::from(format!("列 {}", column_label(column)));
     let row_of = |row: usize| SharedString::from(format!("行 {row}"));
-    let cells_down = |column: usize| {
-        (rect.first_row..=rect.last_row)
-            .map(|row| vec![grid.cell_value(GridRow::from_index(row), AnyColumn(column))])
-            .collect::<Vec<_>>()
+    let column_down = |column: usize| GridRect {
+        first_row: rect.first_row,
+        last_row: rect.last_row,
+        first_col: column,
+        last_col: column,
     };
 
     // Two columns side by side is the comparison the user is most likely after
@@ -1220,15 +1585,13 @@ fn cell_comparison(grid: &TabularDataPreviewPane, clipboard: &str) -> Option<Cel
             .into(),
             left_title: column_of(rect.first_col),
             right_title: column_of(rect.last_col),
-            left: DiffSide::from_rows(cells_down(rect.first_col)),
-            right: DiffSide::from_rows(cells_down(rect.last_col)),
+            left: CellComparisonSide::rect(grid, column_down(rect.first_col)),
+            right: CellComparisonSide::rect(grid, column_down(rect.last_col)),
         });
     }
 
     if single_column && rect.first_row != rect.last_row {
         let column = rect.first_col;
-        let first = grid.cell_value(GridRow::from_index(rect.first_row), AnyColumn(column));
-        let last = grid.cell_value(GridRow::from_index(rect.last_row), AnyColumn(column));
         let (first_number, last_number) = (rect.first_row + row_offset, rect.last_row + row_offset);
         return Some(CellComparison {
             title: format!(
@@ -1241,8 +1604,8 @@ fn cell_comparison(grid: &TabularDataPreviewPane, clipboard: &str) -> Option<Cel
             .into(),
             left_title: row_of(first_number),
             right_title: row_of(last_number),
-            left: DiffSide::from_rows(vec![vec![first]]),
-            right: DiffSide::from_rows(vec![vec![last]]),
+            left: CellComparisonSide::cell(grid, rect.first_row, column),
+            right: CellComparisonSide::cell(grid, rect.last_row, column),
         });
     }
 
@@ -1251,16 +1614,12 @@ fn cell_comparison(grid: &TabularDataPreviewPane, clipboard: &str) -> Option<Cel
             return None;
         }
         let address = grid.cursor_address();
-        let value = grid.cell_value(
-            GridRow::from_index(rect.first_row),
-            AnyColumn(rect.first_col),
-        );
         return Some(CellComparison {
             title: format!("セルの比較 (クリップボード ↔ {address})").into(),
             left_title: "クリップボード".into(),
             right_title: SharedString::from(address),
-            left: DiffSide::from_rows(vec![vec![clipboard.to_owned().into()]]),
-            right: DiffSide::from_rows(vec![vec![value]]),
+            left: CellComparisonSide::new(grid, CellBlock::Clipboard, clipboard),
+            right: CellComparisonSide::cell(grid, rect.first_row, rect.first_col),
         });
     }
 
@@ -1366,19 +1725,47 @@ mod tests {
         table_diff::{DiffRowKind, DiffSide},
     };
     use gpui::{TestAppContext, VisualTestContext};
+    use workspace::SaveIntent;
 
+    /// A comparison of two scratch files, which is the shape every comparison
+    /// but the one of cells has: two texts that each follow their own buffer.
     fn diff_view(left: &str, right: &str, cx: &mut VisualTestContext) -> Entity<TableDiffView> {
+        let (view, _left_buffer, _right_buffer) = diff_view_over_buffers(left, right, cx);
+        view
+    }
+
+    fn diff_view_over_buffers(
+        left: &str,
+        right: &str,
+        cx: &mut VisualTestContext,
+    ) -> (Entity<TableDiffView>, Entity<Buffer>, Entity<Buffer>) {
         let left = left.to_owned();
         let right = right.to_owned();
         cx.update(|_window, cx| {
-            cx.new(|cx| {
-                let mut view = TableDiffView::empty("比較".into(), "左".into(), "右".into(), cx);
-                view.left = DiffSide::parse(&left, ',', true);
-                view.right = DiffSide::parse(&right, ',', true);
-                view.recompute(false, cx);
-                view
-            })
+            let left_buffer = cx.new(|cx| Buffer::local(left, cx));
+            let right_buffer = cx.new(|cx| Buffer::local(right, cx));
+            let view = cx.new(|cx| {
+                TableDiffView::from_files(
+                    "比較".into(),
+                    "左".into(),
+                    "右".into(),
+                    LeftSource::File(left_buffer.clone()),
+                    right_buffer.clone(),
+                    ',',
+                    ',',
+                    true,
+                    cx,
+                )
+            });
+            (view, left_buffer, right_buffer)
         })
+    }
+
+    fn cell_diff(comparison: &CellComparison) -> TableDiff {
+        TableDiff::compute(
+            &DiffSide::from_rows(comparison.left.rows.clone(), false),
+            &DiffSide::from_rows(comparison.right.rows.clone(), false),
+        )
     }
 
     /// The two panes have to hold the same number of lines, or the rows of one
@@ -1503,6 +1890,44 @@ mod tests {
         );
     }
 
+    /// The toolbar has grown a toggle, a button, a position and two warnings,
+    /// and a window narrow enough for all of it to overflow must still leave the
+    /// panes wider than nothing: a pane whose content is no wider than itself
+    /// has nothing to scroll, which is how the columns got stuck once before.
+    #[gpui::test]
+    async fn the_columns_still_scroll_in_a_window_the_toolbar_overflows(cx: &mut TestAppContext) {
+        let columns: Vec<String> = (0..40).map(|column| format!("column-{column}")).collect();
+        let committed = format!("{}\n{}", columns.join(","), columns.join(","));
+        let mut changed = columns.clone();
+        changed[0] = "column-changed".to_owned();
+        let working_copy = format!("{}\n{}", columns.join(","), changed.join(","));
+        let (_workspace, _pane, view, mut cx) =
+            open_head_comparison(&committed, &working_copy, cx).await;
+
+        // Puts the position on the toolbar as well, which is the widest the
+        // toolbar gets without a warning on it.
+        view.update(&mut cx, |view, cx| view.go_to_change(true, cx));
+        cx.simulate_resize(gpui::size(px(420.), px(600.)));
+        cx.run_until_parked();
+
+        let pane_bounds = cx
+            .debug_bounds(DIFF_LEFT_PANE_DEBUG_SELECTOR)
+            .expect("the left pane should have been drawn");
+        assert!(
+            pane_bounds.size.width < px(320.),
+            "the window has to be narrow for this to be a test ({:?})",
+            pane_bounds.size.width
+        );
+        view.read_with(&cx, |view, _| {
+            assert_eq!(view.change_position(), Some((1, 1)));
+            assert!(
+                view.horizontal_scroll.max_offset().x > px(100.),
+                "the columns still have to reach past the pane ({:?})",
+                view.horizontal_scroll.max_offset().x
+            );
+        });
+    }
+
     /// The rows still scroll down. Restricting each pane to its own axis is what
     /// keeps a vertical wheel off the columns, and it must not also take that
     /// wheel away from the list the rows sit in.
@@ -1603,12 +2028,13 @@ mod tests {
             .expect("the fixture is a single file");
 
         let view = workspace.update_in(&mut cx, |_workspace, _window, cx| {
+            let committed = cx.new(|cx| Buffer::local("name,value\na,1\nb,2", cx));
             cx.new(|cx| {
-                TableDiffView::from_texts(
+                TableDiffView::from_files(
                     "比較".into(),
                     "HEAD".into(),
                     "現在".into(),
-                    "name,value\na,1\nb,2".into(),
+                    LeftSource::File(committed),
                     buffer.clone(),
                     ',',
                     ',',
@@ -1780,7 +2206,7 @@ mod tests {
 
         assert_eq!(comparison.left.rows.len(), 3);
         assert_eq!(comparison.right.rows.len(), 3);
-        let diff = TableDiff::compute(&comparison.left, &comparison.right);
+        let diff = cell_diff(&comparison);
         assert_eq!(diff.modified_rows, 1);
         assert_eq!(diff.change_count(), 1);
     }
@@ -1841,7 +2267,7 @@ mod tests {
             .read_with(&cx, |pane, _| cell_comparison(pane, "alpaca"))
             .expect("a single cell should be comparable against the clipboard");
         assert_eq!(comparison.left_title, "クリップボード");
-        let diff = TableDiff::compute(&comparison.left, &comparison.right);
+        let diff = cell_diff(&comparison);
         assert_eq!(diff.modified_rows, 1);
 
         pane.read_with(&cx, |pane, _| {
@@ -1882,7 +2308,7 @@ mod tests {
         assert_eq!(comparison.right_title, "B2:B4");
         assert_eq!(comparison.left.rows.len(), 3);
         assert_eq!(comparison.right.rows.len(), 3);
-        let diff = TableDiff::compute(&comparison.left, &comparison.right);
+        let diff = cell_diff(&comparison);
         assert_eq!(diff.change_count(), 1, "only the middle row differs");
     }
 
@@ -1911,5 +2337,552 @@ mod tests {
 
         assert_eq!(comparison.left.rows.len(), 3);
         assert_eq!(comparison.right.rows.len(), 1);
+    }
+
+    fn cells(row: &[SharedString]) -> Vec<&str> {
+        row.iter().map(SharedString::as_ref).collect()
+    }
+
+    fn project_fs(
+        workspace: &Entity<Workspace>,
+        cx: &VisualTestContext,
+    ) -> std::sync::Arc<dyn fs::Fs> {
+        workspace.read_with(cx, |workspace, cx| {
+            workspace.project().read(cx).fs().clone()
+        })
+    }
+
+    /// A commit under the file has to take the left pane with it: the comparison
+    /// is of HEAD, not of the version HEAD happened to hold when the tab opened.
+    #[gpui::test]
+    async fn a_new_commit_moves_the_left_pane(cx: &mut TestAppContext) {
+        let (workspace, _pane, view, cx) =
+            open_head_comparison("name,value\na,1", "name,value\na,2", cx).await;
+
+        view.read_with(&cx, |view, _| {
+            assert_eq!(cells(view.left.row(0)), ["a", "1"]);
+            assert_eq!(view.diff.modified_rows, 1);
+        });
+
+        let fs = project_fs(&workspace, &cx);
+        fs.as_fake().set_head_for_repo(
+            util::path!("/project/.git").as_ref(),
+            &[("data.csv", "name,value\na,2".to_owned())],
+            "1111111",
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(RECOMPUTE_DEBOUNCE * 2);
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert_eq!(
+                cells(view.left.row(0)),
+                ["a", "2"],
+                "the left pane should be showing the version that is committed now"
+            );
+            assert_eq!(view.diff.change_count(), 0);
+            assert!(!view.left_is_stale);
+        });
+    }
+
+    /// A file that stops being tracked has no committed version left to read, and
+    /// an empty left pane would claim every row had just been added.
+    #[gpui::test]
+    async fn losing_the_committed_version_keeps_the_last_one_it_could_read(
+        cx: &mut TestAppContext,
+    ) {
+        let (workspace, _pane, view, cx) =
+            open_head_comparison("name,value\na,1", "name,value\na,2", cx).await;
+
+        let fs = project_fs(&workspace, &cx);
+        fs.as_fake()
+            .set_head_for_repo(util::path!("/project/.git").as_ref(), &[], "2222222");
+        cx.run_until_parked();
+        cx.executor().advance_clock(RECOMPUTE_DEBOUNCE * 2);
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert_eq!(
+                cells(view.left.row(0)),
+                ["a", "1"],
+                "the last version that could be read has to stay on screen"
+            );
+            assert!(
+                view.left_is_stale,
+                "and the comparison has to say that it is out of date"
+            );
+        });
+    }
+
+    /// The other file is held open rather than read once, so editing it moves the
+    /// left pane the way editing the grid's own file moves the right one.
+    #[gpui::test]
+    async fn an_edit_to_the_other_file_moves_the_left_pane(cx: &mut TestAppContext) {
+        let (_workspace, _pane, _editor, mut cx) = open_grid_in_workspace("a,b", cx).await;
+        let (view, other_file, _current) = diff_view_over_buffers("h,v\na,1", "h,v\na,1", &mut cx);
+        cx.run_until_parked();
+        view.read_with(&cx, |view, _| assert_eq!(view.diff.change_count(), 0));
+
+        other_file.update(&mut cx, |buffer, cx| buffer.set_text("h,v\na,9", cx));
+        cx.run_until_parked();
+        cx.executor().advance_clock(RECOMPUTE_DEBOUNCE * 2);
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert_eq!(cells(view.left.row(0)), ["a", "9"]);
+            assert_eq!(view.diff.modified_rows, 1);
+        });
+    }
+
+    /// The header setting belongs to the comparison rather than to the grid it
+    /// was opened from, and turning it off puts the first line back among the
+    /// rows that are lined up against each other.
+    #[gpui::test]
+    async fn the_header_toggle_moves_the_first_line_into_the_alignment(cx: &mut TestAppContext) {
+        let (_workspace, _pane, _editor, mut cx) = open_grid_in_workspace("a,b", cx).await;
+        let view = diff_view("h,v\nx,1", "h,V\nx,1", &mut cx);
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert!(view.first_row_is_header);
+            assert!(view.diff.header_changed());
+            assert_eq!(view.diff.rows.len(), 1);
+            assert_eq!(view.left.row_number(0), 2);
+        });
+
+        view.update(&mut cx, |view, cx| view.toggle_first_row_is_header(cx));
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert!(!view.first_row_is_header);
+            assert_eq!(view.diff.header, None);
+            assert_eq!(
+                view.diff.rows.len(),
+                2,
+                "the first line takes part in the alignment now"
+            );
+            assert_eq!(view.left.row_number(0), 1);
+        });
+    }
+
+    /// A comparison whose only difference is in the header still has somewhere
+    /// for "next" to go, or the toolbar would count a difference the buttons
+    /// could not reach.
+    #[gpui::test]
+    async fn stepping_through_the_changes_stops_at_the_header(cx: &mut TestAppContext) {
+        let (_workspace, _pane, _editor, mut cx) = open_grid_in_workspace("a,b", cx).await;
+        let view = diff_view("h,v\nx,1", "h,V\nx,1", &mut cx);
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert!(view.diff.change_blocks().is_empty());
+            assert_eq!(view.diff.change_count(), 1);
+            assert_eq!(view.change_position(), None);
+        });
+
+        view.update(&mut cx, |view, cx| view.go_to_change(true, cx));
+        view.read_with(&cx, |view, _| {
+            assert_eq!(view.current_change, Some(0));
+            assert_eq!(view.change_position(), Some((1, 1)));
+        });
+    }
+
+    /// The header is read before the rows, so stepping forward from the top
+    /// walks the table in the order it is drawn in.
+    #[gpui::test]
+    async fn the_header_is_the_first_stop_before_the_rows(cx: &mut TestAppContext) {
+        let (_workspace, _pane, _editor, mut cx) = open_grid_in_workspace("a,b", cx).await;
+        let view = diff_view("h,v\nx,1\ny,2", "h,V\nx,9\ny,2", &mut cx);
+        cx.run_until_parked();
+
+        view.update(&mut cx, |view, cx| view.go_to_change(true, cx));
+        view.read_with(&cx, |view, _| {
+            assert_eq!(
+                view.diff.change_stops(),
+                [ChangeStop::Header, ChangeStop::Row(0)]
+            );
+            assert_eq!(view.change_position(), Some((1, 2)));
+        });
+
+        view.update(&mut cx, |view, cx| view.go_to_change(true, cx));
+        view.read_with(&cx, |view, _| {
+            assert_eq!(view.change_position(), Some((2, 2)));
+        });
+    }
+
+    /// A comparison of cells is a place in a grid rather than something that can
+    /// say it changed, so taking it again is what brings it up to date.
+    #[gpui::test]
+    async fn taking_a_cell_comparison_again_reads_the_grid_as_it_is_now(cx: &mut TestAppContext) {
+        use crate::grid::{GridCell, SelectionChange};
+        use crate::types::DisplayRow;
+
+        let (workspace, pane, editor, mut cx) =
+            open_grid_in_workspace("before,after\na,a\nb,b", cx).await;
+        let buffer = editor
+            .read_with(&cx, |editor, cx| editor.buffer().read(cx).as_singleton())
+            .expect("the fixture is a single file");
+        pane.update(&mut cx, |pane, cx| {
+            let cell = |row: usize, col: usize| {
+                GridCell::new(GridRow::Body(DisplayRow(row)), AnyColumn(col))
+            };
+            pane.change_cell_selection(cell(0, 0), SelectionChange::Replace, cx);
+            pane.change_cell_selection(cell(1, 0), SelectionChange::Extend, cx);
+            pane.change_cell_selection(cell(0, 1), SelectionChange::Add, cx);
+            pane.change_cell_selection(cell(1, 1), SelectionChange::Extend, cx);
+        });
+        workspace.update_in(&mut cx, |workspace, window, cx| {
+            TableDiffView::diff_selected_cells(workspace, pane.clone(), window, cx);
+        });
+        cx.run_until_parked();
+
+        let view = workspace
+            .read_with(&cx, |workspace, cx| {
+                workspace.items_of_type::<TableDiffView>(cx).next()
+            })
+            .expect("the cell comparison should have opened as a tab");
+        view.read_with(&cx, |view, _| {
+            assert!(view.can_recompare());
+            assert_eq!(view.diff.change_count(), 0);
+        });
+
+        buffer.update(&mut cx, |buffer, cx| {
+            buffer.set_text("before,after\na,changed\nb,b", cx);
+        });
+        cx.executor()
+            .advance_clock(crate::parser::REPARSE_DEBOUNCE * 2);
+        cx.run_until_parked();
+        pane.read_with(&cx, |pane, _| {
+            assert_eq!(
+                pane.cell_value(GridRow::Body(DisplayRow(0)), AnyColumn(1)),
+                "changed",
+                "the grid itself has to be showing the new value for this to be a test"
+            );
+        });
+        view.read_with(&cx, |view, _| {
+            assert_eq!(
+                view.diff.change_count(),
+                0,
+                "cells are compared as they were read; nothing should follow the grid on its own"
+            );
+        });
+
+        view.update(&mut cx, |view, cx| view.recompare(cx));
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert_eq!(cells(view.right.row(0)), ["changed"]);
+            assert_eq!(view.diff.change_count(), 1);
+        });
+    }
+
+    /// Once the grid is gone there is nothing left to read the cells out of, and
+    /// the comparison has to say so rather than quietly empty itself.
+    #[gpui::test]
+    async fn a_cell_comparison_cannot_be_taken_again_without_its_grid(cx: &mut TestAppContext) {
+        let (_workspace, _pane, _editor, mut cx) = open_grid_in_workspace("a,b", cx).await;
+        let side = |value: &str| CellComparisonSide {
+            block: CellBlock::Clipboard,
+            rows: vec![vec![SharedString::from(value.to_owned())]],
+        };
+        let view = cx.update(|_window, cx| {
+            cx.new(|cx| {
+                TableDiffView::from_cells(
+                    "比較".into(),
+                    "左".into(),
+                    "右".into(),
+                    WeakEntity::new_invalid(),
+                    side("a"),
+                    side("b"),
+                    cx,
+                )
+            })
+        });
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert!(!view.can_recompare());
+            assert_eq!(cells(view.left.row(0)), ["a"]);
+        });
+
+        view.update(&mut cx, |view, cx| view.recompare(cx));
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert_eq!(
+                cells(view.left.row(0)),
+                ["a"],
+                "a comparison that cannot be taken again has to keep what it holds"
+            );
+        });
+    }
+
+    /// The left pane says when it was read, so that a comparison left open for
+    /// hours does not read as being about the version committed now.
+    #[gpui::test]
+    async fn the_left_pane_title_says_when_it_was_read(cx: &mut TestAppContext) {
+        let (_workspace, _pane, view, cx) =
+            open_head_comparison("name,value\na,1", "name,value\na,2", cx).await;
+
+        let title = view.read_with(&cx, |view, _| view.left_pane_title());
+        let (name, taken) = title
+            .split_once(" (")
+            .unwrap_or_else(|| panic!("the left title should say when it was read ({title})"));
+        let time = taken
+            .strip_suffix(" 取得)")
+            .unwrap_or_else(|| panic!("the left title should say when it was read ({title})"));
+        let (hour, minute) = time
+            .split_once(':')
+            .unwrap_or_else(|| panic!("the time should be a clock time ({title})"));
+
+        assert_eq!(name, "HEAD");
+        assert!(
+            hour.len() == 2 && hour.parse::<u32>().is_ok_and(|hour| hour < 24),
+            "{title}"
+        );
+        assert!(
+            minute.len() == 2 && minute.parse::<u32>().is_ok_and(|minute| minute < 60),
+            "{title}"
+        );
+    }
+
+    /// "HEAD" has to mean the commit rather than what has been staged: a change
+    /// added to the index but not committed is still a difference the
+    /// comparison is there to show.
+    #[gpui::test]
+    async fn the_left_pane_is_the_commit_rather_than_the_index(cx: &mut TestAppContext) {
+        let (workspace, pane, view, mut cx) =
+            open_head_comparison("name,value\na,1", "name,value\na,3", cx).await;
+        let buffer = pane
+            .read_with(&cx, |pane, cx| pane.buffer(cx))
+            .expect("the grid is open on a file");
+
+        let fs = project_fs(&workspace, &cx);
+        fs.as_fake().set_index_for_repo(
+            util::path!("/project/.git").as_ref(),
+            &[("data.csv", "name,value\na,2".to_owned())],
+        );
+        cx.run_until_parked();
+        // Both sides are read again from here, so a comparison reading the index
+        // would have every chance to pick the staged version up.
+        buffer.update(&mut cx, |buffer, cx| {
+            buffer.set_text("name,value\na,4", cx);
+        });
+        cx.run_until_parked();
+        cx.executor().advance_clock(RECOMPUTE_DEBOUNCE * 2);
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert_eq!(
+                cells(view.right.row(0)),
+                ["a", "4"],
+                "the right pane has to have been read again for this to be a test"
+            );
+            assert_eq!(
+                cells(view.left.row(0)),
+                ["a", "1"],
+                "the left pane is the committed version, not the staged one"
+            );
+        });
+    }
+
+    /// A committed version that comes back - a branch switched back, a revert -
+    /// has to take the warning down with it rather than leave the comparison
+    /// saying it is out of date for the rest of the session.
+    #[gpui::test]
+    async fn the_committed_version_coming_back_clears_the_warning(cx: &mut TestAppContext) {
+        let (workspace, _pane, view, cx) =
+            open_head_comparison("name,value\na,1", "name,value\na,2", cx).await;
+        let fs = project_fs(&workspace, &cx);
+
+        fs.as_fake()
+            .set_head_for_repo(util::path!("/project/.git").as_ref(), &[], "2222222");
+        cx.run_until_parked();
+        cx.executor().advance_clock(RECOMPUTE_DEBOUNCE * 2);
+        cx.run_until_parked();
+        view.read_with(&cx, |view, _| {
+            assert!(view.left_is_stale);
+            let reason = view
+                .left_stale_reason()
+                .expect("a stale left pane has to say what went missing");
+            assert!(reason.contains("HEAD"), "{reason}");
+        });
+
+        fs.as_fake().set_head_for_repo(
+            util::path!("/project/.git").as_ref(),
+            &[("data.csv", "name,value\na,9".to_owned())],
+            "3333333",
+        );
+        cx.run_until_parked();
+        cx.executor().advance_clock(RECOMPUTE_DEBOUNCE * 2);
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert!(
+                !view.left_is_stale,
+                "the committed version can be read again"
+            );
+            assert_eq!(view.left_stale_reason(), None);
+            assert_eq!(cells(view.left.row(0)), ["a", "9"]);
+        });
+    }
+
+    /// A file deleted or renamed away under the comparison leaves the buffer
+    /// holding the text it last had, which would otherwise leave the left pane
+    /// quietly standing in for a file that is not there any more.
+    #[gpui::test]
+    async fn the_other_file_going_away_is_said_rather_than_ignored(cx: &mut TestAppContext) {
+        let (workspace, pane, _editor, mut cx) =
+            open_grid_in_workspace("name,value\na,1", cx).await;
+        let project = workspace.read_with(&cx, |workspace, _| workspace.project().clone());
+        let fs = project_fs(&workspace, &cx);
+        fs.as_fake()
+            .insert_file(
+                util::path!("/project/other.csv"),
+                b"name,value\na,2".to_vec(),
+            )
+            .await;
+        cx.run_until_parked();
+        let other = project
+            .update(&mut cx, |project, cx| {
+                project.open_local_buffer(util::path!("/project/other.csv"), cx)
+            })
+            .await
+            .expect("the other file should open");
+        let buffer = pane
+            .read_with(&cx, |pane, cx| pane.buffer(cx))
+            .expect("the grid is open on a file");
+        let view = cx.update(|_window, cx| {
+            cx.new(|cx| {
+                TableDiffView::from_files(
+                    "比較".into(),
+                    "other.csv".into(),
+                    "data.csv".into(),
+                    LeftSource::File(other),
+                    buffer,
+                    ',',
+                    ',',
+                    true,
+                    cx,
+                )
+            })
+        });
+        cx.run_until_parked();
+        view.read_with(&cx, |view, _| {
+            assert_eq!(cells(view.left.row(0)), ["a", "2"]);
+            assert!(!view.left_is_stale);
+        });
+
+        fs.remove_file(
+            util::path!("/project/other.csv").as_ref(),
+            fs::RemoveOptions::default(),
+        )
+        .await
+        .expect("the other file should be removable");
+        cx.run_until_parked();
+        view.update(&mut cx, |view, cx| view.recompare(cx));
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert!(
+                view.left_is_stale,
+                "a comparison against a file that is gone has to say so"
+            );
+            let reason = view
+                .left_stale_reason()
+                .expect("a stale left pane has to say what went missing");
+            assert!(reason.contains("other.csv"), "{reason}");
+            assert_eq!(
+                cells(view.left.row(0)),
+                ["a", "2"],
+                "and has to keep the last version it could read"
+            );
+        });
+    }
+
+    /// The comparison holds the versions it follows open for as long as its tab
+    /// is. Closing the tab has to let go of them - and of the comparison itself,
+    /// which its own subscriptions could otherwise keep alive.
+    #[gpui::test]
+    async fn closing_the_comparison_releases_it(cx: &mut TestAppContext) {
+        let (workspace, _pane, view, mut cx) =
+            open_head_comparison("name,value\na,1", "name,value\na,2", cx).await;
+
+        let item_id = view.entity_id();
+        let released = view.downgrade();
+        drop(view);
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.active_pane().update(cx, |pane, cx| {
+                    pane.close_item_by_id(item_id, SaveIntent::Skip, window, cx)
+                })
+            })
+            .await
+            .expect("closing the comparison tab should succeed");
+        cx.run_until_parked();
+
+        released.assert_released();
+    }
+
+    /// Reading the first row as a header can leave a comparison of two single
+    /// rows holding nothing but headers, which still has to have somewhere for
+    /// "next" to stop and a column for the strip to draw.
+    #[gpui::test]
+    async fn a_comparison_of_nothing_but_headers_still_has_a_stop(cx: &mut TestAppContext) {
+        let (_workspace, _pane, _editor, mut cx) = open_grid_in_workspace("a,b", cx).await;
+        let side = |value: &str| CellComparisonSide {
+            block: CellBlock::Clipboard,
+            rows: vec![vec![SharedString::from(value.to_owned())]],
+        };
+        let view = cx.update(|_window, cx| {
+            cx.new(|cx| {
+                TableDiffView::from_cells(
+                    "比較".into(),
+                    "左".into(),
+                    "右".into(),
+                    WeakEntity::new_invalid(),
+                    side("a"),
+                    side("b"),
+                    cx,
+                )
+            })
+        });
+        cx.run_until_parked();
+
+        view.update(&mut cx, |view, cx| view.toggle_first_row_is_header(cx));
+        cx.run_until_parked();
+
+        view.read_with(&cx, |view, _| {
+            assert!(
+                view.diff.rows.is_empty(),
+                "the one row each side had is the header now"
+            );
+            assert!(
+                view.diff.column_count > 0,
+                "the header strip still has a column to draw"
+            );
+            assert_eq!(view.diff.change_count(), 1);
+            assert_eq!(view.diff.change_stops(), [ChangeStop::Header]);
+        });
+
+        view.update(&mut cx, |view, cx| view.go_to_change(true, cx));
+        view.read_with(&cx, |view, _| {
+            assert_eq!(view.change_position(), Some((1, 1)));
+        });
+    }
+
+    /// The column holding the row numbers is sized by the largest number a pane
+    /// shows, which one quoted line break can push far past the row count.
+    #[test]
+    fn the_row_number_column_fits_the_largest_line_number() {
+        let short = DiffSide::parse("a,b\nc,d", ',', false);
+        let long = DiffSide::parse(&format!("\"{}\",b\nc,d", "x\n".repeat(200)), ',', false);
+
+        assert_eq!(long.rows.len(), 2);
+        assert_eq!(long.last_row_number(), 202);
+        assert!(
+            row_number_width(&long, &long) > row_number_width(&short, &short),
+            "a comparison numbering a row 202 needs more room than one numbering it 2"
+        );
     }
 }

@@ -218,6 +218,16 @@ pub struct RewordCommit {
     pub sha: String,
 }
 
+/// 選択したコミットを履歴から取り除きます (以降のコミットの SHA が変わります)。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct DropCommit {
+    /// 取り除くコミットの SHA。
+    #[serde(default)]
+    pub sha: String,
+}
+
 /// `git reset` の残し方。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

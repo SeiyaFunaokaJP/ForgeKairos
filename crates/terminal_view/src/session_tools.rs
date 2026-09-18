@@ -8,6 +8,7 @@ use std::{
     path::PathBuf,
     rc::Rc,
     sync::{Arc, atomic::AtomicBool},
+    time::Duration,
 };
 
 use collections::{HashMap, HashSet};
@@ -16,7 +17,7 @@ use futures::StreamExt as _;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
     App, AsyncWindowContext, BackgroundExecutor, DismissEvent, Entity, EventEmitter, FocusHandle,
-    Focusable, Render, Subscription, Task, WeakEntity, Window, actions,
+    Focusable, FutureExt as _, Render, Subscription, Task, WeakEntity, Window, actions,
 };
 use picker::{Picker, PickerDelegate};
 use project::Fs;
@@ -27,9 +28,9 @@ use terminal::{
     Terminal,
     quick_connect_credentials::{self, QuickConnectCredentials, StoredPassword},
     terminal_macro::{
-        ConnectionProtocol, MacroFolder, MacroKey, MacroStep, MatchScope, SavedConnection,
-        TerminalMacro, TerminalSessionStore, TerminalSessionsFile, normalize_folder,
-        normalize_tags,
+        ConnectionProtocol, MacroFolder, MacroKey, MacroStep, MacroStepList, MatchScope,
+        SavedConnection, TerminalMacro, TerminalSessionStore, TerminalSessionsFile,
+        normalize_folder, normalize_tags,
     },
     terminal_settings::TerminalSettings,
 };
@@ -160,6 +161,26 @@ fn claude_code_program(command: &ClaudeCodeCommand) -> &'static str {
 enum ProgramLookup {
     OnThisMachine(String),
     OnRemoteHost(CommandTemplate),
+    /// テスト用: 返事を返さない接続先。
+    #[cfg(test)]
+    NeverAnswers,
+}
+
+/// `command -v` の 1 往復を待つ時間 (ADR-F53)。起動前の確認でしかないので、
+/// 繋がったまま黙り込んだ接続先のためにボタンを押した人を待たせない。
+const REMOTE_LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
+/// Windows の OpenSSH には `ControlMaster` が無い (`crates/remote` の
+/// `SshSocket::ssh_command_options` が非 Windows でしかソケットを渡さない) ので、
+/// この 1 往復は毎回 TCP の接続と認証から始まる。既存の接続に相乗りできる他の OS
+/// より長く待たないと、遅い回線で毎回「確かめられなかった」に倒れる。
+const REMOTE_LOOKUP_TIMEOUT_WITHOUT_CONTROL_MASTER: Duration = Duration::from_secs(30);
+
+fn remote_lookup_timeout() -> Duration {
+    if cfg!(windows) {
+        REMOTE_LOOKUP_TIMEOUT_WITHOUT_CONTROL_MASTER
+    } else {
+        REMOTE_LOOKUP_TIMEOUT
+    }
 }
 
 /// 起動前の在処確認ひとそろい。どのタブに開く経路でも同じものを通すので、接続先の
@@ -221,7 +242,19 @@ impl ClaudeCodeLookup {
     /// 起動を止めるなら案内文、起動してよければ `None`。
     pub async fn missing_message(self, executor: &BackgroundExecutor) -> Option<String> {
         let lookup = self.lookup?;
-        let found = executor.spawn(async move { lookup.find().await }).await;
+        let found = executor
+            .spawn(async move { lookup.find().await })
+            .with_timeout(remote_lookup_timeout(), executor)
+            .await
+            // 期限までに答えが返らないのは「無い」ではないので、起動へ進んで
+            // 本当の失敗理由を端末に出させる (`find` が答えられないときと同じ)。
+            .unwrap_or_else(|_| {
+                log::warn!(
+                    "the host did not answer whether it has the CLI within {} seconds",
+                    remote_lookup_timeout().as_secs()
+                );
+                true
+            });
         (!found).then(|| claude_code_missing_program_message(self.program, self.on_remote_host))
     }
 }
@@ -390,6 +423,8 @@ impl ProgramLookup {
     /// 本当の失敗理由は端末に出させる。
     async fn find(self) -> bool {
         match self {
+            #[cfg(test)]
+            Self::NeverAnswers => std::future::pending().await,
             Self::OnThisMachine(program) => which::which(&program).is_ok(),
             Self::OnRemoteHost(template) => {
                 let mut command = util::command::new_command(&template.program);
@@ -1500,6 +1535,29 @@ enum StepList {
     Timeout,
 }
 
+impl StepList {
+    /// The token [`StepPath::label`] and [`StepPath::debug_selector`] put in
+    /// front of a level's 1-based index. Only `Else` and `Timeout` carry one,
+    /// which is what keeps a step of 「そのとき」 and the step at the same
+    /// position in 「それ以外」 from reading as the same step number.
+    ///
+    /// Delegated to the runner's own table rather than spelled again here: the
+    /// form's labels and a failing run's 「ステップ …」 have to agree, and two
+    /// copies of the table would let them drift apart without anything saying
+    /// so.
+    fn prefix(&self) -> &'static str {
+        self.runner_list().prefix()
+    }
+
+    fn runner_list(&self) -> MacroStepList {
+        match self {
+            StepList::Main => MacroStepList::Main,
+            StepList::Else => MacroStepList::Else,
+            StepList::Timeout => MacroStepList::Timeout,
+        }
+    }
+}
+
 /// Where a row sits in the form: one (list, index) pair per level, outermost
 /// first. The form unfolds every level, so this is a path rather than the
 /// parent/child pair of the one-level-deep form it replaces. The list of the
@@ -1528,31 +1586,26 @@ impl StepPath {
     }
 
     /// 「3」 for a top-level step, 「3-2-1」 for the first step of the 繰り返し
-    /// that is the second step of the 分岐 that is the third step of the macro.
-    /// Matches how a failing run names the step it stopped on, which is why the
-    /// two sides of a 分岐 are numbered alike: the heading above the rows is
-    /// what tells them apart.
+    /// that is the second step of the macro, 「3-e2」 for the second step of
+    /// the 「それ以外」 side of the 分岐 that is the third step of the macro.
+    /// Matches how a failing run names the step it stopped on
+    /// ([`terminal::terminal_macro::MacroStepList`]): `Else` and `Timeout`
+    /// levels carry a letter so the two sides of a 分岐 are never numbered
+    /// alike.
     fn label(&self) -> String {
         self.0
             .iter()
-            .map(|(_, index)| (index + 1).to_string())
+            .map(|(list, index)| format!("{}{}", list.prefix(), index + 1))
             .collect::<Vec<_>>()
             .join("-")
     }
 
     /// Names the drawn row for [`gpui::VisualTestContext::debug_bounds`].
-    /// Unlike [`Self::label`] it also says which list each level came from, so
-    /// a test can tell the two sides of a 分岐 apart.
     fn debug_selector(&self) -> String {
         let mut selector = "macro-step".to_string();
         for (list, index) in self.0.iter() {
-            let prefix = match list {
-                StepList::Main => "",
-                StepList::Else => "e",
-                StepList::Timeout => "t",
-            };
             selector.push('-');
-            selector.push_str(prefix);
+            selector.push_str(list.prefix());
             selector.push_str(&(index + 1).to_string());
         }
         selector
@@ -1568,7 +1621,8 @@ struct StepRow {
     /// Repetitions of a 繰り返し row. Separate from `number`, which is a
     /// duration in seconds.
     count: Entity<Editor>,
-    /// 取り込む変数名 of a 期待文字を待つ row. Empty means "capture nothing".
+    /// 取り込む変数名 of a 期待文字を待つ or a 分岐 row. Empty means "capture
+    /// nothing".
     capture: Entity<Editor>,
     regex: bool,
     newline: bool,
@@ -1630,7 +1684,9 @@ impl StepRow {
             _ => MatchScope::default(),
         };
         let capture_value = match step {
-            MacroStep::WaitFor { capture, .. } => capture.clone().unwrap_or_default(),
+            MacroStep::WaitFor { capture, .. } | MacroStep::If { capture, .. } => {
+                capture.clone().unwrap_or_default()
+            }
             _ => String::new(),
         };
         let continue_on_timeout = matches!(
@@ -1713,12 +1769,26 @@ impl StepRow {
 
     fn to_step(&self, label: &str, cx: &App) -> Result<MacroStep, String> {
         let text = self.text.read(cx).text(cx);
-        let steps = |rows: &[StepRow], cx: &App| {
+        // `list` names which child list `rows` is, so a step inside 「それ以外」
+        // or 「タイムアウト時」 gets a label ("2-e1", "2-t1") that cannot be
+        // confused with the same position in another list — the same spelling
+        // [`terminal::terminal_macro::MacroRunner::step_label`] uses.
+        let steps = |rows: &[StepRow], list: StepList, cx: &App| {
+            let prefix = list.prefix();
             let mut steps = Vec::with_capacity(rows.len());
             for (index, row) in rows.iter().enumerate() {
-                steps.push(row.to_step(&format!("{label}-{}", index + 1), cx)?);
+                steps.push(row.to_step(&format!("{label}-{prefix}{}", index + 1), cx)?);
             }
             Ok::<_, String>(steps)
+        };
+        let capture = |field: &Entity<Editor>, cx: &App| -> Result<Option<String>, String> {
+            let capture = field.read(cx).text(cx).trim().to_string();
+            if capture.contains(['$', '{', '}']) {
+                return Err(format!(
+                    "ステップ {label}: 取り込む変数名に $ {{ }} は使えません。"
+                ));
+            }
+            Ok((!capture.is_empty()).then_some(capture))
         };
         match self.kind {
             StepKind::Send => Ok(MacroStep::Send {
@@ -1732,21 +1802,15 @@ impl StepRow {
                 if self.regex && regex::Regex::new(&text).is_err() {
                     return Err(format!("ステップ {label}: 正規表現が不正です。"));
                 }
-                let capture = self.capture.read(cx).text(cx).trim().to_string();
-                if capture.contains(['$', '{', '}']) {
-                    return Err(format!(
-                        "ステップ {label}: 取り込む変数名に $ {{ }} は使えません。"
-                    ));
-                }
                 Ok(MacroStep::WaitFor {
                     pattern: text,
                     regex: self.regex,
                     timeout_ms: parse_seconds(&self.number.read(cx).text(cx))
                         .ok_or_else(|| format!("ステップ {label}: 秒数が不正です。"))?,
-                    capture: (!capture.is_empty()).then_some(capture),
+                    capture: capture(&self.capture, cx)?,
                     on_timeout: self
                         .continue_on_timeout
-                        .then(|| steps(&self.timeout_children, cx))
+                        .then(|| steps(&self.timeout_children, StepList::Timeout, cx))
                         .transpose()?,
                 })
             }
@@ -1767,7 +1831,7 @@ impl StepRow {
                     })?;
                 Ok(MacroStep::Repeat {
                     count,
-                    steps: steps(&self.children, cx)?,
+                    steps: steps(&self.children, StepList::Main, cx)?,
                 })
             }
             StepKind::If => {
@@ -1783,8 +1847,9 @@ impl StepRow {
                     pattern: text,
                     regex: self.regex,
                     scope: self.scope,
-                    then_steps: steps(&self.children, cx)?,
-                    else_steps: steps(&self.else_children, cx)?,
+                    capture: capture(&self.capture, cx)?,
+                    then_steps: steps(&self.children, StepList::Main, cx)?,
+                    else_steps: steps(&self.else_children, StepList::Else, cx)?,
                 })
             }
         }
@@ -2357,6 +2422,7 @@ impl MacroEditor {
                 pattern: String::new(),
                 regex: false,
                 scope: MatchScope::default(),
+                capture: None,
                 then_steps: Vec::new(),
                 else_steps: Vec::new(),
             },
@@ -3892,7 +3958,7 @@ impl MacroEditor {
                         }),
                 )
             })
-            .when(kind == StepKind::WaitFor, |this| {
+            .when(kind == StepKind::WaitFor || kind == StepKind::If, |this| {
                 this.child(
                     h_flex()
                         .gap_2()
@@ -3910,20 +3976,22 @@ impl MacroEditor {
                             .w(rems(8.))
                             .child(row.capture.clone()),
                         )
-                        .child(
-                            Label::new("タイムアウト時")
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        )
-                        .when_some(timeout_menu, |this, menu| {
+                        .when(kind == StepKind::WaitFor, |this| {
                             this.child(
-                                DropdownMenu::new(
-                                    ("step-timeout", element_id),
-                                    timeout_choice_label(row.continue_on_timeout),
-                                    menu,
-                                )
-                                .style(DropdownStyle::Outlined),
+                                Label::new("タイムアウト時")
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
                             )
+                            .when_some(timeout_menu, |this, menu| {
+                                this.child(
+                                    DropdownMenu::new(
+                                        ("step-timeout", element_id),
+                                        timeout_choice_label(row.continue_on_timeout),
+                                        menu,
+                                    )
+                                    .style(DropdownStyle::Outlined),
+                                )
+                            })
                         }),
                 )
             })
@@ -6360,8 +6428,9 @@ mod tests {
         );
     }
 
-    /// A branch whose two sides, capture and timeout list exercise every field
-    /// the form gained, nested deeply enough that the tree has to be walked.
+    /// A branch whose own capture, two sides, nested capture and timeout list
+    /// exercise every field the form gained, nested deeply enough that the
+    /// tree has to be walked.
     fn branching_macro() -> TerminalMacro {
         TerminalMacro {
             name: "復旧".to_string(),
@@ -6374,6 +6443,7 @@ mod tests {
                     pattern: "Invalid input".to_string(),
                     regex: false,
                     scope: MatchScope::Screen,
+                    capture: Some("reason".to_string()),
                     then_steps: vec![MacroStep::Repeat {
                         count: 2,
                         steps: vec![MacroStep::WaitFor {
@@ -6413,6 +6483,7 @@ mod tests {
             let branch = &editor.steps[1];
             assert_eq!(branch.kind, StepKind::If);
             assert_eq!(branch.scope, MatchScope::Screen);
+            assert_eq!(branch.capture.read(cx).text(cx), "reason");
             assert_eq!(branch.children.len(), 1, "「そのとき」 keeps its repeat");
             assert_eq!(branch.else_children.len(), 1, "「それ以外」 keeps its send");
             let wait = &branch.children[0].children[0];
@@ -6540,6 +6611,7 @@ mod tests {
                     pattern: "二段目".to_string(),
                     regex: false,
                     scope: MatchScope::SinceLastSend,
+                    capture: None,
                     then_steps: vec![MacroStep::Repeat {
                         count: 3,
                         steps: vec![MacroStep::WaitFor {
@@ -6551,6 +6623,7 @@ mod tests {
                                 pattern: "五段目".to_string(),
                                 regex: true,
                                 scope: MatchScope::Screen,
+                                capture: None,
                                 then_steps: vec![MacroStep::Send {
                                     text: "六段目".to_string(),
                                     newline: false,
@@ -6637,6 +6710,7 @@ mod tests {
                 pattern: "点検".to_string(),
                 regex: false,
                 scope: MatchScope::SinceLastSend,
+                capture: None,
                 then_steps: vec![
                     MacroStep::WaitFor {
                         pattern: "router#".to_string(),
@@ -6695,6 +6769,7 @@ mod tests {
                 pattern: "点検".to_string(),
                 regex: false,
                 scope: MatchScope::SinceLastSend,
+                capture: None,
                 then_steps: vec![
                     MacroStep::WaitFor {
                         pattern: "router#".to_string(),
@@ -6764,6 +6839,111 @@ mod tests {
                 Some("ステップ 1: 取り込む変数名に $ { } は使えません。")
             );
         });
+    }
+
+    #[gpui::test]
+    async fn an_if_capture_name_that_would_break_expansion_names_the_step(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.name.update(cx, |name, cx| {
+                name.set_text("分岐取り込み", window, cx);
+            });
+            editor.add_step(StepKind::If, window, cx);
+            editor.steps[0].text.update(cx, |text, cx| {
+                text.set_text("Invalid input", window, cx);
+            });
+            editor.steps[0].capture.update(cx, |capture, cx| {
+                capture.set_text("${host}", window, cx);
+            });
+            editor.save(cx);
+        });
+
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.error.as_deref(),
+                Some("ステップ 1: 取り込む変数名に $ { } は使えません。")
+            );
+        });
+    }
+
+    /// The label a save error carries is built while walking the rows, not by
+    /// [`StepPath::label`], so it needs its own hold on the spelling: a step
+    /// two lists down has to be named the way a failing run would name it.
+    #[gpui::test]
+    async fn a_bad_step_under_a_branch_is_named_by_the_lists_it_sits_in(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(
+                Some(TerminalMacro {
+                    name: "分岐".to_string(),
+                    steps: vec![MacroStep::If {
+                        pattern: "Invalid input".to_string(),
+                        regex: false,
+                        scope: MatchScope::Screen,
+                        capture: None,
+                        then_steps: Vec::new(),
+                        else_steps: vec![MacroStep::WaitFor {
+                            pattern: "router#".to_string(),
+                            regex: false,
+                            timeout_ms: 1_000,
+                            capture: None,
+                            on_timeout: Some(vec![MacroStep::WaitFor {
+                                pattern: "rt01#".to_string(),
+                                regex: false,
+                                timeout_ms: 1_000,
+                                capture: Some("${host}".to_string()),
+                                on_timeout: None,
+                            }]),
+                        }],
+                    }],
+                    ..TerminalMacro::default()
+                }),
+                window,
+                cx,
+            );
+            editor.save(cx);
+        });
+
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.error.as_deref(),
+                Some("ステップ 1-e1-t1: 取り込む変数名に $ { } は使えません。")
+            );
+        });
+    }
+
+    /// [`StepPath::label`] has to spell a position exactly the way a running
+    /// macro's error messages do
+    /// ([`terminal::terminal_macro::MacroRunner::step_label`]), and
+    /// [`StepPath::debug_selector`] has to agree with it too — a test that
+    /// finds a row by one and reads a message that names the other must be
+    /// looking at the same step.
+    #[test]
+    fn step_labels_spell_which_list_a_position_came_from() {
+        let then_step = StepPath::top(1).child(StepList::Main, 0);
+        let else_step = StepPath::top(1).child(StepList::Else, 0);
+        let timeout_step = StepPath::top(0).child(StepList::Timeout, 0);
+
+        assert_eq!(then_step.label(), "2-1");
+        assert_eq!(else_step.label(), "2-e1");
+        assert_eq!(timeout_step.label(), "1-t1");
+
+        for path in [&then_step, &else_step, &timeout_step] {
+            assert_eq!(
+                path.debug_selector(),
+                format!("macro-step-{}", path.label())
+            );
+        }
     }
 
     #[gpui::test]
@@ -8276,6 +8456,77 @@ mod tests {
             Some(REMOTE_SCRIPT_NAME)
         );
         assert!(REMOTE_LOOKUP_SCRIPT.contains("command -v -- \"$1\""));
+    }
+
+    /// 接続先が繋がったまま黙り込んでも、起動の前置きがそこで止まらない (ADR-F53)。
+    /// 確かめられなかったのは「無い」ではないので、案内文を出さずに起動へ進む。
+    #[gpui::test]
+    async fn a_host_that_never_answers_does_not_hold_up_the_launch(cx: &mut TestAppContext) {
+        let lookup = ClaudeCodeLookup {
+            lookup: Some(ProgramLookup::NeverAnswers),
+            program: CLAUDE_CODE_PROGRAM,
+            on_remote_host: true,
+        };
+        let executor = cx.executor();
+        let answered = Arc::new(AtomicBool::new(false));
+        let message = cx.background_executor.spawn({
+            let executor = executor.clone();
+            let answered = answered.clone();
+            async move {
+                let message = lookup.missing_message(&executor).await;
+                answered.store(true, std::sync::atomic::Ordering::SeqCst);
+                message
+            }
+        });
+        // ControlMaster が無い Windows だけ 30 秒。実装の選択を呼ばずにここで書くので、
+        // 短いほうの値に潰れれば「期限の手前」の確認が落ちる。
+        let expected = if cfg!(windows) {
+            REMOTE_LOOKUP_TIMEOUT_WITHOUT_CONTROL_MASTER
+        } else {
+            REMOTE_LOOKUP_TIMEOUT
+        };
+        executor.advance_clock(expected - Duration::from_secs(1));
+        assert!(
+            !answered.load(std::sync::atomic::Ordering::SeqCst),
+            "期限の手前ではまだ答えを待っている"
+        );
+        executor.advance_clock(Duration::from_secs(2));
+        assert_eq!(
+            message.await,
+            None,
+            "確かめられなかったときは止めずに起動へ進む"
+        );
+        assert!(REMOTE_LOOKUP_TIMEOUT_WITHOUT_CONTROL_MASTER > REMOTE_LOOKUP_TIMEOUT);
+    }
+
+    /// 期限を被せても、答えが返るときの答えは変わらない。上の「黙り込んだ」試験だけ
+    /// では、常に起動へ進む実装でも通ってしまう。
+    #[gpui::test]
+    async fn a_host_that_answers_in_time_still_stops_the_launch(cx: &mut TestAppContext) {
+        let lookup = ClaudeCodeLookup {
+            // 実在しないプログラム名なので `find` は「無い」と答える。
+            lookup: Some(ProgramLookup::OnThisMachine(
+                "zed-jp-enhance-no-such-program".to_string(),
+            )),
+            program: CLAUDE_CODE_PROGRAM,
+            on_remote_host: true,
+        };
+        let executor = cx.executor();
+        let message = cx
+            .background_executor
+            .spawn({
+                let executor = executor.clone();
+                async move { lookup.missing_message(&executor).await }
+            })
+            .await;
+        assert_eq!(
+            message,
+            Some(claude_code_missing_program_message(
+                CLAUDE_CODE_PROGRAM,
+                true
+            )),
+            "無いと分かったときは案内文を出して止める"
+        );
     }
 
     /// 接続先に CLI が無いときは、こちらからインストールせず公式手順を案内する。

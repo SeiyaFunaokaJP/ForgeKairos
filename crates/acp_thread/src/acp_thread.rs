@@ -318,7 +318,8 @@ pub enum PermissionJudgeState {
     /// The judge refused the action, or couldn't decide, so the user was asked.
     Unsafe,
     /// The user changed the permission settings while the judge was being
-    /// asked, so its answer no longer decides anything.
+    /// asked, or the turn was cancelled, so its answer no longer decides
+    /// anything.
     Superseded,
 }
 
@@ -329,7 +330,24 @@ pub struct PermissionJudgeDetails {
     /// couldn't decide. Empty while judging.
     #[serde(default)]
     pub reason: String,
+    /// Whether the verdict was remembered from an earlier, identical call in
+    /// the same thread rather than asked of the model again, so the card says
+    /// so instead of implying a fresh review (ADR-F52).
+    #[serde(default)]
+    pub reused: bool,
 }
+
+/// The reason left on a tool call whose judgement never finished because the
+/// turn was cancelled (ADR-F52). Shared with the agent crate so the card and
+/// the thread's own record say the same thing.
+pub const PERMISSION_JUDGE_CANCELED_REASON: &str = "実行が中止されました";
+
+/// The reason left on a third-party tool call that carries no arguments
+/// (ADR-F52). With nothing but the tool's own name to go on, the judge would be
+/// approving a name — which is how an MCP server got past this gate once
+/// before — so it is not asked at all and the user decides. Shared with the
+/// agent crate so the card and the thread's own record say the same thing.
+pub const PERMISSION_JUDGE_NO_ARGUMENTS_REASON: &str = "引数が無いため確認します";
 
 pub fn meta_with_permission_judge(details: PermissionJudgeDetails) -> acp::Meta {
     acp::Meta::from_iter([(
@@ -4279,6 +4297,22 @@ impl AcpThread {
         for (ix, entry) in self.entries.iter_mut().enumerate() {
             match entry {
                 AgentThreadEntry::ToolCall(call) => {
+                    // A judgement in flight is settled here rather than left to
+                    // the agent: cancelling makes the agent send its final
+                    // `Stop`, and whatever it emits afterwards is no longer
+                    // read, so a card left mid-judgement would say 「AI が判定
+                    // 中…」 forever (ADR-F52).
+                    let judging = call
+                        .permission_judge
+                        .as_ref()
+                        .is_some_and(|judge| judge.state == PermissionJudgeState::Judging);
+                    if judging {
+                        call.permission_judge = Some(PermissionJudgeDetails {
+                            state: PermissionJudgeState::Superseded,
+                            reason: PERMISSION_JUDGE_CANCELED_REASON.to_string(),
+                            reused: false,
+                        });
+                    }
                     let cancel = matches!(
                         call.status,
                         ToolCallStatus::Pending
@@ -4296,6 +4330,8 @@ impl AcpThread {
                                 "Permission request closed before cancellation was delivered"
                             );
                         }
+                        cx.emit(AcpThreadEvent::EntryUpdated(ix));
+                    } else if judging {
                         cx.emit(AcpThreadEvent::EntryUpdated(ix));
                     }
                 }
@@ -11878,6 +11914,88 @@ mod tests {
             assert_eq!(message.protocol_id, None);
             assert_eq!(message.client_id, None);
             assert!(message.is_optimistic);
+        });
+    }
+
+    /// ADR-F52: cancelling a turn while the judge is still thinking has to
+    /// settle the card here. The agent's `Stop` is the last event read from its
+    /// stream, so anything the agent sends afterwards never arrives, and the
+    /// card would keep saying 「AI が判定中…」 forever.
+    #[gpui::test]
+    async fn test_cancelling_settles_a_permission_judgement_in_flight(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+
+        let connection = Rc::new(FakeAgentConnection::new().on_user_message(
+            move |_params, thread, mut cx| {
+                async move {
+                    thread
+                        .update(&mut cx, |thread, cx| {
+                            thread.handle_session_update(
+                                acp::SessionUpdate::ToolCall(
+                                    acp::ToolCall::new(
+                                        acp::ToolCallId::new("judged-tool"),
+                                        "cargo build",
+                                    )
+                                    .kind(acp::ToolKind::Execute)
+                                    .status(acp::ToolCallStatus::InProgress)
+                                    .meta(
+                                        meta_with_permission_judge(PermissionJudgeDetails {
+                                            state: PermissionJudgeState::Judging,
+                                            reason: String::new(),
+                                            reused: false,
+                                        }),
+                                    ),
+                                ),
+                                cx,
+                            )
+                        })
+                        .unwrap()
+                        .unwrap();
+
+                    Ok(acp::PromptResponse::new(acp::StopReason::Cancelled))
+                }
+                .boxed_local()
+            },
+        ));
+
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(project, PathList::new(&[Path::new(path!("/test"))]), cx)
+            })
+            .await
+            .unwrap();
+
+        thread
+            .update(cx, |thread, cx| thread.send_raw("test message", cx))
+            .await
+            .expect("send should succeed")
+            .expect("should have response");
+
+        thread.read_with(cx, |thread, _| {
+            let tool_entry = thread
+                .entries
+                .iter()
+                .find_map(|entry| {
+                    if let AgentThreadEntry::ToolCall(call) = entry {
+                        Some(call)
+                    } else {
+                        None
+                    }
+                })
+                .expect("should have tool call entry");
+            let judge = tool_entry
+                .permission_judge
+                .as_ref()
+                .expect("the tool call was judged");
+            assert_eq!(
+                judge.state,
+                PermissionJudgeState::Superseded,
+                "a judgement left in flight by a cancelled turn must be settled"
+            );
+            assert_eq!(judge.reason, PERMISSION_JUDGE_CANCELED_REASON);
         });
     }
 

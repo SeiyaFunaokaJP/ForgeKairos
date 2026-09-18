@@ -1073,6 +1073,16 @@
     },
   },
   {
+    // The todo editor's message fields are form fields: Esc leaves the modal and Ctrl+Enter runs
+    // it, rather than the editor keeping both to itself.
+    "context": "GitGraphRewriteRange > Editor && mode == auto_height",
+    "bindings": {
+      "enter": "editor::Newline",
+      "ctrl-enter": "menu::Confirm",
+      "escape": "menu::Cancel",
+    },
+  },
+  {
     // The multi-line field of the commit menu's modals (rewriting a commit message) behaves like
     // the git panel's commit box: Enter makes a new line, ctrl-enter confirms. The single-line
     // fields (branch and tag names) keep Enter for confirming.

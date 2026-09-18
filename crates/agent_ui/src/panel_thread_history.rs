@@ -30,6 +30,10 @@ use crate::{ArchiveSelectedThread, NewThread, draft_prompt_store};
 /// larger half of a default-width panel, wide enough for a generated title.
 pub(crate) const PANEL_THREAD_HISTORY_WIDTH: gpui::Pixels = px(240.);
 
+/// 狭いパネルで使う一覧の幅 (ADR-F53)。日付の 2 行目を落として 1 行にすれば
+/// この幅でも題名は読めるので、丸ごと引っ込める前にここへ落とす。
+pub(crate) const SLIM_PANEL_THREAD_HISTORY_WIDTH: gpui::Pixels = px(160.);
+
 /// The thread half is squeezed below this width before the history list is
 /// worth keeping, so the list hides itself instead.
 pub(crate) const MIN_THREAD_WIDTH_BESIDE_HISTORY: gpui::Pixels = px(320.);
@@ -60,11 +64,15 @@ pub enum OpenTabId {
 
 /// 「開いているタブ」の 1 行。パネルが毎フレーム組み立てて渡す
 /// ([`PanelThreadHistory::set_open_tabs`])。
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// アイコンは [`Icon`] そのもの: タブが [`workspace::Item::tab_icon`] で出す
+/// ものをそのまま出すので、外部の SVG を使うエージェントでもタブと一覧で
+/// 食い違わない。
+#[derive(Clone, Debug, PartialEq)]
 pub struct OpenTabRow {
     pub id: OpenTabId,
     pub title: SharedString,
-    pub icon: IconName,
+    pub icon: Icon,
     pub is_active: bool,
 }
 
@@ -87,6 +95,7 @@ pub struct PanelThreadHistory {
     list_state: ListState,
     hovered_index: Option<usize>,
     active_thread_id: Option<ThreadId>,
+    slim: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -150,6 +159,7 @@ impl PanelThreadHistory {
             list_state: ListState::new(0, gpui::ListAlignment::Top, px(1000.)),
             hovered_index: None,
             active_thread_id: None,
+            slim: false,
             _subscriptions: vec![
                 filter_editor_subscription,
                 store_subscription,
@@ -178,9 +188,25 @@ impl PanelThreadHistory {
         cx.notify();
     }
 
+    /// Called by the panel on every render: below
+    /// [`PANEL_THREAD_HISTORY_WIDTH`] + the thread's own minimum the list
+    /// narrows to one line per thread instead of disappearing (ADR-F53).
+    pub fn set_slim(&mut self, slim: bool, cx: &mut Context<Self>) {
+        if self.slim == slim {
+            return;
+        }
+        self.slim = slim;
+        cx.notify();
+    }
+
     #[cfg(test)]
     pub(crate) fn items(&self) -> &[HistoryListItem] {
         &self.items
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_slim(&self) -> bool {
+        self.slim
     }
 
     #[cfg(test)]
@@ -309,7 +335,10 @@ impl PanelThreadHistory {
                         .when_some(icon_from_external_svg, |this, svg| {
                             this.custom_icon_from_external_svg(svg)
                         })
-                        .timestamp(format_history_entry_timestamp(thread.updated_at))
+                        // 狭いときは日付を渡さない = 2 行目ごと消える。
+                        .when(!self.slim, |this| {
+                            this.timestamp(format_history_entry_timestamp(thread.updated_at))
+                        })
                         .highlight_positions(highlight_positions)
                         .selected(is_active)
                         .hovered(is_hovered)
@@ -470,7 +499,7 @@ impl PanelThreadHistory {
                     let list_item = ListItem::new(("panel-open-tab", index))
                         .spacing(ListItemSpacing::Sparse)
                         .toggle_state(row.is_active)
-                        .start_slot(Icon::new(row.icon).size(IconSize::Small).color(
+                        .start_slot(row.icon.clone().size(IconSize::Small).color(
                             if row.is_active {
                                 Color::Default
                             } else {
@@ -517,7 +546,7 @@ impl PanelThreadHistory {
                     // スクロールさせる。
                     v_flex()
                         .id("panel-open-tabs")
-                        .max_h(px(200.))
+                        .max_h(if self.slim { px(120.) } else { px(200.) })
                         .overflow_y_scroll()
                         .pb_1()
                         .children(rows),
@@ -622,7 +651,11 @@ impl Render for PanelThreadHistory {
             .key_context("PanelThreadHistory")
             .debug_selector(|| "PANEL_THREAD_HISTORY".into())
             .track_focus(&self.focus_handle)
-            .w(PANEL_THREAD_HISTORY_WIDTH)
+            .w(if self.slim {
+                SLIM_PANEL_THREAD_HISTORY_WIDTH
+            } else {
+                PANEL_THREAD_HISTORY_WIDTH
+            })
             .flex_none()
             .h_full()
             .border_r_1()

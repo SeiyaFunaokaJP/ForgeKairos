@@ -58,6 +58,7 @@ impl EditorSnapshot {
         // tree-sitter query, and the gutter asks this for every visible row.
         is_foldable = is_foldable
             || self.markdown_heading_fold(buffer_row).is_some()
+            || self.markdown_setext_heading_fold(buffer_row).is_some()
             || self.markdown_block_fold(buffer_row).is_some();
 
         if folded || (is_foldable && (row_contains_cursor || self.gutter_hovered)) {

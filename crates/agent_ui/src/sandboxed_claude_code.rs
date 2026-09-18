@@ -1,12 +1,13 @@
-//! Claude Code CLI の起動導線 (ADR-F49 決定 1・3・6、第 3 段)。
+//! Claude Code CLI の起動導線 (ADR-F49 決定 1・3・6、第 3 段、ADR-F53)。
 //!
 //! 「Claude Code を起動」は、
 //! * Windows のローカルのプロジェクトでは、サンドボックス (WSL のヘルパー) の対話セッションとして
 //!   CLI を起動し、IDE 連携はヘルパーの IDE 転送 → ブリッジ → サンドボックス用の IDE セッションで繋ぐ。
 //! * SSH で繋いだ Linux のプロジェクトでは、接続先の remote_server をサンドボックスヘルパーとして
-//!   同じ形で起動する (ADR-F18)。CLI は**この PC で取得・検証**してから接続先へ送る。IDE 連携は、
-//!   ホスト側のファイルの実体を見る確認 (`ide_server` の `RealRoots`) がクライアントの
-//!   ファイルシステムしか見られないため、この段では繋がない。
+//!   同じ形で起動する (ADR-F18)。CLI は**この PC で取得・検証**してから接続先へ送る。IDE 連携も
+//!   同じ形で繋ぐ (ADR-F53): ブリッジは接続先のヘルパーをもう一度 (`--ide-bridge` で) 起動した
+//!   もので、パスの実体の確認はクライアントではなく接続先で行う (`ide_server`)。中継を起動でき
+//!   なければ理由を出して IDE 連携なしで CLI を起動する。
 //! * それ以外 (共同編集・対応しない接続方法・Windows 以外のローカル・フォルダーなし) と
 //!   「サンドボックスの外で起動」は、その場の `claude` を起動のたびに確認してから起動する。
 //!
@@ -357,6 +358,80 @@ pub(crate) fn terminal_tab_location(
     Some((TerminalTabHost::Elsewhere, pane, index))
 }
 
+/// 「すでに実行中です」でタブを前に出すところだけを、二重起動の作法
+/// (`RunningSessions` の登録) 抜きで試すための入口。
+#[cfg(test)]
+pub(crate) fn test_reveal_terminal_tab(
+    workspace: &mut Workspace,
+    terminal: &Entity<Terminal>,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    session::reveal_terminal(workspace, terminal, window, cx);
+}
+
+/// 「すでに実行中です」がどの `Workspace` に出たかを見るための目印。
+#[cfg(test)]
+pub(crate) fn test_already_running_notification_id() -> workspace::notifications::NotificationId {
+    session::already_running_id()
+}
+
+/// CLI のタブがほかのウィンドウで見つかったときの居場所。
+pub(crate) struct TerminalTabPlace {
+    /// 1 つのウィンドウは複数の `Workspace` を抱え、映しているのはその 1 つ
+    /// だけなので、前面化には窓の根 (`MultiWorkspace`) ごと要る。
+    pub window: gpui::WindowHandle<workspace::MultiWorkspace>,
+    pub workspace: Entity<Workspace>,
+    pub host: TerminalTabHost,
+    pub pane: Entity<workspace::Pane>,
+    pub index: usize,
+}
+
+/// `terminal` のタブを、`already_searched` 以外のすべての `Workspace` から探す。
+///
+/// タブは窓外へ引き出せるので、二重起動の前面化は起動したウィンドウの中だけでは
+/// 足りない。1 つのウィンドウが複数の `Workspace` を抱えることがある
+/// (`MultiWorkspace`) ので、ウィンドウではなくその中の `Workspace` を単位に見る。
+///
+/// `already_searched` は呼び手がもう調べた `Workspace`。二度見ないためと、
+/// 呼び手がそれを握ったまま呼んだときに `read` で落ちないため。
+pub(crate) fn terminal_tab_location_elsewhere(
+    terminal: &Entity<Terminal>,
+    already_searched: gpui::EntityId,
+    cx: &App,
+) -> Option<TerminalTabPlace> {
+    for window in cx.windows() {
+        let Some(multi_workspace) = window.downcast::<workspace::MultiWorkspace>() else {
+            continue;
+        };
+        // 更新中のウィンドウはここでは読めない。呼び手が自分のぶんは調べて
+        // いるので、読めなかったぶんは飛ばす。
+        let Ok(workspaces) = multi_workspace
+            .read(cx)
+            .map(|multi_workspace| multi_workspace.workspaces().cloned().collect::<Vec<_>>())
+        else {
+            continue;
+        };
+        for workspace in workspaces {
+            if workspace.entity_id() == already_searched {
+                continue;
+            }
+            if let Some((host, pane, index)) =
+                terminal_tab_location(workspace.read(cx), terminal, cx)
+            {
+                return Some(TerminalTabPlace {
+                    window: multi_workspace,
+                    workspace,
+                    host,
+                    pane,
+                    index,
+                });
+            }
+        }
+    }
+    None
+}
+
 /// セッションの端末の作り方。ADR-F53 で変えたのはタブの置き場だけなので、
 /// 経路ごとの実行のしかたはここで区別してそのまま保つ。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -572,13 +647,10 @@ mod session {
     const PROJECTS_HOME_RELATIVE: &str = sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE;
     const CONFIG_DIR_NAME: &str = "config";
     /// Where the CLI looks for IDE locks under `CLAUDE_CONFIG_DIR`.
-    #[cfg(any(target_os = "windows", test))]
     const LOCK_DIRECTORY_NAME: &str = "ide";
     /// The shape `sandbox::ide_rendezvous_path` documents:
     /// `<home>/.cache/zed-jp-enhance/ide/<session_id>/bridge.sock`.
-    #[cfg(any(target_os = "windows", test))]
     const RENDEZVOUS_HOME_RELATIVE: &str = ".cache/zed-jp-enhance/ide";
-    #[cfg(any(target_os = "windows", test))]
     const RENDEZVOUS_SOCKET_NAME: &str = "bridge.sock";
     /// Names this launcher's rendezvous directories, so the sweep leaves every
     /// other one alone.
@@ -600,7 +672,6 @@ exec "$0" "$@""#;
     }
 
     /// Where a session's files live inside the distro.
-    #[cfg(any(target_os = "windows", test))]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub(super) struct SessionLayout {
         /// Holds every session's rendezvous directory.
@@ -613,7 +684,6 @@ exec "$0" "$@""#;
         pub(super) lock_file: String,
     }
 
-    #[cfg(any(target_os = "windows", test))]
     impl SessionLayout {
         pub(super) fn from_rendezvous(
             rendezvous: &str,
@@ -665,10 +735,29 @@ exec "$0" "$@""#;
         Ok((config_root, config_dir))
     }
 
+    /// ADR-F53: where this session's IDE bridge listens on an SSH host — the
+    /// same shape `sandbox::ide_rendezvous_path` builds inside a WSL distro, by
+    /// the home the host itself reported. The bridge creates the directories on
+    /// the way, owner-only and without following a link.
+    pub(super) fn rendezvous_path(home: &str, session_id: &str) -> Result<String> {
+        ensure!(
+            is_session_id(session_id),
+            "IDE セッションの識別子が不正です (内部エラー): {session_id:?}"
+        );
+        ensure!(
+            home.starts_with('/') && !home.ends_with('/') && !home.contains(['\n', '\0']),
+            "接続先のホームディレクトリの形が想定と違います (内部エラー): {home:?}"
+        );
+        Ok(format!(
+            "{home}/{RENDEZVOUS_HOME_RELATIVE}/{session_id}/{RENDEZVOUS_SOCKET_NAME}"
+        ))
+    }
+
     /// What the CLI is started with. `ide_port` is the port inside the sandbox
-    /// the IDE channel listens on, and `None` for a session without one (the
-    /// SSH host in 第 3 段): then nothing points the CLI at an IDE, so it runs
-    /// as it would in a plain terminal instead of waiting for one.
+    /// the IDE channel listens on, and `None` for a session without one (a
+    /// sandbox whose IDE bridge could not be started): then nothing points the
+    /// CLI at an IDE, so it runs as it would in a plain terminal instead of
+    /// waiting for one.
     pub(super) fn session_environment(
         config_dir: &str,
         ide_port: Option<u16>,
@@ -954,7 +1043,6 @@ exec "$0" "$@""#;
         }
     }
 
-    #[cfg(any(target_os = "windows", test))]
     fn is_session_id(name: &str) -> bool {
         name.strip_prefix(SESSION_ID_PREFIX).is_some_and(|id| {
             id.len() == 32
@@ -1043,31 +1131,99 @@ exec "$0" "$@""#;
             Ok(slot) => return Some(slot),
             Err(existing) => existing,
         };
+        let Some(terminal) = existing.and_then(|terminal| terminal.upgrade()) else {
+            // まだ端末の無いセッション (起動中)。見せる先が無いので説明だけ。
+            workspace
+                .update(cx, |workspace, cx| show_already_running(workspace, cx))
+                .log_err();
+            return None;
+        };
         workspace
             .update(cx, |workspace, cx| {
-                show_already_running(workspace, cx);
-                if let Some(terminal) = existing.and_then(|terminal| terminal.upgrade()) {
-                    reveal_terminal(workspace, &terminal, window, cx);
-                }
+                reveal_terminal(workspace, &terminal, window, cx);
             })
             .log_err();
         None
     }
 
-    /// Brings the tab of `terminal` forward, wherever it is in this workspace:
-    /// the agent panel (ADR-F53), the terminal panel, the center, or another
-    /// dock. The panel that holds it is opened first, since activating a tab in
-    /// a hidden dock would leave the user looking at nothing.
+    /// Brings the tab of `terminal` forward, wherever it is: the agent panel
+    /// (ADR-F53), the terminal panel, the center, or another dock — of this
+    /// workspace or of any other window. The panel that holds it is opened
+    /// first, since activating a tab in a hidden dock would leave the user
+    /// looking at nothing.
+    ///
+    /// 「すでに実行中です」の説明もここで出す。行き先は**タブが出るほうの**
+    /// `Workspace`: 別のウィンドウやプロジェクトへ切り替えて見せるので、呼び手
+    /// 側に出すと前面化した窓の裏に隠れてしまう。
     pub(super) fn reveal_terminal(
         workspace: &mut Workspace,
         terminal: &Entity<Terminal>,
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
-        let Some((host, pane, index)) = super::terminal_tab_location(workspace, terminal, cx)
-        else {
+        if let Some((host, pane, index)) = super::terminal_tab_location(workspace, terminal, cx) {
+            show_already_running(workspace, cx);
+            open_tab_host(workspace, host, window, cx);
+            pane.update(cx, |pane, cx| {
+                pane.activate_item(index, true, true, window, cx)
+            });
             return;
-        };
+        }
+
+        // ほかのウィンドウ、または同じウィンドウが抱えている別の `Workspace`
+        // にあるタブ。いま握っている `Workspace` は貸し出し中でほかを読めない
+        // ので、探索ごと後に回す。
+        let this_workspace = cx.weak_entity();
+        let terminal = terminal.clone();
+        cx.defer(move |cx: &mut App| {
+            let Some(place) =
+                super::terminal_tab_location_elsewhere(&terminal, this_workspace.entity_id(), cx)
+            else {
+                // 端末は生きているのにタブがどこにも無い。見せる先が無いので
+                // 説明だけを呼び手に返す。
+                this_workspace
+                    .update(cx, |workspace, cx| show_already_running(workspace, cx))
+                    .log_err();
+                return;
+            };
+            let super::TerminalTabPlace {
+                window: target_window,
+                workspace,
+                host,
+                pane,
+                index,
+            } = place;
+            target_window
+                .update(cx, |multi_workspace, window, cx| {
+                    // ウィンドウは抱えている `Workspace` のうち 1 つしか
+                    // 映さない。タブがいま映っていないほうにあるなら、先に
+                    // そちらへ切り替えないとタブを選んでも何も見えない。
+                    if multi_workspace.workspace() != &workspace {
+                        multi_workspace.activate(workspace.clone(), None, window, cx);
+                    }
+                    workspace.update(cx, |workspace, cx| {
+                        show_already_running(workspace, cx);
+                        open_tab_host(workspace, host, window, cx);
+                    });
+                    pane.update(cx, |pane, cx| {
+                        pane.activate_item(index, true, true, window, cx)
+                    });
+                    // タブが呼び手の `Workspace` に無かったときだけここへ
+                    // 来る。ウィンドウごと前に出さないと「すでに実行中です」
+                    // の行き先が見えないまま終わる。
+                    window.activate_window();
+                })
+                .log_err();
+        });
+    }
+
+    /// タブを選ぶ前に、それを抱えているドックを開く。
+    fn open_tab_host(
+        workspace: &mut Workspace,
+        host: super::TerminalTabHost,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
         match host {
             super::TerminalTabHost::AgentPanel => {
                 workspace.focus_panel::<AgentPanel>(window, cx);
@@ -1079,9 +1235,6 @@ exec "$0" "$@""#;
             // `activate_pane` がそのペインを前に出す。
             super::TerminalTabHost::Elsewhere => {}
         }
-        pane.update(cx, |pane, cx| {
-            pane.activate_item(index, true, true, window, cx)
-        });
     }
 
     pub(super) enum HostsConsent {
@@ -1220,14 +1373,12 @@ exec "$0" "$@""#;
             .context("セッションのターミナルが開いた直後に閉じられました。")
     }
 
-    /// The IDE channel, which only the WSL sandbox has: on an SSH host the
-    /// session's file requests would be checked against this machine's file
-    /// system (`ide_server::path_mapping`), which knows nothing about the
-    /// host's, so 第 3 段 runs without one.
-    #[cfg(any(target_os = "windows", test))]
+    /// The IDE channel, which both sandboxes have: WSL's (ADR-F49 決定 3) and an
+    /// SSH host's (ADR-F53). What differs is only where the bridge process is
+    /// started and which path mapper the session reads paths with — the session
+    /// itself, the lock file and the multiplexing are the same.
     pub(super) use ide_link::{IdeLink, PendingIdeSession};
 
-    #[cfg(any(target_os = "windows", test))]
     mod ide_link {
         use std::path::PathBuf;
         use std::sync::Arc;
@@ -1310,30 +1461,41 @@ exec "$0" "$@""#;
 /// where the release key and the allowlist are, and sent to the host, so a host
 /// with no way out to the network still runs a checked build.
 ///
-/// It runs with no IDE channel: the requests a sandboxed session makes about
-/// files are checked against a file system `ide_server` can open
-/// (`ide_server::path_mapping`), and on a remote project that is this machine's,
-/// not the host's — every request would be refused as outside the workspace.
-/// Nothing points the CLI at an IDE, so it behaves as it does in a plain
-/// terminal; wiring it is what a later step has to do.
+/// ADR-F53: it has the same IDE channel the WSL sandbox has. The bridge is the
+/// host's helper once more, started over the project's own transport with piped
+/// standard I/O (`start_remote_ide_bridge`); the requests the session makes
+/// about files are checked **on the host** — `Project::verify_agent_read`
+/// (proto 506), which the remote server answers by opening the path from the
+/// worktree root through no link at all — because the paths are the host's and
+/// this machine cannot open them.
+///
+/// A bridge that will not start is said out loud and the CLI runs without an
+/// IDE, exactly as it did before ADR-F53; it is never quietly counted as
+/// success.
 mod remote_launch {
+    use std::path::Path;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     use anyhow::{Context as _, Result, anyhow, bail};
     use collections::HashMap;
-    use gpui::{AsyncWindowContext, Context, Entity, WeakEntity, Window};
+    use futures::AsyncWriteExt as _;
+    use gpui::{AsyncWindowContext, Context, Entity, Task, WeakEntity, Window};
     use project::{Project, SandboxedWriterGuard};
-    use remote::RemoteClient;
+    use remote::{Interactive, RemoteClient};
     use terminal::Terminal;
     use util::ResultExt as _;
+    use util::path_mapping::ComparablePath;
+    use util::paths::PathStyle;
     use workspace::Workspace;
 
     use super::session::{
-        CLAUDE_HOSTS, HostsConsent, LAUNCH_FAILED_PREFIX, PREPARING_MESSAGE,
-        PREPARING_SANDBOX_MESSAGE, SessionSlot, already_running_id, config_paths,
-        consent_to_claude_hosts, launch_invocation, new_session_id, progress_id, project_key,
-        register_session_writer, remote_session_write_scope, session_environment, session_key,
-        show_progress, spawn_terminal, take_session_slot,
+        CLAUDE_HOSTS, HostsConsent, IdeLink, LAUNCH_FAILED_PREFIX, PREPARING_MESSAGE,
+        PREPARING_SANDBOX_MESSAGE, PendingIdeSession, SessionLayout, SessionSlot,
+        already_running_id, config_paths, consent_to_claude_hosts, launch_invocation,
+        new_session_id, progress_id, project_key, register_session_writer,
+        remote_session_write_scope, rendezvous_path, session_environment, session_key,
+        show_already_running, show_progress, spawn_terminal, take_session_slot,
     };
 
     /// Where the staged CLI and anything else this launcher leaves on the host
@@ -1393,8 +1555,17 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             workspace
                 .update(cx, |workspace, cx| {
                     workspace.dismiss_toast(&progress_id(), cx);
-                    if let Err(error) = outcome {
-                        workspace.show_error(format!("{LAUNCH_FAILED_PREFIX}{error:#}"), cx);
+                    match outcome {
+                        Ok(()) => {}
+                        // ADR-F53: another Zed's bridge holds this project's
+                        // configuration directory on the host, so its session —
+                        // not this one — is the one that runs.
+                        Err(error) if error.is::<sandbox::IdeBridgeSessionRunning>() => {
+                            show_already_running(workspace, cx)
+                        }
+                        Err(error) => {
+                            workspace.show_error(format!("{LAUNCH_FAILED_PREFIX}{error:#}"), cx)
+                        }
                     }
                 })
                 .log_err();
@@ -1463,8 +1634,9 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         })?;
         // The helper skips a write grant that is not there yet (it logs and
         // carries on), so the CLI would start unable to write its own
-        // configuration — and unable to keep a sign-in. In WSL the IDE bridge
-        // creates these; on an SSH host there is no bridge, so it happens here.
+        // configuration — and unable to keep a sign-in. ADR-F53's bridge would
+        // create them too, but a session whose bridge did not start has to be
+        // able to write its configuration all the same.
         crate::managed_claude_binary::run_remote_host_script(
             remote_client.clone(),
             CREATE_CONFIG_SCRIPT,
@@ -1475,8 +1647,36 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         .context("接続先に Claude Code の設定フォルダーを作成できませんでした。")?;
 
         let session_id = new_session_id();
+        // ADR-F53: the IDE channel. Everything of it that can fail does so
+        // before the CLI starts, and a failure that is not "another session
+        // already holds this configuration" leaves the session running without
+        // an IDE rather than not running at all.
+        let ide = match start_remote_ide_bridge(
+            &workspace,
+            &remote_client,
+            &home,
+            &session_id,
+            &project_key,
+            &roots,
+            cx,
+        )
+        .await
+        {
+            Ok(ide) => Some(ide),
+            Err(error) if error.is::<sandbox::IdeBridgeSessionRunning>() => return Err(error),
+            Err(error) => {
+                log::warn!("[claude-sandbox] the IDE bridge did not start: {error:#}");
+                workspace
+                    .update(cx, |workspace, cx| {
+                        workspace.show_error(format!("{IDE_UNAVAILABLE_PREFIX}{error}"), cx)
+                    })
+                    .log_err();
+                None
+            }
+        };
         let (program, args) = launch_invocation(&binary.path_on_host, effort.as_deref())?;
-        let environment = session_environment(&config_dir, None);
+        let environment =
+            session_environment(&config_dir, ide.as_ref().map(|ide| ide.forward.inner_port));
         let first_root = roots
             .first()
             .context("Claude Code を実行するフォルダーがありません。")?
@@ -1524,6 +1724,7 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             &environment.into_iter().collect::<HashMap<_, _>>(),
             &[],
             true,
+            ide.as_ref().map(|ide| &ide.forward),
             Some(&session_id),
             program,
             args,
@@ -1534,7 +1735,10 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         let write_scope = remote_session_write_scope(&roots, &config_root);
         let (worktree_writer, worktree_writer_resolved) =
             cx.update(|_, cx| register_session_writer(&project, write_scope, cx))?;
+        // From here on, dropping `resources` (an error below included) ends the
+        // bridge, the IDE session and the hold on the worktrees.
         let resources = SessionResources {
+            ide,
             worktree_writer,
             slot,
         };
@@ -1576,11 +1780,197 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         .await
     }
 
-    /// What a running remote session holds on to. There is no bridge and no
-    /// sandbox object on this machine: the helper on the host owns both its
-    /// namespaces and its proxy, and the terminal's own process is the `ssh`
-    /// that runs it.
+    /// ADR-F53: start this session's IDE channel on the SSH host.
+    ///
+    /// The order is fixed, because each step needs the one before it:
+    ///
+    /// 1. the IDE session is started here, so that its auth token can go into
+    ///    the lock file before any connection can arrive
+    /// 2. the host's helper is started once more as the bridge, over the
+    ///    project's own transport, with piped standard I/O and the lock content
+    ///    as a stdin preamble (never on a command line the host's `/proc` shows)
+    /// 3. it is waited for, so that its rendezvous socket exists before the
+    ///    sandbox helper — which refuses a rendezvous that is not there — looks
+    ///    for it
+    ///
+    /// `Interactive::No`: the bridge speaks the frame protocol on its standard
+    /// I/O and must not be given a pty. The helper is named by its
+    /// `$HOME`-relative path, which the transport resolves, exactly as the
+    /// sandbox helper itself is started.
+    ///
+    /// The paths the session reads are the host's own, so the mapper is the
+    /// identity one and every check on them happens on the host (`ide_server`'s
+    /// remote `SandboxChecks`).
+    ///
+    /// The concrete standard-I/O types differ between platforms
+    /// ([`util::command`]), so everything that touches them stays in this one
+    /// function.
+    async fn start_remote_ide_bridge(
+        workspace: &WeakEntity<Workspace>,
+        remote_client: &Entity<RemoteClient>,
+        home: &str,
+        session_id: &str,
+        project_key: &str,
+        roots: &[PathBuf],
+        cx: &mut AsyncWindowContext,
+    ) -> Result<RemoteIdeChannel> {
+        const PREAMBLE_FAILED: &str = "IDE 連携の中継に接続情報を渡せませんでした";
+
+        let inner_port = sandbox::new_inner_ide_port();
+        let rendezvous = rendezvous_path(home, session_id)?;
+        // The helper refuses a rendezvous the command itself may write — the
+        // socket it connects to from outside every namespace could be replaced
+        // — and it refuses the whole command over it, which would leave the CLI
+        // unable to start at all. A project whose folder *is* the account's
+        // home is exactly that case, so the channel is left out with a reason.
+        if let Some(root) = writable_root_holding(roots, &rendezvous) {
+            bail!(
+                "プロジェクトのフォルダー ({root}) が IDE 連携の待ち合わせ場所を含んでいるため、\
+                 中継を起動できません。"
+            );
+        }
+
+        // Taken before the process is started, and given back by every path out
+        // of here that does not return the channel.
+        let Some(bridge_slot) = sandbox::IdeBridgeSlot::take() else {
+            log::warn!(
+                "refusing an IDE bridge: {} are already running",
+                sandbox::MAX_IDE_BRIDGES
+            );
+            bail!(
+                "IDE 連携の中継がすでに {} 本動いているため、これ以上は起動できません。\
+                 使っていないエージェントのスレッドやターミナルを閉じてからやり直してください。",
+                sandbox::MAX_IDE_BRIDGES
+            );
+        };
+
+        let layout =
+            SessionLayout::from_rendezvous(&rendezvous, session_id, project_key, inner_port)?;
+        let mapper: Arc<dyn ide_server::PathMapper> = Arc::new(ide_server::IdentityPathMapper);
+        let (pending, auth_token) = cx.update(|_, cx| {
+            PendingIdeSession::start(workspace.clone(), mapper.clone(), roots.to_vec(), cx)
+        })?;
+        let workspace_folders = roots
+            .iter()
+            .filter_map(|root| ide_server::PathMapper::to_client(mapper.as_ref(), root))
+            .collect::<Vec<_>>();
+        let preamble = sandbox::encode_ide_lock_preamble(&ide_server::sandbox_lock_file_contents(
+            &auth_token,
+            &workspace_folders,
+        ));
+        let template = remote_client.read_with(cx, |remote_client, _| {
+            let helper = remote_client
+                .remote_server_binary_path()
+                .context("接続先のホストの Zed サーバーがまだ用意されていません (内部エラー)。")?;
+            // The exclusive directory is held by the bridge while it runs: a
+            // session another Zed started on this configuration turns this one
+            // away (`IdeBridgeSessionRunning`).
+            let arguments = sandbox::remote_ide_bridge_argv(
+                &rendezvous,
+                Some(&layout.lock_file),
+                Some(&layout.config_root),
+            )?;
+            remote_client.build_command(
+                Some(helper.display(PathStyle::Unix).into_owned()),
+                &arguments,
+                &HashMap::default(),
+                None,
+                None,
+                Interactive::No,
+            )
+        })?;
+
+        let mut command = util::command::new_command(&template.program);
+        command
+            .args(&template.args)
+            .envs(template.env)
+            .stdin(util::command::Stdio::piped())
+            .stdout(util::command::Stdio::piped())
+            .stderr(util::command::Stdio::piped())
+            .kill_on_drop(true);
+        let mut bridge = command
+            .spawn()
+            .context("IDE 連携の中継を接続先で起動できませんでした")?;
+        let (Some(mut stdin), Some(stdout), Some(stderr)) = (
+            bridge.stdin.take(),
+            bridge.stdout.take(),
+            bridge.stderr.take(),
+        ) else {
+            bail!("bug: the IDE bridge's standard I/O is not piped");
+        };
+        stdin.write_all(&preamble).await.context(PREAMBLE_FAILED)?;
+        stdin.flush().await.context(PREAMBLE_FAILED)?;
+
+        let executor = cx.background_executor().clone();
+        let bridge_log = sandbox::wait_for_ide_bridge_ready(
+            stderr,
+            sandbox::BridgeHost::RemoteHost,
+            executor.timer(sandbox::IDE_BRIDGE_READY_TIMEOUT),
+        )
+        .await?;
+        let bridge_log = executor.spawn(bridge_log);
+        let link = cx.update(|_, cx| pending.attach(stdout, stdin, cx))?;
+        Ok(RemoteIdeChannel {
+            forward: sandbox::IdeForward {
+                inner_port,
+                rendezvous_path: rendezvous,
+            },
+            _link: link,
+            _bridge: bridge,
+            _bridge_log: bridge_log,
+            _bridge_slot: bridge_slot,
+        })
+    }
+
+    /// The folder the session may write that holds `rendezvous`, if any.
+    ///
+    /// Both are the host's own spelling (absolute Unix paths), so they are read
+    /// by the host's rules rather than with [`Path::starts_with`], which on a
+    /// Windows client would read them by the wrong ones — and by components
+    /// rather than as text, so that a folder spelled `/srv//app` or `/srv/app/`
+    /// is still seen to hold what is under `/srv/app`. A root the host reaches
+    /// through a link is beyond what this machine can tell; the helper refuses
+    /// the rendezvous then, which is a refusal and not a way in.
+    pub(super) fn writable_root_holding(roots: &[PathBuf], rendezvous: &str) -> Option<String> {
+        let rendezvous = ComparablePath::new(Path::new(rendezvous), PathStyle::Unix)?;
+        roots.iter().find_map(|root| {
+            let comparable = ComparablePath::new(root, PathStyle::Unix)?;
+            (!comparable.components().is_empty() && rendezvous.starts_with(&comparable))
+                .then(|| root.to_string_lossy().into_owned())
+        })
+    }
+
+    /// ADR-F53: the prefix of the toast shown when the session starts but its
+    /// IDE channel could not, so that the CLI's own diff tabs and diagnostics
+    /// are missing for a reason the user can read.
+    const IDE_UNAVAILABLE_PREFIX: &str =
+        "Claude Code は起動しますが、IDE 連携 (差分タブ・診断) は使えません: ";
+
+    /// ADR-F53: the IDE channel of a session on an SSH host, and everything that
+    /// keeps it alive. Dropping it ends the bridge's stdin, so the bridge
+    /// removes its socket and its lock file on the host and exits.
+    struct RemoteIdeChannel {
+        /// What the helper is told to open inside the command's own network
+        /// namespace, and where to splice it to.
+        forward: sandbox::IdeForward,
+        /// Dropped first (fields drop in declaration order): it closes the IDE
+        /// session and the multiplexer.
+        _link: IdeLink,
+        /// Killed when dropped, which closes the bridge's stdin on the host, so
+        /// it removes its socket and its lock file and exits.
+        _bridge: util::command::Child,
+        _bridge_log: Task<()>,
+        /// This bridge's place in [`sandbox::MAX_IDE_BRIDGES`], given back last,
+        /// once the `ssh` that holds it is gone.
+        _bridge_slot: sandbox::IdeBridgeSlot,
+    }
+
+    /// What a running remote session holds on to. There is no sandbox object on
+    /// this machine: the helper on the host owns both its namespaces and its
+    /// proxy, and the terminal's own process is the `ssh` that runs it.
     struct SessionResources {
+        /// ADR-F53: `None` for a session whose bridge would not start.
+        ide: Option<RemoteIdeChannel>,
         /// ADR-F50: the session's hold on the worktrees it can write.
         worktree_writer: SandboxedWriterGuard,
         /// Freed last, once nothing else of the session is left.
@@ -1601,9 +1991,13 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         cx.spawn(async move |cx| {
             let status = completion.await;
             let SessionResources {
+                ide,
                 worktree_writer,
                 slot,
             } = resources;
+            // Ends the bridge's stdin: it removes its socket and its lock file
+            // on the host and exits. Dropping the `ssh` stops it either way.
+            drop(ide);
             // The CLI has exited, so nothing of its writes is still to come.
             drop(worktree_writer);
             drop(slot);
@@ -2222,10 +2616,10 @@ mod tests {
     use zed_actions::terminal::{LaunchClaudeCode, LaunchClaudeCodeOutsideSandbox};
 
     use super::session::{
-        PendingIdeSession, RunningSessions, SessionLayout, StaleEntries, config_paths,
-        helper_failure_message, hosts_detail, launch_invocation, plan_session, project_key,
-        register_session_writer, remote_session_write_scope, session_environment, session_key,
-        session_write_scope, stale_entries,
+        CLAUDE_HOSTS, PendingIdeSession, RunningSessions, SessionLayout, StaleEntries,
+        config_paths, helper_failure_message, hosts_detail, launch_invocation, plan_session,
+        project_key, register_session_writer, remote_session_write_scope, rendezvous_path,
+        session_environment, session_key, session_write_scope, stale_entries,
     };
     use super::{
         CLAUDE_PROGRAM, COLLABORATION_REASON, HostLauncher, LaunchRoute, NO_FOLDER_REASON,
@@ -2372,6 +2766,102 @@ mod tests {
         }
     }
 
+    /// ADR-F53: the SSH host's rendezvous is placed by the same rule the WSL one
+    /// is, so the layout built from it names the same configuration directory
+    /// `config_paths` does, and a home or a session id of the wrong shape is
+    /// refused rather than pasted into a path.
+    #[test]
+    fn the_remote_rendezvous_sits_where_the_wsl_one_does() {
+        let rendezvous = rendezvous_path("/root", SESSION_ID).expect("a plain Linux home");
+        assert_eq!(rendezvous, RENDEZVOUS);
+        let from_home = SessionLayout::from_rendezvous(&rendezvous, SESSION_ID, PROJECT_KEY, PORT)
+            .expect("the shape the launcher builds");
+        assert_eq!(from_home, layout());
+        let (config_root, config_dir) =
+            config_paths("/root", PROJECT_KEY).expect("a plain Linux home");
+        assert_eq!(
+            (from_home.config_root, from_home.config_dir),
+            (config_root, config_dir),
+            "the SSH session signs in where every other session of this project does"
+        );
+
+        for home in ["", "root", "/root/", "/root\nrm -rf /", "/root\0"] {
+            assert!(rendezvous_path(home, SESSION_ID).is_err(), "{home:?}");
+        }
+        for session_id in [
+            "",
+            "claude-0123",
+            "../escape",
+            "claude-0123456789ABCDEF0123456789abcdef",
+            "other-0123456789abcdef0123456789abcdef",
+        ] {
+            assert!(
+                rendezvous_path("/root", session_id).is_err(),
+                "{session_id}"
+            );
+        }
+
+        // 空白・引用符・日本語を含むホーム: パスは組み立てられ、そこから読み戻した配置も
+        // `config_paths` と一致する (接続先へ渡すときの引用は SSH のトランスポートの仕事)。
+        for home in [
+            "/home/my user",
+            "/home/o'brien",
+            "/home/$USER",
+            "/home/ユーザー",
+        ] {
+            let rendezvous = rendezvous_path(home, SESSION_ID)
+                .unwrap_or_else(|error| panic!("{home:?}: {error:#}"));
+            assert_eq!(
+                rendezvous,
+                format!("{home}/.cache/zed-jp-enhance/ide/{SESSION_ID}/bridge.sock")
+            );
+            let layout = SessionLayout::from_rendezvous(&rendezvous, SESSION_ID, PROJECT_KEY, PORT)
+                .unwrap_or_else(|error| panic!("{home:?}: {error:#}"));
+            let (config_root, config_dir) = config_paths(home, PROJECT_KEY)
+                .unwrap_or_else(|error| panic!("{home:?}: {error:#}"));
+            assert_eq!(
+                (layout.config_root, layout.config_dir),
+                (config_root, config_dir)
+            );
+        }
+    }
+
+    /// ADR-F53: a project folder that holds the待ち合わせ場所 leaves the session
+    /// without an IDE instead of failing the whole launch (the helper refuses a
+    /// rendezvous the command may write, and refuses the command with it).
+    #[test]
+    fn a_project_folder_that_holds_the_rendezvous_is_noticed() {
+        let rendezvous = "/root/.cache/zed-jp-enhance/ide/claude-1/bridge.sock";
+        let held = |roots: &[&str]| {
+            super::remote_launch::writable_root_holding(
+                &roots.iter().map(PathBuf::from).collect::<Vec<_>>(),
+                rendezvous,
+            )
+        };
+        assert_eq!(held(&["/root"]), Some("/root".to_string()));
+        assert_eq!(
+            held(&["/srv/app", "/root/.cache"]),
+            Some("/root/.cache".to_string())
+        );
+        assert_eq!(held(&["/srv/app"]), None);
+        assert_eq!(held(&["/root/.cache/zed-jp-enhance-other"]), None);
+        assert_eq!(held(&[]), None);
+        // 綴りの揺れ (末尾の `/`・`//`・`/./`) でも同じ場所は同じ場所。名前はユーザーが
+        // 開いたときの綴りのまま見せる。
+        for spelling in ["/root/", "//root", "/root/.", "/./root//"] {
+            assert_eq!(
+                held(&[spelling]),
+                Some(spelling.to_string()),
+                "{spelling} holds the rendezvous"
+            );
+        }
+        // 名前の一部が同じだけのものは別の場所。
+        assert_eq!(held(&["/roo"]), None);
+        assert_eq!(held(&["/root2"]), None);
+        // 上を指す成分を含む綴りは読めないので、何も言わない (中継は接続先が断る)。
+        assert_eq!(held(&["/root/../root"]), None);
+    }
+
     /// One configuration per set of project folders, in whatever order they
     /// come.
     #[test]
@@ -2424,13 +2914,12 @@ mod tests {
         }
     }
 
-    /// ADR-F53: this session is the official CLI signing itself in, which a
-    /// Claude subscription may be used for; the ACP Claude agent drives the
-    /// Agent SDK from this IDE's harness, which it may not. So the agent gets
-    /// a folder of its own beside this session's, never the same one — this
-    /// test fails the moment the two are one place again.
+    /// ADR-F55: both this session and the ACP Claude agent are the
+    /// unmodified `claude` signing itself in through Anthropic's own flow, in
+    /// the same project's sandbox, so they share one configuration folder and
+    /// one sign-in — this test fails the moment the two drift apart.
     #[test]
-    fn the_acp_claude_agent_does_not_share_this_sessions_folder() {
+    fn the_acp_claude_agent_shares_this_sessions_folder() {
         let layout = layout();
         let agent_config_dir = project::agent_sandbox::agent_config_dir(
             Path::new("/root"),
@@ -2442,7 +2931,25 @@ mod tests {
             Some(Path::new(&layout.config_root)),
             "both folders live in the project's own directory"
         );
-        assert_ne!(agent_config_dir, PathBuf::from(&layout.config_dir));
+        assert_eq!(agent_config_dir, PathBuf::from(&layout.config_dir));
+        assert!(
+            layout
+                .config_dir
+                .ends_with(project::agent_sandbox::CLI_SESSION_FOLDER),
+            "the two crates spell the folder alike: {}",
+            layout.config_dir
+        );
+    }
+
+    /// ADR-F55: the agent and the CLI session reach the same two hosts — the
+    /// model API and the token endpoint the paste-a-code login ends at — so a
+    /// sign-in that works in the CLI tab works for the agent too.
+    #[test]
+    fn the_acp_claude_agent_reaches_the_same_hosts_as_this_session() {
+        let agent = project::agent_sandbox::SandboxedAgentProfile::Claude
+            .hosts()
+            .expect("the vendor's own hosts");
+        assert_eq!(agent, &CLAUDE_HOSTS[..]);
     }
 
     #[test]
@@ -2641,10 +3148,12 @@ mod tests {
 
     /// 第 3 段: the session on an SSH host is placed by the same rule as the
     /// WSL one — the account's home decides, and the project's key names the
-    /// folder — so the two never see each other's configuration, and a session
-    /// gets no IDE channel it cannot serve.
+    /// folder — so the two never see each other's configuration. ADR-F53: the
+    /// environment points the CLI at an IDE only when there is one to point it
+    /// at; a session whose bridge would not start runs as it does in a plain
+    /// terminal instead of waiting for a lock file that never arrives.
     #[test]
-    fn a_remote_session_is_placed_like_the_wsl_one_and_has_no_ide_channel() {
+    fn a_remote_session_is_placed_like_the_wsl_one() {
         let (config_root, config_dir) =
             config_paths("/home/ubuntu", PROJECT_KEY).expect("a valid placement");
         assert_eq!(
@@ -2677,7 +3186,8 @@ mod tests {
             names
         };
         // Nothing points the CLI at an IDE when there is none to point it at:
-        // with the port set it would wait for a lock file that never arrives.
+        // with the port set it would wait for a lock file that never arrives
+        // (ADR-F53: the IDE bridge failed to start).
         assert!(
             !names(&without_ide).contains(&"CLAUDE_CODE_SSE_PORT".to_string()),
             "{without_ide:?}"

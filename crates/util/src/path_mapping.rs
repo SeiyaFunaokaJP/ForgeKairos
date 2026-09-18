@@ -547,6 +547,18 @@ pub fn same_location(left: &Path, right: &Path) -> bool {
     }
 }
 
+/// ADR-F53: セッションのホストの綴りで見た 2 つのパスが同じ場所を指すか。
+///
+/// SSH リモートのプロジェクトではワークツリーのパスは接続先 (Unix) の綴りなので、
+/// クライアントの OS の規則で読む [`same_location`] では Windows のクライアントから
+/// 比べられない。
+pub fn same_place(paths: &SandboxPaths, left: &Path, right: &Path) -> bool {
+    match (paths.comparable(left), paths.comparable(right)) {
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
+}
+
 /// サンドボックスのパスを通さなかった理由。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SandboxPathError {
@@ -1227,6 +1239,33 @@ mod tests {
                 Path::new(r"\\wsl$\ubuntu\home"),
                 Path::new(r"\\wsl.localhost\Ubuntu\home")
             ));
+        }
+    }
+
+    /// ADR-F53: SSH リモートのプロジェクトでは、ワークツリーのパスは接続先 (Unix) の
+    /// 綴り。Windows のクライアントからでも、セッションの綴りで読めば同じ場所と分かる
+    /// ([`same_location`] は実行している OS の規則で読むので分からない)。
+    #[test]
+    fn compares_remote_roots_by_the_sessions_own_spelling() {
+        let paths = SandboxPaths::new(
+            Arc::new(IdentityPathMapper),
+            vec![PathBuf::from("/srv/app")],
+        );
+        assert!(same_place(
+            &paths,
+            Path::new("/srv/app"),
+            Path::new("/srv//app/")
+        ));
+        assert!(!same_place(
+            &paths,
+            Path::new("/srv/app"),
+            Path::new("/srv/other")
+        ));
+        if cfg!(windows) {
+            assert!(
+                !same_location(Path::new("/srv/app"), Path::new("/srv/app")),
+                "the client's own rules cannot read the host's paths at all"
+            );
         }
     }
 

@@ -2433,9 +2433,10 @@ impl FakeFs {
             use git::Oid;
 
             state.merge_base_contents.clear();
-            let oids = (1..)
-                .map(|n| n.to_string())
-                .map(|n| Oid::from_bytes(n.repeat(20).as_bytes()).unwrap());
+            // Zero-padded to a fixed 20-byte (SHA-1) width: `n.to_string().repeat(20)` only
+            // happens to be 20 bytes while `n` is a single digit, and silently produces a
+            // 40-byte value (rejected by `Oid::from_bytes`) once `n` reaches double digits.
+            let oids = (1..).map(|n| Oid::from_bytes(format!("{n:020}").as_bytes()).unwrap());
             for ((path, content), oid) in contents_by_path.iter().zip(oids) {
                 state.merge_base_contents.insert(repo_path(path), oid);
                 state.oids.insert(oid, content.as_bytes().to_vec());

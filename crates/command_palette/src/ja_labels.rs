@@ -896,6 +896,7 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ),
     ("git::RevertCommit", "Git: このコミットを打ち消す"),
     ("git::RewordCommit", "Git: コミットのメッセージを書き換える"),
+    ("git::DropCommit", "Git: このコミットを履歴から取り除く"),
     ("git::ResetToCommit", "Git: このコミットまで戻す"),
     ("git::CopyTagDistance", "Git: 直近のタグからの距離をコピー"),
     ("git::Init", "Git: リポジトリを初期化"),
@@ -947,6 +948,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "Git: ワークツリーを新しいウィンドウで開く",
     ),
     ("git_graph::Open", "Git: コミットグラフを開く"),
+    (
+        "git_graph::EditSelectedCommits",
+        "Git: 選択したコミットを並べ替え / まとめる / 捨てる",
+    ),
     // Markdown
     ("markdown::OpenPreview", "Markdown: プレビューを開く"),
     (
@@ -1015,6 +1020,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     (
         "markdown::FoldHeadings",
         "Markdown: 指定した見出しレベルで畳む",
+    ),
+    (
+        "markdown::FoldHeadingsPicker",
+        "Markdown: 見出しを畳む (レベルを選ぶ)",
     ),
     ("markdown::FoldAllHeadings", "Markdown: 見出しをすべて畳む"),
     (
@@ -1937,6 +1946,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     (
         "tabular_data::DiffSelectedCells",
         "表 (CSV / TSV): 選択したセルを比較",
+    ),
+    (
+        "tabular_data::RecomputeDiff",
+        "表 (CSV / TSV): 差分表を取り直す",
     ),
 ];
 

@@ -2314,6 +2314,589 @@ async fn test_markdown_fence_creases(cx: &mut TestAppContext) {
             "an unclosed fence folds everything below it"
         );
     });
+
+    // An indented fence is still an opening fence. The indents descend so that
+    // no closing fence is followed by a deeper line, which would let the
+    // indent-based fallback answer for it instead.
+    cx.set_state(indoc! {"
+        ˇ本文
+
+           ```
+           三スペース
+           ```
+
+          ```
+          二スペース
+          ```
+
+         ```
+         一スペース
+         ```
+
+        - 項目
+          ```
+          リスト内
+          ```
+
+        > ```
+        > 引用内
+        > ```"});
+    cx.executor().run_until_parked();
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let crease_rows = |row: u32| {
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(row))
+                .map(|crease| crease.range().start.row..crease.range().end.row)
+        };
+
+        assert_eq!(
+            crease_rows(2),
+            Some(2..4),
+            "a fence indented by three spaces folds"
+        );
+        assert_eq!(
+            crease_rows(6),
+            Some(6..8),
+            "a fence indented by two spaces folds"
+        );
+        assert_eq!(
+            crease_rows(10),
+            Some(10..12),
+            "a fence indented by one space folds"
+        );
+        assert_eq!(
+            crease_rows(15),
+            Some(15..17),
+            "a fence inside a list item folds"
+        );
+        assert_eq!(
+            crease_rows(4),
+            None,
+            "a closing fence offers no fold of its own"
+        );
+        assert_eq!(
+            crease_rows(8),
+            None,
+            "a closing fence offers no fold of its own"
+        );
+        assert_eq!(
+            crease_rows(12),
+            None,
+            "a closing fence offers no fold of its own"
+        );
+
+        // A fence inside a block quote carries the `>` marker before its
+        // backticks, which is not a fence delimiter, so nothing offers to fold
+        // it. Folding one would have to fold the quote's own markers away with
+        // it, which is a block fold of its own rather than this one.
+        assert_eq!(
+            crease_rows(19),
+            None,
+            "a fence inside a block quote offers no fold"
+        );
+    });
+}
+
+/// The document the setext heading fold tests work on. Rows: 1 a `=` underline,
+/// 6 a `---` underline, 10 an ATX heading between the two, and 15 a second `=`
+/// underline.
+const MARKDOWN_SETEXT_FIXTURE: &str = indoc! {"
+    章
+    =
+
+    章の本文
+
+    節
+    ---
+
+    節の本文
+
+    ## ATX の節
+
+    ATX の本文
+
+    次の章
+    ======
+
+    最後の本文
+"};
+
+#[gpui::test]
+async fn test_markdown_setext_heading_creases(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+    cx.set_state(&format!("ˇ{MARKDOWN_SETEXT_FIXTURE}"));
+    cx.executor().run_until_parked();
+
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let crease_rows = |row: u32| {
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(row))
+                .map(|crease| crease.range().start.row..crease.range().end.row)
+        };
+
+        // Both lines of the heading stay visible, so the fold starts at the end
+        // of the underline and the gutter offers it there.
+        assert_eq!(
+            crease_rows(1),
+            Some(1..12),
+            "a `=` underline folds down to the next heading of its own level"
+        );
+        assert_eq!(
+            crease_rows(6),
+            Some(6..8),
+            "a `---` underline stops before the ATX heading of the same level"
+        );
+        assert_eq!(
+            crease_rows(15),
+            Some(15..17),
+            "the last setext heading folds the rest of the file"
+        );
+
+        assert_eq!(
+            crease_rows(0),
+            None,
+            "the heading's text row offers no fold: the underline carries it"
+        );
+        assert_eq!(crease_rows(5), None, "the same for a `---` heading");
+        assert_eq!(crease_rows(3), None, "prose offers no fold");
+
+        // `tree-sitter-md` puts a setext heading inside the section an ATX
+        // heading opened rather than starting a new one, and reading the extent
+        // off the tree keeps that.
+        assert_eq!(
+            crease_rows(10),
+            Some(10..17),
+            "the ATX section still swallows the setext heading below it"
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_markdown_setext_heading_rejects_look_alikes(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    let crease_rows = |cx: &mut EditorTestContext, row: u32| {
+        cx.update_editor(|editor, window, cx| {
+            editor
+                .snapshot(window, cx)
+                .crease_for_buffer_row(MultiBufferRow(row))
+                .map(|crease| crease.range().start.row..crease.range().end.row)
+        })
+    };
+
+    // A line of dashes inside a fenced code block is an example.
+    cx.set_state(indoc! {"
+        ˇ```
+        本文
+        ---
+        ```
+
+        あと"});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 2),
+        None,
+        "a `---` inside a fenced code block is not an underline"
+    );
+
+    // The `---` that opens YAML frontmatter has no line above it to be a
+    // heading's text, and the one that closes it belongs to the metadata block.
+    cx.set_state(indoc! {"
+        ˇ---
+        title: フロントマター
+        ---
+
+        本文
+
+        あと"});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 0),
+        None,
+        "the `---` opening frontmatter folds nothing"
+    );
+    assert_eq!(
+        crease_rows(&mut cx, 2),
+        None,
+        "the `---` closing frontmatter is not the underline of its last line"
+    );
+
+    // Without the closing delimiter there is no metadata block, and the
+    // document is a thematic break followed by paragraphs.
+    cx.set_state(indoc! {"
+        ˇ---
+        title: フロントマター
+
+        本文"});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 0),
+        None,
+        "an unclosed `---` is a thematic break, and folds nothing"
+    );
+
+    // A list interrupts a paragraph, so the dashes under one are a thematic
+    // break.
+    cx.set_state(indoc! {"
+        ˇ- 項目
+        ---
+
+        あと"});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 1),
+        None,
+        "dashes under a list item are a thematic break"
+    );
+
+    cx.set_state(indoc! {"
+        ˇ> 引用
+        ---
+
+        あと"});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 1),
+        None,
+        "dashes under a block quote are a thematic break"
+    );
+
+    cx.set_state(indoc! {"
+        ˇ# ATX
+        ---
+
+        あと"});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 1),
+        None,
+        "dashes under an ATX heading are a thematic break"
+    );
+
+    // A heading with nothing under it has no body to hide.
+    cx.set_state(indoc! {"
+        ˇ見出し
+        ===
+    "});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 1),
+        None,
+        "a setext heading with an empty body offers no fold"
+    );
+
+    // Nothing above the dashes but a blank line, so there is no paragraph for
+    // them to underline.
+    cx.set_state(indoc! {"
+        ˇ本文
+
+        ===
+
+        あと"});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 2),
+        None,
+        "a blank line above the underline leaves nothing to underline"
+    );
+
+    // Four columns of indent make the line above indented code, and a leading
+    // tab is four columns on its own.
+    cx.set_state("ˇ\t見出し\n===\n\n本文\n");
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 1),
+        None,
+        "a tab-indented line is code, not the text of a heading"
+    );
+
+    // An ideographic space is an ordinary character rather than indentation, so
+    // the line above is still a paragraph.
+    cx.set_state("ˇ　見出し\n===\n\n本文\n");
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 1),
+        Some(1..3),
+        "an ideographic space does not indent the heading out of existence"
+    );
+
+    // The delimiter row of a table is not an underline.
+    cx.set_state(indoc! {"
+        ˇ| a | b |
+        | - | - |
+        | 1 | 2 |
+
+        あと"});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 1),
+        None,
+        "a table's delimiter row is not a setext underline"
+    );
+
+    // A single dash is as good an underline as three.
+    cx.set_state(indoc! {"
+        ˇ見出し
+        -
+
+        本文"});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 1),
+        Some(1..3),
+        "one dash underlines a level two heading"
+    );
+
+    // Another language's buffer has no Markdown folds at all.
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(rust_lang()), cx));
+    cx.set_state(indoc! {"
+        ˇ見出し
+        ===
+
+        本文"});
+    cx.executor().run_until_parked();
+    assert_eq!(
+        crease_rows(&mut cx, 1),
+        None,
+        "the setext heading fold is offered in Markdown buffers only"
+    );
+}
+
+#[gpui::test]
+async fn test_fold_markdown_setext_headings_by_level(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+    cx.set_state(&format!("ˇ{MARKDOWN_SETEXT_FIXTURE}"));
+    cx.executor().run_until_parked();
+
+    cx.update_editor(|editor, window, cx| {
+        editor.fold_headings(&FoldHeadings { level: 1 }, window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            indoc! {"
+                章
+                =⋯
+
+                次の章
+                ======⋯
+            "},
+            "`FoldHeadings` reaches the setext headings of the level it was given"
+        );
+        editor.unfold_all(&UnfoldAll, window, cx);
+
+        editor.fold_all_headings(&FoldAllHeadings, window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            indoc! {"
+                章
+                =⋯
+            "},
+            "`FoldAllHeadings` folds the outermost setext heading over the rest"
+        );
+    });
+}
+
+/// CommonMark makes the whole paragraph above the underline the text of the
+/// setext heading, so none of its rows belongs to the body of the section above
+/// it — folding that section must not take the first line of the heading below
+/// with it.
+#[gpui::test]
+async fn test_markdown_setext_heading_text_spanning_rows(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+    cx.set_state(indoc! {"
+        ˇ章
+        ===
+
+        章の本文
+
+        次の章の
+        長い見出し
+        ===
+
+        次の本文
+    "});
+    cx.executor().run_until_parked();
+
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        assert_eq!(
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(1))
+                .map(|crease| crease.range().start.row..crease.range().end.row),
+            Some(1..3),
+            "the first section stops above every row of the heading below it"
+        );
+
+        editor.fold_at(MultiBufferRow(1), window, cx);
+        assert_eq!(
+            editor.display_text(cx),
+            indoc! {"
+                章
+                ===⋯
+
+                次の章の
+                長い見出し
+                ===
+
+                次の本文
+            "},
+            "folding the section above leaves both rows of the next heading on screen"
+        );
+    });
+}
+
+/// A document too large for the whole-document walk keeps the bounded per-row
+/// scan, which offers no fold rather than a wrong one once it runs out of
+/// budget. This is what `test_markdown_details_crease_gives_up_past_its_scan_limit`
+/// used to pin down before the walk took over the documents that fit.
+#[gpui::test]
+async fn test_markdown_details_crease_past_the_walk_limit(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // Few rows so that the editor stays cheap to set up, but past both the
+    // walk's character limit and the per-row scan's own, and with the closing
+    // tag beyond either.
+    let paragraph = "本文".repeat(20_000);
+    let mut text = String::from("<details><summary>開く</summary>\n");
+    for _ in 0..30 {
+        text.push_str(&paragraph);
+        text.push('\n');
+    }
+    text.push_str("</details>\n");
+    cx.update_buffer(|buffer, cx| buffer.set_text(text.as_str(), cx));
+    cx.executor().run_until_parked();
+
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        assert_eq!(
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(0))
+                .map(|crease| crease.range().start.row..crease.range().end.row),
+            None,
+            "a document past the walk limit offers no fold rather than a wrong one"
+        );
+        assert_eq!(
+            snapshot.markdown_setext_heading_fold(MultiBufferRow(1)),
+            None,
+            "and no setext heading fold either, which has no bounded form"
+        );
+    });
+}
+
+/// Whether a document opens with metadata is only settled by the row that
+/// closes the block, so the walk takes the rows above it as ordinary ones and
+/// discards them when the close turns up. Looking for the close first would
+/// read a document that opens with a delimiter and never closes it twice over.
+#[gpui::test]
+async fn test_markdown_walk_reads_a_document_once(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // Neither document holds a `<details>`, so nothing but the walk itself asks
+    // for the rows and the two counters can be weighed against each other
+    // whenever the walk happened to run.
+    let assert_one_pass_per_walk = |cx: &mut EditorTestContext, note: &'static str| {
+        cx.update_editor(|editor, window, cx| {
+            let snapshot = editor.snapshot(window, cx);
+            assert!(
+                snapshot.markdown_document_walks() >= 1,
+                "{note}: drawing the editor walked the document"
+            );
+            assert_eq!(
+                snapshot.markdown_row_passes(),
+                snapshot.markdown_document_walks(),
+                "{note}: every walk read the document exactly once"
+            );
+        });
+    };
+
+    cx.set_state(indoc! {"
+        ˇ---
+        title: 閉じ忘れ
+        本文
+        あと"});
+    cx.executor().run_until_parked();
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        assert_eq!(
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(2))
+                .map(|crease| crease.range().start.row..crease.range().end.row),
+            None,
+            "an unclosed `---` is a thematic break, and the rows under it are prose"
+        );
+    });
+    assert_one_pass_per_walk(&mut cx, "an unclosed delimiter");
+
+    cx.set_state(indoc! {"
+        ˇ---
+        title: 閉じてある
+        ---
+        本文
+        あと"});
+    cx.executor().run_until_parked();
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        assert_eq!(
+            snapshot.markdown_setext_heading_fold(MultiBufferRow(2)),
+            None,
+            "the `---` closing the metadata is not the underline of its last row"
+        );
+    });
+    assert_one_pass_per_walk(&mut cx, "a closed metadata block");
+}
+
+/// `editor::FoldAll` takes a fresh snapshot for every row of the buffer, so the
+/// walk has to survive being asked through a new snapshot of the same version —
+/// otherwise folding a file walks it once per row, which is the shape of the
+/// whole-file scan that made the gutter cost 33.5ms in the first place.
+#[gpui::test]
+async fn test_folding_a_markdown_file_walks_it_once(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    let mut text = String::from("<details><summary>開く</summary>\n");
+    for row in 1..100 {
+        text.push_str(&format!("本文 {row}\n"));
+    }
+    text.push_str("</details>\n");
+    cx.update_buffer(|buffer, cx| buffer.set_text(text.as_str(), cx));
+    cx.executor().run_until_parked();
+
+    cx.update_editor(|editor, window, cx| {
+        let walks_before = editor.snapshot(window, cx).markdown_document_walks();
+        editor.fold_all(&FoldAll, window, cx);
+        let walks_after = editor.snapshot(window, cx).markdown_document_walks();
+        assert!(
+            walks_after <= walks_before + 1,
+            "folding a hundred rows walked the document {} times",
+            walks_after - walks_before
+        );
+        assert!(
+            !editor.display_text(cx).contains("本文"),
+            "the body of the disclosure was folded away"
+        );
+    });
 }
 
 #[gpui::test]
@@ -2495,40 +3078,70 @@ async fn test_markdown_details_creases(cx: &mut TestAppContext) {
     });
 }
 
-/// A `<details>` whose closing tag is further away than the scan looks offers no
-/// fold at all: the gutter is drawn row by row, so the alternative is walking a
-/// large file on every frame.
+/// A document of `rows` rows opening with a `<details>` tag, closed on one more
+/// row when `closed`.
+fn markdown_details_document(rows: usize, closed: bool) -> String {
+    let mut text = String::from("<details><summary>開く</summary>\n");
+    for row in 1..rows {
+        text.push_str(&format!("本文 {row}\n"));
+    }
+    if closed {
+        text.push_str("</details>\n");
+    }
+    text
+}
+
+/// The `<details>` pairing used to give up past two thousand rows, because it
+/// scanned forward once per row it was asked about. One walk per version of the
+/// buffer takes the limit off.
 #[gpui::test]
-async fn test_markdown_details_crease_gives_up_past_its_scan_limit(cx: &mut TestAppContext) {
+async fn test_markdown_details_crease_past_the_old_scan_limit(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
 
     let mut cx = EditorTestContext::new(cx).await;
     cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
-
-    let mut text = String::from("<details><summary>開く</summary>\n");
-    for row in 1..2_500 {
-        text.push_str(&format!("本文 {row}\n"));
-    }
-    cx.update_buffer(|buffer, cx| buffer.set_text(text.as_str(), cx));
+    cx.update_buffer(|buffer, cx| {
+        buffer.set_text(markdown_details_document(3_000, true).as_str(), cx)
+    });
     cx.executor().run_until_parked();
-    cx.update_editor(|editor, window, cx| {
+
+    let walks_before_edit = cx.update_editor(|editor, window, cx| {
         let snapshot = editor.snapshot(window, cx);
         assert_eq!(
             snapshot
                 .crease_for_buffer_row(MultiBufferRow(0))
                 .map(|crease| crease.range().start.row..crease.range().end.row),
-            None,
-            "an unclosed disclosure past the scan limit offers no fold"
+            Some(0..3_000),
+            "a disclosure closed three thousand rows down still folds"
         );
+
+        // The gutter asks for a crease once per visible row, so the walk has to
+        // be shared between those asks rather than run for each of them. The
+        // count is taken after the first ask, because the editor has been drawn
+        // before now and every version of the buffer costs its own walk.
+        let walks = snapshot.markdown_document_walks();
+        assert!(walks >= 1, "asking for a crease walked the document");
+        let folds = (0..1_000)
+            .filter(|row| {
+                snapshot
+                    .crease_for_buffer_row(MultiBufferRow(*row))
+                    .is_some()
+            })
+            .count();
+        assert_eq!(folds, 1, "only the disclosure's own row offers a fold");
+        assert_eq!(
+            snapshot.markdown_document_walks(),
+            walks,
+            "a thousand more asks walked the document no further times"
+        );
+        walks
     });
 
-    // The same document with the closing tag inside the scanned window folds.
-    let mut text = String::from("<details><summary>開く</summary>\n");
-    for row in 1..1_500 {
-        text.push_str(&format!("本文 {row}\n"));
-    }
-    text.push_str("</details>\n");
-    cx.update_buffer(|buffer, cx| buffer.set_text(text.as_str(), cx));
+    // Editing the buffer has to throw the walk away, or the fold would be drawn
+    // over the rows the disclosure used to cover.
+    cx.update_buffer(|buffer, cx| {
+        buffer.set_text(markdown_details_document(10, true).as_str(), cx)
+    });
     cx.executor().run_until_parked();
     cx.update_editor(|editor, window, cx| {
         let snapshot = editor.snapshot(window, cx);
@@ -2536,8 +3149,107 @@ async fn test_markdown_details_crease_gives_up_past_its_scan_limit(cx: &mut Test
             snapshot
                 .crease_for_buffer_row(MultiBufferRow(0))
                 .map(|crease| crease.range().start.row..crease.range().end.row),
-            Some(0..1_500),
-            "a closing tag inside the scanned window is still found"
+            Some(0..10),
+            "the edited document is walked again rather than answered from the old walk"
+        );
+        assert!(
+            snapshot.markdown_document_walks() > walks_before_edit,
+            "the edit threw the walk away"
+        );
+    });
+}
+
+/// A `<details>` that is never closed folds to the end of the buffer, and
+/// finding that out is one walk of the document however large it is.
+#[gpui::test]
+async fn test_markdown_details_crease_for_an_unclosed_disclosure(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+    cx.update_buffer(|buffer, cx| {
+        buffer.set_text(markdown_details_document(3_000, false).as_str(), cx)
+    });
+    cx.executor().run_until_parked();
+
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let walks = snapshot.markdown_document_walks();
+        let started_at = Instant::now();
+        let crease = snapshot
+            .crease_for_buffer_row(MultiBufferRow(0))
+            .map(|crease| crease.range().start.row..crease.range().end.row);
+        let elapsed = started_at.elapsed();
+        assert_eq!(
+            crease,
+            Some(0..3_000),
+            "an unclosed disclosure folds everything below it"
+        );
+        assert!(
+            snapshot.markdown_document_walks() <= walks + 1,
+            "the whole document was paired in a single walk"
+        );
+        // Loose enough not to turn a slow machine into a failure; the point is
+        // that this is one walk of the document and not one per row of it.
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "walking three thousand rows took {elapsed:?}"
+        );
+        println!("markdown document walk of 3k rows: {elapsed:?}");
+    });
+}
+
+/// A multi-excerpt multibuffer is not walked — its rows move when excerpts come
+/// and go and nothing counts that — so the `<details>` fold falls back to
+/// scanning forward from the row it was asked about.
+#[gpui::test]
+async fn test_markdown_details_crease_in_a_multibuffer(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new_multibuffer(
+        cx,
+        [
+            "«<details><summary>開く</summary>\n本文\n</details>\nあと\n»",
+            "«<details><summary>閉じ忘れ</summary>\n本文\n»",
+        ],
+    );
+    cx.update_multibuffer(|multibuffer, cx| {
+        for buffer in multibuffer.all_buffers() {
+            buffer.update(cx, |buffer, cx| {
+                buffer.set_language(Some(markdown_lang()), cx)
+            });
+        }
+    });
+    cx.executor().run_until_parked();
+
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let crease_rows = |row: u32| {
+            snapshot
+                .crease_for_buffer_row(MultiBufferRow(row))
+                .map(|crease| crease.range().start.row..crease.range().end.row)
+        };
+        let max_row = snapshot.buffer_snapshot().max_row().0;
+        let text = snapshot.buffer_snapshot().text();
+        let unclosed_row = text
+            .lines()
+            .position(|line| line.contains("閉じ忘れ"))
+            .expect("the second excerpt is in the multibuffer") as u32;
+
+        assert_eq!(
+            crease_rows(0),
+            Some(0..2),
+            "the disclosure of the first excerpt folds through its closing tag"
+        );
+        assert_eq!(
+            snapshot.markdown_document_walks(),
+            0,
+            "a multi-excerpt multibuffer is never walked"
+        );
+        assert_eq!(
+            crease_rows(unclosed_row),
+            Some(unclosed_row..max_row),
+            "an unclosed disclosure folds to the end of the multibuffer"
         );
     });
 }
@@ -2654,6 +3366,32 @@ async fn test_markdown_heading_folds_agree_with_asking_row_by_row(cx: &mut TestA
                 .collect::<Vec<_>>(),
             vec![(1, 0), (2, 4), (2, 12)],
             "the fixture has three headings and no others"
+        );
+        assert_eq!(snapshot.markdown_heading_folds(), row_by_row);
+    });
+
+    // The setext headings reach `FoldAllHeadings` through the same list, and
+    // have to line up with what the gutter offers row by row there too.
+    cx.set_state(&format!("ˇ{MARKDOWN_SETEXT_FIXTURE}"));
+    cx.executor().run_until_parked();
+    cx.update_editor(|editor, window, cx| {
+        let snapshot = editor.snapshot(window, cx);
+        let max_row = snapshot.buffer_snapshot().max_row().0;
+        let row_by_row = (0..=max_row)
+            .filter_map(|row| {
+                snapshot
+                    .markdown_heading_fold(MultiBufferRow(row))
+                    .or_else(|| snapshot.markdown_setext_heading_fold(MultiBufferRow(row)))
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            row_by_row
+                .iter()
+                .map(|heading| (heading.level, heading.range.start.row))
+                .collect::<Vec<_>>(),
+            vec![(1, 1), (2, 6), (2, 10), (1, 15)],
+            "the fixture has three setext headings and one ATX heading"
         );
         assert_eq!(snapshot.markdown_heading_folds(), row_by_row);
     });

@@ -46,9 +46,9 @@ mod windows_wsl;
 pub mod ide_bridge;
 pub use ide_bridge::{
     BridgeConnection, BridgeConnections, BridgeFrame, BridgeFrameDecoder, BridgeFrameKind,
-    BridgeMuxHandle, IdeBridgeSlot, MAX_BRIDGE_CONNECTIONS, MAX_BRIDGE_FRAME_PAYLOAD,
-    MAX_IDE_BRIDGES, MAX_IDE_LOCK_CONTENT, encode_frame, encode_ide_lock_preamble,
-    spawn_bridge_mux,
+    BridgeHost, BridgeMuxHandle, IDE_BRIDGE_READY_TIMEOUT, IdeBridgeSessionRunning, IdeBridgeSlot,
+    MAX_BRIDGE_CONNECTIONS, MAX_BRIDGE_FRAME_PAYLOAD, MAX_IDE_BRIDGES, MAX_IDE_LOCK_CONTENT,
+    encode_frame, encode_ide_lock_preamble, spawn_bridge_mux, wait_for_ide_bridge_ready,
 };
 
 /// ADR-F18: the locations every sandbox protects regardless of what the caller
@@ -82,15 +82,14 @@ pub use util::{
 };
 #[cfg(target_os = "windows")]
 pub use windows_wsl::{
-    IDE_BRIDGE_READY_TIMEOUT, IdeBridge, IdeBridgeSessionRunning, ResolvedGrant, WslArchiveKind,
-    WslSandboxUnavailable, WslSessionDistro, ensure_wsl_agent_config_dir, ide_bridge_invocation,
-    ide_rendezvous_path, install_npm_package_in_wsl, is_forwardable_env_var,
-    list_wsl_sandbox_processes, read_wsl_npm_package_json, registered_wsl_distro_name,
-    resolve_canonical_for_grant, stage_agent_binary, stage_wsl_runtime_archive,
-    stage_wsl_runtime_file, staged_agent_binary, staged_wsl_runtime, start_ide_bridge,
-    stop_wsl_sandbox_processes, sweep_ide_rendezvous, wsl_agent_runtime_data_directory,
-    wsl_distro_for_path, wsl_machine_architecture, wsl_npm_package_executable,
-    wsl_runtime_executable,
+    IdeBridge, ResolvedGrant, WslArchiveKind, WslSandboxUnavailable, WslSessionDistro,
+    ensure_wsl_agent_config_dir, ide_bridge_invocation, ide_rendezvous_path,
+    install_npm_package_in_wsl, is_forwardable_env_var, list_wsl_sandbox_processes,
+    read_wsl_npm_package_json, registered_wsl_distro_name, resolve_canonical_for_grant,
+    stage_agent_binary, stage_wsl_runtime_archive, stage_wsl_runtime_file, staged_agent_binary,
+    staged_wsl_runtime, start_ide_bridge, stop_wsl_sandbox_processes, sweep_ide_rendezvous,
+    wsl_agent_runtime_data_directory, wsl_distro_for_path, wsl_machine_architecture,
+    wsl_npm_package_executable, wsl_runtime_executable,
 };
 
 #[cfg(target_os = "windows")]
@@ -1346,7 +1345,6 @@ pub struct IdeForward {
 /// ADR-F49: where an [`IdeForward`]'s port is picked. The sandbox's network
 /// namespace is its own and holds nothing but this channel and the egress
 /// proxy, so any port in the range serves.
-#[cfg(target_os = "windows")]
 pub const INNER_IDE_PORTS: std::ops::Range<u16> = 20000..60000;
 
 /// A port in [`INNER_IDE_PORTS`], for an [`IdeForward`]. Random, so that a
@@ -1354,9 +1352,9 @@ pub const INNER_IDE_PORTS: std::ops::Range<u16> = 20000..60000;
 /// leftovers — its lock file, a rendezvous the sweep has not reached yet —
 /// still name.
 ///
-/// The one rule both launchers follow: the sandboxed Claude Code CLI (第 1 段,
-/// ADR-F49 決定 3) and an external ACP agent (決定 24).
-#[cfg(target_os = "windows")]
+/// The one rule every launcher follows: the sandboxed Claude Code CLI (第 1 段,
+/// ADR-F49 決定 3) and an external ACP agent (決定 24), in this machine's WSL and
+/// on the Linux host of an SSH-remote project (ADR-F53).
 pub fn new_inner_ide_port() -> u16 {
     use rand::Rng as _;
 
@@ -2304,18 +2302,78 @@ pub(crate) fn build_wsl_sandbox_helper_argv(
     // ADR-F49 decision 24: independent of `--interactive`, which a one-shot
     // ACP agent with an IDE channel is not.
     if let Some(forward) = options.ide_forward {
-        argv.extend([
-            "--ide-listen".to_string(),
-            forward.inner_port.to_string(),
-            "--ide-rendezvous".to_string(),
-            forward.rendezvous_path.clone(),
-        ]);
+        argv.extend(ide_forward_argv(forward));
     }
     if let Some(session_id) = options.sandbox_session_id {
         argv.extend([SANDBOX_SESSION_FLAG.to_string(), session_id.to_string()]);
     }
     argv.push("--".to_string());
     argv
+}
+
+/// ADR-F49 / ADR-F53: the flags that give a sandboxed command an IDE channel,
+/// in the order the helper's own round-trip tests fix.
+///
+/// Shared by the local WSL backend ([`build_wsl_sandbox_helper_argv`]) and the
+/// client's invocation of an SSH host's helper
+/// (`acp_thread::build_remote_sandbox_command`), so the two spell them the same
+/// way. Pure, so it is unit tested on every platform.
+pub fn ide_forward_argv(forward: &IdeForward) -> [String; 4] {
+    [
+        "--ide-listen".to_string(),
+        forward.inner_port.to_string(),
+        "--ide-rendezvous".to_string(),
+        forward.rendezvous_path.clone(),
+    ]
+}
+
+/// ADR-F53: the arguments that run an SSH host's own `remote_server` as this
+/// session's IDE bridge — the `--ide-bridge` invocation the WSL launcher builds
+/// too (`ide_bridge_invocation`), for a helper the project's transport starts
+/// instead of `wsl.exe`.
+///
+/// The caller puts the helper's path in front of them, starts it with piped
+/// standard I/O, writes [`encode_ide_lock_preamble`] of the lock content to its
+/// stdin before anything else, and waits for
+/// [`wait_for_ide_bridge_ready`]. The lock content carries the CLI's IDE auth
+/// token, so it travels on stdin rather than on a command line the host's
+/// `/proc` would show.
+///
+/// Pure and platform-independent (the client of an SSH project is often
+/// Windows), so it is unit tested on every platform.
+pub fn remote_ide_bridge_argv(
+    rendezvous_path: &str,
+    lock_file_path: Option<&str>,
+    exclusive_directory: Option<&str>,
+) -> anyhow::Result<Vec<String>> {
+    fn ensure_host_absolute_path(path: &str, what: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            path.starts_with('/')
+                && !path.ends_with('/')
+                && !path.contains(['\n', '\0'])
+                // A path that climbs would name somewhere other than the place
+                // the caller checked before handing it over.
+                && !path.split('/').any(|name| name == ".."),
+            "the {what} is not an absolute path on the host: {path:?}"
+        );
+        Ok(())
+    }
+
+    ensure_host_absolute_path(rendezvous_path, "IDE rendezvous")?;
+    let mut argv = vec![
+        IDE_BRIDGE_FLAG.to_string(),
+        "--rendezvous".to_string(),
+        rendezvous_path.to_string(),
+    ];
+    if let Some(path) = lock_file_path {
+        ensure_host_absolute_path(path, "IDE lock file")?;
+        argv.extend(["--lock-file".to_string(), path.to_string()]);
+    }
+    if let Some(directory) = exclusive_directory {
+        ensure_host_absolute_path(directory, "IDE bridge exclusive directory")?;
+        argv.extend(["--exclusive-directory".to_string(), directory.to_string()]);
+    }
+    Ok(argv)
 }
 
 fn remote_sandbox_helper_policy_argv(
@@ -2665,6 +2723,71 @@ mod remote_sandbox_helper_argv_tests {
             argv(&RemoteSandboxNetwork::Blocked, Some(&entries)),
             ["--remote-sandbox-helper", "--net", "blocked", "--"]
         );
+    }
+
+    /// ADR-F53: both sandboxes spell the IDE channel the same way, so the
+    /// helper's own parser reads one pair of flags however it was started.
+    #[test]
+    fn the_ide_channel_is_spelled_the_same_in_both_sandboxes() {
+        let forward = IdeForward {
+            inner_port: 45123,
+            rendezvous_path: "/home/u/.cache/zed-jp-enhance/ide/claude-1/bridge.sock".to_string(),
+        };
+        assert_eq!(
+            ide_forward_argv(&forward),
+            [
+                "--ide-listen",
+                "45123",
+                "--ide-rendezvous",
+                "/home/u/.cache/zed-jp-enhance/ide/claude-1/bridge.sock",
+            ]
+        );
+    }
+
+    /// ADR-F53: the bridge on an SSH host is the same `--ide-bridge`
+    /// invocation the WSL launcher builds, and every path it carries has to be
+    /// an absolute one on the host (the client is often Windows, where
+    /// `Path::is_absolute` would answer about the wrong OS).
+    #[test]
+    fn the_remote_bridge_argv_names_the_socket_the_lock_and_the_exclusive_directory() {
+        let rendezvous = "/home/u/.cache/zed-jp-enhance/ide/claude-1/bridge.sock";
+        let lock = "/home/u/.zed-jp-enhance-claude/projects/key/config/ide/45123.lock";
+        let exclusive = "/home/u/.zed-jp-enhance-claude/projects/key";
+        assert_eq!(
+            remote_ide_bridge_argv(rendezvous, Some(lock), Some(exclusive))
+                .expect("absolute host paths"),
+            [
+                "--ide-bridge",
+                "--rendezvous",
+                rendezvous,
+                "--lock-file",
+                lock,
+                "--exclusive-directory",
+                exclusive,
+            ]
+        );
+        assert_eq!(
+            remote_ide_bridge_argv(rendezvous, None, None).expect("absolute host paths"),
+            ["--ide-bridge", "--rendezvous", rendezvous],
+            "a bridge with no lock file writes nothing and leaves nothing to clean up"
+        );
+        for (rendezvous, lock, exclusive) in [
+            (r"C:\Users\u\bridge.sock", None, None),
+            ("relative/bridge.sock", None, None),
+            ("/home/u/ide/", None, None),
+            ("/home/u/ide/b.sock\nrm -rf /", None, None),
+            ("/home/u/ide/b.sock", Some("lock"), None),
+            ("/home/u/ide/b.sock", None, Some("../elsewhere")),
+            // 上を指す成分は、呼び出し側が確かめた場所とは別の場所を名指す。
+            ("/home/u/../../etc/b.sock", None, None),
+            ("/home/u/ide/b.sock", Some("/home/u/../root/x.lock"), None),
+            ("/home/u/ide/b.sock", None, Some("/home/u/ide/..")),
+        ] {
+            assert!(
+                remote_ide_bridge_argv(rendezvous, lock, exclusive).is_err(),
+                "{rendezvous:?} / {lock:?} / {exclusive:?} is refused rather than sent"
+            );
+        }
     }
 }
 

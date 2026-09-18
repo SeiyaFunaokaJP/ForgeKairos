@@ -51,6 +51,13 @@ pub(crate) struct DiffSide {
     /// that a table whose header changed does not read as every row changing.
     pub(crate) header: Option<Vec<SharedString>>,
     pub(crate) rows: Vec<Vec<SharedString>>,
+    /// The line of the file every row begins on, when this side came from one.
+    ///
+    /// A row is not a line: a quoted value may hold line terminators, and past
+    /// one of those a row's place in the table and its line in the file part
+    /// ways. Empty for a side that has no file behind it, where the place in
+    /// the table is the only number there is.
+    row_lines: Vec<usize>,
     /// Rows dropped because this side is longer than [`MAX_DIFF_ROWS`].
     pub(crate) dropped_rows: usize,
 }
@@ -58,26 +65,51 @@ pub(crate) struct DiffSide {
 impl DiffSide {
     pub(crate) fn parse(text: &str, delimiter: char, first_row_is_header: bool) -> Self {
         let mut rows = crate::parser::parse_cell_rows(text, delimiter);
+        let mut row_lines = record_start_lines(text);
+        // The two scans walk the same records, so a disagreement is a bug in one
+        // of them rather than something the file can cause. Numbering the rows
+        // by their place in the table is wrong past a quoted line break, but it
+        // is the old behaviour rather than lines belonging to other rows.
+        if row_lines.len() != rows.len() {
+            log::error!(
+                "a table comparison found {} records but {} record lines; \
+                 numbering its rows by position instead",
+                rows.len(),
+                row_lines.len()
+            );
+            row_lines.clear();
+        }
         let header = if first_row_is_header && !rows.is_empty() {
+            if !row_lines.is_empty() {
+                row_lines.remove(0);
+            }
             Some(rows.remove(0))
         } else {
             None
         };
         let dropped_rows = rows.len().saturating_sub(MAX_DIFF_ROWS);
         rows.truncate(MAX_DIFF_ROWS);
+        row_lines.truncate(MAX_DIFF_ROWS);
         Self {
             header,
             rows,
+            row_lines,
             dropped_rows,
         }
     }
 
     /// A side built straight from cell values, which is how a comparison of two
     /// blocks of cells taken out of one grid is expressed.
-    pub(crate) fn from_rows(rows: Vec<Vec<SharedString>>) -> Self {
+    pub(crate) fn from_rows(mut rows: Vec<Vec<SharedString>>, first_row_is_header: bool) -> Self {
+        let header = if first_row_is_header && !rows.is_empty() {
+            Some(rows.remove(0))
+        } else {
+            None
+        };
         Self {
-            header: None,
+            header,
             rows,
+            row_lines: Vec::new(),
             dropped_rows: 0,
         }
     }
@@ -91,15 +123,85 @@ impl DiffSide {
             .unwrap_or(0)
     }
 
-    /// The number the view puts in front of a row, counting the header as the
-    /// first row of the file the way the grid's row numbers do.
+    /// The number the view puts in front of a row: the line of the file the row
+    /// starts on, or - for cells lifted out of a grid, which have no file behind
+    /// them - its place in the block, counting the header the way the grid's own
+    /// row numbers do.
     pub(crate) fn row_number(&self, row: usize) -> usize {
-        row + 1 + usize::from(self.header.is_some())
+        match self.row_lines.get(row) {
+            Some(&line) => line,
+            None => row + 1 + usize::from(self.header.is_some()),
+        }
+    }
+
+    /// The largest row number this side shows, which is what the column holding
+    /// the numbers is sized by. One row of a file whose values hold line breaks
+    /// can be numbered far past the row count.
+    pub(crate) fn last_row_number(&self) -> usize {
+        match self.rows.len().checked_sub(1) {
+            Some(last) => self.row_number(last),
+            None => usize::from(self.header.is_some()),
+        }
     }
 
     pub(crate) fn row(&self, row: usize) -> &[SharedString] {
         self.rows.get(row).map(Vec::as_slice).unwrap_or(&[])
     }
+}
+
+/// The line of the file every record begins on, in the order the records are
+/// parsed in.
+///
+/// Only the record boundaries are tracked, which is the one thing the values
+/// themselves cannot say: a quoted line terminator belongs to the value holding
+/// it, so counting lines is not the same as counting rows. Two adjacent quote
+/// characters flip the state twice and so leave it where it was, which is what
+/// an escaped quote does to the parser as well - and no line terminator can sit
+/// between them. The delimiter plays no part: it separates values inside a
+/// record, never records.
+fn record_start_lines(text: &str) -> Vec<usize> {
+    let mut lines = Vec::new();
+    let mut in_quotes = false;
+    let mut line = 1usize;
+    let mut record_starts_on = 1usize;
+    // A record exists as soon as anything at all follows the last terminator,
+    // which is the rule the parser ends on: a file ending in a line terminator
+    // must not grow a row past it.
+    let mut record_has_content = false;
+    let mut characters = text.chars().peekable();
+
+    while let Some(character) = characters.next() {
+        record_has_content = true;
+        match character {
+            '"' => in_quotes = !in_quotes,
+            '\n' if !in_quotes => {
+                lines.push(record_starts_on);
+                line += 1;
+                record_starts_on = line;
+                record_has_content = false;
+            }
+            '\r' if !in_quotes => {
+                if characters.peek() == Some(&'\n') {
+                    characters.next();
+                }
+                lines.push(record_starts_on);
+                line += 1;
+                record_starts_on = line;
+                record_has_content = false;
+            }
+            '\n' => line += 1,
+            '\r' => {
+                if characters.peek() != Some(&'\n') {
+                    line += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    if record_has_content {
+        lines.push(record_starts_on);
+    }
+    lines
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +263,15 @@ impl DiffRow {
     }
 }
 
+/// One place "previous" and "next" stop at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChangeStop {
+    /// The header strip, which sits above the aligned rows rather than in them.
+    Header,
+    /// An index into [`TableDiff::rows`]: the first row of a run of changed rows.
+    Row(usize),
+}
+
 /// Two tables lined up against each other, row by row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TableDiff {
@@ -211,6 +322,29 @@ impl TableDiff {
 
     pub(crate) fn change_count(&self) -> usize {
         self.added_rows + self.removed_rows + self.modified_rows
+    }
+
+    /// Every place "previous" and "next" stop at, in the order they are read
+    /// in: the header strip first when it changed, then the blocks of changed
+    /// body rows.
+    ///
+    /// The header is not a row of the aligned list - it sits in its own strip
+    /// above it - so a comparison whose only difference is in the header has no
+    /// block to stop at, and stepping through the changes would find nothing to
+    /// do while the toolbar counted a difference.
+    pub(crate) fn change_stops(&self) -> Vec<ChangeStop> {
+        let mut stops = Vec::new();
+        if self.header_changed() {
+            stops.push(ChangeStop::Header);
+        }
+        stops.extend(self.change_blocks().into_iter().map(ChangeStop::Row));
+        stops
+    }
+
+    pub(crate) fn header_changed(&self) -> bool {
+        self.header
+            .as_ref()
+            .is_some_and(|header| header.kind.is_change())
     }
 
     /// Indices into [`Self::rows`] of the first row of every run of changed
@@ -484,6 +618,7 @@ fn push_character_range(ranges: &mut Vec<Range<usize>>, offsets: &[usize], token
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn side(text: &str) -> DiffSide {
         DiffSide::parse(text, ',', true)
@@ -817,6 +952,173 @@ mod tests {
     fn row_numbers_count_the_header_as_the_first_row() {
         assert_eq!(side("a,b\n1,2").row_number(0), 2);
         assert_eq!(side_without_header("a,b\n1,2").row_number(0), 1);
+    }
+
+    /// A quoted line terminator pushes every row after it further down the file
+    /// than its place in the table, and the number in front of the row has to
+    /// be the line the user would find it on.
+    #[test]
+    fn a_row_after_a_quoted_line_break_is_numbered_by_its_line() {
+        let side = side_without_header("\"a\nb\",c\nx,y");
+
+        assert_eq!(side.rows.len(), 2);
+        assert_eq!(side.row_number(0), 1);
+        assert_eq!(side.row_number(1), 3);
+        assert_eq!(side.last_row_number(), 3);
+    }
+
+    #[test]
+    fn a_header_holding_a_line_break_pushes_the_first_row_down() {
+        let side = side("\"h\n1\",h2\na,b\nc,d");
+
+        assert_eq!(side.header.as_ref().map(Vec::len), Some(2));
+        assert_eq!(side.row_number(0), 3);
+        assert_eq!(side.row_number(1), 4);
+
+        // A row that holds a line break of its own is numbered by the line it
+        // starts on rather than the one it ends on, which is the only place the
+        // two can be told apart.
+        let broken_row = DiffSide::parse("\"h\n1\",h2\na,b\n\"c\nd\",e\nf,g", ',', true);
+
+        assert_eq!(broken_row.rows.len(), 3);
+        assert_eq!(broken_row.row_number(0), 3);
+        assert_eq!(broken_row.row_number(1), 4);
+        assert_eq!(broken_row.row_number(2), 6);
+        assert_eq!(broken_row.last_row_number(), 6);
+    }
+
+    /// Cells lifted out of a grid have no file behind them, so their numbers
+    /// are their places in the block rather than lines.
+    #[test]
+    fn rows_taken_from_a_grid_are_numbered_by_their_place() {
+        let rows = vec![vec!["a".into()], vec!["b".into()]];
+
+        assert_eq!(DiffSide::from_rows(rows.clone(), false).row_number(1), 2);
+        assert_eq!(DiffSide::from_rows(rows, true).row_number(0), 2);
+    }
+
+    /// Every record has to get exactly one line, whatever terminators and
+    /// quoting the file uses, or the numbers would slide onto the wrong rows.
+    #[test]
+    fn every_record_gets_the_line_it_starts_on() {
+        let cases = [
+            ("a,b\nc,d", vec![1, 2]),
+            ("a,b\nc,d\n", vec![1, 2]),
+            ("a,b\r\nc,d\r\n", vec![1, 2]),
+            ("a,b\rc,d", vec![1, 2]),
+            ("\"a\nb\",c\nd,e", vec![1, 3]),
+            ("\"a\r\nb\",c\nd,e", vec![1, 3]),
+            ("\"a\n\nb\",c\nd,e", vec![1, 4]),
+            ("a,b\n\nc,d", vec![1, 2, 3]),
+            ("a,\"b\"\"c\nd\"\ne,f", vec![1, 3]),
+            ("", vec![]),
+            ("\n", vec![1]),
+            ("a", vec![1]),
+        ];
+
+        for (text, expected) in cases {
+            let side = DiffSide::parse(text, ',', false);
+            assert_eq!(
+                side.row_lines, expected,
+                "wrong record lines for {text:?} ({:?})",
+                side.rows
+            );
+            assert_eq!(
+                side.rows.len(),
+                side.row_lines.len(),
+                "the rows and their lines disagree for {text:?} ({:?})",
+                side.rows
+            );
+        }
+    }
+
+    /// The line numbers only hold while the record scan and the parser walk the
+    /// same records, and a file they disagree about loses them entirely - so the
+    /// scan is checked against what the parser actually returns rather than
+    /// against a second copy of its own rules.
+    #[test]
+    fn the_record_scan_agrees_with_the_parser() {
+        let cases: [(&str, char); 12] = [
+            ("\u{feff}a,b\nc,d", ','),
+            ("a;\"b\nc\";d\ne;f;g", ';'),
+            ("a\t\"b\r\nc\"\td\te", '\t'),
+            // Four quotes: an escaped quote, which leaves the field open.
+            ("a,\"\"\"\",b\nc,d", ','),
+            ("a,\"\"\"\"\"\"\nb,c", ','),
+            // A quote in the middle of an unquoted field, which is what a file
+            // written by hand is most likely to hold.
+            ("a,b\"c\nd,e", ','),
+            // A quote that is never closed, which runs to the end of the file.
+            ("a,\"b\nc", ','),
+            ("\"\"\n\"\"", ','),
+            ("a,b\r\n\r\nc,d", ','),
+            ("\r\n", ','),
+            ("あ,い\nう,え", ','),
+            ("a,b\n", ','),
+        ];
+
+        for (text, delimiter) in cases {
+            let parsed = crate::parser::parse_cell_rows(text, delimiter);
+            assert_eq!(
+                record_start_lines(text).len(),
+                parsed.len(),
+                "the scan and the parser disagree about {text:?} ({parsed:?})"
+            );
+        }
+    }
+
+    proptest! {
+        /// The same invariant over whatever the two scans can be given: a file
+        /// they disagree about is numbered by position instead, which is the
+        /// bug C8-4 set out to fix rather than a state to settle for.
+        #[test]
+        fn the_record_scan_counts_what_the_parser_parses(
+            pieces in prop::collection::vec(
+                prop::sample::select(&["a", ",", ";", "\t", "\"", "\r", "\n", "\r\n", "あ"]),
+                0..24,
+            ),
+            delimiter in prop::sample::select(&[',', ';', '\t']),
+        ) {
+            let text = pieces.concat();
+            prop_assert_eq!(
+                record_start_lines(&text).len(),
+                crate::parser::parse_cell_rows(&text, delimiter).len(),
+                "{:?}",
+                text
+            );
+        }
+    }
+
+    /// A comparison whose only difference is in the header still has somewhere
+    /// for "previous" and "next" to stop, or the toolbar would count a change
+    /// the buttons could not reach.
+    #[test]
+    fn a_changed_header_is_a_stop_of_its_own() {
+        let diff = TableDiff::compute(&side("a,b\n1,2"), &side("a,z\n1,2"));
+
+        assert!(diff.change_blocks().is_empty());
+        assert_eq!(diff.change_stops(), [ChangeStop::Header]);
+        assert!(diff.header_changed());
+    }
+
+    #[test]
+    fn an_unchanged_header_is_not_a_stop() {
+        let diff = TableDiff::compute(&side("a,b\n1,2\n3,4"), &side("a,b\n1,2\n3,9"));
+
+        assert!(!diff.header_changed());
+        assert_eq!(diff.change_stops(), [ChangeStop::Row(1)]);
+    }
+
+    /// The header comes before the rows, so that stepping forward from the top
+    /// reads the table in the order it is drawn in.
+    #[test]
+    fn the_header_stop_comes_before_the_row_stops() {
+        let diff = TableDiff::compute(&side("a,b\n1,2\n3,4"), &side("a,z\n1,9\n3,4"));
+
+        assert_eq!(
+            diff.change_stops(),
+            [ChangeStop::Header, ChangeStop::Row(0)]
+        );
     }
 
     #[test]
