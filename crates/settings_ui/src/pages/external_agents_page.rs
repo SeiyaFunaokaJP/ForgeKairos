@@ -111,6 +111,7 @@ fn set_allow_subscription_sign_in(allowed: bool, cx: &mut App) {
                 default_config_options: HashMap::default(),
                 favorite_config_option_values: HashMap::default(),
                 allow_subscription_sign_in: None,
+                run_outside_sandbox: None,
             });
         match entry {
             CustomAgentServerSettings::Custom {
@@ -122,6 +123,60 @@ fn set_allow_subscription_sign_in(allowed: bool, cx: &mut App) {
                 ..
             } => {
                 *allow_subscription_sign_in = Some(allowed);
+            }
+        }
+    });
+}
+
+/// ADR-F49 決定 19 (8c): `agent_servers.<id>.run_outside_sandbox`, per agent.
+/// What the switch shows is what the agent panel acts on: the user's own
+/// settings file only, which a project's settings cannot override.
+fn render_run_outside_sandbox(id: &AgentId, cx: &mut Context<SettingsWindow>) -> impl IntoElement {
+    let enabled = project::agent_sandbox::runs_outside_sandbox_by_user_choice(id.0.as_ref(), cx);
+    let id = id.clone();
+    SwitchField::new(
+        format!("run-outside-sandbox-{}", id.0),
+        Some(RUN_OUTSIDE_SANDBOX_LABEL),
+        Some(RUN_OUTSIDE_SANDBOX_DESCRIPTION.into()),
+        enabled,
+        move |state, _window, cx| {
+            set_run_outside_sandbox(&id, *state == ToggleState::Selected, cx);
+        },
+    )
+    .tab_index(0)
+}
+
+const RUN_OUTSIDE_SANDBOX_LABEL: &str = "常にサンドボックスの外で起動";
+const RUN_OUTSIDE_SANDBOX_DESCRIPTION: &str = "確認なしで、このエージェントを毎回サンドボックスの\
+     外で起動します。書き込みの制限がなくなり、通信の制限はプロキシの設定を読むものにだけ効きます \
+     (SSH の接続先では統制が効きません)。ユーザー設定にだけ保存されます。";
+
+fn set_run_outside_sandbox(id: &AgentId, enabled: bool, cx: &mut App) {
+    let fs = <dyn fs::Fs>::global(cx);
+    let id = id.0.to_string();
+    update_settings_file(fs, cx, move |settings, _| {
+        let entry = settings
+            .agent_servers
+            .get_or_insert_default()
+            .entry(id)
+            .or_insert_with(|| CustomAgentServerSettings::Registry {
+                default_mode: None,
+                env: Default::default(),
+                default_config_options: HashMap::default(),
+                favorite_config_option_values: HashMap::default(),
+                allow_subscription_sign_in: None,
+                run_outside_sandbox: None,
+            });
+        match entry {
+            CustomAgentServerSettings::Custom {
+                run_outside_sandbox,
+                ..
+            }
+            | CustomAgentServerSettings::Registry {
+                run_outside_sandbox,
+                ..
+            } => {
+                *run_outside_sandbox = Some(enabled);
             }
         }
     });
@@ -273,14 +328,19 @@ fn render_agent(
         .size(ButtonSize::Medium)
         .tab_index(0isize)
         .tooltip(Tooltip::text(remove_tooltip))
-        .on_click(move |_event, _window, cx| {
-            remove_agent(&id, source, cx);
+        .on_click({
+            let id = id.clone();
+            move |_event, _window, cx| {
+                remove_agent(&id, source, cx);
+            }
         });
 
     // The connection status of an external agent is tracked per agent-panel
     // session (via the agent panel's `AgentConnectionStore`), which isn't
     // available from the settings window. We therefore render a neutral status;
     // the row still shows the agent's source and supports configure/removal.
+    let run_outside_sandbox = render_run_outside_sandbox(&id, cx);
+
     AiSettingItem::new(
         id_string,
         display_name,
@@ -290,6 +350,7 @@ fn render_agent(
     .icon(icon)
     .when_some(configure_button, |this, button| this.action(button))
     .action(remove_button)
+    .details(run_outside_sandbox)
 }
 
 fn remove_agent(id: &AgentId, source: ExternalAgentSource, cx: &mut App) {
@@ -416,6 +477,7 @@ pub(crate) struct CustomAgentForm {
     default_config_options: HashMap<String, AgentConfigOptionValue>,
     favorite_config_option_values: HashMap<String, Vec<String>>,
     allow_subscription_sign_in: Option<bool>,
+    run_outside_sandbox: Option<bool>,
     /// Stable handles for the Cancel/Save buttons so they can render a focus
     /// ring. `Filled`/`Subtle` buttons only get a subtle `focus_visible`
     /// background change otherwise, which is hard to see.
@@ -440,6 +502,7 @@ impl CustomAgentForm {
         let mut default_config_options = HashMap::default();
         let mut favorite_config_option_values = HashMap::default();
         let mut allow_subscription_sign_in = None;
+        let mut run_outside_sandbox = None;
 
         // Pre-fill from the raw settings so invalid values typed directly into
         // settings.json still load into the form for correction.
@@ -453,6 +516,7 @@ impl CustomAgentForm {
                     default_config_options: config_options,
                     favorite_config_option_values: favorites,
                     allow_subscription_sign_in: sign_in,
+                    run_outside_sandbox: outside,
                 } => {
                     command_initial = Some(path.to_string_lossy().to_string());
                     if !args.is_empty() {
@@ -465,6 +529,7 @@ impl CustomAgentForm {
                     default_config_options = config_options.clone();
                     favorite_config_option_values = favorites.clone();
                     allow_subscription_sign_in = *sign_in;
+                    run_outside_sandbox = *outside;
                 }
                 CustomAgentServerSettings::Registry {
                     env: env_map,
@@ -472,6 +537,7 @@ impl CustomAgentForm {
                     default_config_options: config_options,
                     favorite_config_option_values: favorites,
                     allow_subscription_sign_in: sign_in,
+                    run_outside_sandbox: outside,
                 } => {
                     for (key, value) in sorted_pairs(env_map) {
                         env.push(new_kv_row(Some(&key), Some(&value), window, cx));
@@ -480,6 +546,7 @@ impl CustomAgentForm {
                     default_config_options = config_options.clone();
                     favorite_config_option_values = favorites.clone();
                     allow_subscription_sign_in = *sign_in;
+                    run_outside_sandbox = *outside;
                 }
             }
         }
@@ -494,6 +561,7 @@ impl CustomAgentForm {
             default_config_options,
             favorite_config_option_values,
             allow_subscription_sign_in,
+            run_outside_sandbox,
             cancel_focus_handle: cx.focus_handle(),
             save_focus_handle: cx.focus_handle(),
             error: None,
@@ -850,6 +918,7 @@ struct CustomAgentFormValues {
     default_config_options: HashMap<String, AgentConfigOptionValue>,
     favorite_config_option_values: HashMap<String, Vec<String>>,
     allow_subscription_sign_in: Option<bool>,
+    run_outside_sandbox: Option<bool>,
 }
 
 fn build_settings_from_form(
@@ -866,6 +935,7 @@ fn build_settings_from_form(
         default_config_options: form.default_config_options.clone(),
         favorite_config_option_values: form.favorite_config_option_values.clone(),
         allow_subscription_sign_in: form.allow_subscription_sign_in,
+        run_outside_sandbox: form.run_outside_sandbox,
     };
     build_settings_from_values(values)
 }
@@ -904,6 +974,7 @@ fn build_settings_from_values(
         default_config_options: values.default_config_options,
         favorite_config_option_values: values.favorite_config_option_values,
         allow_subscription_sign_in: values.allow_subscription_sign_in,
+        run_outside_sandbox: values.run_outside_sandbox,
     };
 
     Ok((AgentId(name.into()), values.original_id, content))
@@ -1017,6 +1088,7 @@ async fn add_custom_agent_settings_entry(
                                 default_config_options: Default::default(),
                                 favorite_config_option_values: Default::default(),
                                 allow_subscription_sign_in: None,
+                                run_outside_sandbox: None,
                             },
                         );
                     }
@@ -1115,6 +1187,7 @@ mod tests {
             default_config_options: HashMap::default(),
             favorite_config_option_values: HashMap::default(),
             allow_subscription_sign_in: None,
+            run_outside_sandbox: None,
         }
     }
 
@@ -1183,6 +1256,7 @@ mod tests {
                 default_config_options: HashMap::default(),
                 favorite_config_option_values: HashMap::default(),
                 allow_subscription_sign_in: None,
+                run_outside_sandbox: None,
             }
         );
     }
@@ -1262,6 +1336,7 @@ mod tests {
                     default_config_options: HashMap::default(),
                     favorite_config_option_values: HashMap::default(),
                     allow_subscription_sign_in: None,
+                    run_outside_sandbox: None,
                 }),
             ),
         ] {
@@ -1298,6 +1373,43 @@ mod tests {
                     Some(allowed),
                     "{shape} の項目に {allowed} を書いて読み戻せる"
                 );
+            }
+
+            // ADR-F49 決定 19 (8c): 「常にサンドボックスの外で起動」も同じ形で。
+            for enabled in [true, false] {
+                cx.update(|cx| set_run_outside_sandbox(&id(CLAUDE_AGENT_ID), enabled, cx));
+                cx.run_until_parked();
+                let read_back = written(&fs).await;
+                assert_eq!(
+                    read_back.run_outside_sandbox(),
+                    Some(enabled),
+                    "{shape} の項目に {enabled} を書いて読み戻せる"
+                );
+                assert_eq!(
+                    read_back.allow_subscription_sign_in(),
+                    Some(true),
+                    "{shape} の項目のほかの設定は残る"
+                );
+            }
+        }
+    }
+
+    /// ADR-F49 決定 19 (8c): カスタムエージェントの編集フォームは、フォームに
+    /// 無い「常にサンドボックスの外で起動」を落とさずに書き戻す。
+    #[test]
+    fn editing_a_custom_agent_keeps_its_choice_to_start_outside() {
+        for run_outside_sandbox in [None, Some(true), Some(false)] {
+            let (_, _, content) = build_settings_from_values(CustomAgentFormValues {
+                run_outside_sandbox,
+                ..values()
+            })
+            .expect("a valid form");
+            match content {
+                CustomAgentServerSettings::Custom {
+                    run_outside_sandbox: written,
+                    ..
+                } => assert_eq!(written, run_outside_sandbox),
+                _ => panic!("expected a custom agent"),
             }
         }
     }

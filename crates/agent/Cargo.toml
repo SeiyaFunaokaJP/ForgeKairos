@@ -42,6 +42,7 @@ heck.workspace = true
 html_to_markdown.workspace = true
 http_client.workspace = true
 http_proxy.workspace = true
+ide_query.workspace = true
 indoc.workspace = true
 itertools.workspace = true
 language.workspace = true

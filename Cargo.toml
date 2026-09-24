@@ -106,6 +106,8 @@ members = [
     "crates/http_client_tls",
     "crates/http_proxy",
     "crates/icons",
+    "crates/ide_assist",
+    "crates/ide_query",
     "crates/ide_server",
     "crates/image_viewer",
     "crates/input_latency_ui",
@@ -383,6 +385,8 @@ http_client = { path = "crates/http_client" }
 http_client_tls = { path = "crates/http_client_tls" }
 http_proxy = { path = "crates/http_proxy" }
 icons = { path = "crates/icons" }
+ide_assist = { path = "crates/ide_assist" }
+ide_query = { path = "crates/ide_query" }
 ide_server = { path = "crates/ide_server" }
 image_viewer = { path = "crates/image_viewer" }
 input_latency_ui = { path = "crates/input_latency_ui" }

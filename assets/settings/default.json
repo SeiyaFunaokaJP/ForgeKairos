@@ -1076,7 +1076,11 @@
   // エージェントが選択範囲・開いているファイル・診断を読み、差分を Zed のタブでレビューできる。
   "ide_server": {
     // 既定は無効 (AI 機能は既定オフ)。設定 GUI「AI」ページから有効化する。
-    "enabled": false
+    "enabled": false,
+    // エージェント (Claude Code のタブ・外部のエージェント) に Zed の IDE ツール
+    // (ハイライト・注釈・ツアー・定義・参照・シンボル検索、MCP サーバー名 `zed`) を渡す。
+    // `enabled` とは独立で、ロックファイルは書かない。
+    "assist_tools": true
   },
   "collaboration_panel": {
     // Whether to show the collaboration panel button in the status bar.
@@ -1343,6 +1347,23 @@
     // whole file. A file that is already mentioned by hand is not attached
     // twice.
     "attach_active_file": false,
+    // Limits on how much of each chat attachment is sent to the agent. Anything
+    // over them is sent as an outline or a reference the agent can follow up on.
+    "context_attachments": {
+      // Files larger than this are attached as an outline (symbols with line
+      // numbers) instead of their full content. Minimum 1024.
+      "inline_max_bytes": 16384,
+      // When one message's attachments add up to more than this, the largest
+      // ones are sent as an outline or a reference until it fits. Attachments
+      // set to be sent in full are never reduced. Minimum 4096.
+      "message_budget_bytes": 65536,
+      // Largest outline sent for one file; deeper symbols go first. Minimum 512.
+      "outline_max_bytes": 8192,
+      // Largest part of a fetched web page that is attached. Minimum 1024.
+      "fetch_max_bytes": 32768,
+      // Most files whose diagnostics are attached. Minimum 1.
+      "diagnostics_max_files": 50,
+    },
     // Byte budget for a repository map prepended to the agent's system prompt,
     // right after the list of project root directories. 0 disables it; values
     // above 32768 are clamped to 32768.
@@ -1379,11 +1400,18 @@
           "rename_symbol": true,
           "read_file": true,
           "repo_map": true,
+          "git_diff": true,
           "grep": true,
           "skill": true,
           "spawn_agent": true,
           "terminal": true,
           "search_web": true,
+          "hover": true,
+          "search_symbols": true,
+          "highlight_code": true,
+          "annotate_code": true,
+          "code_tour": true,
+          "clear_annotations": true,
         },
       },
       "ask": {
@@ -1403,10 +1431,17 @@
           "go_to_definition": true,
           "read_file": true,
           "repo_map": true,
+          "git_diff": true,
           "grep": true,
           "skill": true,
           "spawn_agent": true,
           "search_web": true,
+          "hover": true,
+          "search_symbols": true,
+          "highlight_code": true,
+          "annotate_code": true,
+          "code_tour": true,
+          "clear_annotations": true,
         },
       },
       // Reads and edits files, but never runs commands and never reaches the
@@ -1428,7 +1463,14 @@
           "list_directory": true,
           "read_file": true,
           "repo_map": true,
+          "git_diff": true,
           "grep": true,
+          "hover": true,
+          "search_symbols": true,
+          "highlight_code": true,
+          "annotate_code": true,
+          "code_tour": true,
+          "clear_annotations": true,
         },
       },
       "minimal": {
@@ -1467,6 +1509,11 @@
     //
     // Example: "terminal_init_command": "claude"
     "terminal_init_command": "",
+    // Whether "Claude Code を起動" starts the CLI outside the sandbox every
+    // time, without asking (ADR-F49 decision 19). Outside the sandbox nothing
+    // limits what it writes, and only programs that read the proxy settings
+    // are held to the network allowlist. Only the user settings file is read.
+    "claude_code_run_outside_sandbox": false,
     // How thinking blocks should be displayed by default in the agent panel.
     //
     // Default: auto

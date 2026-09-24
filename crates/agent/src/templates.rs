@@ -132,6 +132,39 @@ mod tests {
     }
 
     #[test]
+    fn test_system_prompt_mentions_the_ide_tools_only_when_available() {
+        let project = prompt_store::ProjectContext::default();
+        let render = |available_tools: Vec<SharedString>| {
+            SystemPromptTemplate {
+                project: &project,
+                available_tools,
+                model_name: None,
+                date: "2026-01-01".to_string(),
+                user_agents_md: None,
+                sandboxing: false,
+                is_linux: false,
+                is_windows: false,
+                restricted_workspace: false,
+                repo_map: None,
+            }
+            .render(&Templates::new())
+            .unwrap()
+        };
+
+        let with_tools = render(vec![
+            "grep".into(),
+            "search_symbols".into(),
+            "code_tour".into(),
+        ]);
+        assert!(with_tools.contains("`search_symbols` is usually more direct than `grep`"));
+        assert!(with_tools.contains("You run inside the Zed editor the user is looking at"));
+
+        let without_tools = render(vec!["grep".into()]);
+        assert!(!without_tools.contains("search_symbols"));
+        assert!(!without_tools.contains("code_tour"));
+    }
+
+    #[test]
     fn test_system_prompt_renders_repo_map_after_the_root_directories() {
         let project = prompt_store::ProjectContext::default();
         let template = SystemPromptTemplate {

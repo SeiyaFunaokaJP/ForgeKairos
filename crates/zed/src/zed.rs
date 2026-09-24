@@ -6095,6 +6095,7 @@ mod tests {
                 "go_to_line",
                 "highlights_tree_view",
                 "icon_theme_selector",
+                "ide_assist",
                 "ide_server",
                 "image_viewer",
                 "inline_assistant",
@@ -6514,6 +6515,7 @@ mod tests {
             release_channel::init(Version::new(0, 0, 0), cx);
             command_palette::init(cx);
             editor::init(cx);
+            ide_assist::init(cx);
             git_ui::init(cx);
             project_panel::init(cx);
             outline_panel::init(cx);

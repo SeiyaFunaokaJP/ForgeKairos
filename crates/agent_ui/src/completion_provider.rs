@@ -2791,7 +2791,7 @@ fn completion_text_for_terminal_selections(
                     let range = snapshot.anchor_after(offset + terminal_range.start)
                         ..snapshot.anchor_after(offset + terminal_range.end);
 
-                    let crease = crate::mention_set::crease_for_mention(
+                    let (crease, crease_entity) = crate::mention_set::crease_with_loading_context(
                         mention_uri.name().into(),
                         mention_uri.icon_path(cx),
                         None,
@@ -2799,6 +2799,7 @@ fn completion_text_for_terminal_selections(
                         None,
                         range,
                         editor.downgrade(),
+                        cx,
                     );
 
                     let Some(crease_id) = editor.update(cx, |editor, cx| {
@@ -2820,7 +2821,7 @@ fn completion_text_for_terminal_selections(
                                     tracked_buffers: vec![],
                                 }))
                                 .shared(),
-                                None,
+                                Some(crease_entity),
                                 cx,
                             );
                         })

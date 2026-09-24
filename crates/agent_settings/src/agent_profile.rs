@@ -307,6 +307,7 @@ mod tests {
             "find_path",
             "diagnostics",
             "repo_map",
+            "git_diff",
             "find_references",
             "go_to_definition",
             "get_code_actions",

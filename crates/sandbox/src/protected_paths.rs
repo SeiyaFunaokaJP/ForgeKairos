@@ -1736,6 +1736,60 @@ mod tests {
         }
     }
 
+    /// ADR-F49 decision 19 (8c): this fork's configuration folder — where the
+    /// user's settings say an agent starts outside its sandbox every time — is
+    /// protected whatever the project is: opened as the home itself, the folder
+    /// is inside the write grant and still may not be written; the folder a
+    /// `--user-data-dir` put elsewhere is protected as well. A project that
+    /// does not hold it gains no protected entry inside it from this.
+    #[test]
+    fn the_forks_configuration_stays_protected_whatever_the_project() {
+        let home = if cfg!(target_os = "windows") {
+            PathBuf::from(r"C:\Users\u")
+        } else {
+            PathBuf::from("/home/u")
+        };
+        let configuration = home.join(if cfg!(target_os = "windows") {
+            r"AppData\Roaming\Zed-JP-Enhance"
+        } else if cfg!(target_os = "macos") {
+            "Library/Application Support/Zed-JP-Enhance"
+        } else {
+            ".config/zed-jp-enhance"
+        });
+
+        let home_as_project = builtin_protected_paths(&home, std::slice::from_ref(&home));
+        assert!(
+            home_as_project.contains(&configuration),
+            "{home_as_project:?}"
+        );
+
+        let elsewhere = home.join("src").join("app");
+        let ordinary = builtin_protected_paths(&home, std::slice::from_ref(&elsewhere));
+        assert!(ordinary.contains(&configuration), "{ordinary:?}");
+        let inside_the_project = ordinary
+            .iter()
+            .filter_map(|path| path.strip_prefix(&elsewhere).ok())
+            .collect::<Vec<_>>();
+        assert!(
+            inside_the_project.iter().all(|relative| {
+                WORKTREE_PROTECTED_RELATIVE
+                    .iter()
+                    .any(|entry| *relative == Path::new(entry))
+            }),
+            "only the agent configurations of the project itself: {inside_the_project:?}"
+        );
+
+        let user_data_dir = if cfg!(target_os = "windows") {
+            PathBuf::from(r"D:\portable\zed\config")
+        } else {
+            PathBuf::from("/opt/portable/zed/config")
+        };
+        assert!(
+            local_builtin_protected_paths(&home, std::slice::from_ref(&user_data_dir))
+                .contains(&user_data_dir)
+        );
+    }
+
     /// An application directory the environment moved away from its
     /// home-relative default is added, and one that is already covered is not
     /// duplicated.

@@ -937,6 +937,9 @@ impl ThreadView {
                 editor
             })
         });
+        message_editor.update(cx, |editor, _| editor.set_thread(thread.downgrade()));
+        let mention_set = message_editor.read(cx).mention_set().clone();
+        subscriptions.push(cx.observe(&mention_set, |_, _, cx| cx.notify()));
 
         let show_codex_windows_warning = cfg!(windows)
             && project.upgrade().is_some_and(|p| p.read(cx).is_local())
@@ -4564,6 +4567,7 @@ impl ThreadView {
                                     .min_w_0()
                                     .flex_wrap()
                                     .gap_1()
+                                    .children(self.render_attachment_estimate(cx))
                                     .children(self.render_token_usage(cx))
                                     .children(self.render_tool_permission_control(cx))
                                     .children(self.profile_selector.clone())
@@ -4811,6 +4815,47 @@ impl ThreadView {
         self.as_native_thread(cx)
             .and_then(|thread| thread.read(cx).model())
             .is_some_and(|model| model.supports_split_token_display())
+    }
+
+    /// The rough size of what the message's attachments will add, so that a
+    /// large paste or file is noticed before it is sent.
+    fn render_attachment_estimate(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
+        let estimate = self
+            .message_editor
+            .read(cx)
+            .mention_set()
+            .read(cx)
+            .total_estimate(cx);
+        if estimate.bytes == 0 {
+            return None;
+        }
+        let tokens = crate::mention_set::format_token_estimate(
+            crate::mention_set::estimated_tokens(estimate.bytes),
+        );
+        let reduced_count = estimate.reduced_count;
+        let tooltip: SharedString = if reduced_count > 0 {
+            format!(
+                "添付の概算トークン数です (4 バイトを 1 トークンとして概算)。\n\
+                 1 メッセージの上限を超えるため、大きい添付 {reduced_count} 件をアウトラインや参照に減らして送ります。"
+            )
+            .into()
+        } else {
+            "添付の概算トークン数です (4 バイトを 1 トークンとして概算)。".into()
+        };
+        Some(
+            div()
+                .id("attachment-estimate")
+                .child(
+                    Label::new(format!("添付 {tokens}"))
+                        .size(LabelSize::Small)
+                        .color(if reduced_count > 0 {
+                            Color::Warning
+                        } else {
+                            Color::Muted
+                        }),
+                )
+                .tooltip(Tooltip::text(tooltip)),
+        )
     }
 
     fn render_token_usage(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
@@ -12110,6 +12155,47 @@ impl ThreadView {
         )
     }
 
+    /// ADR-F56: whether this thread's agent was given Zed's IDE tools (the
+    /// `zed` MCP server).
+    pub(crate) fn ide_tools_given(&self, cx: &App) -> bool {
+        self.thread
+            .read(cx)
+            .connection()
+            .clone()
+            .downcast::<agent_servers::AcpConnection>()
+            .is_some_and(|connection| connection.ide_tools_given())
+    }
+
+    /// ADR-F56: a small note that the agent has Zed's IDE tools, with the tools
+    /// in its tooltip. The normal case, so it stays quiet; a failure to bring
+    /// the channel up is still [`Self::render_sandbox_ide_notice`]'s ⚠.
+    fn render_ide_tools_indicator(&self, cx: &App) -> Option<AnyElement> {
+        if !self.ide_tools_given(cx) {
+            return None;
+        }
+        Some(
+            h_flex()
+                .id("ide-tools-indicator")
+                .px_2()
+                .gap_1()
+                .child(
+                    Icon::new(IconName::Server)
+                        .size(IconSize::XSmall)
+                        .color(Color::Muted),
+                )
+                .child(
+                    Label::new("IDE ツール")
+                        .size(LabelSize::XSmall)
+                        .color(Color::Muted),
+                )
+                .tooltip(Tooltip::text(
+                    "このエージェントは Zed の IDE ツールを使えます: ハイライト・注釈・ツアー・\
+                     ホバー・定義・参照・シンボル検索",
+                ))
+                .into_any_element(),
+        )
+    }
+
     fn render_multi_root_callout(&self, cx: &mut Context<Self>) -> Option<Callout> {
         if self.multi_root_callout_dismissed {
             return None;
@@ -13007,6 +13093,7 @@ impl Render for ThreadView {
             .child(conversation)
             .children(self.render_multi_root_callout(cx))
             .children(self.render_sandbox_ide_notice(cx))
+            .children(self.render_ide_tools_indicator(cx))
             .children(self.render_activity_bar(window, cx))
             .when(self.show_external_source_prompt_warning, |this| {
                 this.child(self.render_external_source_prompt_warning(cx))

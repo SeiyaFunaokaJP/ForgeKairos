@@ -6,7 +6,7 @@ use agent_servers::AcpConnection;
 use agent_servers::{AgentServer, AgentServerDelegate};
 use agent_settings::AgentSettings;
 use anyhow::Result;
-use collections::HashMap;
+use collections::{HashMap, HashSet};
 use futures::{FutureExt, future::Shared};
 use gpui::{
     App, AppContext, Context, Entity, EntityId, EventEmitter, SharedString, Subscription, Task,
@@ -104,12 +104,27 @@ enum ConnectionSlot {
         id: OutsideSandboxConnectionId,
         agent: Agent,
     },
+    /// ADR-F49 decision 19 (8c): the agent in its sandbox while the user's
+    /// settings start it outside every time, for the threads whose session
+    /// was started in the sandbox (the shared connection is the one outside).
+    InSandbox(Agent),
+}
+
+/// ADR-F49 decision 19 (8c): where a view's start goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConnectionPlace {
+    /// Where the user's settings put every start of the agent.
+    AsTheSettingsSay,
+    /// Outside the sandbox, the start the user confirmed for this view.
+    OutsideSandbox(OutsideSandboxConnectionId),
+    /// In the sandbox, whatever the settings say.
+    InSandbox,
 }
 
 impl ConnectionSlot {
     fn agent(&self) -> &Agent {
         match self {
-            ConnectionSlot::Shared(agent) => agent,
+            ConnectionSlot::Shared(agent) | ConnectionSlot::InSandbox(agent) => agent,
             ConnectionSlot::OutsideSandbox { agent, .. } => agent,
         }
     }
@@ -130,7 +145,15 @@ pub struct AgentConnectionStore {
     /// Connections started outside their sandbox, by the view that confirmed
     /// each of them.
     outside_sandbox: HashMap<OutsideSandboxConnectionId, (Agent, Entity<AgentConnectionEntry>)>,
+    /// ADR-F49 decision 19 (8c): connections outside the sandbox that a newer
+    /// version of their agent has superseded. They stay in `outside_sandbox`
+    /// — the idle disconnect only ever looks there, and a connection it
+    /// cannot see is one whose process nothing ever ends — but no start is
+    /// handed one of them: the view that asks starts the new version instead.
+    superseded_outside_sandbox: HashSet<OutsideSandboxConnectionId>,
     next_outside_sandbox_id: u64,
+    /// ADR-F49 decision 19 (8c): see [`ConnectionSlot::InSandbox`].
+    in_sandbox: HashMap<Agent, Entity<AgentConnectionEntry>>,
     /// Versions reported by [`AgentConnectionEntryEvent::NewVersionAvailable`],
     /// kept after the event has been delivered. The event fires once and drops
     /// the connection entry with it, so without this the agent registry page
@@ -166,7 +189,9 @@ impl AgentConnectionStore {
             project,
             entries: HashMap::default(),
             outside_sandbox: HashMap::default(),
+            superseded_outside_sandbox: HashSet::default(),
             next_outside_sandbox_id: 0,
+            in_sandbox: HashMap::default(),
             new_versions: HashMap::default(),
             holders: HashMap::default(),
             leases: HashMap::default(),
@@ -209,6 +234,7 @@ impl AgentConnectionStore {
         self.entries
             .values()
             .chain(self.outside_sandbox.values().map(|(_, entry)| entry))
+            .chain(self.in_sandbox.values())
             .filter_map(|entry| match entry.read(cx) {
                 AgentConnectionEntry::Connected(state) => state
                     .connection
@@ -247,6 +273,7 @@ impl AgentConnectionStore {
         server: Rc<dyn AgentServer>,
         cx: &mut Context<Self>,
     ) -> Entity<AgentConnectionEntry> {
+        self.retire_shared_connection_outside_sandbox(&key, cx);
         if let Some(entry) = self.entries.get(&key) {
             let entry = entry.clone();
             // ADR-F49 (new decision): whoever asked is about to use it, so the
@@ -257,7 +284,72 @@ impl AgentConnectionStore {
             self.unused_since.remove(&ConnectionSlot::Shared(key));
             return entry;
         }
-        self.insert_connection(ConnectionSlot::Shared(key), server, false, cx)
+        self.insert_connection(ConnectionSlot::Shared(key), server, cx)
+    }
+
+    /// ADR-F49 decision 19 (8c): a shared connection is outside the sandbox
+    /// only because the user's settings said so when it was made. Once they
+    /// no longer do, no further start is handed it — a new thread would
+    /// otherwise go on starting outside, unasked, after the user turned that
+    /// off. The threads already on it keep it (and its banner) and it is set
+    /// aside where the idle disconnect still finds it, as an update does with
+    /// a connection outside the sandbox.
+    fn retire_shared_connection_outside_sandbox(&mut self, key: &Agent, cx: &mut Context<Self>) {
+        let Agent::Custom { id: agent_id } = key else {
+            return;
+        };
+        let Some(entry) = self.entries.get(key) else {
+            return;
+        };
+        let AgentConnectionEntry::Connected(state) = entry.read(cx) else {
+            return;
+        };
+        if !state.connection.runs_outside_sandbox()
+            || agent_servers::runs_outside_sandbox_by_user_choice(agent_id.0.as_ref(), cx)
+        {
+            return;
+        }
+        let Some(entry) = self.entries.remove(key) else {
+            return;
+        };
+        let id = OutsideSandboxConnectionId(self.next_outside_sandbox_id);
+        self.next_outside_sandbox_id += 1;
+        let shared = ConnectionSlot::Shared(key.clone());
+        let retired = ConnectionSlot::OutsideSandbox {
+            id,
+            agent: key.clone(),
+        };
+        self.outside_sandbox.insert(id, (key.clone(), entry));
+        self.superseded_outside_sandbox.insert(id);
+        for (held, _) in self.holders.values_mut() {
+            if *held == shared {
+                *held = retired.clone();
+            }
+        }
+        if let Some(since) = self.unused_since.remove(&shared) {
+            self.unused_since.insert(retired, since);
+        }
+        log::info!(
+            "{} is no longer to start outside its sandbox: the next start goes into it",
+            key.id()
+        );
+    }
+
+    /// ADR-F49 decision 19 (8c): the agent's connection in its sandbox, for a
+    /// thread whose session was started there, while the user's settings start
+    /// every other start of it outside. Shared by every such thread.
+    pub fn request_connection_in_sandbox(
+        &mut self,
+        key: Agent,
+        server: Rc<dyn AgentServer>,
+        cx: &mut Context<Self>,
+    ) -> Entity<AgentConnectionEntry> {
+        if let Some(entry) = self.in_sandbox.get(&key) {
+            let entry = entry.clone();
+            self.unused_since.remove(&ConnectionSlot::InSandbox(key));
+            return entry;
+        }
+        self.insert_connection(ConnectionSlot::InSandbox(key), server, cx)
     }
 
     /// ADR-F49 decision 19: connects the agent again, started outside its
@@ -275,19 +367,23 @@ impl AgentConnectionStore {
         self.insert_connection(
             ConnectionSlot::OutsideSandbox { id, agent: key },
             server,
-            true,
             cx,
         );
         id
     }
 
-    /// The connection `id` names, while it is still there: it is dropped when
-    /// it fails to start or the agent goes away, and the view then connects
-    /// in the sandbox again (and has to confirm another start outside it).
+    /// The connection `id` names, for a start that wants it: `None` once it
+    /// failed to start, the agent went away, the idle disconnect took it or a
+    /// newer version of the agent superseded it. The view then starts another
+    /// one outside the sandbox where the user confirmed that for its thread,
+    /// and goes back into the sandbox otherwise.
     pub fn outside_sandbox_connection(
         &self,
         id: OutsideSandboxConnectionId,
     ) -> Option<Entity<AgentConnectionEntry>> {
+        if self.superseded_outside_sandbox.contains(&id) {
+            return None;
+        }
         self.outside_sandbox
             .get(&id)
             .map(|(_, entry)| entry.clone())
@@ -296,6 +392,7 @@ impl AgentConnectionStore {
     fn slot_entry(&self, slot: &ConnectionSlot) -> Option<&Entity<AgentConnectionEntry>> {
         match slot {
             ConnectionSlot::Shared(key) => self.entries.get(key),
+            ConnectionSlot::InSandbox(key) => self.in_sandbox.get(key),
             ConnectionSlot::OutsideSandbox { id, .. } => {
                 self.outside_sandbox.get(id).map(|(_, entry)| entry)
             }
@@ -306,6 +403,9 @@ impl AgentConnectionStore {
         match slot {
             ConnectionSlot::Shared(key) => {
                 self.entries.insert(key.clone(), entry);
+            }
+            ConnectionSlot::InSandbox(key) => {
+                self.in_sandbox.insert(key.clone(), entry);
             }
             ConnectionSlot::OutsideSandbox { id, agent } => {
                 self.outside_sandbox.insert(*id, (agent.clone(), entry));
@@ -318,8 +418,12 @@ impl AgentConnectionStore {
             ConnectionSlot::Shared(key) => {
                 self.entries.remove(key);
             }
+            ConnectionSlot::InSandbox(key) => {
+                self.in_sandbox.remove(key);
+            }
             ConnectionSlot::OutsideSandbox { id, .. } => {
                 self.outside_sandbox.remove(id);
+                self.superseded_outside_sandbox.remove(id);
             }
         }
     }
@@ -328,11 +432,10 @@ impl AgentConnectionStore {
         &mut self,
         slot: ConnectionSlot,
         server: Rc<dyn AgentServer>,
-        run_outside_sandbox: bool,
         cx: &mut Context<Self>,
     ) -> Entity<AgentConnectionEntry> {
         let (mut new_version_rx, mut loading_status_rx, connect_task) =
-            self.start_connection(server, run_outside_sandbox, cx);
+            self.start_connection(server, &slot, cx);
         let connect_task = connect_task.shared();
 
         let entry = cx.new(|_cx| AgentConnectionEntry::Connecting {
@@ -411,7 +514,20 @@ impl AgentConnectionStore {
                                 cx.emit(AgentConnectionEntryEvent::NewVersionAvailable(version));
                             })
                             .ok();
-                        this.remove_slot_entry(&slot);
+                        match &slot {
+                            // The shared entry goes, so that the next request
+                            // starts the new version.
+                            ConnectionSlot::Shared(_) | ConnectionSlot::InSandbox(_) => {
+                                this.remove_slot_entry(&slot)
+                            }
+                            // ADR-F49 decision 19 (8c): this one's view keeps
+                            // using it until it starts the new version, and
+                            // the idle disconnect has to be able to find it
+                            // until then and after.
+                            ConnectionSlot::OutsideSandbox { id, .. } => {
+                                this.superseded_outside_sandbox.insert(*id);
+                            }
+                        }
                         cx.notify();
                     })
                     .ok();
@@ -460,12 +576,28 @@ impl AgentConnectionStore {
         outside_sandbox: Option<OutsideSandboxConnectionId>,
         cx: &mut Context<Self>,
     ) {
-        let slot = match outside_sandbox {
-            Some(id) => ConnectionSlot::OutsideSandbox {
+        let place = match outside_sandbox {
+            Some(id) => ConnectionPlace::OutsideSandbox(id),
+            None => ConnectionPlace::AsTheSettingsSay,
+        };
+        self.hold_connection_at(view, key, place, cx);
+    }
+
+    /// [`Self::hold_connection`] for a connection at `place`.
+    pub fn hold_connection_at(
+        &mut self,
+        view: WeakEntity<ConversationView>,
+        key: &Agent,
+        place: ConnectionPlace,
+        cx: &mut Context<Self>,
+    ) {
+        let slot = match place {
+            ConnectionPlace::OutsideSandbox(id) => ConnectionSlot::OutsideSandbox {
                 id,
                 agent: key.clone(),
             },
-            None => ConnectionSlot::Shared(key.clone()),
+            ConnectionPlace::AsTheSettingsSay => ConnectionSlot::Shared(key.clone()),
+            ConnectionPlace::InSandbox => ConnectionSlot::InSandbox(key.clone()),
         };
         self.unused_since.remove(&slot);
         self.holders.retain(|_, (_, view)| view.upgrade().is_some());
@@ -552,6 +684,11 @@ impl AgentConnectionStore {
         self.entries
             .keys()
             .map(|key| ConnectionSlot::Shared(key.clone()))
+            .chain(
+                self.in_sandbox
+                    .keys()
+                    .map(|key| ConnectionSlot::InSandbox(key.clone())),
+            )
             .chain(self.outside_sandbox.iter().map(|(id, (agent, _))| {
                 ConnectionSlot::OutsideSandbox {
                     id: *id,
@@ -664,7 +801,11 @@ impl AgentConnectionStore {
             Agent::Stub => true,
         };
         self.entries.retain(|key, _| still_there(key));
+        self.in_sandbox.retain(|key, _| still_there(key));
         self.outside_sandbox.retain(|_, (key, _)| still_there(key));
+        let outside_sandbox = &self.outside_sandbox;
+        self.superseded_outside_sandbox
+            .retain(|id| outside_sandbox.contains_key(id));
         self.unused_since
             .retain(|slot, _| still_there(slot.agent()));
         cx.notify();
@@ -673,7 +814,7 @@ impl AgentConnectionStore {
     fn start_connection(
         &self,
         server: Rc<dyn AgentServer>,
-        run_outside_sandbox: bool,
+        slot: &ConnectionSlot,
         cx: &mut Context<Self>,
     ) -> (
         Receiver<Option<String>>,
@@ -689,8 +830,14 @@ impl AgentConnectionStore {
             Some(new_version_tx),
             Some(loading_status_tx),
         );
-        if run_outside_sandbox {
-            delegate = delegate.outside_sandbox_once();
+        match slot {
+            ConnectionSlot::Shared(_) => {}
+            ConnectionSlot::OutsideSandbox { .. } => {
+                delegate = delegate.outside_sandbox_once();
+            }
+            ConnectionSlot::InSandbox(_) => {
+                delegate = delegate.in_sandbox_whatever_the_settings();
+            }
         }
 
         let connect_task = server.connect(delegate, self.project.clone(), cx);
@@ -719,6 +866,7 @@ mod tests {
     use std::any::Any;
     use std::cell::RefCell;
     use std::path::PathBuf;
+    use std::sync::Arc;
     use util::path;
     use workspace::PathList;
 
@@ -1074,6 +1222,224 @@ mod tests {
             is_connected(&store, cx),
             "an agent that has not finished starting is not an idle one"
         );
+    }
+
+    /// An agent started outside its sandbox whose newer version a test can
+    /// report through the sender its start was handed.
+    struct ReportsNewVersionServer {
+        new_version: Arc<parking_lot::Mutex<Option<watch::Sender<Option<String>>>>>,
+    }
+
+    impl AgentServer for ReportsNewVersionServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::ZedAgent
+        }
+
+        fn agent_id(&self) -> AgentId {
+            AgentId::new("sandboxed-stub")
+        }
+
+        fn connect(
+            &self,
+            mut delegate: AgentServerDelegate,
+            _project: Entity<Project>,
+            _cx: &mut App,
+        ) -> Task<Result<Rc<dyn AgentConnection>>> {
+            *self.new_version.lock() = delegate.take_new_version_sender();
+            Task::ready(Ok(Rc::new(
+                acp_thread::StubAgentConnection::new().with_runs_outside_sandbox(true),
+            )))
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    /// ADR-F49 decision 19 (8c): a newer version of an agent started outside
+    /// its sandbox is not handed to another start, but the connection stays
+    /// where the idle disconnect looks, so that the process goes once nothing
+    /// uses it. Taking it out at once left it to run for as long as its view
+    /// held it, with the sweep blind to it.
+    #[gpui::test]
+    async fn test_a_superseded_connection_outside_the_sandbox_still_goes_when_unused(
+        cx: &mut TestAppContext,
+    ) {
+        let (store, _project) = setup(cx).await;
+        let new_version = Arc::new(parking_lot::Mutex::new(None));
+        let id = store.update(cx, |store, cx| {
+            store.connect_outside_sandbox(
+                sandboxed_stub(),
+                Rc::new(ReportsNewVersionServer {
+                    new_version: new_version.clone(),
+                }),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let connection = store.read_with(cx, |store, cx| {
+            match store
+                .outside_sandbox_connection(id)
+                .expect("connected")
+                .read(cx)
+            {
+                AgentConnectionEntry::Connected(state) => Rc::downgrade(&state.connection),
+                _ => panic!("the stub connects at once"),
+            }
+        });
+
+        let mut sender = new_version.lock().take().expect("the start was handed one");
+        sender
+            .send(Some("2.0.0".to_string()))
+            .expect("the store listens");
+        cx.run_until_parked();
+        store.read_with(cx, |store, _cx| {
+            assert!(
+                store.outside_sandbox_connection(id).is_none(),
+                "no start is handed the old version"
+            );
+            assert!(
+                store.outside_sandbox.contains_key(&id),
+                "the idle disconnect can still find it"
+            );
+            assert_eq!(
+                store
+                    .new_version_available(&sandboxed_stub())
+                    .map(|version| version.as_ref()),
+                Some("2.0.0")
+            );
+        });
+        assert!(connection.upgrade().is_some(), "the agent still runs");
+
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        assert!(
+            store.read_with(cx, |store, _cx| !store.outside_sandbox.contains_key(&id)),
+            "nothing used it, so it went"
+        );
+        assert!(
+            connection.upgrade().is_none(),
+            "and the agent's process with it"
+        );
+        drop(sender);
+    }
+
+    /// Starts outside its sandbox where the delegate says so, and says so.
+    struct FollowsTheSettingsServer;
+
+    impl AgentServer for FollowsTheSettingsServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::ZedAgent
+        }
+
+        fn agent_id(&self) -> AgentId {
+            AgentId::new("sandboxed-stub")
+        }
+
+        fn connect(
+            &self,
+            delegate: AgentServerDelegate,
+            _project: Entity<Project>,
+            cx: &mut App,
+        ) -> Task<Result<Rc<dyn AgentConnection>>> {
+            let outside = delegate.starts_outside_sandbox("sandboxed-stub", cx);
+            Task::ready(Ok(Rc::new(
+                acp_thread::StubAgentConnection::new().with_runs_outside_sandbox(outside),
+            )))
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    fn set_user_settings(json: &str, cx: &mut TestAppContext) {
+        use gpui::BorrowAppContext as _;
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(json, cx)
+                    .result()
+                    .expect("valid user settings");
+            });
+        });
+        cx.run_until_parked();
+    }
+
+    fn runs_outside(entry: &Entity<AgentConnectionEntry>, cx: &mut TestAppContext) -> bool {
+        entry.read_with(cx, |entry, _cx| match entry {
+            AgentConnectionEntry::Connected(state) => state.connection.runs_outside_sandbox(),
+            _ => panic!("the stub connects at once"),
+        })
+    }
+
+    /// ADR-F49 decision 19 (8c): the shared connection a user's choice started
+    /// outside the sandbox is not handed to another start once the user has
+    /// turned that off — the next thread starts in the sandbox, unasked
+    /// nothing — while the connection stays where the idle disconnect finds
+    /// it. The connection kept in the sandbox for a thread started there is
+    /// one of its own.
+    #[gpui::test]
+    async fn test_turning_the_choice_off_sends_the_next_start_into_the_sandbox(
+        cx: &mut TestAppContext,
+    ) {
+        let (store, _project) = setup(cx).await;
+        set_user_settings(
+            r#"{ "agent_servers": { "sandboxed-stub": { "type": "custom", "command": "/bin/sandboxed-stub", "run_outside_sandbox": true } } }"#,
+            cx,
+        );
+        let shared = store.update(cx, |store, cx| {
+            store.request_connection(sandboxed_stub(), Rc::new(FollowsTheSettingsServer), cx)
+        });
+        cx.run_until_parked();
+        assert!(runs_outside(&shared, cx), "the choice lets it out");
+        let in_sandbox = store.update(cx, |store, cx| {
+            store.request_connection_in_sandbox(
+                sandboxed_stub(),
+                Rc::new(FollowsTheSettingsServer),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        assert!(
+            !runs_outside(&in_sandbox, cx),
+            "kept in the sandbox whatever the settings say"
+        );
+        assert_ne!(in_sandbox, shared);
+
+        // Turned off, the agent's entry kept: an agent that goes from the
+        // settings takes its connections with it.
+        set_user_settings(
+            r#"{ "agent_servers": { "sandboxed-stub": { "type": "custom", "command": "/bin/sandboxed-stub", "run_outside_sandbox": false } } }"#,
+            cx,
+        );
+        let next = store.update(cx, |store, cx| {
+            store.request_connection(sandboxed_stub(), Rc::new(FollowsTheSettingsServer), cx)
+        });
+        cx.run_until_parked();
+        assert_ne!(next, shared, "not handed the one outside");
+        assert!(!runs_outside(&next, cx));
+        store.read_with(cx, |store, _cx| {
+            assert!(
+                store
+                    .outside_sandbox
+                    .values()
+                    .any(|(_, entry)| *entry == shared),
+                "the idle disconnect can still find it"
+            );
+        });
+        cx.executor().advance_clock(Duration::from_secs(10 * 60));
+        cx.run_until_parked();
+        store.read_with(cx, |store, _cx| {
+            assert!(
+                !store
+                    .outside_sandbox
+                    .values()
+                    .any(|(_, entry)| *entry == shared),
+                "nothing used it, so it went"
+            );
+        });
     }
 
     /// `agent.idle_disconnect_minutes: 0` keeps every connection for as long

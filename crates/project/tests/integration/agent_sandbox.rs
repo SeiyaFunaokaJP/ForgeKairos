@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use collections::HashMap;
 use project::agent_sandbox::{
     AgentSandboxCommand, AgentSandboxHosts, AgentSandboxState, SandboxedAgentProfile,
-    accept_remote_config_dir, accept_remote_hosts, agent_config_dir, claude_acp_host_config_dir,
-    is_project_key, project_key, project_key_roots, readable_paths_in_data_dir,
+    accept_remote_config_dir, accept_remote_hosts, agent_config_dir, is_project_key, project_key,
+    project_key_roots, readable_paths_in_data_dir,
 };
 
 #[test]
@@ -222,12 +222,10 @@ fn the_folder_is_below_the_projects_directory() {
 }
 
 /// ADR-F55: in the sandbox the ACP Claude agent and the official CLI's session
-/// share one folder, so the user signs in once and both find it. Outside the
-/// sandbox the agent keeps a folder of the fork's own, never the account's
-/// `~/.claude`, whose credentials, global hooks and history are the CLI's to
-/// write and not an IDE-started agent's.
+/// share one folder, so the user signs in once and both find it. (Outside the
+/// sandbox neither is pointed anywhere: both use the account's `~/.claude`.)
 #[test]
-fn the_acp_claude_shares_the_clis_sandboxed_folder_but_not_the_accounts() {
+fn the_acp_claude_shares_the_clis_sandboxed_folder() {
     let home = Path::new("/home/user");
     let key = "0123456789abcdef";
     let sandboxed = agent_config_dir(home, key, &SandboxedAgentProfile::Claude);
@@ -247,17 +245,6 @@ fn the_acp_claude_shares_the_clis_sandboxed_folder_but_not_the_accounts() {
     ] {
         assert_ne!(agent_config_dir(home, key, &other), cli_session);
     }
-
-    let host = claude_acp_host_config_dir();
-    assert!(
-        host.starts_with(paths::external_agents_dir()),
-        "the host route's folder is one this fork manages: {host:?}"
-    );
-    assert_ne!(host, paths::home_dir().join(".claude"));
-    assert!(
-        !host.starts_with(paths::home_dir().join(".zed-jp-enhance-claude")),
-        "nor the sandboxed agents' projects directory: {host:?}"
-    );
 }
 
 fn environment_of(profile: SandboxedAgentProfile) -> HashMap<String, String> {
@@ -293,14 +280,6 @@ fn nothing_this_fork_builds_carries_a_credential() {
             );
         }
     }
-
-    // The one folder this fork names outside the sandbox is its own, never
-    // the account's, whose `.credentials.json` belongs to the official CLI.
-    let host = claude_acp_host_config_dir();
-    assert!(
-        !host.starts_with(paths::home_dir().join(".claude")),
-        "{host:?}"
-    );
 }
 
 #[test]

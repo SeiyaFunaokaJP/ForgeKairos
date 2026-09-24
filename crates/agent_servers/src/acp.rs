@@ -303,6 +303,9 @@ struct ClientContext {
     /// `Some` only for an agent in a WSL sandbox; every other connection hands
     /// what it receives through untouched.
     paths: Option<Arc<AcpPathTranslator>>,
+    /// ADR-F49 decision 5 (8c): the system the commands this agent asks for
+    /// are written for, which is where it runs.
+    commands_os: AgentCommandsOs,
 }
 
 fn dispatch_queue_closed_error() -> acp::Error {
@@ -444,6 +447,14 @@ pub struct AcpConnection {
     /// with one tool fewer, so it is a notice on its threads rather than a
     /// refusal; `None` when it has one, and when nothing was lost.
     ide_unavailable: Option<SharedString>,
+    /// ADR-F56: this connection's registration on the host's IDE server (for an
+    /// agent outside a sandbox), by project. Held for as long as the connection
+    /// lives: dropping it clears the highlights, annotations and tour the agent
+    /// drew, and lets the server stop when nothing else needs it.
+    host_ide_client: RefCell<Option<(gpui::EntityId, ide_server::HostAssistClient)>>,
+    /// ADR-F56: whether the last session request gave the agent Zed's IDE
+    /// tools (the `zed` server), for the thread's indicator.
+    ide_tools_given: std::cell::Cell<bool>,
     /// The same for a sign-in, which runs on a terminal of its own: kept by
     /// the sign-in's task id, so that starting the sign-in again replaces it
     /// and the terminal's end releases it
@@ -453,6 +464,9 @@ pub struct AcpConnection {
     /// ADR-F49 decision 23: the translator every ACP boundary of this
     /// connection goes through, `Some` only for an agent in a WSL sandbox.
     paths: Option<Arc<AcpPathTranslator>>,
+    /// ADR-F49 decision 19: the agent was started outside its sandbox, which
+    /// is what the banner, the tab and the thread list say while it runs.
+    runs_outside_sandbox: bool,
     session_list: Option<Rc<AcpSessionList>>,
     debug_log: AcpDebugLog,
     _settings_subscription: Subscription,
@@ -476,7 +490,7 @@ struct SandboxIdeLink {
     url: String,
     /// The `Authorization` header value the restricted session expects.
     authorization: String,
-    _session: ide_server::SandboxIdeSessionHandle,
+    session: ide_server::SandboxIdeSessionHandle,
     /// Hands the bridge's connections to the IDE session.
     _forward: Task<()>,
     /// Holds the bridge's standard input. **Declared before `_bridge`**:
@@ -954,6 +968,8 @@ impl AcpConnection {
             command.sandbox.as_ref(),
         )
         .map_err(anyhow::Error::new)?;
+        let commands_os = agent_commands_os(&launch, is_local, cfg!(windows));
+        let runs_outside_sandbox = matches!(launch, AgentLaunch::Host);
         // ADR-F49 decision 23: an agent in a WSL distro speaks that distro's
         // paths, so every ACP boundary of this connection is translated.
         // No other connection has a translator, and those go on behaving byte
@@ -1200,6 +1216,7 @@ impl AcpConnection {
             session_list: client_session_list.clone(),
             request_elicitations: request_elicitations.clone(),
             paths: paths.clone(),
+            commands_os,
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -1345,8 +1362,11 @@ impl AcpConnection {
             _agent_sandbox: agent_sandbox,
             ide_link,
             ide_unavailable,
+            host_ide_client: RefCell::default(),
+            ide_tools_given: std::cell::Cell::new(false),
             login_sandboxes: Rc::default(),
             paths,
+            runs_outside_sandbox,
         })
     }
 
@@ -1358,17 +1378,73 @@ impl AcpConnection {
     /// only outside a sandbox (decision 17); inside one, the restricted
     /// session on the sandbox's own loopback when its channel came up
     /// (decision 24), and nothing when it did not.
-    fn ide_mcp(&self) -> IdeMcp {
+    ///
+    /// ADR-F56: outside a sandbox the host's server is asked for through this
+    /// connection's own registration, which starts the server for the IDE
+    /// tools alone when `ide_server.enabled` is off; inside a WSL sandbox the
+    /// restricted session's channel carries the IDE tools too, on `/mcp/zed`.
+    fn ide_mcp(&self, project: &Entity<Project>, cx: &mut App) -> IdeMcp {
         if self.sandbox_session.is_none() {
-            return IdeMcp::Host;
+            return IdeMcp::Host(self.host_ide_endpoint(project, cx));
         }
         match &self.ide_link {
-            Some(link) => IdeMcp::Restricted {
-                url: link.url.clone(),
-                authorization: link.authorization.clone(),
-            },
+            Some(link) => {
+                let assist_tools = ide_server::assist_tools_enabled(cx);
+                if assist_tools {
+                    link.session.set_assist_label(self.display_name(cx), cx);
+                }
+                IdeMcp::Restricted {
+                    url: link.url.clone(),
+                    authorization: link.authorization.clone(),
+                    assist_url: assist_tools
+                        .then(|| restricted_assist_url(&link.url))
+                        .flatten(),
+                }
+            }
             None => IdeMcp::None,
         }
+    }
+
+    /// ADR-F56: the name the frame of the agent's highlights and annotations
+    /// carries — the one the agent panel's menu shows (the settings' display
+    /// name, else the registry's), never what the agent says of itself.
+    fn display_name(&self, cx: &App) -> SharedString {
+        agent_display_name(&self.id, self.agent_server_store.upgrade().as_ref(), cx)
+    }
+
+    fn host_ide_endpoint(
+        &self,
+        project: &Entity<Project>,
+        cx: &mut App,
+    ) -> Option<ide_server::McpEndpoint> {
+        let project_id = project.entity_id();
+        let mut client = self.host_ide_client.borrow_mut();
+        if client
+            .as_ref()
+            .is_none_or(|(client_project, _)| *client_project != project_id)
+        {
+            *client = ide_server::host_assist_client(project, self.display_name(cx), cx)
+                .map(|registration| (project_id, registration));
+        }
+        client
+            .as_ref()
+            .and_then(|(_, client)| client.agent_endpoint(cx))
+    }
+
+    /// The MCP servers a session of this connection is given, and a note of
+    /// whether Zed's IDE tools are among them (ADR-F56, the thread's indicator).
+    fn project_mcp_servers(&self, project: &Entity<Project>, cx: &mut App) -> ProjectMcpServers {
+        let ide_mcp = self.ide_mcp(project, cx);
+        let servers = mcp_servers_for_project(project, ide_mcp, cx);
+        self.ide_tools_given.set(servers.gives_ide_tools);
+        servers
+    }
+
+    /// ADR-F56: whether this connection's sessions were given Zed's IDE tools
+    /// (highlights, annotations, tours, hover, definitions, references and
+    /// symbol search).
+    pub fn ide_tools_given(&self) -> bool {
+        self.ide_tools_given.get()
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -1405,8 +1481,11 @@ impl AcpConnection {
             _agent_sandbox: None,
             ide_link: None,
             ide_unavailable: None,
+            host_ide_client: RefCell::default(),
+            ide_tools_given: std::cell::Cell::new(false),
             login_sandboxes: Rc::default(),
             paths,
+            runs_outside_sandbox: false,
             session_list: None,
             debug_log: AcpDebugLog::default(),
             _settings_subscription: settings_subscription,
@@ -1823,6 +1902,38 @@ enum AgentLaunch {
     WslSandbox { distro: Option<String> },
     /// In the remote host's sandbox helper.
     RemoteHelper { remote_binary: Arc<RelPath> },
+}
+
+/// ADR-F49 decision 5 (8c): the system the commands an agent asks for
+/// (`terminal/create`) are written for — the one the agent itself runs on.
+/// A command is run in a sandbox of that system, or, where there is none,
+/// on it after the user allows it; never on another system.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AgentCommandsOs {
+    /// The project's: this machine's (Linux, macOS) or the remote host's,
+    /// where its sandbox is built, as ever.
+    Projects,
+    /// This Windows machine, where an agent started outside its sandbox runs.
+    /// The sandbox here is a WSL distro, which would run its Windows commands
+    /// on Linux.
+    WindowsHost,
+    /// The WSL distro a Windows project's agent runs in, in its sandbox. Its
+    /// commands are Linux ones, whatever the settings say about the sandbox.
+    Wsl,
+}
+
+fn agent_commands_os(
+    launch: &AgentLaunch,
+    is_local: bool,
+    windows_client: bool,
+) -> AgentCommandsOs {
+    match launch {
+        AgentLaunch::Host if is_local && windows_client => AgentCommandsOs::WindowsHost,
+        AgentLaunch::WslSandbox { .. } => AgentCommandsOs::Wsl,
+        AgentLaunch::Host | AgentLaunch::LocalSandbox | AgentLaunch::RemoteHelper { .. } => {
+            AgentCommandsOs::Projects
+        }
+    }
 }
 
 const REMOTE_WITHOUT_SANDBOX_REASON: &str = "このリモートホストでは、エージェントをサンドボックスで\
@@ -3134,7 +3245,7 @@ async fn restricted_ide_channel(
         SandboxIdeLink {
             url: format!("http://127.0.0.1:{inner_port}/mcp"),
             authorization: format!("Bearer {}", info.auth_token),
-            _session: session,
+            session,
             _forward: forward,
             _mux: mux,
             _bridge: child,
@@ -3641,7 +3752,8 @@ impl AgentConnection for AcpConnection {
         let ProjectMcpServers {
             servers,
             restricted_ide,
-        } = mcp_servers_for_project(&project, self.ide_mcp(), cx);
+            ..
+        } = self.project_mcp_servers(&project, cx);
         let request = directories.into_new_session_request(servers);
         // ADR-F49 decision 23: the folders and the MCP servers are named the
         // way the agent's sandbox sees them; one that cannot be named there is
@@ -3798,7 +3910,8 @@ impl AgentConnection for AcpConnection {
         let ProjectMcpServers {
             servers,
             restricted_ide,
-        } = mcp_servers_for_project(&project, self.ide_mcp(), cx);
+            ..
+        } = self.project_mcp_servers(&project, cx);
         let paths = self.paths.clone();
         let agent_id = self.id.clone();
         self.open_or_create_session(
@@ -3858,7 +3971,8 @@ impl AgentConnection for AcpConnection {
         let ProjectMcpServers {
             servers,
             restricted_ide,
-        } = mcp_servers_for_project(&project, self.ide_mcp(), cx);
+            ..
+        } = self.project_mcp_servers(&project, cx);
         let paths = self.paths.clone();
         let agent_id = self.id.clone();
         self.open_or_create_session(
@@ -4035,6 +4149,10 @@ impl AgentConnection for AcpConnection {
 
     fn terminal_auth_runs_in_sandbox(&self) -> bool {
         self.sandbox_session.is_some()
+    }
+
+    fn runs_outside_sandbox(&self) -> bool {
+        self.runs_outside_sandbox
     }
 
     fn sandbox_write_scope(&self) -> Option<Vec<PathBuf>> {
@@ -4724,6 +4842,7 @@ pub mod test_support {
             session_list: client_session_list.clone(),
             request_elicitations: request_elicitations.clone(),
             paths: None,
+            commands_os: AgentCommandsOs::Projects,
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -5689,7 +5808,7 @@ mod tests {
             project::Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
 
         let none = cx.update(|cx| mcp_servers_for_project(&project, IdeMcp::None, cx));
-        assert_eq!(none.restricted_ide, None);
+        assert!(none.restricted_ide.is_empty());
         assert!(none.servers.is_empty());
 
         let restricted = cx.update(|cx| {
@@ -5698,6 +5817,7 @@ mod tests {
                 IdeMcp::Restricted {
                     url: "http://127.0.0.1:45123/mcp".to_string(),
                     authorization: "Bearer restricted".to_string(),
+                    assist_url: None,
                 },
                 cx,
             )
@@ -5707,14 +5827,158 @@ mod tests {
             "the host's IDE server is not among them: {:?}",
             restricted.servers
         );
-        let Some(acp::McpServer::Http(server)) = restricted.restricted_ide else {
-            panic!("the restricted IDE server is an HTTP entry");
+        let [acp::McpServer::Http(server)] = restricted.restricted_ide.as_slice() else {
+            panic!("the restricted IDE server is one HTTP entry");
         };
         assert_eq!(server.name, ide_server::RESTRICTED_MCP_SERVER_NAME);
         assert_eq!(server.url, "http://127.0.0.1:45123/mcp");
         assert_eq!(server.headers.len(), 1);
         assert_eq!(server.headers[0].name, "Authorization");
         assert_eq!(server.headers[0].value, "Bearer restricted");
+    }
+
+    /// ADR-F56: an agent in a WSL sandbox gets Zed's IDE tools as a second
+    /// entry, `zed`, on the same channel (`/mcp/zed`, same token) — appended
+    /// after the translation like the restricted one — and one `zed` at most.
+    #[gpui::test]
+    async fn an_agent_in_a_wsl_sandbox_gets_the_ide_tools_as_a_second_entry(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_feature_flags_test(cx);
+        cx.update(ide_server::init);
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), serde_json::json!({}))
+            .await;
+        let project =
+            project::Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
+        let url = "http://127.0.0.1:45123/mcp".to_string();
+        let assist_url = restricted_assist_url(&url).expect("the channel's /mcp");
+        assert_eq!(assist_url, "http://127.0.0.1:45123/mcp/zed");
+
+        let with_tools = cx.update(|cx| {
+            mcp_servers_for_project(
+                &project,
+                IdeMcp::Restricted {
+                    url: url.clone(),
+                    authorization: "Bearer restricted".to_string(),
+                    assist_url: Some(assist_url.clone()),
+                },
+                cx,
+            )
+        });
+        assert!(with_tools.servers.is_empty(), "{:?}", with_tools.servers);
+        let [
+            acp::McpServer::Http(restricted),
+            acp::McpServer::Http(assist),
+        ] = with_tools.restricted_ide.as_slice()
+        else {
+            panic!("two HTTP entries: {:?}", with_tools.restricted_ide);
+        };
+        assert_eq!(restricted.name, ide_server::RESTRICTED_MCP_SERVER_NAME);
+        assert_eq!(assist.name, ide_server::MCP_SERVER_NAME);
+        assert_eq!(assist.url, assist_url);
+        assert_eq!(assist.headers[0].value, "Bearer restricted");
+        assert!(with_tools.gives_ide_tools);
+
+        let without_tools = cx.update(|cx| {
+            mcp_servers_for_project(
+                &project,
+                IdeMcp::Restricted {
+                    url,
+                    authorization: "Bearer restricted".to_string(),
+                    assist_url: None,
+                },
+                cx,
+            )
+        });
+        assert_eq!(without_tools.restricted_ide.len(), 1);
+        assert!(!without_tools.gives_ide_tools);
+    }
+
+    /// ADR-F56: the frame of an agent's highlights carries the name the agent
+    /// panel's menu shows (the registry's here), and its id only when nothing
+    /// names it.
+    #[gpui::test]
+    fn the_ide_tools_frame_an_agent_by_its_display_name(cx: &mut gpui::TestAppContext) {
+        init_feature_flags_test(cx);
+        let metadata = project::agent_registry_store::RegistryAgentMetadata {
+            id: AgentId::new("gemini-cli"),
+            name: SharedString::from("Gemini CLI"),
+            description: SharedString::from(""),
+            version: SharedString::from("1.0.0"),
+            repository: None,
+            website: None,
+            icon_path: None,
+        };
+        cx.update(|cx| {
+            project::AgentRegistryStore::init_test_global(
+                cx,
+                vec![project::agent_registry_store::RegistryAgent::Npx(
+                    project::agent_registry_store::RegistryNpxAgent {
+                        metadata,
+                        package: SharedString::from("gemini-cli"),
+                        args: Vec::new(),
+                        env: HashMap::default(),
+                    },
+                )],
+            );
+            assert_eq!(
+                agent_display_name(&AgentId::new("gemini-cli"), None, cx).as_ref(),
+                "Gemini CLI"
+            );
+            assert_eq!(
+                agent_display_name(&AgentId::new("unlisted-agent"), None, cx).as_ref(),
+                "unlisted-agent"
+            );
+        });
+    }
+
+    /// ADR-F56: outside a sandbox there is one `zed` entry, whatever it
+    /// carries — the host server's endpoint for this connection — and none at
+    /// all when there is no endpoint.
+    #[gpui::test]
+    async fn an_agent_outside_a_sandbox_gets_one_zed_entry(cx: &mut gpui::TestAppContext) {
+        init_feature_flags_test(cx);
+        cx.update(ide_server::init);
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), serde_json::json!({}))
+            .await;
+        let project =
+            project::Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
+        let endpoint = ide_server::McpEndpoint {
+            url: "http://127.0.0.1:39254/mcp/zed?client=abc".to_string(),
+            authorization: "Bearer secret".to_string(),
+        };
+        let given = cx.update(|cx| {
+            mcp_servers_for_project(&project, IdeMcp::Host(Some(endpoint.clone())), cx)
+        });
+        let zed_entries = given
+            .servers
+            .iter()
+            .filter(|server| {
+                matches!(server, acp::McpServer::Http(server) if server.name == ide_server::MCP_SERVER_NAME)
+            })
+            .count();
+        assert_eq!(zed_entries, 1, "{:?}", given.servers);
+        assert!(given.restricted_ide.is_empty());
+        assert!(given.gives_ide_tools);
+
+        let none = cx.update(|cx| mcp_servers_for_project(&project, IdeMcp::Host(None), cx));
+        assert!(none.servers.is_empty());
+        assert!(!none.gives_ide_tools);
+
+        // `ide_server.assist_tools` off: the entry (when `enabled` gives one)
+        // no longer counts as the IDE tools.
+        cx.update(|cx| {
+            gpui::BorrowAppContext::update_global::<SettingsStore, _>(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.ide_server.get_or_insert_default().assist_tools = Some(false);
+                });
+            });
+        });
+        let off =
+            cx.update(|cx| mcp_servers_for_project(&project, IdeMcp::Host(Some(endpoint)), cx));
+        assert!(!off.gives_ide_tools);
     }
 
     /// ADR-F49 decision 24: as for the host's IDE server (ADR-F42), a server
@@ -5785,7 +6049,7 @@ mod tests {
 
         let (outside, inside) = cx.update(|cx| {
             (
-                mcp_servers_for_project(&project, IdeMcp::Host, cx),
+                mcp_servers_for_project(&project, IdeMcp::Host(None), cx),
                 mcp_servers_for_project(&project, IdeMcp::None, cx),
             )
         });
@@ -6683,6 +6947,7 @@ mod tests {
                         )]),
                         favorite_config_option_values: HashMap::default(),
                         allow_subscription_sign_in: None,
+                        run_outside_sandbox: None,
                     }
                     .into(),
                 )])),
@@ -7103,6 +7368,7 @@ mod tests {
             session_list: client_session_list.clone(),
             request_elicitations: request_elicitations.clone(),
             paths: None,
+            commands_os: AgentCommandsOs::Projects,
         };
         // `TestAppContext::spawn` hands out an `AsyncApp` by value, whereas the
         // production path uses `Context::spawn` which hands out `&mut AsyncApp`.
@@ -7607,7 +7873,9 @@ mod tests {
         project: &Entity<project::Project>,
         cx: &mut gpui::TestAppContext,
     ) -> acp_thread::SandboxWrap {
-        match project.read_with(cx, |project, cx| agent_terminal_launch(project, cx)) {
+        match project.read_with(cx, |project, cx| {
+            agent_terminal_launch(project, AgentCommandsOs::Projects, cx)
+        }) {
             AgentTerminalLaunch::Sandboxed(sandbox_wrap) => sandbox_wrap,
             launch => panic!("expected the command to run in the sandbox, got {launch:?}"),
         }
@@ -7623,9 +7891,27 @@ mod tests {
         request: acp::CreateTerminalRequest,
         cx: &mut gpui::TestAppContext,
     ) -> Task<Result<Option<PreparedAgentTerminal>>> {
+        spawn_prepare_agent_terminal_of(thread, request, AgentCommandsOs::Projects, cx)
+    }
+
+    /// [`spawn_prepare_agent_terminal`] for an agent whose commands are
+    /// written for `commands_os`.
+    fn spawn_prepare_agent_terminal_of(
+        thread: &Entity<AcpThread>,
+        request: acp::CreateTerminalRequest,
+        commands_os: AgentCommandsOs,
+        cx: &mut gpui::TestAppContext,
+    ) -> Task<Result<Option<PreparedAgentTerminal>>> {
         let thread = thread.downgrade();
         cx.spawn(move |mut cx| async move {
-            prepare_agent_terminal(&thread, &request, futures::future::pending(), &mut cx).await
+            prepare_agent_terminal(
+                &thread,
+                &request,
+                commands_os,
+                futures::future::pending(),
+                &mut cx,
+            )
+            .await
         })
     }
 
@@ -7688,6 +7974,152 @@ mod tests {
                 cx,
             )
         });
+    }
+
+    /// ADR-F49 decision 5 (8c): the commands an agent asks for are written for
+    /// the system it runs on. Started outside its sandbox on this Windows
+    /// machine, that is Windows; in its WSL sandbox, Linux; anywhere else, the
+    /// project's own system, where its sandbox is built.
+    #[test]
+    fn an_agents_commands_are_for_the_system_it_runs_on() {
+        assert_eq!(
+            agent_commands_os(&AgentLaunch::Host, true, true),
+            AgentCommandsOs::WindowsHost
+        );
+        assert_eq!(
+            agent_commands_os(&AgentLaunch::WslSandbox { distro: None }, true, true),
+            AgentCommandsOs::Wsl
+        );
+        for (launch, is_local, windows_client) in [
+            // Linux and macOS: the agent outside its sandbox is on the same
+            // system as the sandbox its commands go into.
+            (AgentLaunch::Host, true, false),
+            (AgentLaunch::LocalSandbox, true, false),
+            // A remote agent, in or out of its sandbox, runs on the host the
+            // sandbox is built on, whatever this machine is.
+            (AgentLaunch::Host, false, true),
+            (
+                AgentLaunch::RemoteHelper {
+                    remote_binary: remote_helper(),
+                },
+                false,
+                true,
+            ),
+        ] {
+            assert_eq!(
+                agent_commands_os(&launch, is_local, windows_client),
+                AgentCommandsOs::Projects,
+                "{launch:?}"
+            );
+        }
+    }
+
+    /// ADR-F49 decision 5 (8c): an agent started outside its sandbox on this
+    /// Windows machine writes Windows commands, which the WSL sandbox cannot
+    /// run. Each is run here instead, and only after the user allows it — the
+    /// way a command is when the sandbox is turned off.
+    #[gpui::test]
+    async fn a_windows_host_agents_command_runs_here_after_asking(cx: &mut gpui::TestAppContext) {
+        let project = project_with_sandbox_settings(SandboxPermissions::default(), cx).await;
+        match project.read_with(cx, |project, cx| {
+            agent_terminal_launch(project, AgentCommandsOs::WindowsHost, cx)
+        }) {
+            AgentTerminalLaunch::Confirm {
+                outside_sandbox_reason,
+                writes_anywhere,
+                sandbox_wrap,
+            } => {
+                assert_eq!(outside_sandbox_reason, AGENT_ON_THIS_WINDOWS_HOST_REASON);
+                assert!(!writes_anywhere);
+                assert!(sandbox_wrap.is_none(), "never into WSL");
+            }
+            launch => panic!("expected a confirmation, got {launch:?}"),
+        }
+
+        let thread = stub_thread(&project, cx).await;
+        let pending = spawn_prepare_agent_terminal_of(
+            &thread,
+            terminal_request("dir"),
+            AgentCommandsOs::WindowsHost,
+            cx,
+        );
+        cx.run_until_parked();
+        let (tool_call_id, details) = waiting_confirmation(&thread, cx);
+        assert_eq!(
+            details.outside_sandbox_reason.as_deref(),
+            Some(AGENT_ON_THIS_WINDOWS_HOST_REASON)
+        );
+        answer_confirmation(
+            &thread,
+            tool_call_id,
+            "allow",
+            acp::PermissionOptionKind::AllowOnce,
+            cx,
+        );
+        let prepared = pending
+            .await
+            .expect("allowed")
+            .expect("nothing cancelled the request");
+        assert!(prepared.sandbox_wrap.is_none());
+        assert!(prepared.confirmation.is_some());
+    }
+
+    /// ADR-F49 decision 5 (8c): with the sandbox turned off in the settings,
+    /// an agent in a WSL sandbox still has its Linux commands run in that WSL
+    /// — with the limits taken off and after the user allows each — rather
+    /// than on this Windows machine.
+    #[gpui::test]
+    async fn a_wsl_agents_command_stays_in_wsl_when_the_sandbox_is_off(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let project = project_with_sandbox_settings(
+            SandboxPermissions {
+                allow_unsandboxed: true,
+                ..Default::default()
+            },
+            cx,
+        )
+        .await;
+        match project.read_with(cx, |project, cx| {
+            agent_terminal_launch(project, AgentCommandsOs::Wsl, cx)
+        }) {
+            AgentTerminalLaunch::Confirm {
+                outside_sandbox_reason,
+                writes_anywhere,
+                sandbox_wrap,
+            } => {
+                assert_eq!(outside_sandbox_reason, AGENT_IN_WSL_UNSANDBOXED_REASON);
+                assert!(writes_anywhere);
+                let sandbox_wrap = sandbox_wrap.expect("the helper is the way into WSL");
+                assert!(sandbox_wrap.allow_fs_write);
+                assert!(matches!(
+                    sandbox_wrap.network,
+                    acp_thread::SandboxNetworkAccess::All
+                ));
+                assert!(
+                    sandbox_wrap
+                        .protected_paths
+                        .contains(&PathBuf::from(util::path!("/project/.git"))),
+                    "the protected paths stay protected"
+                );
+            }
+            launch => panic!("expected a confirmation, got {launch:?}"),
+        }
+        // The project's own system, with the sandbox off, is this machine.
+        match project.read_with(cx, |project, cx| {
+            agent_terminal_launch(project, AgentCommandsOs::Projects, cx)
+        }) {
+            AgentTerminalLaunch::Confirm { sandbox_wrap, .. } => assert!(sandbox_wrap.is_none()),
+            launch => panic!("expected a confirmation, got {launch:?}"),
+        }
+        // With the sandbox on, a WSL agent's command goes into it as ever.
+        let sandboxed = project_with_sandbox_settings(SandboxPermissions::default(), cx).await;
+        assert!(matches!(
+            sandboxed.read_with(cx, |project, cx| {
+                agent_terminal_launch(project, AgentCommandsOs::Wsl, cx)
+            }),
+            AgentTerminalLaunch::Sandboxed(_)
+        ));
     }
 
     /// ADR-F49: a command an external agent asks Zed to run goes into the same
@@ -7806,6 +8238,7 @@ mod tests {
                 prepare_agent_terminal(
                     &thread,
                     &terminal_request("cargo build"),
+                    AgentCommandsOs::Projects,
                     cancel_rx.map(|_| ()),
                     &mut cx,
                 )
@@ -8232,6 +8665,7 @@ mod tests {
             session_list: client_session_list,
             request_elicitations: request_elicitations.clone(),
             paths: paths.clone(),
+            commands_os: AgentCommandsOs::Projects,
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -9524,14 +9958,49 @@ fn ide_server_entry(
 enum IdeMcp {
     /// None at all: an agent in a sandbox with no IDE channel of its own.
     None,
-    /// Zed's own (ADR-F26), on this machine's loopback and with the whole set
-    /// of tools. Only for an agent that runs outside a sandbox.
-    Host,
+    /// Zed's own (ADR-F26), on this machine's loopback. Only for an agent that
+    /// runs outside a sandbox. ADR-F56: the endpoint of this connection's own
+    /// registration — the whole set of tools and the IDE tools with
+    /// `ide_server.enabled`, the IDE tools alone without it — or `None` when
+    /// neither is on.
+    Host(Option<ide_server::McpEndpoint>),
     /// ADR-F49 decision 24: the restricted session
     /// ([`ide_server::start_restricted_sandbox_session`]), reached through the
     /// sandbox's own IDE channel and offering `getDiagnostics` alone. The URL
-    /// is the sandbox's loopback, not this machine's.
-    Restricted { url: String, authorization: String },
+    /// is the sandbox's loopback, not this machine's. ADR-F56: `assist_url` is
+    /// the same channel's `/mcp/zed`, for Zed's IDE tools, when they are on.
+    Restricted {
+        url: String,
+        authorization: String,
+        assist_url: Option<String>,
+    },
+}
+
+/// ADR-F56: an agent's name as the agent panel's menu shows it: the settings'
+/// display name, else the registry's name, else its id.
+fn agent_display_name(
+    agent_id: &AgentId,
+    agent_server_store: Option<&Entity<AgentServerStore>>,
+    cx: &App,
+) -> SharedString {
+    agent_server_store
+        .and_then(|store| store.read(cx).agent_display_name(agent_id))
+        .or_else(|| {
+            project::AgentRegistryStore::try_global(cx).and_then(|store| {
+                store
+                    .read(cx)
+                    .agent(agent_id)
+                    .map(|agent| agent.name().clone())
+            })
+        })
+        .unwrap_or_else(|| agent_id.0.clone())
+}
+
+/// ADR-F56: the IDE tools' endpoint on a restricted session's channel — the
+/// same port and token as its `/mcp`.
+fn restricted_assist_url(url: &str) -> Option<String> {
+    let base = url.strip_suffix(ide_server::IDE_MCP_PATH)?;
+    Some(format!("{base}{}", ide_server::ASSIST_MCP_PATH))
 }
 
 /// ADR-F49 decision 24: the restricted IDE server as the agent's session sees
@@ -9563,11 +10032,14 @@ struct ProjectMcpServers {
     /// Named as this machine names them; a connection with a translator
     /// (ADR-F49 decision 23) puts these through it.
     servers: Vec<acp::McpServer>,
-    /// ADR-F49 decision 24: the restricted IDE server, whose URL is already
-    /// the sandbox's own loopback. Appended **after** the translation, which
-    /// drops loopback URLs — as it must, since a host loopback URL really is
-    /// out of the sandbox's reach.
-    restricted_ide: Option<acp::McpServer>,
+    /// ADR-F49 decision 24: the restricted IDE server (`ide`) and, ADR-F56, the
+    /// IDE tools (`zed`) on the same channel, whose URLs are already the
+    /// sandbox's own loopback. Appended **after** the translation, which drops
+    /// loopback URLs — as it must, since a host loopback URL really is out of
+    /// the sandbox's reach.
+    restricted_ide: Vec<acp::McpServer>,
+    /// ADR-F56: whether the `zed` server with the IDE tools is among them.
+    gives_ide_tools: bool,
 }
 
 /// The MCP servers an agent's session is given. `ide_mcp` says which IDE
@@ -9577,6 +10049,9 @@ struct ProjectMcpServers {
 /// an agent is allowed; inside a WSL sandbox, the restricted session reached
 /// over the sandbox's IDE channel (decision 24). The servers the user
 /// configured go to it either way, and it starts them inside its sandbox.
+///
+/// ADR-F56: either way there is one server named `zed` at most — the host's,
+/// with the IDE tools among its tools, or the restricted channel's `/mcp/zed`.
 fn mcp_servers_for_project(
     project: &Entity<Project>,
     ide_mcp: IdeMcp,
@@ -9594,26 +10069,47 @@ fn mcp_servers_for_project(
                     != Some(project::context_server_store::ContextServerStatus::ApprovalRequired)
         })
     };
+    let assist_tools = ide_server::assist_tools_enabled(cx);
     let (ide_server, restricted_ide) = match ide_mcp {
-        IdeMcp::None => (None, None),
+        IdeMcp::None => (None, Vec::new()),
         // ADR-F49 decision 17: asked for only where it may be given, so that
         // a sandboxed agent's session does not start the server for nothing.
-        IdeMcp::Host => (
-            ide_server_entry(
-                ide_server::mcp_endpoint(project, cx),
-                is_name_taken(ide_server::MCP_SERVER_NAME),
-            ),
-            None,
+        IdeMcp::Host(endpoint) => (
+            ide_server_entry(endpoint, is_name_taken(ide_server::MCP_SERVER_NAME)),
+            Vec::new(),
         ),
-        IdeMcp::Restricted { url, authorization } => (
-            None,
-            restricted_ide_entry(
-                url,
-                authorization,
-                is_name_taken(ide_server::RESTRICTED_MCP_SERVER_NAME),
-            ),
-        ),
+        IdeMcp::Restricted {
+            url,
+            authorization,
+            assist_url,
+        } => {
+            let assist = assist_url.and_then(|assist_url| {
+                ide_server_entry(
+                    Some(ide_server::McpEndpoint {
+                        url: assist_url,
+                        authorization: authorization.clone(),
+                    }),
+                    is_name_taken(ide_server::MCP_SERVER_NAME),
+                )
+            });
+            (
+                None,
+                restricted_ide_entry(
+                    url,
+                    authorization,
+                    is_name_taken(ide_server::RESTRICTED_MCP_SERVER_NAME),
+                )
+                .into_iter()
+                .chain(assist)
+                .collect(),
+            )
+        }
     };
+    let gives_ide_tools = assist_tools
+        && (ide_server.is_some()
+            || restricted_ide.iter().any(|server| {
+                matches!(server, acp::McpServer::Http(server) if server.name == ide_server::MCP_SERVER_NAME)
+            }));
     let servers = ide_server
         .into_iter()
         .chain(configured_server_ids.iter().filter_map(|id| {
@@ -9659,6 +10155,7 @@ fn mcp_servers_for_project(
     ProjectMcpServers {
         servers,
         restricted_ide,
+        gives_ide_tools,
     }
 }
 
@@ -10264,9 +10761,16 @@ fn handle_create_terminal(
     };
     let cancellation = responder.cancellation();
 
+    let commands_os = ctx.commands_os;
     cx.spawn(async move |cx| {
-        let created =
-            create_agent_requested_terminal(&thread, args, || cancellation.cancelled(), cx).await;
+        let created = create_agent_requested_terminal(
+            &thread,
+            args,
+            commands_os,
+            || cancellation.cancelled(),
+            cx,
+        )
+        .await;
         match created {
             Ok(Some(terminal_id)) => {
                 responder
@@ -10297,9 +10801,34 @@ enum AgentTerminalLaunch {
     },
 }
 
-fn agent_terminal_launch(project: &Project, cx: &App) -> AgentTerminalLaunch {
+/// ADR-F49 decision 5 (8c): why a command of an agent started outside its
+/// sandbox on this Windows machine runs here, after the user allows it.
+const AGENT_ON_THIS_WINDOWS_HOST_REASON: &str = "エージェントをサンドボックスの外 (この PC) で\
+     起動しているため、コマンドもこの PC で実行します (WSL のサンドボックスでは Windows の\
+     コマンドが動かないため)";
+/// ADR-F49 decision 5 (8c): why a command of an agent in a WSL sandbox still
+/// runs in WSL, with nothing held back but the protected paths, when the
+/// sandbox is turned off in the settings.
+const AGENT_IN_WSL_UNSANDBOXED_REASON: &str = "設定でサンドボックスが無効になっています。\
+     エージェントは WSL の中で動いているため、コマンドも同じ WSL の中で書き込みと通信の制限を\
+     外して実行します";
+
+fn agent_terminal_launch(
+    project: &Project,
+    commands_os: AgentCommandsOs,
+    cx: &App,
+) -> AgentTerminalLaunch {
     let standing = &AgentSettings::get_global(cx).sandbox_permissions;
-    if standing.allow_unsandboxed || !acp_thread::sandboxing_available_for_project(project, cx) {
+    if commands_os == AgentCommandsOs::WindowsHost {
+        return AgentTerminalLaunch::Confirm {
+            outside_sandbox_reason: AGENT_ON_THIS_WINDOWS_HOST_REASON.to_string(),
+            writes_anywhere: false,
+            sandbox_wrap: None,
+        };
+    }
+    let unsandboxed =
+        standing.allow_unsandboxed || !acp_thread::sandboxing_available_for_project(project, cx);
+    if unsandboxed && commands_os != AgentCommandsOs::Wsl {
         return AgentTerminalLaunch::Confirm {
             outside_sandbox_reason: acp_thread::unsandboxed_execution_reason(project, cx),
             writes_anywhere: false,
@@ -10315,6 +10844,20 @@ fn agent_terminal_launch(project: &Project, cx: &App) -> AgentTerminalLaunch {
         allow_fs_write: standing.allow_fs_write_all,
         is_local: project.is_local(),
     };
+    if unsandboxed {
+        // The helper is the only way into that distro from here, so "no
+        // sandbox" is the helper with its limits taken off: what it still
+        // keeps back are the protected paths and the IDE-wide allowlist.
+        return AgentTerminalLaunch::Confirm {
+            outside_sandbox_reason: AGENT_IN_WSL_UNSANDBOXED_REASON.to_string(),
+            writes_anywhere: true,
+            sandbox_wrap: Some(acp_thread::SandboxWrap {
+                allow_fs_write: true,
+                network: acp_thread::SandboxNetworkAccess::All,
+                ..sandbox_wrap
+            }),
+        };
+    }
     if standing.allow_fs_write_all {
         AgentTerminalLaunch::Confirm {
             outside_sandbox_reason: "設定でファイルシステムへの書き込みがすべて許可されています"
@@ -10366,11 +10909,12 @@ struct PreparedAgentTerminal {
 async fn prepare_agent_terminal(
     thread: &WeakEntity<AcpThread>,
     request: &acp::CreateTerminalRequest,
+    commands_os: AgentCommandsOs,
     cancelled: impl Future<Output = ()>,
     cx: &mut AsyncApp,
 ) -> Result<Option<PreparedAgentTerminal>> {
     let launch = thread.read_with(cx, |thread, cx| {
-        agent_terminal_launch(thread.project().read(cx), cx)
+        agent_terminal_launch(thread.project().read(cx), commands_os, cx)
     })?;
     let (outside_sandbox_reason, writes_anywhere, sandbox_wrap) = match launch {
         AgentTerminalLaunch::Sandboxed(sandbox_wrap) => {
@@ -10580,10 +11124,13 @@ fn shown_text(text: &str) -> String {
 async fn create_agent_requested_terminal<Cancelled: Future<Output = ()>>(
     thread: &WeakEntity<AcpThread>,
     request: acp::CreateTerminalRequest,
+    commands_os: AgentCommandsOs,
     cancelled: impl Fn() -> Cancelled,
     cx: &mut AsyncApp,
 ) -> Result<Option<acp::TerminalId>> {
-    let Some(prepared) = prepare_agent_terminal(thread, &request, cancelled(), cx).await? else {
+    let Some(prepared) =
+        prepare_agent_terminal(thread, &request, commands_os, cancelled(), cx).await?
+    else {
         return Ok(None);
     };
     let started = {

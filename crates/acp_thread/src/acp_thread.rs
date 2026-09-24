@@ -2459,6 +2459,11 @@ pub enum LoadError {
     /// ADR-F49 decision 13: the agent was not started because it talks to
     /// hosts the IDE-wide allowlist does not have yet.
     SandboxHostsNotAllowed(Vec<SharedString>),
+    /// ADR-F49 decision 19 (8c): the thread's session was started outside the
+    /// sandbox, where the agent keeps it in its own configuration folder, which
+    /// the sandbox cannot read. It is offered back outside the sandbox, after
+    /// a confirmation, rather than read back in it and failing.
+    SessionStartedOutsideSandbox,
 }
 
 impl Display for LoadError {
@@ -2482,6 +2487,10 @@ impl Display for LoadError {
                 f,
                 "IDE 全体の許可リストに次のホストがありません: {}",
                 hosts.join("、")
+            ),
+            LoadError::SessionStartedOutsideSandbox => write!(
+                f,
+                "このスレッドはサンドボックスの外で起動したエージェントの会話です"
             ),
         }
     }

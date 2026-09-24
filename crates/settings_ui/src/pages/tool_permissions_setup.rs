@@ -1610,6 +1610,7 @@ mod tests {
             "find_path",
             "find_references",
             "get_code_actions",
+            "git_diff",
             "go_to_definition",
             "grep",
             "list_agents_and_models",
@@ -1625,6 +1626,14 @@ mod tests {
             // tool calls inside the spawned thread, not the spawning itself.
             "create_thread",
             "spawn_agent",
+            // IDE assist (ADR-F56): language queries only read, and the display
+            // tools only show the agent's text in the editor, so neither asks.
+            "hover",
+            "search_symbols",
+            "highlight_code",
+            "annotate_code",
+            "code_tour",
+            "clear_annotations",
         ];
 
         let tool_info_ids: Vec<&str> = TOOLS.iter().map(|t| t.id).collect();

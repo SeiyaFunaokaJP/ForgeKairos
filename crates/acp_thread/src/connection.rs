@@ -157,6 +157,15 @@ pub trait AgentConnection {
         false
     }
 
+    /// ADR-F49 decision 19: whether this agent was started outside its
+    /// sandbox — the one start the user confirmed, or every start because
+    /// they chose so in their settings. It is the connection that says so, so
+    /// that the banner and the marks on the tab and in the thread list hold
+    /// for as long as this agent runs, whichever slot of the store holds it.
+    fn runs_outside_sandbox(&self) -> bool {
+        false
+    }
+
     fn new_session(
         self: Rc<Self>,
         project: Entity<Project>,
@@ -823,6 +832,7 @@ mod test_support {
         telemetry_id: SharedString,
         sandbox_write_scope: Option<Vec<std::path::PathBuf>>,
         sandbox_ide_unavailable: Option<SharedString>,
+        runs_outside_sandbox: bool,
     }
 
     struct Session {
@@ -848,7 +858,14 @@ mod test_support {
                 telemetry_id: "stub".into(),
                 sandbox_write_scope: None,
                 sandbox_ide_unavailable: None,
+                runs_outside_sandbox: false,
             }
+        }
+
+        /// Makes the stub an agent started outside its sandbox.
+        pub fn with_runs_outside_sandbox(mut self, runs_outside_sandbox: bool) -> Self {
+            self.runs_outside_sandbox = runs_outside_sandbox;
+            self
         }
 
         /// Makes the stub an agent run in a sandbox that may write `paths`.
@@ -982,6 +999,10 @@ mod test_support {
 
         fn sandbox_ide_unavailable(&self) -> Option<SharedString> {
             self.sandbox_ide_unavailable.clone()
+        }
+
+        fn runs_outside_sandbox(&self) -> bool {
+            self.runs_outside_sandbox
         }
 
         fn telemetry_id(&self) -> SharedString {

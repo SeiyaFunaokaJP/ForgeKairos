@@ -6,7 +6,7 @@
 //!   `Sec-WebSocket-Protocol: mcp` と `X-Claude-Code-Ide-Authorization: <token>` を
 //!   付けて `ws://127.0.0.1:<port>` に繋いでくる
 //! - **streamable HTTP の MCP** — `POST /mcp` に JSON-RPC を 1 件。認証は
-//!   `Authorization: Bearer <token>`
+//!   `Authorization: Bearer <token>`。`POST /mcp/zed` はアシストのツール (ADR-F56) だけの口
 //!
 //! HTTP/1.1 の要求行とヘッダーだけを自前で読み、WebSocket の 101 応答も自前で書く。
 //! フレーミングから先は `async-tungstenite` に渡す (`from_raw_socket`)。新しい重量級の
@@ -71,10 +71,103 @@ pub const MAX_QUEUED_NOTIFICATIONS: usize = 64;
 
 pub const CLAUDE_CODE_AUTH_HEADER: &str = "x-claude-code-ide-authorization";
 
+/// streamable HTTP の IDE の口 (ホストでは全ツール、サンドボックスではセッションのツール)。
+pub const IDE_MCP_PATH: &str = "/mcp";
+/// アシストのツール (ADR-F56) だけを出す口。HTTP でだけ受ける。
+pub const ASSIST_MCP_PATH: &str = "/mcp/zed";
+/// ホストの口で、どのクライアント (CLI のタブ・ACP の接続) の要求かを表す問い合わせの名前。
+pub const CLIENT_QUERY_NAME: &str = "client";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConnectionKind {
     WebSocket,
     Http,
+}
+
+/// 接続がどの口に来たか。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Endpoint {
+    /// WebSocket (パスは問わない) と `POST /mcp`。
+    Ide,
+    /// `POST /mcp/zed`。
+    Assist,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Route {
+    pub kind: ConnectionKind,
+    pub endpoint: Endpoint,
+    /// `?client=<id>`。ホストのサーバーが、表示の出どころ (CLI のタブ・ACP の接続) を
+    /// 見分けるのに使う。形の合わないものは無かったことにする。
+    pub client: Option<String>,
+}
+
+/// 口ごとの受け入れの判断 ([`serve_connection`] の `admit`) が通したもの。
+pub struct Admitted {
+    pub limits: MessageLimits,
+    /// トランスポートが閉じるまで持っておく (開いている接続の数に入れておくため)。
+    pub hold: Option<crate::OpenTransport>,
+}
+
+/// 口ごとの受け入れの判断が断った理由。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    /// この口は開いていない (設定で無効など)。
+    NotFound,
+    /// この口の同時接続の上限に達している。
+    Busy,
+}
+
+/// 要求の頭から、どの口のどの話し方かを決める。口の無いパスは `404`、HTTP の `POST` 以外は
+/// `405` の応答を返す。
+fn route_for(head: &HttpHead) -> std::result::Result<Route, String> {
+    let (path, query) = match head.path.split_once('?') {
+        Some((path, query)) => (path, Some(query)),
+        None => (head.path.as_str(), None),
+    };
+    let client = query.and_then(client_from_query);
+    if head.is_websocket_upgrade() {
+        // アシストの口は streamable HTTP だけ。WebSocket で来たら、CLI の IDE の口と
+        // 取り違えないように断る。
+        if path == ASSIST_MCP_PATH {
+            return Err(http_response("404 Not Found", None, ""));
+        }
+        return Ok(Route {
+            kind: ConnectionKind::WebSocket,
+            endpoint: Endpoint::Ide,
+            client,
+        });
+    }
+    let endpoint = match path {
+        IDE_MCP_PATH => Endpoint::Ide,
+        ASSIST_MCP_PATH => Endpoint::Assist,
+        _ => return Err(http_response("404 Not Found", None, "")),
+    };
+    if !head.method.eq_ignore_ascii_case("POST") {
+        return Err(http_response(
+            "405 Method Not Allowed",
+            Some("application/json"),
+            "{\"error\":\"only POST is supported\"}",
+        ));
+    }
+    Ok(Route {
+        kind: ConnectionKind::Http,
+        endpoint,
+        client,
+    })
+}
+
+/// 問い合わせ文字列の `client=<id>`。Zed が作る ID (英数字・`-`・`_`、64 文字まで) だけを受ける。
+fn client_from_query(query: &str) -> Option<String> {
+    query.split('&').find_map(|pair| {
+        let value = pair.strip_prefix(CLIENT_QUERY_NAME)?.strip_prefix('=')?;
+        let well_formed = !value.is_empty()
+            && value.len() <= 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
+        well_formed.then(|| value.to_string())
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -397,19 +490,28 @@ async fn read_head<S: AsyncRead + Unpin>(stream: &mut S) -> Result<(HttpHead, Ve
 
 /// 1 本の接続を処理する。受信した JSON-RPC のテキストを `incoming_tx` に流し (受け手が
 /// 詰まっていれば、相手からの読み込みを止めて待たせる)、`outgoing` から来たテキストを
-/// 送り返す。接続の種類が決まった時点で `kind_tx` に知らせる (WebSocket のときだけ
-/// サーバー側から通知を撃てるため)。`handshake_deadline` までに要求を受け取り終えなければ切る。
-pub async fn serve_connection<S>(
+/// 送り返す。どの口のどの話し方かが決まり、`admit` が受け入れた時点で `route_tx` に知らせる
+/// (WebSocket のときだけサーバー側から通知を撃てるため、また口ごとに出すツールが違うため)。
+/// `handshake_deadline` までに要求を受け取り終えなければ切る。
+///
+/// `admit` は口ごとの同時接続の枠とメッセージの上限を決める。要求の頭を読むまでどの口かは
+/// 分からないので、枠はここで (認証のあとで) 取る。
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the channels to and from the dispatcher, each used exactly once"
+)]
+pub async fn serve_connection<S, A>(
     mut stream: S,
     auth_token: Arc<str>,
-    limits: MessageLimits,
+    admit: A,
     incoming_tx: mpsc::Sender<String>,
     outgoing: OutboxReceiver,
-    kind_tx: oneshot::Sender<ConnectionKind>,
+    route_tx: oneshot::Sender<Route>,
     handshake_deadline: impl Future<Output = ()>,
 ) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin,
+    A: FnOnce(&Route) -> std::result::Result<Admitted, Refusal>,
 {
     futures::pin_mut!(handshake_deadline);
     let (head, leftover) =
@@ -424,29 +526,59 @@ where
         anyhow::bail!("rejected an IDE server connection with a bad or missing token");
     }
 
-    if head.is_websocket_upgrade() {
-        kind_tx.send(ConnectionKind::WebSocket).ok();
-        serve_websocket(
-            stream,
-            head,
-            leftover,
-            limits.outgoing,
-            incoming_tx,
-            outgoing,
-        )
-        .await
-    } else {
-        kind_tx.send(ConnectionKind::Http).ok();
-        serve_http(
-            stream,
-            head,
-            leftover,
-            limits.incoming,
-            incoming_tx,
-            outgoing,
-            handshake_deadline,
-        )
-        .await
+    let route = match route_for(&head) {
+        Ok(route) => route,
+        Err(response) => {
+            stream.write_all(response.as_bytes()).await?;
+            stream.flush().await?;
+            return Ok(());
+        }
+    };
+    let admitted = match admit(&route) {
+        Ok(admitted) => admitted,
+        Err(refusal) => {
+            let response = match refusal {
+                Refusal::NotFound => http_response("404 Not Found", None, ""),
+                Refusal::Busy => http_response(
+                    "503 Service Unavailable",
+                    Some("application/json"),
+                    "{\"error\":\"too many connections\"}",
+                ),
+            };
+            stream.write_all(response.as_bytes()).await?;
+            stream.flush().await?;
+            anyhow::bail!("refused an IDE server connection: {refusal:?}");
+        }
+    };
+    let _hold = admitted.hold;
+    let limits = admitted.limits;
+    let kind = route.kind;
+    route_tx.send(route).ok();
+
+    match kind {
+        ConnectionKind::WebSocket => {
+            serve_websocket(
+                stream,
+                head,
+                leftover,
+                limits.outgoing,
+                incoming_tx,
+                outgoing,
+            )
+            .await
+        }
+        ConnectionKind::Http => {
+            serve_http(
+                stream,
+                head,
+                leftover,
+                limits.incoming,
+                incoming_tx,
+                outgoing,
+                handshake_deadline,
+            )
+            .await
+        }
     }
 }
 
@@ -531,29 +663,6 @@ where
     S: AsyncRead + AsyncWrite + Unpin,
     D: Future<Output = ()>,
 {
-    let path = head.path.split('?').next().unwrap_or(&head.path);
-    if path != "/mcp" {
-        stream
-            .write_all(http_response("404 Not Found", None, "").as_bytes())
-            .await?;
-        stream.flush().await?;
-        return Ok(());
-    }
-    if !head.method.eq_ignore_ascii_case("POST") {
-        stream
-            .write_all(
-                http_response(
-                    "405 Method Not Allowed",
-                    Some("application/json"),
-                    "{\"error\":\"only POST /mcp is supported\"}",
-                )
-                .as_bytes(),
-            )
-            .await?;
-        stream.flush().await?;
-        return Ok(());
-    }
-
     let content_length = head
         .header("content-length")
         .and_then(|value| value.parse::<usize>().ok())
@@ -678,6 +787,78 @@ mod tests {
             ));
             assert_eq!(head.presented_token(), None, "{authorization:?}");
         }
+    }
+
+    /// ADR-F56: `/mcp` は IDE の口、`/mcp/zed` はアシストの口。どちらも HTTP は `POST` だけで、
+    /// アシストの口は WebSocket では受けない。WebSocket の IDE の口はパスを問わない (CLI は `/`)。
+    #[test]
+    fn routes_requests_to_the_ide_and_assist_endpoints() {
+        let route = |raw: &str| route_for(&head(raw));
+        let post = |path: &str| {
+            route(&format!(
+                "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n"
+            ))
+        };
+
+        let ide = post("/mcp").expect("POST /mcp is the IDE endpoint");
+        assert_eq!(ide.endpoint, Endpoint::Ide);
+        assert_eq!(ide.kind, ConnectionKind::Http);
+        assert_eq!(ide.client, None);
+
+        let assist = post("/mcp/zed?client=abc-123_x").expect("POST /mcp/zed is the assist one");
+        assert_eq!(assist.endpoint, Endpoint::Assist);
+        assert_eq!(assist.client.as_deref(), Some("abc-123_x"));
+
+        for refused in ["/", "/mcp/", "/mcp/zed/", "/mcp/other", "/mcpzed"] {
+            let response = post(refused).expect_err(refused);
+            assert!(
+                response.starts_with("HTTP/1.1 404"),
+                "{refused}: {response}"
+            );
+        }
+        let response = route("GET /mcp/zed HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            .expect_err("only POST is taken");
+        assert!(response.starts_with("HTTP/1.1 405"), "{response}");
+
+        let upgrade = |path: &str| {
+            route(&format!(
+                "GET {path} HTTP/1.1\r\n\
+                 Host: 127.0.0.1\r\n\
+                 Upgrade: websocket\r\n\
+                 Connection: Upgrade\r\n\
+                 Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+            ))
+        };
+        let websocket = upgrade("/").expect("the CLI's WebSocket");
+        assert_eq!(websocket.kind, ConnectionKind::WebSocket);
+        assert_eq!(websocket.endpoint, Endpoint::Ide);
+        assert!(
+            upgrade("/mcp/zed")
+                .expect_err("no WebSocket on the assist endpoint")
+                .starts_with("HTTP/1.1 404")
+        );
+    }
+
+    /// `client=` は Zed が作る形 (英数字・`-`・`_`、64 文字まで) だけを受け、ほかは無かったことにする。
+    #[test]
+    fn reads_only_well_formed_client_ids() {
+        assert_eq!(client_from_query("client=abc").as_deref(), Some("abc"));
+        assert_eq!(client_from_query("x=1&client=abc").as_deref(), Some("abc"));
+        for bad in [
+            "client=",
+            "client=a%20b",
+            "client=a/b",
+            "client=あ",
+            "clients=abc",
+            "",
+        ] {
+            assert_eq!(client_from_query(bad), None, "{bad:?}");
+        }
+        assert_eq!(
+            client_from_query(&format!("client={}", "a".repeat(65))),
+            None
+        );
+        assert!(client_from_query(&format!("client={}", "a".repeat(64))).is_some());
     }
 
     #[test]

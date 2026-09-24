@@ -92,10 +92,22 @@ pub fn init(cx: &mut App) {
             });
         });
         workspace.register_action(|workspace, _: &InstallClaudeCode, window, cx| {
-            spawn_claude_code_command(workspace, ClaudeCodeCommand::Install, window, cx);
+            spawn_claude_code_command(workspace, ClaudeCodeCommand::Install, window, cx, None);
         });
     })
     .detach();
+}
+
+/// ADR-F56: Zed's IDE tools (the `zed` MCP server) for a CLI started on this
+/// machine. `agent_ui` builds it, since only it can reach `ide_server`.
+pub struct ClaudeCodeIdeTools {
+    /// `--mcp-config <JSON>` and `--allowedTools <…>`, holding no secret.
+    pub args: Vec<String>,
+    /// What the JSON reads the token from (`${…}`, which the CLI expands).
+    pub env: Vec<(String, String)>,
+    /// Held until the CLI's terminal finishes: dropping it ends the IDE
+    /// server's registration of this CLI and clears what it drew.
+    pub keep_alive: Option<Box<dyn std::any::Any>>,
 }
 
 /// Starts the `claude` on this machine's `PATH` in a new terminal tab, outside
@@ -107,8 +119,15 @@ pub fn spawn_claude_code_on_host(
     effort: Option<String>,
     window: &mut Window,
     cx: &mut Context<Workspace>,
+    ide_tools: Option<ClaudeCodeIdeTools>,
 ) {
-    spawn_claude_code_command(workspace, ClaudeCodeCommand::Launch { effort }, window, cx);
+    spawn_claude_code_command(
+        workspace,
+        ClaudeCodeCommand::Launch { effort },
+        window,
+        cx,
+        ide_tools,
+    );
 }
 
 /// 公式パッケージ名。フォークは Claude Code を同梱せず (ADR-F20)、公式の npm
@@ -201,8 +220,14 @@ pub fn claude_code_launch_task(
     effort: Option<String>,
     workspace: &Workspace,
     cx: &App,
+    ide_tools: Option<&ClaudeCodeIdeTools>,
 ) -> SpawnInTerminal {
-    claude_code_task(&ClaudeCodeCommand::Launch { effort }, workspace, cx)
+    claude_code_task(
+        &ClaudeCodeCommand::Launch { effort },
+        workspace,
+        cx,
+        ide_tools,
+    )
 }
 
 /// 起動前に `claude` の在処を確かめる手立て。[`claude_code_launch_task`] と対で使う。
@@ -263,31 +288,61 @@ impl ClaudeCodeLookup {
 
 /// 公式 CLI / 公式インストールコマンドを実行するタスクを組み立てる。
 ///
-/// ここで組み立てるコマンドは**人間がターミナルに打つのと同じ実行経路**なので、
-/// ADR-F18 (リモートのエージェント実行と違い人間のターミナルは対象外) /
-/// ADR-F19 と同じ扱いで **egress 許可リストの対象外**。プロキシ注入も
-/// 許可リストへのホスト追加も不要で、ここでは一切行わない。
+/// ここで組み立てるコマンドは**人間がターミナルに打つのと同じ実行経路**で、
+/// 許可リストへのホスト追加はしない (ADR-F18 / ADR-F19)。ただしこの PC で
+/// サンドボックスの外に起動する Claude Code には、ACP のエージェントを外で起動
+/// するときと同じく egress のプロキシを指す環境変数を渡す (ADR-F49 決定 19、
+/// 8c): 通信は、プロキシの設定を読むプログラムにだけ許可リストで絞られる
+/// (協力方式。強制ではない)。接続先では、この PC のループバックのポートは別の
+/// ものを指すので渡さない (統制なし)。
 fn claude_code_task(
     command: &ClaudeCodeCommand,
     workspace: &Workspace,
     cx: &App,
+    ide_tools: Option<&ClaudeCodeIdeTools>,
 ) -> SpawnInTerminal {
     let project = workspace.project().read(cx);
     claude_code_spawn(
         command,
         crate::first_project_directory(workspace, cx),
         project.remote_client().is_some(),
+        http_client::apply_child_process_proxy_env,
+        ide_tools,
     )
+}
+
+/// ADR-F56: the IDE tools' arguments for the local shell the launch goes
+/// through. [`prepare_task_for_spawn`](crate::terminal_panel::prepare_task_for_spawn)
+/// pastes every argument into the shell's command line as it is, so the JSON
+/// (and the `${…}` in it, which the CLI and not the shell must expand) is
+/// quoted here for that shell. `None` when an argument cannot be quoted for it.
+fn ide_tool_arguments_for_shell(ide_tools: &ClaudeCodeIdeTools) -> Option<Vec<String>> {
+    let shell_kind = task::Shell::System.shell_kind(cfg!(windows));
+    ide_tools
+        .args
+        .iter()
+        .map(|argument| {
+            shell_kind
+                .try_quote(argument)
+                .map(|quoted| quoted.into_owned())
+        })
+        .collect()
 }
 
 /// [`claude_code_task`] の中身。どこのタブに開く経路も同じものを通すので、
 /// 接続先の包み ([`remote_invocation`]) がどれか一方だけに掛かることがない
 /// (ADR-F53)。
+///
+/// ADR-F56: `ide_tools` はこの PC で起動するときだけ付ける。接続先 (SSH) のホストの CLI
+/// からは、この PC の loopback で待ち受ける Zed には届かない。
 fn claude_code_spawn(
     command: &ClaudeCodeCommand,
     cwd: Option<PathBuf>,
     on_remote_host: bool,
+    apply_proxy_env: fn(&mut HashMap<String, String>) -> bool,
+    ide_tools: Option<&ClaudeCodeIdeTools>,
 ) -> SpawnInTerminal {
+    let mut env = HashMap::default();
     let (program, args, task_id, label) = match command {
         ClaudeCodeCommand::Install => (
             NPM_PROGRAM.to_string(),
@@ -301,6 +356,18 @@ fn claude_code_spawn(
         ),
         ClaudeCodeCommand::Launch { effort } => {
             let mut args = Vec::new();
+            if let Some(ide_tools) = ide_tools.filter(|_| !on_remote_host) {
+                match ide_tool_arguments_for_shell(ide_tools) {
+                    Some(ide_arguments) => {
+                        args.extend(ide_arguments);
+                        env.extend(ide_tools.env.iter().cloned());
+                    }
+                    None => log::warn!(
+                        "the IDE tools' arguments cannot be quoted for this shell; \
+                         starting Claude Code without them"
+                    ),
+                }
+            }
             if let Some(effort) = effort {
                 // `--effort <level>` は公式 CLI のオプション。レベル名は CLI が
                 // 受け取る値をそのまま渡す (訳さない)。
@@ -329,6 +396,9 @@ fn claude_code_spawn(
     } else {
         (program, args)
     };
+    if matches!(command, ClaudeCodeCommand::Launch { .. }) && !on_remote_host {
+        apply_proxy_env(&mut env);
+    }
 
     SpawnInTerminal {
         id: TaskId(task_id.to_string()),
@@ -338,6 +408,7 @@ fn claude_code_spawn(
         args,
         command_label,
         cwd,
+        env,
         use_new_terminal: true,
         allow_concurrent_runs: true,
         reveal: RevealStrategy::Always,
@@ -358,9 +429,11 @@ fn spawn_claude_code_command(
     command: ClaudeCodeCommand,
     window: &mut Window,
     cx: &mut Context<Workspace>,
+    ide_tools: Option<ClaudeCodeIdeTools>,
 ) {
     let lookup = claude_code_lookup(claude_code_program(&command), workspace, cx);
-    let spawn_task = claude_code_task(&command, workspace, cx);
+    let spawn_task = claude_code_task(&command, workspace, cx, ide_tools.as_ref());
+    let keep_alive = ide_tools.and_then(|ide_tools| ide_tools.keep_alive);
 
     cx.spawn_in(window, async move |workspace, cx| {
         {
@@ -382,15 +455,28 @@ fn spawn_claude_code_command(
             return;
         };
 
-        if let Err(error) = spawn.await {
-            workspace
-                .update(cx, |workspace, cx| {
-                    workspace.show_error(
-                        format!("ターミナルでコマンドを実行できませんでした: {error}"),
-                        cx,
-                    )
-                })
-                .ok();
+        match spawn.await {
+            Ok(terminal) => {
+                // ADR-F56: the IDE server keeps this CLI's registration (and what it
+                // drew) until the CLI exits.
+                if let Some(keep_alive) = keep_alive
+                    && let Ok(completion) =
+                        terminal.read_with(cx, |terminal, cx| terminal.wait_for_completed_task(cx))
+                {
+                    completion.await;
+                    drop(keep_alive);
+                }
+            }
+            Err(error) => {
+                workspace
+                    .update(cx, |workspace, cx| {
+                        workspace.show_error(
+                            format!("ターミナルでコマンドを実行できませんでした: {error}"),
+                            cx,
+                        )
+                    })
+                    .ok();
+            }
         }
     })
     .detach();
@@ -9392,6 +9478,43 @@ mod tests {
         );
     }
 
+    fn no_proxy(_env: &mut HashMap<String, String>) -> bool {
+        false
+    }
+
+    fn test_proxy(env: &mut HashMap<String, String>) -> bool {
+        env.insert(
+            "HTTPS_PROXY".to_string(),
+            "http://127.0.0.1:54321/".to_string(),
+        );
+        true
+    }
+
+    /// ADR-F49 決定 19 (8c): この PC でサンドボックスの外に起動する Claude Code
+    /// には、ACP のエージェントを外で起動するときと同じく egress のプロキシを
+    /// 渡す。接続先 (この PC のループバックは届かない) と、インストールには渡さない。
+    #[test]
+    fn the_cli_started_outside_on_this_machine_is_pointed_at_the_proxy() {
+        let launch = ClaudeCodeCommand::Launch { effort: None };
+        let here = claude_code_spawn(&launch, None, false, test_proxy, None);
+        assert_eq!(
+            here.env.get("HTTPS_PROXY").map(String::as_str),
+            Some("http://127.0.0.1:54321/")
+        );
+        let on_host = claude_code_spawn(&launch, None, true, test_proxy, None);
+        assert!(on_host.env.is_empty(), "{:?}", on_host.env);
+        for on_remote_host in [false, true] {
+            let install = claude_code_spawn(
+                &ClaudeCodeCommand::Install,
+                None,
+                on_remote_host,
+                test_proxy,
+                None,
+            );
+            assert!(install.env.is_empty(), "{:?}", install.env);
+        }
+    }
+
     /// ADR-F53: タブをどこに開く経路でも、接続先では同じ包みを通る。組み立ては
     /// 1 つしかないので、エージェントパネルのタブ経路 (`claude_code_launch_task`)
     /// だけがログインシェルを通らない、ということが起きない。
@@ -9400,11 +9523,11 @@ mod tests {
         let launch = ClaudeCodeCommand::Launch {
             effort: Some("high".to_string()),
         };
-        let here = claude_code_spawn(&launch, None, false);
+        let here = claude_code_spawn(&launch, None, false, no_proxy, None);
         assert_eq!(here.command.as_deref(), Some(CLAUDE_CODE_PROGRAM));
         assert_eq!(here.args, ["--effort", "high"]);
 
-        let on_host = claude_code_spawn(&launch, None, true);
+        let on_host = claude_code_spawn(&launch, None, true, no_proxy, None);
         assert_eq!(on_host.command.as_deref(), Some(REMOTE_SHELL));
         assert_eq!(
             on_host.args,
@@ -9422,9 +9545,97 @@ mod tests {
         assert_eq!(on_host.command_label, here.command_label);
         assert_eq!(on_host.command_label, "claude --effort high");
         // インストールの導線も同じ包みを通る。
-        let install = claude_code_spawn(&ClaudeCodeCommand::Install, None, true);
+        let install = claude_code_spawn(&ClaudeCodeCommand::Install, None, true, no_proxy, None);
         assert_eq!(install.command.as_deref(), Some(REMOTE_SHELL));
         assert_eq!(install.args.get(4).map(String::as_str), Some(NPM_PROGRAM));
+    }
+
+    fn ide_tools_for_test() -> ClaudeCodeIdeTools {
+        ClaudeCodeIdeTools {
+            args: vec![
+                "--mcp-config".to_string(),
+                r#"{"mcpServers":{"zed":{"type":"http","url":"http://127.0.0.1:4000/mcp/zed?client=abc","headers":{"Authorization":"${ZED_IDE_BEARER}"}}}}"#.to_string(),
+                "--allowedTools".to_string(),
+                "mcp__zed__highlightCode,mcp__zed__getHover".to_string(),
+            ],
+            env: vec![("ZED_IDE_BEARER".to_string(), "Bearer secret-token".to_string())],
+            keep_alive: None,
+        }
+    }
+
+    /// ADR-F56: この PC で起動する CLI には IDE ツールの引数を足し、トークンは環境変数でだけ
+    /// 渡す。引数はシェルがそのまま解釈するので、このシェル向けにクォートしてあり、読み戻すと
+    /// 元の JSON (`${…}` はシェルではなく CLI が展開する) に戻る。
+    #[test]
+    fn a_host_launch_gets_the_ide_tools_without_the_token_in_its_arguments() {
+        let launch = ClaudeCodeCommand::Launch {
+            effort: Some("high".to_string()),
+        };
+        let ide_tools = ide_tools_for_test();
+        let spawn = claude_code_spawn(&launch, None, false, no_proxy, Some(&ide_tools));
+
+        assert_eq!(
+            spawn.env.get("ZED_IDE_BEARER").map(String::as_str),
+            Some("Bearer secret-token")
+        );
+        assert!(
+            spawn
+                .args
+                .iter()
+                .all(|argument| !argument.contains("secret-token")),
+            "{:?}",
+            spawn.args
+        );
+        assert!(!spawn.command_label.contains("secret-token"));
+        assert_eq!(
+            spawn.args.get(4..),
+            Some(&["--effort".to_string(), "high".to_string()][..]),
+            "the effort follows the IDE tools"
+        );
+        let shell_kind = task::Shell::System.shell_kind(cfg!(windows));
+        let quoted = spawn
+            .args
+            .get(..4)
+            .expect("the IDE tools' four arguments")
+            .to_vec();
+        for (quoted, original) in quoted.iter().zip(&ide_tools.args) {
+            assert_eq!(
+                shell_kind.try_quote(original).as_deref(),
+                Some(quoted.as_str()),
+                "each argument is quoted for the shell the launch goes through"
+            );
+        }
+        if shell_kind == util::shell::ShellKind::Posix {
+            let parsed = shlex::split(&quoted.join(" ")).expect("the shell reads it back");
+            assert_eq!(parsed, ide_tools.args);
+        }
+
+        // 接続先 (SSH) のホストの CLI には渡さない: この PC の loopback には届かない。
+        let on_host = claude_code_spawn(&launch, None, true, test_proxy, Some(&ide_tools));
+        assert!(
+            !on_host
+                .args
+                .iter()
+                .any(|argument| argument.contains("mcp-config")),
+            "{:?}",
+            on_host.args
+        );
+        assert!(on_host.env.is_empty());
+
+        // 8c 統合: プロキシの env と IDE ツールの env は両方入る (どちらも上書きしない)。
+        let both = claude_code_spawn(&launch, None, false, test_proxy, Some(&ide_tools));
+        assert_eq!(
+            both.env.get("ZED_IDE_BEARER").map(String::as_str),
+            Some("Bearer secret-token")
+        );
+        assert_eq!(
+            both.env.get("HTTPS_PROXY").map(String::as_str),
+            Some("http://127.0.0.1:54321/")
+        );
+
+        let without = claude_code_spawn(&launch, None, false, no_proxy, None);
+        assert_eq!(without.args, ["--effort", "high"]);
+        assert!(without.env.is_empty());
     }
 
     /// リモートでは引数をクォートせずに渡せる形 (`sh -l -c … $0 program args…`) で

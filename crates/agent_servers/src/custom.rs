@@ -2,7 +2,7 @@ use crate::{AgentServer, AgentServerDelegate, load_proxy_env};
 use acp_thread::AgentConnection;
 use agent_client_protocol::schema::v1 as acp;
 use anyhow::{Context as _, Result};
-use collections::HashSet;
+use collections::{HashMap, HashSet};
 use fs::Fs;
 use gpui::{App, AppContext as _, Entity, Task};
 use language_model::{ApiKey, EnvVar};
@@ -16,7 +16,6 @@ use settings::{
 };
 use std::{rc::Rc, sync::Arc};
 use ui::IconName;
-use util::ResultExt as _;
 
 pub const GEMINI_ID: &str = "gemini";
 pub const CLAUDE_AGENT_ID: &str = "claude-acp";
@@ -232,20 +231,51 @@ pub fn has_env_var(agent_id: &str, name: &str, cx: &App) -> bool {
     })
 }
 
-/// ADR-F53: whether the agent about to be started is pointed at **this**
-/// machine's copy of the fork's own `CLAUDE_CONFIG_DIR`.
+/// ADR-F49 決定 19: whether `agent_id` starts outside its sandbox this time —
+/// the one start the user confirmed (`delegate_outside`), or every start,
+/// because the user chose so in their own settings file
+/// (`agent_servers.<id>.run_outside_sandbox`, which a project's settings
+/// cannot set). The only place the choice is read, so a new thread, a thread
+/// read back from the history and the reconnection after the idle disconnect
+/// all go the same way — except a thread read back from the history whose
+/// session was started in the sandbox, which
+/// [`AgentServerDelegate::in_sandbox_whatever_the_settings`] keeps there.
+pub fn starts_outside_sandbox(delegate_outside: bool, agent_id: &str, cx: &App) -> bool {
+    delegate_outside || project::agent_sandbox::runs_outside_sandbox_by_user_choice(agent_id, cx)
+}
+
+/// ADR-F49 決定 19: whether the user chose, in their own settings file, to
+/// start `agent_id` outside its sandbox every time.
+pub fn runs_outside_sandbox_by_user_choice(agent_id: &str, cx: &App) -> bool {
+    project::agent_sandbox::runs_outside_sandbox_by_user_choice(agent_id, cx)
+}
+
+/// What the IDE adds to a registry agent's environment for that agent in
+/// particular.
 ///
-/// [`project::agent_sandbox::claude_acp_host_config_dir`] is a path on the
-/// machine this IDE runs on, so it is named only for an agent that runs here.
-/// One that runs on a host this project is connected to is pointed at that
-/// host's own folder where its command is resolved, since a path of this
-/// machine's would name nothing there.
-fn points_at_this_machines_claude_folder(
-    agent_id: &str,
-    is_registry_agent: bool,
-    runs_on_this_machine: bool,
-) -> bool {
-    agent_id == CLAUDE_AGENT_ID && is_registry_agent && runs_on_this_machine
+/// Nothing for the ACP Claude agent (8c, the rest of ADR-F55): upstream
+/// blanked `ANTHROPIC_API_KEY` here to push the agent onto its OAuth sign-in,
+/// and the fork then pointed the start outside the sandbox at a folder of its
+/// own. Both are gone — outside the sandbox the agent can read the account's
+/// `~/.claude` anyway, so a folder of the fork's guarded nothing and only made
+/// the user sign in twice; the sandbox lays its per-project folder over the
+/// agent's environment regardless (`profile.environment`), and a
+/// `CLAUDE_CONFIG_DIR` the user writes in the agent's settings wins over both.
+fn add_registry_agent_environment(agent_id: &str, extra_env: &mut HashMap<String, String>) {
+    match agent_id {
+        CODEX_ID => {
+            if let Ok(api_key) = std::env::var("CODEX_API_KEY") {
+                extra_env.insert("CODEX_API_KEY".into(), api_key);
+            }
+            if let Ok(api_key) = std::env::var("OPEN_AI_API_KEY") {
+                extra_env.insert("OPEN_AI_API_KEY".into(), api_key);
+            }
+        }
+        GEMINI_ID => {
+            extra_env.insert("SURFACE".to_owned(), "zed".to_owned());
+        }
+        _ => {}
+    }
 }
 
 /// A generic agent server implementation for custom user-defined agents
@@ -455,52 +485,11 @@ impl AgentServer for CustomAgentServer {
         if delegate.store.read(cx).no_browser() {
             extra_env.insert("NO_BROWSER".to_owned(), "1".to_owned());
         }
-        let claude_takes_this_machines_folder = points_at_this_machines_claude_folder(
-            agent_id.as_ref(),
-            is_registry_agent,
-            !project.read(cx).is_via_remote_server(),
-        );
-        let fs = project.read(cx).fs().clone();
         if is_registry_agent {
-            match agent_id.as_ref() {
-                // ADR-F53: upstream blanked `ANTHROPIC_API_KEY` here to push
-                // the agent onto its OAuth sign-in. The key is left alone —
-                // the sandbox builds its environment from nothing anyway, and
-                // there the key comes from the agent's settings.
-                //
-                // ADR-F55: outside the sandbox the folder is the fork's own,
-                // so that the account's `~/.claude` — which holds the official
-                // CLI's credentials, hooks and history — is neither read nor
-                // written from here. The agent signs itself in on this route
-                // too, into that folder. The sandbox lays its per-project
-                // folder over this (`profile.environment`), and there the
-                // folder *is* the CLI session's, so one sign-in covers both.
-                // An agent on a host this project is connected to is named its
-                // folder there, by the host that resolves its command.
-                CLAUDE_AGENT_ID if claude_takes_this_machines_folder => {
-                    extra_env.insert(
-                        "CLAUDE_CONFIG_DIR".into(),
-                        project::agent_sandbox::claude_acp_host_config_dir()
-                            .to_string_lossy()
-                            .into_owned(),
-                    );
-                }
-                CODEX_ID => {
-                    if let Ok(api_key) = std::env::var("CODEX_API_KEY") {
-                        extra_env.insert("CODEX_API_KEY".into(), api_key);
-                    }
-                    if let Ok(api_key) = std::env::var("OPEN_AI_API_KEY") {
-                        extra_env.insert("OPEN_AI_API_KEY".into(), api_key);
-                    }
-                }
-                GEMINI_ID => {
-                    extra_env.insert("SURFACE".to_owned(), "zed".to_owned());
-                }
-                _ => {}
-            }
+            add_registry_agent_environment(agent_id.as_ref(), &mut extra_env);
         }
         let store = delegate.store.downgrade();
-        let run_outside_sandbox = delegate.run_outside_sandbox;
+        let run_outside_sandbox = delegate.starts_outside_sandbox(agent_id.as_ref(), cx);
         // ADR-F49 第 2b 段: on Windows the sandbox is the WSL distro of the
         // project's folders, so the command is resolved for it.
         let launch_target = if run_outside_sandbox {
@@ -520,15 +509,6 @@ impl AgentServer for CustomAgentServer {
                 if let Some(api_key) = cx.update(api_key_for_gemini_cli).await.ok() {
                     extra_env.insert("GEMINI_API_KEY".into(), api_key);
                 }
-            }
-            // The agent looks its configuration folder up rather than creating
-            // it in every version, so the folder it is pointed at is made
-            // here. Failing to make it is not fatal: the agent still starts,
-            // and its own message says what it could not write.
-            if claude_takes_this_machines_folder {
-                fs.create_dir(&project::agent_sandbox::claude_acp_host_config_dir())
-                    .await
-                    .log_err();
             }
             let command = store
                 .update(cx, |store, cx| {
@@ -612,6 +592,7 @@ fn default_settings_for_agent() -> settings::CustomAgentServerSettings {
         default_config_options: Default::default(),
         favorite_config_option_values: Default::default(),
         allow_subscription_sign_in: None,
+        run_outside_sandbox: None,
     }
 }
 
@@ -619,7 +600,7 @@ fn default_settings_for_agent() -> settings::CustomAgentServerSettings {
 mod tests {
     use super::*;
     use collections::HashMap;
-    use gpui::TestAppContext;
+    use gpui::{BorrowAppContext as _, TestAppContext};
     use project::agent_registry_store::{
         AgentRegistryStore, RegistryAgent, RegistryAgentMetadata, RegistryNpxAgent,
     };
@@ -753,6 +734,7 @@ mod tests {
                     default_config_options: HashMap::default(),
                     favorite_config_option_values: HashMap::default(),
                     allow_subscription_sign_in: Some(false),
+                    run_outside_sandbox: None,
                 },
             )],
         );
@@ -792,6 +774,7 @@ mod tests {
                     default_config_options: HashMap::default(),
                     favorite_config_option_values: HashMap::default(),
                     allow_subscription_sign_in: Some(true),
+                    run_outside_sandbox: None,
                 },
             )],
         );
@@ -823,6 +806,7 @@ mod tests {
             default_config_options: HashMap::default(),
             favorite_config_option_values: HashMap::default(),
             allow_subscription_sign_in,
+            run_outside_sandbox: None,
         };
         let registry = |allow_subscription_sign_in| settings::CustomAgentServerSettings::Registry {
             env: HashMap::default(),
@@ -830,6 +814,7 @@ mod tests {
             default_config_options: HashMap::default(),
             favorite_config_option_values: HashMap::default(),
             allow_subscription_sign_in,
+            run_outside_sandbox: None,
         };
 
         for entry in [custom(None), registry(None)] {
@@ -853,31 +838,100 @@ mod tests {
         }
     }
 
-    /// ADR-F53: the folder that keeps the official CLI's sign-in off this
-    /// route is a path on the machine the agent runs on, so this side names it
-    /// only for an agent it starts itself. A project on a host it connects to
-    /// is left to that host, which names its own folder.
+    /// 8c (the rest of ADR-F55): the ACP Claude agent is pointed at no
+    /// configuration folder of the fork's. Outside the sandbox it uses the
+    /// account's `~/.claude`, like the official CLI there; in the sandbox the
+    /// profile lays the project's folder over whatever this adds.
     #[test]
-    fn only_an_acp_claude_on_this_machine_takes_this_machines_folder() {
-        assert!(points_at_this_machines_claude_folder(
-            CLAUDE_AGENT_ID,
-            true,
-            true
-        ));
-        assert!(
-            !points_at_this_machines_claude_folder(CLAUDE_AGENT_ID, true, false),
-            "a path of this machine's would name nothing on the host the agent runs on"
+    fn the_acp_claude_is_pointed_at_no_folder_of_the_forks() {
+        let mut env = HashMap::default();
+        add_registry_agent_environment(CLAUDE_AGENT_ID, &mut env);
+        assert!(!env.contains_key("CLAUDE_CONFIG_DIR"), "{env:?}");
+
+        let mut gemini = HashMap::default();
+        add_registry_agent_environment(GEMINI_ID, &mut gemini);
+        assert_eq!(
+            gemini.get("SURFACE").map(String::as_str),
+            Some("zed"),
+            "the other agents keep what they are given"
         );
-        assert!(
-            !points_at_this_machines_claude_folder(CLAUDE_AGENT_ID, false, true),
-            "a command the user configured under the same name is not the registry's agent"
-        );
-        for other_agent in [CODEX_ID, GEMINI_ID, CURSOR_ID] {
+    }
+
+    const OUTSIDE_FOR_CLAUDE: &str = r#"{ "agent_servers": { "claude-acp": { "type": "registry", "run_outside_sandbox": true } } }"#;
+
+    /// ADR-F49 決定 19: the user's own settings file makes every start of that
+    /// agent one outside its sandbox — and only that agent's.
+    #[gpui::test]
+    fn test_the_users_choice_starts_the_agent_outside_its_sandbox(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| {
+            assert!(!starts_outside_sandbox(false, CLAUDE_AGENT_ID, cx));
             assert!(
-                !points_at_this_machines_claude_folder(other_agent, true, true),
-                "another agent keeps its own folder: {other_agent}"
+                starts_outside_sandbox(true, CLAUDE_AGENT_ID, cx),
+                "the one start the user confirmed"
             );
-        }
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(OUTSIDE_FOR_CLAUDE, cx)
+                    .result()
+                    .expect("valid user settings");
+            });
+            assert!(starts_outside_sandbox(false, CLAUDE_AGENT_ID, cx));
+            assert!(runs_outside_sandbox_by_user_choice(CLAUDE_AGENT_ID, cx));
+            assert!(
+                !starts_outside_sandbox(false, CODEX_ID, cx),
+                "another agent still starts in its sandbox"
+            );
+
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(
+                        r#"{ "agent_servers": { "claude-acp": { "type": "custom", "command": "/usr/bin/claude-agent-acp", "run_outside_sandbox": false } } }"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("valid user settings");
+            });
+            assert!(
+                !starts_outside_sandbox(false, CLAUDE_AGENT_ID, cx),
+                "turned off again, in the other shape of the entry"
+            );
+        });
+    }
+
+    /// ADR-F49 決定 19 / ADR-F50: a project's own settings cannot let an agent
+    /// out of its sandbox — the agent that would be let out can write them.
+    #[gpui::test]
+    fn test_a_projects_settings_cannot_start_an_agent_outside_its_sandbox(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_local_settings(
+                        settings::WorktreeId::from_usize(1),
+                        settings::LocalSettingsPath::InWorktree(
+                            util::rel_path::RelPath::empty().into(),
+                        ),
+                        settings::LocalSettingsKind::Settings,
+                        Some(OUTSIDE_FOR_CLAUDE),
+                        cx,
+                    )
+                    .ok();
+                store
+                    .set_local_settings(
+                        settings::WorktreeId::from_usize(1),
+                        settings::LocalSettingsPath::InWorktree(
+                            util::rel_path::RelPath::empty().into(),
+                        ),
+                        settings::LocalSettingsKind::Settings,
+                        Some(r#"{ "agent": { "claude_code_run_outside_sandbox": true } }"#),
+                        cx,
+                    )
+                    .ok();
+            });
+            assert!(!starts_outside_sandbox(false, CLAUDE_AGENT_ID, cx));
+            assert!(!runs_outside_sandbox_by_user_choice(CLAUDE_AGENT_ID, cx));
+        });
     }
 
     #[gpui::test]
@@ -911,6 +965,7 @@ mod tests {
                     default_config_options: HashMap::default(),
                     favorite_config_option_values: HashMap::default(),
                     allow_subscription_sign_in: None,
+                    run_outside_sandbox: None,
                 },
             )],
         );

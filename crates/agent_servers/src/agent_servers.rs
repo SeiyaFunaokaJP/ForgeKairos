@@ -33,6 +33,7 @@ pub struct AgentServerDelegate {
     new_version_available: Option<watch::Sender<Option<String>>>,
     loading_status: Option<watch::Sender<Option<String>>>,
     run_outside_sandbox: bool,
+    keep_in_sandbox: bool,
 }
 
 impl AgentServerDelegate {
@@ -46,7 +47,25 @@ impl AgentServerDelegate {
             new_version_available: new_version_tx,
             loading_status: loading_status_tx,
             run_outside_sandbox: false,
+            keep_in_sandbox: false,
         }
+    }
+
+    /// ADR-F49 decision 19 (8c): this start stays in the sandbox even where
+    /// the user chose to start the agent outside every time — a thread whose
+    /// session was started in the sandbox is read back where it was started,
+    /// since the folder outside does not have it.
+    pub fn in_sandbox_whatever_the_settings(mut self) -> Self {
+        self.keep_in_sandbox = true;
+        self
+    }
+
+    /// ADR-F49 decision 19: whether `agent_id` starts outside its sandbox on
+    /// this delegate — the one start the user confirmed, or, unless this start
+    /// is to stay in the sandbox, every start the user's own settings let out.
+    pub fn starts_outside_sandbox(&self, agent_id: &str, cx: &App) -> bool {
+        self.run_outside_sandbox
+            || (!self.keep_in_sandbox && custom::runs_outside_sandbox_by_user_choice(agent_id, cx))
     }
 
     /// ADR-F49 decision 19: for the one start the user confirmed, the agent
@@ -58,6 +77,13 @@ impl AgentServerDelegate {
 
     pub fn runs_outside_sandbox(&self) -> bool {
         self.run_outside_sandbox
+    }
+
+    /// What reports a newer version of the agent, for a test to report one
+    /// with.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn take_new_version_sender(&mut self) -> Option<watch::Sender<Option<String>>> {
+        self.new_version_available.take()
     }
 }
 

@@ -260,10 +260,7 @@ impl LanguageModels {
             }
         }
         if !recommended.is_empty() {
-            language_model_list.insert(
-                acp_thread::AgentModelGroupName("Recommended".into()),
-                recommended,
-            );
+            language_model_list.insert(acp_thread::AgentModelGroupName("推奨".into()), recommended);
         }
 
         let mut models = HashMap::default();

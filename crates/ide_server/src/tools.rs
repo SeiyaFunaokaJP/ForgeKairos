@@ -26,17 +26,20 @@ use context_server::types::{
 use editor::{Editor, MultiBufferOffset, SelectionEffects, scroll::Autoscroll};
 use gpui::{App, AppContext as _, AsyncApp, Context, Entity, WeakEntity};
 use language::{Buffer, DiagnosticSeverity, PointUtf16};
-use project::{File as WorktreeFile, Fs, Project, ProjectPath};
+use project::{File as WorktreeFile, Fs, Project, ProjectPath, WorktreeSettings};
 use serde_json::{Value, json};
+use settings::Settings as _;
 use smol::lock::Semaphore;
 use workspace::Workspace;
 
 use crate::diff_view::{self, ProposedDiff};
+use ide_query::AssistSource;
 use util::path_mapping::SandboxPaths;
 
+pub use crate::assist_tools::ASSIST_TOOL_NAMES;
 use crate::path_mapping::{self, MAX_SANDBOX_FILE_BYTES, RealRoots, SandboxFile};
-use crate::transport::{HOST_MAX_MESSAGE_BYTES, MessageLimits, Outbox};
-use crate::{IdeServerDiff, IdeServerDiffOutcome};
+use crate::transport::{Endpoint, HOST_MAX_MESSAGE_BYTES, MessageLimits, Outbox, Route};
+use crate::{ConnectionGate, IdeServerDiff, IdeServerDiffOutcome};
 
 /// 全体診断で開くバッファーの上限。壊れたワークツリーで固まらないための保険。
 const MAX_DIAGNOSTIC_FILES: usize = 500;
@@ -70,6 +73,10 @@ pub enum ToolScope {
     /// サンドボックスの制限セッション (ADR-F49 決定 24)。ツールは [`RESTRICTED_TOOL_NAMES`]
     /// だけで、パスの扱いは [`ToolScope::Sandboxed`] と同じ。
     SandboxedReadOnly(Arc<SandboxPaths>),
+    /// アシストの口 (`/mcp/zed`、ADR-F56)。ここ自体が出すツールは無く、アシストのツール
+    /// ([`ASSIST_TOOL_NAMES`]) は [`ConnectionScope::assist`] が出す。`Some` ならサンドボックスの
+    /// セッションの口で、パスの扱いは [`ToolScope::Sandboxed`] と同じ。
+    Assist(Option<Arc<SandboxPaths>>),
 }
 
 impl ToolScope {
@@ -78,6 +85,7 @@ impl ToolScope {
             ToolScope::Full => true,
             ToolScope::Sandboxed(_) => SANDBOX_TOOL_NAMES.contains(&name),
             ToolScope::SandboxedReadOnly(_) => RESTRICTED_TOOL_NAMES.contains(&name),
+            ToolScope::Assist(_) => false,
         }
     }
 
@@ -86,9 +94,37 @@ impl ToolScope {
     /// ホストのエラー文を見せない)。
     pub fn sandbox_paths(&self) -> Option<&Arc<SandboxPaths>> {
         match self {
-            ToolScope::Full => None,
-            ToolScope::Sandboxed(paths) | ToolScope::SandboxedReadOnly(paths) => Some(paths),
+            ToolScope::Full | ToolScope::Assist(None) => None,
+            ToolScope::Sandboxed(paths)
+            | ToolScope::SandboxedReadOnly(paths)
+            | ToolScope::Assist(Some(paths)) => Some(paths),
         }
+    }
+}
+
+/// 1 本の接続が出すツール。口 (`/mcp` か `/mcp/zed` か) と話し方で決まる。
+#[derive(Clone)]
+pub struct ConnectionScope {
+    pub tools: ToolScope,
+    /// `Some` なら、アシストのツールも出し、表示はこの出どころとして描く。
+    pub assist: Option<AssistSource>,
+}
+
+impl ConnectionScope {
+    /// アシストのツールを持たない、これまでどおりの口。
+    pub fn without_assist(tools: ToolScope) -> Self {
+        Self {
+            tools,
+            assist: None,
+        }
+    }
+
+    pub fn allows_tool(&self, name: &str) -> bool {
+        self.tools.allows_tool(name) || (self.assist.is_some() && ASSIST_TOOL_NAMES.contains(&name))
+    }
+
+    pub fn is_assist_tool(&self, name: &str) -> bool {
+        self.assist.is_some() && ASSIST_TOOL_NAMES.contains(&name)
     }
 }
 
@@ -301,6 +337,25 @@ pub trait ToolHost: 'static + Sized {
     fn max_open_diffs(&self) -> Option<usize> {
         None
     }
+
+    /// 口ごとの受け入れの判断 (開いているか・同時接続の枠・メッセージの上限)。トランスポートが
+    /// 要求の頭を読んだところで、バックグラウンドで使う。
+    fn connection_gate(&self) -> ConnectionGate {
+        ConnectionGate::unlimited(self.message_limits())
+    }
+
+    /// 受け入れた接続が出すツール。`Err` は理由 (日本語) で、その接続への要求はすべてこれで
+    /// 断る。既定では IDE の口だけを持ち、アシストの口は持たない。
+    fn connection_scope(
+        &self,
+        route: &Route,
+        _cx: &App,
+    ) -> std::result::Result<ConnectionScope, String> {
+        match route.endpoint {
+            Endpoint::Ide => Ok(ConnectionScope::without_assist(self.tool_scope())),
+            Endpoint::Assist => Err(crate::assist_tools::ASSIST_UNAVAILABLE_MESSAGE.to_string()),
+        }
+    }
 }
 
 /// サンドボックスの CLI にそのまま見せてよいエラー (CLI 側のパスしか含まない)。それ以外の
@@ -316,8 +371,17 @@ impl std::fmt::Display for ClientError {
 
 impl std::error::Error for ClientError {}
 
-fn client_error(message: impl Into<String>) -> anyhow::Error {
+pub(crate) fn client_error(message: impl Into<String>) -> anyhow::Error {
     anyhow::Error::new(ClientError(message.into()))
+}
+
+/// 見せてよいエラー ([`ClientError`]) にだけ前置きを付ける。それ以外はホストの文を含みうるので
+/// そのまま返し、[`error_text`] に伏せさせる。
+pub(crate) fn prefix_client_error(prefix: &str, error: anyhow::Error) -> anyhow::Error {
+    match error.downcast_ref::<ClientError>() {
+        Some(visible) => client_error(format!("{prefix}{visible}")),
+        None => error,
+    }
 }
 
 fn too_many_diffs_error(limit: usize) -> anyhow::Error {
@@ -328,7 +392,7 @@ fn too_many_diffs_error(limit: usize) -> anyhow::Error {
 
 /// ツールの失敗を、呼び出し元に見せる文にする。サンドボックスには [`ClientError`] だけを
 /// そのまま見せ、残りはホストのログにだけ残す。
-fn error_text(tool: &str, error: &anyhow::Error, scope: &ToolScope) -> String {
+pub(crate) fn error_text(tool: &str, error: &anyhow::Error, scope: &ToolScope) -> String {
     if scope.sandbox_paths().is_none() {
         return format!("{error:#}");
     }
@@ -440,7 +504,11 @@ pub fn path_from_uri(uri: &str) -> PathBuf {
     PathBuf::from(rest)
 }
 
-pub fn initialize_result(params: &Value) -> Value {
+/// アシストのツールを出す接続には、モデル向けの `instructions` (MCP の initialize の結果) を
+/// 付ける。CLI は MCP サーバーの `instructions` をシステムプロンプトに入れるので、モデルは
+/// これで「ユーザーが見ている Zed に繋がっている」ことと、いつ何を使えばよいかを知る。
+/// CLI の IDE の口 (WebSocket、名前 `ide`) には付けない (CLI がどう扱うか確かめていない)。
+pub fn initialize_result_in(params: &Value, scope: &ConnectionScope) -> Value {
     let requested = params
         .get("protocolVersion")
         .and_then(Value::as_str)
@@ -451,6 +519,19 @@ pub fn initialize_result(params: &Value) -> Value {
         }
         _ => LATEST_PROTOCOL_VERSION,
     };
+    let mut result = initialize_result_body(negotiated);
+    if scope.assist.is_some()
+        && let Some(object) = result.as_object_mut()
+    {
+        object.insert(
+            "instructions".to_string(),
+            Value::String(crate::assist_tools::INSTRUCTIONS.to_string()),
+        );
+    }
+    result
+}
+
+fn initialize_result_body(negotiated: &str) -> Value {
     json!({
         "protocolVersion": ProtocolVersion(negotiated.to_string()),
         "capabilities": ServerCapabilities {
@@ -470,7 +551,7 @@ pub fn initialize_result(params: &Value) -> Value {
     })
 }
 
-fn tool(name: &str, description: &str, schema: Value) -> Tool {
+pub(crate) fn tool(name: &str, description: &str, schema: Value) -> Tool {
     Tool {
         name: name.to_string(),
         title: None,
@@ -481,7 +562,7 @@ fn tool(name: &str, description: &str, schema: Value) -> Tool {
     }
 }
 
-fn object_schema(properties: Value, required: &[&str]) -> Value {
+pub(crate) fn object_schema(properties: Value, required: &[&str]) -> Value {
     json!({
         "type": "object",
         "properties": properties,
@@ -592,19 +673,22 @@ pub fn tools() -> Vec<Tool> {
     ]
 }
 
-pub fn list_tools_result(scope: &ToolScope) -> Value {
-    let tools = tools()
+pub fn list_tools_result(scope: &ConnectionScope) -> Value {
+    let mut tools = tools()
         .into_iter()
-        .filter(|tool| scope.allows_tool(&tool.name))
+        .filter(|tool| scope.tools.allows_tool(&tool.name))
         .collect::<Vec<_>>();
+    if scope.assist.is_some() {
+        tools.extend(crate::assist_tools::tools());
+    }
     json!({ "tools": tools })
 }
 
-fn text_content(text: impl Into<String>) -> Value {
+pub(crate) fn text_content(text: impl Into<String>) -> Value {
     json!({ "type": "text", "text": text.into() })
 }
 
-fn json_content(value: &Value) -> Result<Value> {
+pub(crate) fn json_content(value: &Value) -> Result<Value> {
     Ok(text_content(
         serde_json::to_string(value).context("serializing a tool result")?,
     ))
@@ -620,33 +704,44 @@ pub(crate) async fn call_tool<H: ToolHost>(
     server: &Entity<H>,
     params: CallToolParams,
     connection: ConnectionId,
+    scope: &ConnectionScope,
     cx: &mut AsyncApp,
 ) -> Option<Value> {
-    let (scope, workspace) =
-        server.read_with(cx, |server, _| (server.tool_scope(), server.workspace()));
+    let workspace = server.read_with(cx, |server, _| server.workspace());
     if !scope.allows_tool(&params.name) {
         return None;
     }
     let arguments = params.arguments.unwrap_or(Value::Null);
-    let result = match workspace {
-        Some(workspace) => {
+    let result = match (workspace, scope.assist.as_ref()) {
+        (Some(workspace), Some(source)) if scope.is_assist_tool(&params.name) => {
+            crate::assist_tools::run_assist_tool(
+                &params.name,
+                arguments,
+                &workspace,
+                source,
+                &scope.tools,
+                cx,
+            )
+            .await
+        }
+        (Some(workspace), _) => {
             run_tool(
                 &params.name,
                 arguments,
                 server,
                 &workspace,
                 connection,
-                &scope,
+                &scope.tools,
                 cx,
             )
             .await
         }
-        None => Err(anyhow!("no Zed window has this workspace open")),
+        (None, _) => Err(anyhow!("no Zed window has this workspace open")),
     };
     Some(match result {
         Ok(content) => json!({ "content": content, "isError": false }),
         Err(error) => json!({
-            "content": [text_content(error_text(&params.name, &error, &scope))],
+            "content": [text_content(error_text(&params.name, &error, &scope.tools))],
             "isError": true,
         }),
     })
@@ -982,22 +1077,30 @@ impl<'a> SandboxRequest<'a> {
         buffer: &Entity<Buffer>,
         cx: &mut AsyncApp,
     ) -> Result<PathBuf> {
-        let (project_path, abs_path, is_external) = buffer
+        let (project_path, abs_path, is_external, is_private) = buffer
             .read_with(cx, |buffer, cx| {
                 let file = WorktreeFile::from_dyn(buffer.file())?;
                 let worktree = file.worktree.read(cx);
-                let is_external = file
+                let entry = file
                     .entry_id
-                    .and_then(|entry_id| worktree.entry_for_id(entry_id))
-                    .is_some_and(|entry| entry.is_external);
+                    .and_then(|entry_id| worktree.entry_for_id(entry_id));
+                let is_external = entry.is_some_and(|entry| entry.is_external);
                 let project_path = ProjectPath {
                     worktree_id: worktree.id(),
                     path: file.path.clone(),
                 };
-                Some((project_path, worktree.absolutize(&file.path), is_external))
+                let is_private = is_private_file(&project_path, entry, cx);
+                Some((
+                    project_path,
+                    worktree.absolutize(&file.path),
+                    is_external,
+                    is_private,
+                ))
             })
             .context("the buffer is not a file in a worktree")?;
         anyhow::ensure!(!is_external, "the worktree marks the file as outside it");
+        // ADR-F56: `private_files` (`.env` など) は、サンドボックスには診断も見せない。
+        anyhow::ensure!(!is_private, "the file matches the private_files setting");
         anyhow::ensure!(
             self.paths.contains(&abs_path),
             "the file is outside the workspace"
@@ -1125,6 +1228,53 @@ impl<'a> SandboxRequest<'a> {
             .read_with(cx, |project, cx| project.verify_agent_read(&path, cx))
             .await
     }
+
+    pub(crate) fn paths(&self) -> &SandboxPaths {
+        self.paths
+    }
+
+    /// アシストの読み取り結果 (定義・参照・シンボル) の中身を、サンドボックスに見せてよいか。
+    /// 引数のパスと同じ確認 ([`Self::resolve`]) を、結果のファイルにも掛ける: ローカルでは
+    /// リンクを 1 段も通らずワークツリーの中に実体があること、リモートでは接続先の
+    /// `verify_agent_read` (proto 506) が通ること。
+    pub(crate) async fn allows_result_contents(
+        &self,
+        project_path: &ProjectPath,
+        abs_path: &Path,
+        cx: &mut AsyncApp,
+    ) -> bool {
+        if !self.paths.contains(abs_path) {
+            return false;
+        }
+        match &self.checks {
+            SandboxChecks::OnThisMachine {
+                fs,
+                executor,
+                real_roots,
+            } => {
+                matches!(
+                    path_mapping::has_link_below_root(self.paths, abs_path, fs, executor).await,
+                    Ok(false)
+                ) && real_roots.ensure_contains(abs_path, fs).await.is_ok()
+            }
+            SandboxChecks::OnTheRemoteHost => self
+                .verify_agent_read(project_path.clone(), cx)
+                .await
+                .is_ok(),
+        }
+    }
+}
+
+/// `private_files` (`.env` など) に当たるファイルか。内蔵エージェントの `read_file` と同じく、
+/// 全体の設定とワークツリーの設定の両方を見る。
+pub(crate) fn is_private_file(
+    project_path: &ProjectPath,
+    entry: Option<&project::Entry>,
+    cx: &App,
+) -> bool {
+    entry.is_some_and(|entry| entry.is_private)
+        || WorktreeSettings::get_global(cx).is_path_private(&project_path.path)
+        || WorktreeSettings::get(Some(project_path.into()), cx).is_path_private(&project_path.path)
 }
 
 fn link_refused_error(text: &str) -> anyhow::Error {

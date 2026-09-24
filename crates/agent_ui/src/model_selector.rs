@@ -5,23 +5,27 @@ use acp_thread::{
 };
 
 use anyhow::Result;
-use collections::{HashSet, IndexMap};
+use collections::{HashMap, HashSet, IndexMap};
 use futures::FutureExt;
 use fuzzy::{StringMatchCandidate, match_strings};
 use gpui::{
-    Action, AsyncWindowContext, BackgroundExecutor, DismissEvent, FocusHandle, Subscription, Task,
-    TaskExt, WeakEntity,
+    Action, AsyncWindowContext, BackgroundExecutor, DismissEvent, FocusHandle, Focusable,
+    Subscription, Task, TaskExt, WeakEntity,
 };
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
-use picker::{Picker, PickerDelegate};
+use picker::{Picker, PickerDelegate, ScrollBehavior};
+use project::{AgentId, Project};
 use settings::SettingsStore;
 use ui::{DocumentationAside, IntoElement, prelude::*};
 use util::ResultExt;
 use zed_actions::agent::OpenSettings;
 
+use crate::NewExternalAgentThread;
+use crate::agent_panel::{ExternalAgentMenuItem, external_agent_menu_items};
 use crate::ui::{
-    ModelSelectorFooter, ModelSelectorHeader, ModelSelectorListItem, documentation_aside_side,
+    ModelSelectorFooter, ModelSelectorGroupHeader, ModelSelectorHeader, ModelSelectorListItem,
+    documentation_aside_side,
 };
 
 pub type ModelSelector = Picker<ModelPickerDelegate>;
@@ -29,30 +33,579 @@ pub type ModelSelector = Picker<ModelPickerDelegate>;
 pub fn acp_model_selector(
     selector: Rc<dyn AgentModelSelector>,
     focus_handle: FocusHandle,
+    agent_launchers: Option<AgentLaunchSource>,
     window: &mut Window,
     cx: &mut Context<ModelSelector>,
 ) -> ModelSelector {
-    let delegate = ModelPickerDelegate::new(selector, focus_handle, window, cx);
+    let delegate = ModelPickerDelegate::new(selector, focus_handle, agent_launchers, window, cx);
     Picker::list(delegate, window, cx)
         .show_scrollbar(true)
         .initial_width(rems(20.))
 }
 
-enum ModelPickerEntry {
-    Separator(SharedString),
-    Model(AgentModelInfo, bool),
+const FAVORITES_LABEL: &str = "お気に入り";
+const AGENTS_GROUP_NAME: &str = "エージェント";
+/// A list without a group name of its own (an ACP agent's ungrouped options, a
+/// flat model list) is only folded from this many entries on. Claude's ACP
+/// model list has a handful: folding it would cost a click without making the
+/// popover any shorter.
+const MIN_FOLDABLE_UNGROUPED: usize = 10;
+
+/// Identifies a group's fold across rebuilds of the list.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum PickerGroupKey {
+    Named(SharedString),
+    /// The list that has no group name of its own, headed 「すべて」.
+    Ungrouped,
+    Agents,
 }
+
+/// The groups the user folded or unfolded, kept for as long as the selector
+/// lives and never written to settings.
+#[derive(Debug)]
+pub(crate) struct GroupCollapseState<Id> {
+    /// Decided while the list showed everything. Wins over the defaults.
+    browsing: HashMap<PickerGroupKey, bool>,
+    /// Decided during the current search, and thrown away when the query
+    /// changes: a match must never hide behind a heading folded for another
+    /// query.
+    searching: HashMap<PickerGroupKey, bool>,
+    query: String,
+    /// The favorites the popover opened with, once a star was toggled in it.
+    /// The default folds follow these until the popover closes: starring
+    /// the first model must not fold away the list the user is looking at.
+    favorites_at_open: Option<HashSet<Id>>,
+}
+
+impl<Id> Default for GroupCollapseState<Id> {
+    fn default() -> Self {
+        Self {
+            browsing: HashMap::default(),
+            searching: HashMap::default(),
+            query: String::new(),
+            favorites_at_open: None,
+        }
+    }
+}
+
+impl<Id: Clone + Eq + std::hash::Hash> GroupCollapseState<Id> {
+    /// Called with the favorites as they were before a star was toggled in
+    /// the open popover.
+    pub(crate) fn hold_favorites_at_open(&mut self, favorites: &HashSet<Id>) {
+        if self.favorites_at_open.is_none() {
+            self.favorites_at_open = Some(favorites.clone());
+        }
+    }
+
+    /// Called when the popover closes. Returns whether the rows were built on
+    /// held favorites and need building again for the next opening.
+    pub(crate) fn release_favorites_at_open(&mut self) -> bool {
+        self.favorites_at_open.take().is_some()
+    }
+}
+
+impl<Id> GroupCollapseState<Id> {
+    pub(crate) fn set_query(&mut self, query: &str) {
+        if self.query != query {
+            self.query = query.to_string();
+            self.searching.clear();
+        }
+    }
+
+    pub(crate) fn is_searching(&self) -> bool {
+        !self.query.is_empty()
+    }
+
+    pub(crate) fn set_expanded(&mut self, key: PickerGroupKey, expanded: bool) {
+        if self.is_searching() {
+            self.searching.insert(key, expanded);
+        } else {
+            self.browsing.insert(key, expanded);
+        }
+    }
+
+    fn is_expanded(&self, key: &PickerGroupKey, default: bool) -> bool {
+        let decided = if self.is_searching() {
+            &self.searching
+        } else {
+            &self.browsing
+        };
+        decided.get(key).copied().unwrap_or(default)
+    }
+}
+
+/// An entry of a model or option picker, as far as grouping is concerned.
+pub(crate) trait PickerItem: Clone {
+    type Id: Clone + Eq + std::hash::Hash;
+
+    fn item_id(&self) -> &Self::Id;
+}
+
+impl PickerItem for AgentModelInfo {
+    type Id = AgentModelId;
+
+    fn item_id(&self) -> &AgentModelId {
+        &self.id
+    }
+}
+
+pub(crate) struct PickerGroup<T> {
+    pub(crate) name: Option<SharedString>,
+    pub(crate) items: Vec<T>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum PickerRow<T> {
+    /// A heading that cannot be selected (お気に入り / すべて).
+    Label(SharedString),
+    /// A heading that folds or unfolds its group on Enter or a click.
+    Group {
+        key: PickerGroupKey,
+        name: SharedString,
+        count: usize,
+        expanded: bool,
+    },
+    Item {
+        item: T,
+        is_favorite: bool,
+    },
+    Agent(AgentLaunchEntry),
+}
+
+/// Lays out a model or option picker: お気に入り first, then each group behind
+/// its own heading, then the エージェント section.
+///
+/// With favorites the other groups start folded, since the favorites are what
+/// the user picks from; the exception is the first group holding the entry in
+/// use when that entry is not a favorite, so that its check mark stays in
+/// sight. Without favorites every group starts open, as it always did. While
+/// searching every group starts open so that no match is hidden. The
+/// エージェント section starts folded unless searching. Whatever the user
+/// folded or unfolded wins over all of these.
+///
+/// The defaults go by the favorites the popover opened with while it is open
+/// ([`GroupCollapseState::hold_favorites_at_open`]); the お気に入り section and
+/// the stars always show the favorites as they are.
+pub(crate) fn build_picker_rows<T: PickerItem>(
+    groups: Vec<PickerGroup<T>>,
+    favorites: &HashSet<T::Id>,
+    active: Option<&T::Id>,
+    agents: Vec<AgentLaunchEntry>,
+    collapse: &GroupCollapseState<T::Id>,
+    ungrouped_name: &'static str,
+) -> Vec<PickerRow<T>> {
+    let is_searching = collapse.is_searching();
+
+    let favorite_items = {
+        let mut seen = HashSet::default();
+        groups
+            .iter()
+            .flat_map(|group| &group.items)
+            .filter(|item| favorites.contains(item.item_id()) && seen.insert(item.item_id()))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    let has_favorites = !favorite_items.is_empty();
+    let fold_favorites = collapse.favorites_at_open.as_ref().unwrap_or(favorites);
+    let folds_behind_favorites = groups
+        .iter()
+        .flat_map(|group| &group.items)
+        .any(|item| fold_favorites.contains(item.item_id()));
+    let active_is_a_folding_favorite = active.is_some_and(|active| fold_favorites.contains(active));
+    let group_opened_for_active = if folds_behind_favorites && !active_is_a_folding_favorite {
+        active.and_then(|active| {
+            groups
+                .iter()
+                .position(|group| group.items.iter().any(|item| item.item_id() == active))
+        })
+    } else {
+        None
+    };
+
+    let mut rows = Vec::new();
+    if has_favorites {
+        rows.push(PickerRow::Label(FAVORITES_LABEL.into()));
+        rows.extend(favorite_items.into_iter().map(|item| PickerRow::Item {
+            item,
+            is_favorite: true,
+        }));
+    }
+
+    for (group_index, group) in groups.into_iter().enumerate() {
+        if group.items.is_empty() {
+            continue;
+        }
+        let count = group.items.len();
+        let (key, name, foldable) = match group.name {
+            Some(name) => (PickerGroupKey::Named(name.clone()), name, true),
+            None => (
+                PickerGroupKey::Ungrouped,
+                SharedString::from(ungrouped_name),
+                folds_behind_favorites && count >= MIN_FOLDABLE_UNGROUPED,
+            ),
+        };
+        if foldable {
+            let expanded_by_default = is_searching
+                || !folds_behind_favorites
+                || group_opened_for_active == Some(group_index);
+            let expanded = collapse.is_expanded(&key, expanded_by_default);
+            rows.push(PickerRow::Group {
+                key,
+                name,
+                count,
+                expanded,
+            });
+            if !expanded {
+                continue;
+            }
+        } else if has_favorites {
+            rows.push(PickerRow::Label(name));
+        }
+        rows.extend(group.items.into_iter().map(|item| {
+            let is_favorite = favorites.contains(item.item_id());
+            PickerRow::Item { item, is_favorite }
+        }));
+    }
+
+    if !agents.is_empty() {
+        let expanded = collapse.is_expanded(&PickerGroupKey::Agents, is_searching);
+        rows.push(PickerRow::Group {
+            key: PickerGroupKey::Agents,
+            name: AGENTS_GROUP_NAME.into(),
+            count: agents.len(),
+            expanded,
+        });
+        if expanded {
+            rows.extend(agents.into_iter().map(PickerRow::Agent));
+        }
+    }
+
+    rows
+}
+
+/// Where the selection starts: on the entry in use, else on the first entry.
+/// Not on a heading while an entry is in sight, or Enter right after typing a
+/// query would fold a group instead of picking the best match.
+pub(crate) fn initial_row_index<T: PickerItem>(
+    rows: &[PickerRow<T>],
+    active: Option<&T::Id>,
+) -> usize {
+    active
+        .and_then(|active| {
+            rows.iter().position(
+                |row| matches!(row, PickerRow::Item { item, .. } if item.item_id() == active),
+            )
+        })
+        .or_else(|| {
+            rows.iter()
+                .position(|row| matches!(row, PickerRow::Item { .. } | PickerRow::Agent(_)))
+        })
+        .unwrap_or(0)
+}
+
+pub(crate) fn group_row_index<T>(rows: &[PickerRow<T>], key: &PickerGroupKey) -> Option<usize> {
+    rows.iter()
+        .position(|row| matches!(row, PickerRow::Group { key: row_key, .. } if row_key == key))
+}
+
+/// A row the selection stays on while the list is rebuilt under it: the
+/// heading just folded, or the row selected when a star was toggled.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum RowAnchor<Id> {
+    Group(PickerGroupKey),
+    /// An entry is listed twice once it is a favorite, so this also says
+    /// which of the two was selected.
+    Item {
+        id: Id,
+        among_favorites: bool,
+    },
+    Agent(AgentLaunchAction),
+}
+
+fn favorites_section_len<T>(rows: &[PickerRow<T>]) -> usize {
+    match rows.first() {
+        Some(PickerRow::Label(label)) if label.as_ref() == FAVORITES_LABEL => {
+            1 + rows
+                .iter()
+                .skip(1)
+                .take_while(|row| matches!(row, PickerRow::Item { .. }))
+                .count()
+        }
+        _ => 0,
+    }
+}
+
+pub(crate) fn row_anchor<T: PickerItem>(
+    rows: &[PickerRow<T>],
+    ix: usize,
+) -> Option<RowAnchor<T::Id>> {
+    match rows.get(ix)? {
+        PickerRow::Label(_) => None,
+        PickerRow::Group { key, .. } => Some(RowAnchor::Group(key.clone())),
+        PickerRow::Item { item, .. } => Some(RowAnchor::Item {
+            id: item.item_id().clone(),
+            among_favorites: ix < favorites_section_len(rows),
+        }),
+        PickerRow::Agent(entry) => Some(RowAnchor::Agent(entry.action.clone())),
+    }
+}
+
+pub(crate) fn anchor_row_index<T: PickerItem>(
+    rows: &[PickerRow<T>],
+    anchor: &RowAnchor<T::Id>,
+) -> Option<usize> {
+    match anchor {
+        RowAnchor::Group(key) => group_row_index(rows, key),
+        RowAnchor::Agent(action) => rows
+            .iter()
+            .position(|row| matches!(row, PickerRow::Agent(entry) if &entry.action == action)),
+        RowAnchor::Item {
+            id,
+            among_favorites,
+        } => {
+            let favorites_end = favorites_section_len(rows);
+            let position_within = |range: std::ops::Range<usize>| {
+                range.into_iter().find(|&ix| {
+                    matches!(rows.get(ix), Some(PickerRow::Item { item, .. }) if item.item_id() == id)
+                })
+            };
+            let (preferred, other) = if *among_favorites {
+                (0..favorites_end, favorites_end..rows.len())
+            } else {
+                (favorites_end..rows.len(), 0..favorites_end)
+            };
+            position_within(preferred).or_else(|| position_within(other))
+        }
+    }
+}
+
+/// Folding a group changes how many rows there are, which the picker's list
+/// only learns through an update of the matches. `confirm` runs while the
+/// picker is being updated, so it cannot start one itself.
+pub(crate) fn refresh_rows_after_fold<D: PickerDelegate>(
+    window: &mut Window,
+    cx: &mut Context<Picker<D>>,
+) {
+    cx.defer_in(window, |picker, window, cx| {
+        let query = picker.query(cx);
+        picker.update_matches_with_options(query, ScrollBehavior::PreserveOffset, window, cx);
+    });
+}
+
+/// Lets a query name the group as well as the entry (「ollama」 lists the
+/// Ollama models), the way the inline assistant's selector matches
+/// `provider/model`.
+pub(crate) fn grouped_search_text(group_name: Option<&str>, name: &str) -> String {
+    match group_name {
+        Some(group_name) => format!("{group_name}/{name}"),
+        None => name.to_string(),
+    }
+}
+
+pub(crate) fn render_group_header<T>(
+    rows: &[PickerRow<T>],
+    ix: usize,
+    selected: bool,
+) -> Option<AnyElement> {
+    let PickerRow::Group {
+        name,
+        count,
+        expanded,
+        ..
+    } = rows.get(ix)?
+    else {
+        return None;
+    };
+    let follows_an_open_group = ix
+        .checked_sub(1)
+        .and_then(|previous| rows.get(previous))
+        .is_some_and(|row| matches!(row, PickerRow::Item { .. } | PickerRow::Agent(_)));
+    Some(
+        ModelSelectorGroupHeader::new(ix, name.clone(), *count, *expanded)
+            .is_focused(selected)
+            .has_border(follows_an_open_group)
+            .into_any_element(),
+    )
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum AgentLaunchAction {
+    /// The official Claude Code CLI in a tab of the panel.
+    ClaudeCodeCli,
+    NewThread(AgentId),
+}
+
+impl AgentLaunchAction {
+    pub(crate) fn to_action(&self) -> Box<dyn Action> {
+        match self {
+            Self::ClaudeCodeCli => Box::new(zed_actions::terminal::LaunchClaudeCode::default()),
+            Self::NewThread(agent) => Box::new(NewExternalAgentThread {
+                agent: agent.clone(),
+            }),
+        }
+    }
+}
+
+/// A row of the エージェント section at the bottom of a model selector.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct AgentLaunchEntry {
+    pub(crate) label: SharedString,
+    pub(crate) icon: AgentModelIcon,
+    pub(crate) action: AgentLaunchAction,
+}
+
+impl AgentLaunchEntry {
+    fn search_text(&self) -> String {
+        let label = grouped_search_text(Some(AGENTS_GROUP_NAME), &self.label);
+        match &self.action {
+            AgentLaunchAction::NewThread(agent_id) => format!("{label} {}", agent_id.0),
+            AgentLaunchAction::ClaudeCodeCli => label,
+        }
+    }
+}
+
+/// Asked for the エージェント section's rows each time the list is built, so
+/// that an agent added while the thread is open shows up.
+pub(crate) type AgentLaunchSource = Rc<dyn Fn(&App) -> Vec<AgentLaunchEntry>>;
+
+/// What a thread of `current_agent` can start from its model selector: the
+/// same agents the panel's `+` menu offers, minus the one already running.
+pub(crate) fn agent_launch_entries(
+    current_agent: &AgentId,
+    supports_terminal: bool,
+    external_agents: Vec<ExternalAgentMenuItem>,
+) -> Vec<AgentLaunchEntry> {
+    let mut entries = Vec::new();
+    if current_agent != &*agent::ZED_AGENT_ID {
+        entries.push(AgentLaunchEntry {
+            label: "Zed Agent で新しいスレッド".into(),
+            icon: AgentModelIcon::Named(IconName::ZedAgent),
+            action: AgentLaunchAction::NewThread(agent::ZED_AGENT_ID.clone()),
+        });
+    }
+    if supports_terminal {
+        entries.push(AgentLaunchEntry {
+            label: "Claude Code を起動".into(),
+            icon: AgentModelIcon::Named(IconName::Terminal),
+            action: AgentLaunchAction::ClaudeCodeCli,
+        });
+    }
+    entries.extend(
+        external_agents
+            .into_iter()
+            .filter(|agent| &agent.id != current_agent)
+            .map(|agent| AgentLaunchEntry {
+                label: format!("{} で新しいスレッド", agent.display_name).into(),
+                icon: agent
+                    .icon_path
+                    .map(AgentModelIcon::Path)
+                    .unwrap_or(AgentModelIcon::Named(IconName::Sparkle)),
+                action: AgentLaunchAction::NewThread(agent.id),
+            }),
+    );
+    entries
+}
+
+/// The エージェント section's rows for a thread in `project`.
+///
+/// Holds the project weakly: the picker that calls this sits behind the thread
+/// view's `PopoverMenuHandle`, and nothing reached from there may keep a
+/// strong hold on what owns the thread view.
+pub(crate) fn agent_launch_source(
+    project: WeakEntity<Project>,
+    current_agent: AgentId,
+) -> AgentLaunchSource {
+    Rc::new(move |cx| {
+        let Some(project) = project.upgrade() else {
+            return Vec::new();
+        };
+        let project = project.read(cx);
+        // Both launchers open in the panel, which refuses them without a
+        // folder (`AgentPanel::new_external_agent_thread`).
+        if project.visible_worktrees(cx).next().is_none() {
+            return Vec::new();
+        }
+        // A collab guest can only run the host's Zed Agent
+        // (`AgentPanel::select_agent`), so its external agents would be dead rows.
+        let external_agents = if project.is_via_collab() {
+            Vec::new()
+        } else {
+            external_agent_menu_items(project.agent_server_store().read(cx), cx)
+        };
+        agent_launch_entries(
+            &current_agent,
+            project.supports_terminal(cx),
+            external_agents,
+        )
+    })
+}
+
+pub(crate) async fn filter_agent_launch_entries(
+    entries: Vec<AgentLaunchEntry>,
+    query: &str,
+    executor: BackgroundExecutor,
+) -> Vec<AgentLaunchEntry> {
+    if query.is_empty() {
+        return entries;
+    }
+    let candidates = entries
+        .iter()
+        .enumerate()
+        .map(|(ix, entry)| StringMatchCandidate::new(ix, &entry.search_text()))
+        .collect::<Vec<_>>();
+    let mut matches = match_strings(
+        &candidates,
+        query,
+        false,
+        true,
+        100,
+        &Default::default(),
+        executor,
+    )
+    .await;
+    matches.sort_unstable_by_key(|mat| (Reverse(OrderedFloat(mat.score)), mat.candidate_id));
+    matches
+        .into_iter()
+        .filter_map(|mat| entries.get(mat.candidate_id).cloned())
+        .collect()
+}
+
+pub(crate) fn render_agent_launch_row(
+    ix: usize,
+    entry: &AgentLaunchEntry,
+    selected: bool,
+) -> AnyElement {
+    ModelSelectorListItem::new(ix, entry.label.clone())
+        .map(|this| match &entry.icon {
+            AgentModelIcon::Path(path) => this.icon_path(path.clone()),
+            AgentModelIcon::Named(icon) => this.icon(*icon),
+        })
+        .is_focused(selected)
+        .into_any_element()
+}
+
+type ModelPickerEntry = PickerRow<AgentModelInfo>;
 
 pub struct ModelPickerDelegate {
     selector: Rc<dyn AgentModelSelector>,
     filtered_entries: Vec<ModelPickerEntry>,
     models: Option<AgentModelList>,
+    /// The last search's results. Folding a group rebuilds the rows from these
+    /// on the spot, because `confirm` cannot call `Picker::refresh`.
+    filtered_models: AgentModelList,
+    filtered_agents: Vec<AgentLaunchEntry>,
+    agent_launchers: Option<AgentLaunchSource>,
+    collapse: GroupCollapseState<AgentModelId>,
+    /// Keeps the selection where it was when the list is updated for a fold
+    /// or a star.
+    reselect_row: Option<RowAnchor<AgentModelId>>,
     selected_index: usize,
     selected_description: Option<(usize, SharedString)>,
     selected_model: Option<AgentModelInfo>,
     favorites: HashSet<AgentModelId>,
     _refresh_models_task: Task<()>,
     _settings_subscription: Subscription,
+    _dismiss_subscription: Subscription,
     focus_handle: FocusHandle,
 }
 
@@ -60,6 +613,7 @@ impl ModelPickerDelegate {
     fn new(
         selector: Rc<dyn AgentModelSelector>,
         focus_handle: FocusHandle,
+        agent_launchers: Option<AgentLaunchSource>,
         window: &mut Window,
         cx: &mut Context<ModelSelector>,
     ) -> Self {
@@ -105,22 +659,49 @@ impl ModelPickerDelegate {
                 // when other settings are modified (e.g., user editing settings.json)
                 let new_favorites = selector_for_subscription.favorite_model_ids(cx);
                 if new_favorites != picker.delegate.favorites {
+                    if picker.focus_handle(cx).contains_focused(window, cx) {
+                        let delegate = &mut picker.delegate;
+                        delegate
+                            .collapse
+                            .hold_favorites_at_open(&delegate.favorites);
+                        delegate.reselect_row =
+                            row_anchor(&delegate.filtered_entries, delegate.selected_index);
+                    }
                     picker.delegate.favorites = new_favorites;
                     picker.refresh(window, cx);
                 }
             });
         let favorites = selector.favorite_model_ids(cx);
 
+        // Every way the popover closes (a choice, Escape, a click outside,
+        // `PopoverMenuHandle::hide`) emits this on the picker.
+        let picker = cx.entity();
+        let dismiss_subscription = cx.subscribe_in(
+            &picker,
+            window,
+            |picker, _, _: &DismissEvent, window, cx| {
+                if picker.delegate.collapse.release_favorites_at_open() {
+                    picker.refresh(window, cx);
+                }
+            },
+        );
+
         Self {
             selector,
             filtered_entries: Vec::new(),
             models: None,
+            filtered_models: AgentModelList::Flat(Vec::new()),
+            filtered_agents: Vec::new(),
+            agent_launchers,
+            collapse: GroupCollapseState::default(),
+            reselect_row: None,
             selected_model: None,
             selected_index: 0,
             selected_description: None,
             favorites,
             _refresh_models_task: refresh_models_task,
             _settings_subscription: settings_subscription,
+            _dismiss_subscription: dismiss_subscription,
             focus_handle,
         }
     }
@@ -179,12 +760,40 @@ impl ModelPickerDelegate {
 
         // Keep the picker selection aligned with the newly-selected model
         if let Some(new_index) = self.filtered_entries.iter().position(|entry| {
-            matches!(entry, ModelPickerEntry::Model(model_info, _) if self.selected_model.as_ref().is_some_and(|selected| model_info.id == selected.id))
+            matches!(entry, PickerRow::Item { item, .. } if self.selected_model.as_ref().is_some_and(|selected| item.id == selected.id))
         }) {
             self.set_selected_index(new_index, window, cx);
         } else {
             cx.notify();
         }
+    }
+
+    fn rebuild_entries(&mut self) {
+        self.filtered_entries = info_list_to_picker_entries(
+            self.filtered_models.clone(),
+            &self.favorites,
+            self.selected_model.as_ref().map(|model| &model.id),
+            self.filtered_agents.clone(),
+            &self.collapse,
+        );
+    }
+
+    fn toggle_group(
+        &mut self,
+        key: PickerGroupKey,
+        expanded: bool,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        self.collapse.set_expanded(key.clone(), !expanded);
+        self.rebuild_entries();
+        if let Some(index) = group_row_index(&self.filtered_entries, &key) {
+            self.selected_index = index;
+        }
+        self.selected_description = None;
+        self.reselect_row = Some(RowAnchor::Group(key));
+        refresh_rows_after_fold(window, cx);
+        cx.notify();
     }
 }
 
@@ -210,8 +819,8 @@ impl PickerDelegate for ModelPickerDelegate {
 
     fn can_select(&self, ix: usize, _window: &mut Window, _cx: &mut Context<Picker<Self>>) -> bool {
         match self.filtered_entries.get(ix) {
-            Some(ModelPickerEntry::Model(_, _)) => true,
-            Some(ModelPickerEntry::Separator(_)) | None => false,
+            Some(PickerRow::Item { .. } | PickerRow::Group { .. } | PickerRow::Agent(_)) => true,
+            Some(PickerRow::Label(_)) | None => false,
         }
     }
 
@@ -225,40 +834,38 @@ impl PickerDelegate for ModelPickerDelegate {
         window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Task<()> {
-        let favorites = self.favorites.clone();
+        let query = query.trim().to_string();
+        let models = self.models.clone();
+        let agents = self
+            .agent_launchers
+            .as_ref()
+            .map(|agent_launchers| agent_launchers(cx))
+            .unwrap_or_default();
+        let executor = cx.background_executor().clone();
 
         cx.spawn_in(window, async move |this, cx| {
-            let filtered_models = match this
-                .read_with(cx, |this, cx| {
-                    this.delegate.models.clone().map(move |models| {
-                        fuzzy_search(models, query, cx.background_executor().clone())
-                    })
-                })
-                .ok()
-                .flatten()
-            {
-                Some(task) => task.await,
-                None => AgentModelList::Flat(vec![]),
+            let filtered_models = match models {
+                Some(models) => fuzzy_search(models, query.clone(), executor.clone()).await,
+                None => AgentModelList::Flat(Vec::new()),
             };
+            let filtered_agents = filter_agent_launch_entries(agents, &query, executor).await;
 
             this.update_in(cx, |this, window, cx| {
-                this.delegate.filtered_entries =
-                    info_list_to_picker_entries(filtered_models, &favorites);
-                // Finds the currently selected model in the list
-                let new_index = this
-                    .delegate
-                    .selected_model
-                    .as_ref()
-                    .and_then(|selected| {
-                        this.delegate.filtered_entries.iter().position(|entry| {
-                            if let ModelPickerEntry::Model(model_info, _) = entry {
-                                model_info.id == selected.id
-                            } else {
-                                false
-                            }
-                        })
-                    })
-                    .unwrap_or(0);
+                let delegate = &mut this.delegate;
+                delegate.collapse.set_query(&query);
+                delegate.filtered_models = filtered_models;
+                delegate.filtered_agents = filtered_agents;
+                delegate.rebuild_entries();
+                let new_index = delegate
+                    .reselect_row
+                    .take()
+                    .and_then(|anchor| anchor_row_index(&delegate.filtered_entries, &anchor))
+                    .unwrap_or_else(|| {
+                        initial_row_index(
+                            &delegate.filtered_entries,
+                            delegate.selected_model.as_ref().map(|model| &model.id),
+                        )
+                    });
                 this.set_selected_index(new_index, Some(picker::Direction::Down), true, window, cx);
                 cx.notify();
             })
@@ -267,18 +874,32 @@ impl PickerDelegate for ModelPickerDelegate {
     }
 
     fn confirm(&mut self, _secondary: bool, window: &mut Window, cx: &mut Context<Picker<Self>>) {
-        if let Some(ModelPickerEntry::Model(model_info, _)) =
-            self.filtered_entries.get(self.selected_index)
-            && model_info.disabled.is_none()
-        {
-            self.selector
-                .select_model(model_info.id.clone(), cx)
-                .detach_and_log_err(cx);
-            self.selected_model = Some(model_info.clone());
-            let current_index = self.selected_index;
-            self.set_selected_index(current_index, window, cx);
+        match self.filtered_entries.get(self.selected_index) {
+            Some(PickerRow::Item {
+                item: model_info, ..
+            }) => {
+                if model_info.disabled.is_some() {
+                    return;
+                }
+                self.selector
+                    .select_model(model_info.id.clone(), cx)
+                    .detach_and_log_err(cx);
+                self.selected_model = Some(model_info.clone());
+                let current_index = self.selected_index;
+                self.set_selected_index(current_index, window, cx);
 
-            cx.emit(DismissEvent);
+                cx.emit(DismissEvent);
+            }
+            Some(PickerRow::Group { key, expanded, .. }) => {
+                let key = key.clone();
+                let expanded = *expanded;
+                self.toggle_group(key, expanded, window, cx);
+            }
+            Some(PickerRow::Agent(entry)) => {
+                window.dispatch_action(entry.action.to_action(), cx);
+                cx.emit(DismissEvent);
+            }
+            Some(PickerRow::Label(_)) | None => {}
         }
     }
 
@@ -296,10 +917,15 @@ impl PickerDelegate for ModelPickerDelegate {
         cx: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem> {
         match self.filtered_entries.get(ix)? {
-            ModelPickerEntry::Separator(title) => {
+            PickerRow::Label(title) => {
                 Some(ModelSelectorHeader::new(title, ix > 1).into_any_element())
             }
-            ModelPickerEntry::Model(model_info, is_favorite) => {
+            PickerRow::Group { .. } => render_group_header(&self.filtered_entries, ix, selected),
+            PickerRow::Agent(entry) => Some(render_agent_launch_row(ix, entry, selected)),
+            PickerRow::Item {
+                item: model_info,
+                is_favorite,
+            } => {
                 let is_selected = Some(model_info) == self.selected_model.as_ref();
 
                 let is_favorite = *is_favorite;
@@ -388,50 +1014,24 @@ impl PickerDelegate for ModelPickerDelegate {
 fn info_list_to_picker_entries(
     model_list: AgentModelList,
     favorites: &HashSet<AgentModelId>,
+    active: Option<&AgentModelId>,
+    agents: Vec<AgentLaunchEntry>,
+    collapse: &GroupCollapseState<AgentModelId>,
 ) -> Vec<ModelPickerEntry> {
-    let mut entries = Vec::new();
-
-    let all_models: Vec<_> = match &model_list {
-        AgentModelList::Flat(list) => list.iter().collect(),
-        AgentModelList::Grouped(index_map) => index_map.values().flatten().collect(),
+    let groups = match model_list {
+        AgentModelList::Flat(models) => vec![PickerGroup {
+            name: None,
+            items: models,
+        }],
+        AgentModelList::Grouped(groups) => groups
+            .into_iter()
+            .map(|(group_name, models)| PickerGroup {
+                name: Some(group_name.0),
+                items: models,
+            })
+            .collect(),
     };
-
-    let favorite_models: Vec<_> = all_models
-        .iter()
-        .filter(|m| favorites.contains(&m.id))
-        .unique_by(|m| &m.id)
-        .collect();
-
-    let has_favorites = !favorite_models.is_empty();
-    if has_favorites {
-        entries.push(ModelPickerEntry::Separator("お気に入り".into()));
-        for model in favorite_models {
-            entries.push(ModelPickerEntry::Model((*model).clone(), true));
-        }
-    }
-
-    match model_list {
-        AgentModelList::Flat(list) => {
-            if has_favorites {
-                entries.push(ModelPickerEntry::Separator("すべて".into()));
-            }
-            for model in list {
-                let is_favorite = favorites.contains(&model.id);
-                entries.push(ModelPickerEntry::Model(model, is_favorite));
-            }
-        }
-        AgentModelList::Grouped(index_map) => {
-            for (group_name, models) in index_map {
-                entries.push(ModelPickerEntry::Separator(group_name.0));
-                for model in models {
-                    let is_favorite = favorites.contains(&model.id);
-                    entries.push(ModelPickerEntry::Model(model, is_favorite));
-                }
-            }
-        }
-    }
-
-    entries
+    build_picker_rows(groups, favorites, active, agents, collapse, "すべて")
 }
 
 async fn fuzzy_search(
@@ -441,13 +1041,19 @@ async fn fuzzy_search(
 ) -> AgentModelList {
     async fn fuzzy_search_list(
         model_list: Vec<AgentModelInfo>,
+        group_name: Option<SharedString>,
         query: &str,
         executor: BackgroundExecutor,
     ) -> Vec<AgentModelInfo> {
         let candidates = model_list
             .iter()
             .enumerate()
-            .map(|(ix, model)| StringMatchCandidate::new(ix, model.name.as_ref()))
+            .map(|(ix, model)| {
+                StringMatchCandidate::new(
+                    ix,
+                    &grouped_search_text(group_name.as_deref(), &model.name),
+                )
+            })
             .collect::<Vec<_>>();
         let mut matches = match_strings(
             &candidates,
@@ -473,12 +1079,12 @@ async fn fuzzy_search(
 
     match model_list {
         AgentModelList::Flat(model_list) => {
-            AgentModelList::Flat(fuzzy_search_list(model_list, &query, executor).await)
+            AgentModelList::Flat(fuzzy_search_list(model_list, None, &query, executor).await)
         }
         AgentModelList::Grouped(index_map) => {
             let groups =
                 futures::future::join_all(index_map.into_iter().map(|(group_name, models)| {
-                    fuzzy_search_list(models, &query, executor.clone())
+                    fuzzy_search_list(models, Some(group_name.0.clone()), &query, executor.clone())
                         .map(|results| (group_name, results))
                 }))
                 .await;
@@ -493,8 +1099,9 @@ async fn fuzzy_search(
 
 #[cfg(test)]
 mod tests {
-    use gpui::{App, TestAppContext, VisualTestContext};
-    use std::cell::RefCell;
+    use fs::FakeFs;
+    use gpui::{App, Entity, TestAppContext, VisualTestContext};
+    use std::cell::{Cell, RefCell};
 
     use super::*;
 
@@ -564,10 +1171,75 @@ mod tests {
         entries
             .iter()
             .filter_map(|entry| match entry {
-                ModelPickerEntry::Model(info, _) => Some(info.id.as_ref()),
+                PickerRow::Item { item, .. } => Some(item.id.as_ref()),
                 _ => None,
             })
             .collect()
+    }
+
+    /// `# ` marks a label, `▶`/`▼` a folded/unfolded heading with its count,
+    /// `@ ` an agent row; anything else is a model id.
+    fn entry_labels(entries: &[ModelPickerEntry]) -> Vec<String> {
+        entries
+            .iter()
+            .map(|entry| match entry {
+                PickerRow::Label(label) => format!("# {label}"),
+                PickerRow::Group {
+                    name,
+                    count,
+                    expanded,
+                    ..
+                } => format!("{} {name} ({count})", if *expanded { "▼" } else { "▶" }),
+                PickerRow::Item { item, .. } => item.id.to_string(),
+                PickerRow::Agent(entry) => format!("@ {}", entry.label),
+            })
+            .collect()
+    }
+
+    fn picker_entries(
+        models: AgentModelList,
+        favorites: &HashSet<AgentModelId>,
+        active: Option<&str>,
+        collapse: &GroupCollapseState<AgentModelId>,
+    ) -> Vec<ModelPickerEntry> {
+        let active = active.map(AgentModelId::new);
+        info_list_to_picker_entries(models, favorites, active.as_ref(), Vec::new(), collapse)
+    }
+
+    fn external_agent(id: &str, display_name: &str) -> ExternalAgentMenuItem {
+        ExternalAgentMenuItem {
+            id: AgentId::new(id),
+            display_name: display_name.to_string().into(),
+            icon_path: None,
+        }
+    }
+
+    fn init_picker_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+        });
+    }
+
+    fn open_picker(
+        selector: Rc<TestModelSelector>,
+        agent_launchers: Option<AgentLaunchSource>,
+        cx: &mut TestAppContext,
+    ) -> (Entity<ModelSelector>, &mut VisualTestContext) {
+        let (picker, cx) = cx.add_window_view(move |window, cx| {
+            let selector: Rc<dyn AgentModelSelector> = selector;
+            acp_model_selector(selector, cx.focus_handle(), agent_launchers, window, cx)
+        });
+        cx.run_until_parked();
+        (picker, cx)
+    }
+
+    fn picker_labels(picker: &Entity<ModelSelector>, cx: &mut VisualTestContext) -> Vec<String> {
+        picker.read_with(cx, |picker, _| {
+            entry_labels(&picker.delegate.filtered_entries)
+        })
     }
 
     #[gpui::test]
@@ -585,7 +1257,7 @@ mod tests {
             let model_selector = model_selector.clone();
             move |window, cx| {
                 let selector: Rc<dyn AgentModelSelector> = model_selector;
-                acp_model_selector(selector, cx.focus_handle(), window, cx)
+                acp_model_selector(selector, cx.focus_handle(), None, window, cx)
             }
         });
         cx.run_until_parked();
@@ -605,7 +1277,8 @@ mod tests {
     }
 
     struct TestModelSelector {
-        models: Vec<AgentModelInfo>,
+        models: AgentModelList,
+        favorites: RefCell<HashSet<AgentModelId>>,
         selected_model: RefCell<AgentModelInfo>,
         selected_models: RefCell<Vec<AgentModelId>>,
     }
@@ -635,7 +1308,27 @@ mod tests {
 
             Self {
                 selected_model: RefCell::new(models[0].clone()),
+                models: AgentModelList::Flat(models),
+                favorites: RefCell::default(),
+                selected_models: RefCell::new(Vec::new()),
+            }
+        }
+
+        fn grouped(groups: Vec<(&str, Vec<&str>)>, favorites: Vec<&str>, selected: &str) -> Self {
+            let models = create_model_list(groups);
+            let AgentModelList::Grouped(groups) = &models else {
+                unreachable!()
+            };
+            let selected_model = groups
+                .values()
+                .flatten()
+                .find(|model| model.id.as_ref() == selected)
+                .cloned()
+                .expect("the selected model is one of the models");
+            Self {
+                selected_model: RefCell::new(selected_model),
                 models,
+                favorites: RefCell::new(create_favorites(favorites)),
                 selected_models: RefCell::new(Vec::new()),
             }
         }
@@ -643,12 +1336,16 @@ mod tests {
 
     impl AgentModelSelector for TestModelSelector {
         fn list_models(&self, _cx: &mut App) -> Task<Result<AgentModelList>> {
-            Task::ready(Ok(AgentModelList::Flat(self.models.clone())))
+            Task::ready(Ok(self.models.clone()))
         }
 
         fn select_model(&self, model_id: AgentModelId, _cx: &mut App) -> Task<Result<()>> {
             self.selected_models.borrow_mut().push(model_id.clone());
-            if let Some(model) = self.models.iter().find(|model| model.id == model_id) {
+            let all_models: Vec<&AgentModelInfo> = match &self.models {
+                AgentModelList::Flat(list) => list.iter().collect(),
+                AgentModelList::Grouped(groups) => groups.values().flatten().collect(),
+            };
+            if let Some(model) = all_models.into_iter().find(|model| model.id == model_id) {
                 *self.selected_model.borrow_mut() = model.clone();
             }
             Task::ready(Ok(()))
@@ -657,16 +1354,10 @@ mod tests {
         fn selected_model(&self, _cx: &mut App) -> Task<Result<AgentModelInfo>> {
             Task::ready(Ok(self.selected_model.borrow().clone()))
         }
-    }
 
-    fn get_entry_labels(entries: &[ModelPickerEntry]) -> Vec<&str> {
-        entries
-            .iter()
-            .map(|entry| match entry {
-                ModelPickerEntry::Model(info, _) => info.id.as_ref(),
-                ModelPickerEntry::Separator(s) => &s,
-            })
-            .collect()
+        fn favorite_model_ids(&self, _cx: &mut App) -> HashSet<AgentModelId> {
+            self.favorites.borrow().clone()
+        }
     }
 
     #[gpui::test]
@@ -701,6 +1392,21 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn a_query_can_name_the_group(cx: &mut TestAppContext) {
+        let models = create_model_list(vec![
+            ("推奨", vec!["claude-sonnet", "gpt-5"]),
+            ("OpenAI", vec!["gpt-5", "gpt-6"]),
+            ("Ollama", vec!["qwen3", "llama3"]),
+        ]);
+
+        let results = fuzzy_search(models.clone(), "ollama".into(), cx.executor()).await;
+        assert_models_eq(results, vec![("Ollama", vec!["qwen3", "llama3"])]);
+
+        let results = fuzzy_search(models, "openai".into(), cx.executor()).await;
+        assert_models_eq(results, vec![("OpenAI", vec!["gpt-5", "gpt-6"])]);
+    }
+
+    #[gpui::test]
     fn test_favorites_section_appears_when_favorites_exist(_cx: &mut TestAppContext) {
         let models = create_model_list(vec![
             ("zed", vec!["zed/claude", "zed/gemini"]),
@@ -708,11 +1414,11 @@ mod tests {
         ]);
         let favorites = create_favorites(vec!["zed/gemini"]);
 
-        let entries = info_list_to_picker_entries(models, &favorites);
+        let entries = picker_entries(models, &favorites, None, &GroupCollapseState::default());
 
         assert!(matches!(
             entries.first(),
-            Some(ModelPickerEntry::Separator(s)) if s == "お気に入り"
+            Some(PickerRow::Label(s)) if s == "お気に入り"
         ));
 
         let model_ids = get_entry_model_ids(&entries);
@@ -724,11 +1430,11 @@ mod tests {
         let models = create_model_list(vec![("zed", vec!["zed/claude", "zed/gemini"])]);
         let favorites = create_favorites(vec![]);
 
-        let entries = info_list_to_picker_entries(models, &favorites);
+        let entries = picker_entries(models, &favorites, None, &GroupCollapseState::default());
 
         assert!(matches!(
             entries.first(),
-            Some(ModelPickerEntry::Separator(s)) if s == "zed"
+            Some(PickerRow::Group { name, .. }) if name == "zed"
         ));
     }
 
@@ -739,29 +1445,33 @@ mod tests {
             ("openai", vec!["openai/gpt-5"]),
         ]);
         let favorites = create_favorites(vec!["zed/claude"]);
+        let mut searching = GroupCollapseState::default();
+        searching.set_query("e");
 
-        let entries = info_list_to_picker_entries(models, &favorites);
+        let entries = picker_entries(models, &favorites, None, &searching);
 
         for entry in &entries {
-            if let ModelPickerEntry::Model(info, is_favorite) = entry {
-                if info.id.as_ref() == "zed/claude" {
+            if let PickerRow::Item { item, is_favorite } = entry {
+                if item.id.as_ref() == "zed/claude" {
                     assert!(is_favorite, "zed/claude should be a favorite");
                 } else {
-                    assert!(!is_favorite, "{} should not be a favorite", info.id);
+                    assert!(!is_favorite, "{} should not be a favorite", item.id);
                 }
             }
         }
     }
 
     #[gpui::test]
-    fn test_favorites_appear_in_both_sections(_cx: &mut TestAppContext) {
+    fn favorites_appear_in_their_groups_once_those_are_open(_cx: &mut TestAppContext) {
         let models = create_model_list(vec![
             ("zed", vec!["zed/claude", "zed/gemini"]),
             ("openai", vec!["openai/gpt-5", "openai/gpt-4"]),
         ]);
         let favorites = create_favorites(vec!["zed/gemini", "openai/gpt-5"]);
+        let mut searching = GroupCollapseState::default();
+        searching.set_query("gpt");
 
-        let entries = info_list_to_picker_entries(models, &favorites);
+        let entries = picker_entries(models, &favorites, None, &searching);
         let model_ids = get_entry_model_ids(&entries);
 
         assert_eq!(model_ids[0], "zed/gemini");
@@ -771,10 +1481,12 @@ mod tests {
         assert!(model_ids[2..].contains(&"openai/gpt-5"));
     }
 
+    /// The same model used to be listed up to three times (お気に入り, 推奨 and
+    /// its provider). With a favorite, the other groups are a heading each.
     #[gpui::test]
     fn test_favorites_are_not_duplicated_when_repeated_in_other_sections(_cx: &mut TestAppContext) {
         let models = create_model_list(vec![
-            ("Recommended", vec!["zed/claude", "anthropic/claude"]),
+            ("推奨", vec!["zed/claude", "anthropic/claude"]),
             ("Zed", vec!["zed/claude", "zed/gpt-5"]),
             ("Antropic", vec!["anthropic/claude"]),
             ("OpenAI", vec!["openai/gpt-5"]),
@@ -782,25 +1494,176 @@ mod tests {
 
         let favorites = create_favorites(vec!["zed/claude"]);
 
-        let entries = info_list_to_picker_entries(models, &favorites);
-        let labels = get_entry_labels(&entries);
+        let entries = picker_entries(
+            models,
+            &favorites,
+            Some("zed/claude"),
+            &GroupCollapseState::default(),
+        );
 
         assert_eq!(
-            labels,
+            entry_labels(&entries),
             vec![
-                "お気に入り",
+                "# お気に入り",
                 "zed/claude",
-                "Recommended",
-                "zed/claude",
-                "anthropic/claude",
-                "Zed",
-                "zed/claude",
-                "zed/gpt-5",
-                "Antropic",
-                "anthropic/claude",
-                "OpenAI",
-                "openai/gpt-5"
+                "▶ 推奨 (2)",
+                "▶ Zed (2)",
+                "▶ Antropic (1)",
+                "▶ OpenAI (1)",
             ]
+        );
+    }
+
+    #[gpui::test]
+    fn without_favorites_every_group_stays_open(_cx: &mut TestAppContext) {
+        let models = create_model_list(vec![
+            ("推奨", vec!["zed/claude"]),
+            ("OpenAI", vec!["openai/gpt-5", "openai/o3"]),
+        ]);
+
+        let entries = picker_entries(
+            models,
+            &HashSet::default(),
+            Some("openai/o3"),
+            &GroupCollapseState::default(),
+        );
+
+        assert_eq!(
+            entry_labels(&entries),
+            vec![
+                "▼ 推奨 (1)",
+                "zed/claude",
+                "▼ OpenAI (2)",
+                "openai/gpt-5",
+                "openai/o3",
+            ]
+        );
+    }
+
+    #[gpui::test]
+    fn searching_opens_every_group_even_one_the_user_folded(_cx: &mut TestAppContext) {
+        let models = create_model_list(vec![
+            ("Anthropic", vec!["claude-sonnet"]),
+            ("OpenAI", vec!["gpt-5", "gpt-5-mini"]),
+        ]);
+        let favorites = create_favorites(vec!["claude-sonnet"]);
+        let mut collapse = GroupCollapseState::default();
+        collapse.set_expanded(PickerGroupKey::Named("OpenAI".into()), false);
+
+        collapse.set_query("gpt");
+        let entries = picker_entries(models, &favorites, None, &collapse);
+
+        assert_eq!(
+            entry_labels(&entries),
+            vec![
+                "# お気に入り",
+                "claude-sonnet",
+                "▼ Anthropic (1)",
+                "claude-sonnet",
+                "▼ OpenAI (2)",
+                "gpt-5",
+                "gpt-5-mini",
+            ]
+        );
+    }
+
+    #[gpui::test]
+    fn the_group_holding_the_model_in_use_opens(_cx: &mut TestAppContext) {
+        let models = create_model_list(vec![
+            ("推奨", vec!["claude-sonnet", "gpt-5"]),
+            ("Anthropic", vec!["claude-sonnet", "claude-opus"]),
+            ("OpenAI", vec!["gpt-5", "o3"]),
+        ]);
+        let favorites = create_favorites(vec!["claude-sonnet"]);
+
+        // Not a favorite: the first group holding it opens, so its check mark
+        // is in sight, and only that one (it would be listed twice otherwise).
+        let entries = picker_entries(
+            models.clone(),
+            &favorites,
+            Some("o3"),
+            &GroupCollapseState::default(),
+        );
+        assert_eq!(
+            entry_labels(&entries),
+            vec![
+                "# お気に入り",
+                "claude-sonnet",
+                "▶ 推奨 (2)",
+                "▶ Anthropic (2)",
+                "▼ OpenAI (2)",
+                "gpt-5",
+                "o3",
+            ]
+        );
+
+        // A favorite is already in sight under お気に入り.
+        let entries = picker_entries(
+            models,
+            &favorites,
+            Some("claude-sonnet"),
+            &GroupCollapseState::default(),
+        );
+        assert_eq!(
+            entry_labels(&entries),
+            vec![
+                "# お気に入り",
+                "claude-sonnet",
+                "▶ 推奨 (2)",
+                "▶ Anthropic (2)",
+                "▶ OpenAI (2)",
+            ]
+        );
+    }
+
+    #[gpui::test]
+    fn folds_the_user_made_win_and_search_folds_last_one_query(_cx: &mut TestAppContext) {
+        let models = create_model_list(vec![
+            ("Anthropic", vec!["claude-sonnet"]),
+            ("OpenAI", vec!["gpt-5"]),
+        ]);
+        let favorites = create_favorites(vec!["claude-sonnet"]);
+        let openai = PickerGroupKey::Named("OpenAI".into());
+        let mut collapse = GroupCollapseState::default();
+
+        collapse.set_expanded(openai.clone(), true);
+        assert_eq!(
+            entry_labels(&picker_entries(models.clone(), &favorites, None, &collapse)),
+            vec![
+                "# お気に入り",
+                "claude-sonnet",
+                "▶ Anthropic (1)",
+                "▼ OpenAI (1)",
+                "gpt-5",
+            ]
+        );
+
+        collapse.set_query("gpt");
+        collapse.set_expanded(openai, false);
+        assert_eq!(
+            entry_labels(&picker_entries(models.clone(), &favorites, None, &collapse)),
+            vec![
+                "# お気に入り",
+                "claude-sonnet",
+                "▼ Anthropic (1)",
+                "claude-sonnet",
+                "▶ OpenAI (1)",
+            ],
+            "a heading can be folded while searching"
+        );
+
+        collapse.set_query("gpt-");
+        assert!(
+            entry_labels(&picker_entries(models.clone(), &favorites, None, &collapse))
+                .contains(&"▼ OpenAI (1)".to_string()),
+            "a new query opens it again, so no match hides behind it"
+        );
+
+        collapse.set_query("");
+        assert!(
+            entry_labels(&picker_entries(models, &favorites, None, &collapse))
+                .contains(&"▼ OpenAI (1)".to_string()),
+            "and the fold made before searching is still there"
         );
     }
 
@@ -828,17 +1691,44 @@ mod tests {
         ]);
         let favorites = create_favorites(vec!["zed/gemini"]);
 
-        let entries = info_list_to_picker_entries(models, &favorites);
+        let entries = picker_entries(models, &favorites, None, &GroupCollapseState::default());
 
-        assert!(matches!(
-            entries.first(),
-            Some(ModelPickerEntry::Separator(s)) if s == "お気に入り"
-        ));
+        assert_eq!(
+            entry_labels(&entries),
+            vec![
+                "# お気に入り",
+                "zed/gemini",
+                "# すべて",
+                "zed/claude",
+                "zed/gemini",
+            ],
+            "a short list without group names is never folded"
+        );
+    }
 
-        assert!(entries.iter().any(|e| matches!(
-            e,
-            ModelPickerEntry::Separator(s) if s == "すべて"
-        )));
+    #[gpui::test]
+    fn a_long_flat_list_folds_behind_favorites(_cx: &mut TestAppContext) {
+        let models = AgentModelList::Flat(
+            (0..MIN_FOLDABLE_UNGROUPED)
+                .map(|index| AgentModelInfo {
+                    id: AgentModelId::new(format!("model-{index}")),
+                    name: format!("Model {index}").into(),
+                    description: None,
+                    icon: None,
+                    is_latest: false,
+                    disabled: None,
+                    cost: None,
+                })
+                .collect(),
+        );
+        let favorites = create_favorites(vec!["model-0"]);
+
+        let entries = picker_entries(models, &favorites, None, &GroupCollapseState::default());
+
+        assert_eq!(
+            entry_labels(&entries),
+            vec!["# お気に入り", "model-0", "▶ すべて (10)"]
+        );
     }
 
     #[gpui::test]
@@ -880,16 +1770,571 @@ mod tests {
         ]);
         let favorites = create_favorites(vec!["favorite-model"]);
 
-        let entries = info_list_to_picker_entries(models, &favorites);
+        let entries = picker_entries(models, &favorites, None, &GroupCollapseState::default());
 
         for entry in &entries {
-            if let ModelPickerEntry::Model(info, is_favorite) = entry {
-                if info.id.as_ref() == "favorite-model" {
+            if let PickerRow::Item { item, is_favorite } = entry {
+                if item.id.as_ref() == "favorite-model" {
                     assert!(*is_favorite, "favorite-model should have is_favorite=true");
-                } else if info.id.as_ref() == "regular-model" {
+                } else if item.id.as_ref() == "regular-model" {
                     assert!(!*is_favorite, "regular-model should have is_favorite=false");
                 }
             }
         }
+    }
+
+    #[gpui::test]
+    fn the_selection_starts_on_a_model_rather_than_a_heading(_cx: &mut TestAppContext) {
+        let models = create_model_list(vec![
+            ("Anthropic", vec!["claude-sonnet"]),
+            ("OpenAI", vec!["gpt-5"]),
+        ]);
+        let mut searching = GroupCollapseState::default();
+        searching.set_query("gpt");
+        let entries = picker_entries(
+            models,
+            &HashSet::default(),
+            Some("claude-sonnet"),
+            &searching,
+        );
+
+        assert_eq!(
+            entry_labels(&entries),
+            vec!["▼ Anthropic (1)", "claude-sonnet", "▼ OpenAI (1)", "gpt-5"]
+        );
+        assert_eq!(
+            initial_row_index(&entries, Some(&AgentModelId::new("gpt-5"))),
+            3,
+            "on the model in use"
+        );
+        assert_eq!(
+            initial_row_index(&entries, Some(&AgentModelId::new("elsewhere"))),
+            1,
+            "else on the first model, so Enter picks the best match"
+        );
+    }
+
+    #[gpui::test]
+    async fn confirming_a_heading_unfolds_it_without_choosing_a_model(cx: &mut TestAppContext) {
+        init_picker_test(cx);
+        let selector = Rc::new(TestModelSelector::grouped(
+            vec![
+                ("Anthropic", vec!["claude-sonnet", "claude-opus"]),
+                ("OpenAI", vec!["gpt-5", "gpt-5-mini"]),
+            ],
+            vec!["claude-sonnet"],
+            "claude-sonnet",
+        ));
+        let (picker, cx) = open_picker(selector.clone(), None, cx);
+        let dismissed = Rc::new(Cell::new(false));
+        cx.update({
+            let dismissed = dismissed.clone();
+            |_, cx| {
+                cx.subscribe(&picker, move |_, _: &DismissEvent, _| dismissed.set(true))
+                    .detach();
+            }
+        });
+
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec![
+                "# お気に入り",
+                "claude-sonnet",
+                "▶ Anthropic (2)",
+                "▶ OpenAI (2)"
+            ]
+        );
+
+        picker.update_in(cx, |picker, window, cx| {
+            picker.delegate.set_selected_index(3, window, cx);
+            picker.delegate.confirm(false, window, cx);
+            assert_eq!(
+                entry_labels(&picker.delegate.filtered_entries),
+                vec![
+                    "# お気に入り",
+                    "claude-sonnet",
+                    "▶ Anthropic (2)",
+                    "▼ OpenAI (2)",
+                    "gpt-5",
+                    "gpt-5-mini",
+                ],
+                "rebuilt on the spot, without waiting for a search"
+            );
+        });
+        cx.run_until_parked();
+
+        picker.read_with(cx, |picker, _| {
+            assert_eq!(
+                entry_labels(&picker.delegate.filtered_entries),
+                vec![
+                    "# お気に入り",
+                    "claude-sonnet",
+                    "▶ Anthropic (2)",
+                    "▼ OpenAI (2)",
+                    "gpt-5",
+                    "gpt-5-mini",
+                ]
+            );
+            assert_eq!(
+                picker.delegate.selected_index, 3,
+                "the selection stays on the heading"
+            );
+            assert!(
+                picker.delegate.reselect_row.is_none(),
+                "the list was updated for the new number of rows"
+            );
+        });
+        assert!(selector.selected_models.borrow().is_empty());
+        assert!(!dismissed.get(), "the popover stays open");
+
+        picker.update_in(cx, |picker, window, cx| {
+            picker.delegate.confirm(false, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec![
+                "# お気に入り",
+                "claude-sonnet",
+                "▶ Anthropic (2)",
+                "▶ OpenAI (2)"
+            ]
+        );
+        assert!(!dismissed.get());
+    }
+
+    #[gpui::test]
+    fn the_agent_section_leaves_out_the_agent_already_running(_cx: &mut TestAppContext) {
+        let external_agents = vec![
+            external_agent("claude-acp", "Claude Agent"),
+            external_agent("codex-acp", "Codex"),
+        ];
+        let labels = |entries: Vec<AgentLaunchEntry>| {
+            entries
+                .into_iter()
+                .map(|entry| entry.label.to_string())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            labels(agent_launch_entries(
+                &AgentId::new("claude-acp"),
+                true,
+                external_agents.clone()
+            )),
+            vec![
+                "Zed Agent で新しいスレッド",
+                "Claude Code を起動",
+                "Codex で新しいスレッド",
+            ]
+        );
+        assert_eq!(
+            labels(agent_launch_entries(
+                &agent::ZED_AGENT_ID,
+                false,
+                external_agents
+            )),
+            vec!["Claude Agent で新しいスレッド", "Codex で新しいスレッド"],
+            "no Zed Agent row in a Zed Agent thread, and no CLI without a terminal"
+        );
+    }
+
+    #[gpui::test]
+    async fn searching_claude_finds_the_cli_and_the_claude_agent(cx: &mut TestAppContext) {
+        let entries = agent_launch_entries(
+            &agent::ZED_AGENT_ID,
+            true,
+            vec![
+                external_agent("claude-acp", "Claude Agent"),
+                external_agent("codex-acp", "Codex"),
+            ],
+        );
+
+        let found = filter_agent_launch_entries(entries, "claude", cx.executor()).await;
+
+        let mut actions = found
+            .into_iter()
+            .map(|entry| entry.action)
+            .collect::<Vec<_>>();
+        actions.sort_by_key(|action| format!("{action:?}"));
+        assert_eq!(
+            actions,
+            vec![
+                AgentLaunchAction::ClaudeCodeCli,
+                AgentLaunchAction::NewThread(AgentId::new("claude-acp")),
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn the_agent_section_is_a_folded_heading_at_the_bottom_until_searched(
+        cx: &mut TestAppContext,
+    ) {
+        init_picker_test(cx);
+        let launched_agents = Rc::new(RefCell::new(Vec::<AgentId>::new()));
+        let launched_cli = Rc::new(Cell::new(0));
+        cx.update(|cx| {
+            let launched_agents = launched_agents.clone();
+            cx.on_action(move |action: &NewExternalAgentThread, _| {
+                launched_agents.borrow_mut().push(action.agent.clone());
+            });
+            let launched_cli = launched_cli.clone();
+            cx.on_action(move |_: &zed_actions::terminal::LaunchClaudeCode, _| {
+                launched_cli.set(launched_cli.get() + 1);
+            });
+        });
+        let agent_launchers: AgentLaunchSource = Rc::new(|_| {
+            agent_launch_entries(
+                &AgentId::new("claude-acp"),
+                true,
+                vec![
+                    external_agent("claude-acp", "Claude Agent"),
+                    external_agent("codex-acp", "Codex"),
+                ],
+            )
+        });
+        let selector = Rc::new(TestModelSelector::new());
+        let (picker, cx) = open_picker(selector.clone(), Some(agent_launchers), cx);
+        let dismissed = Rc::new(Cell::new(0));
+        cx.update({
+            let dismissed = dismissed.clone();
+            |_, cx| {
+                cx.subscribe(&picker, move |_, _: &DismissEvent, _| {
+                    dismissed.set(dismissed.get() + 1)
+                })
+                .detach();
+            }
+        });
+
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec!["auto", "manual", "▶ エージェント (3)"],
+            "one folded heading below the models, without the agent already running"
+        );
+        picker.read_with(cx, |picker, _| {
+            assert_eq!(
+                picker.delegate.selected_index, 0,
+                "the selection starts on the models"
+            );
+        });
+
+        picker.update_in(cx, |picker, window, cx| {
+            picker.set_query("codex", window, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec!["▼ エージェント (1)", "@ Codex で新しいスレッド"]
+        );
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        picker.update_in(cx, |picker, window, cx| {
+            assert_eq!(
+                picker.delegate.selected_index, 1,
+                "on the agent, not its heading"
+            );
+            picker.delegate.confirm(false, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            launched_agents.borrow().as_slice(),
+            &[AgentId::new("codex-acp")]
+        );
+        assert_eq!(dismissed.get(), 1);
+
+        picker.update_in(cx, |picker, window, cx| {
+            picker.set_query("claude code", window, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec!["▼ エージェント (1)", "@ Claude Code を起動"]
+        );
+        picker.update_in(cx, |picker, window, cx| {
+            picker.delegate.confirm(false, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(launched_cli.get(), 1);
+        assert_eq!(dismissed.get(), 2);
+        assert!(
+            selector.selected_models.borrow().is_empty(),
+            "starting an agent does not change this thread's model"
+        );
+    }
+
+    #[gpui::test]
+    async fn the_agent_section_does_not_keep_the_project_alive(cx: &mut TestAppContext) {
+        crate::test_support::init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/project", serde_json::json!({ "file.txt": "" }))
+            .await;
+        let project = project::Project::test(fs, [std::path::Path::new("/project")], cx).await;
+        let agent_launchers = agent_launch_source(project.downgrade(), agent::ZED_AGENT_ID.clone());
+        assert!(
+            !cx.update(|cx| agent_launchers(cx)).is_empty(),
+            "a project with a folder offers agents to start"
+        );
+
+        let released = project.downgrade();
+        drop(project);
+        cx.run_until_parked();
+
+        released.assert_released();
+        assert!(cx.update(|cx| agent_launchers(cx)).is_empty());
+    }
+
+    fn star(selector: &TestModelSelector, model: &str, cx: &mut VisualTestContext) {
+        selector
+            .favorites
+            .borrow_mut()
+            .insert(AgentModelId::new(model));
+        cx.update(|_, cx| cx.update_global::<SettingsStore, _>(|_, _| {}));
+        cx.run_until_parked();
+    }
+
+    fn selected_label(picker: &Entity<ModelSelector>, cx: &mut VisualTestContext) -> String {
+        picker.read_with(cx, |picker, _| {
+            entry_labels(&picker.delegate.filtered_entries)
+                .get(picker.delegate.selected_index)
+                .cloned()
+                .unwrap_or_default()
+        })
+    }
+
+    #[gpui::test]
+    async fn the_first_star_leaves_the_open_list_unfolded_until_it_closes(cx: &mut TestAppContext) {
+        init_picker_test(cx);
+        let selector = Rc::new(TestModelSelector::grouped(
+            vec![
+                ("Anthropic", vec!["claude-sonnet", "claude-opus"]),
+                ("OpenAI", vec!["gpt-5", "gpt-5-mini"]),
+            ],
+            vec![],
+            "gpt-5",
+        ));
+        let (picker, cx) = open_picker(selector.clone(), None, cx);
+        picker.update_in(cx, |picker, window, cx| {
+            window.focus(&picker.focus_handle(cx), cx);
+            picker.set_selected_index(2, None, false, window, cx);
+        });
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec![
+                "▼ Anthropic (2)",
+                "claude-sonnet",
+                "claude-opus",
+                "▼ OpenAI (2)",
+                "gpt-5",
+                "gpt-5-mini",
+            ]
+        );
+        assert_eq!(selected_label(&picker, cx), "claude-opus");
+
+        star(&selector, "claude-opus", cx);
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec![
+                "# お気に入り",
+                "claude-opus",
+                "▼ Anthropic (2)",
+                "claude-sonnet",
+                "claude-opus",
+                "▼ OpenAI (2)",
+                "gpt-5",
+                "gpt-5-mini",
+            ],
+            "the star shows up under お気に入り right away, and nothing folds"
+        );
+        picker.read_with(cx, |picker, _| {
+            assert_eq!(
+                picker.delegate.selected_index, 4,
+                "the selection stays on the row it was on (not the new お気に入り copy) \
+                 although rows came in above it"
+            );
+        });
+
+        picker.update(cx, |_, cx| cx.emit(DismissEvent));
+        cx.run_until_parked();
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec![
+                "# お気に入り",
+                "claude-opus",
+                "▶ Anthropic (2)",
+                "▼ OpenAI (2)",
+                "gpt-5",
+                "gpt-5-mini",
+            ],
+            "the next opening folds behind the favorites (the group in use stays open)"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_star_made_while_the_popover_is_closed_folds_at_once(cx: &mut TestAppContext) {
+        init_picker_test(cx);
+        let selector = Rc::new(TestModelSelector::grouped(
+            vec![
+                ("Anthropic", vec!["claude-sonnet", "claude-opus"]),
+                ("OpenAI", vec!["gpt-5", "gpt-5-mini"]),
+            ],
+            vec![],
+            "gpt-5",
+        ));
+        let (picker, cx) = open_picker(selector.clone(), None, cx);
+
+        star(&selector, "claude-opus", cx);
+
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec![
+                "# お気に入り",
+                "claude-opus",
+                "▶ Anthropic (2)",
+                "▼ OpenAI (2)",
+                "gpt-5",
+                "gpt-5-mini",
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn without_a_folder_there_is_no_agent_section(cx: &mut TestAppContext) {
+        crate::test_support::init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = project::Project::test(fs, [], cx).await;
+        let agent_launchers = agent_launch_source(project.downgrade(), AgentId::new("claude-acp"));
+
+        assert!(
+            cx.update(|cx| agent_launchers(cx)).is_empty(),
+            "the panel refuses to start a thread or the CLI without a folder"
+        );
+    }
+
+    fn claude_acp_launchers() -> AgentLaunchSource {
+        Rc::new(|_| {
+            agent_launch_entries(
+                &AgentId::new("claude-acp"),
+                true,
+                vec![
+                    external_agent("claude-acp", "Claude Agent"),
+                    external_agent("codex-acp", "Codex"),
+                ],
+            )
+        })
+    }
+
+    #[gpui::test]
+    async fn a_query_of_only_spaces_is_no_search(cx: &mut TestAppContext) {
+        init_picker_test(cx);
+        let selector = Rc::new(TestModelSelector::grouped(
+            vec![
+                ("Anthropic", vec!["claude-sonnet", "claude-opus"]),
+                ("OpenAI", vec!["gpt-5", "gpt-5-mini"]),
+            ],
+            vec!["claude-sonnet"],
+            "claude-sonnet",
+        ));
+        let (picker, cx) = open_picker(selector, Some(claude_acp_launchers()), cx);
+        let browsing = vec![
+            "# お気に入り",
+            "claude-sonnet",
+            "▶ Anthropic (2)",
+            "▶ OpenAI (2)",
+            "▶ エージェント (3)",
+        ];
+        assert_eq!(picker_labels(&picker, cx), browsing);
+
+        picker.update_in(cx, |picker, window, cx| picker.set_query("   ", window, cx));
+        cx.run_until_parked();
+
+        assert_eq!(
+            picker_labels(&picker, cx),
+            browsing,
+            "blanks alone neither unfold every group nor hide the models"
+        );
+    }
+
+    #[gpui::test]
+    async fn japanese_queries_name_the_recommended_group_and_the_agent_section(
+        cx: &mut TestAppContext,
+    ) {
+        init_picker_test(cx);
+        let selector = Rc::new(TestModelSelector::grouped(
+            vec![("推奨", vec!["claude-sonnet"]), ("OpenAI", vec!["gpt-5"])],
+            vec![],
+            "gpt-5",
+        ));
+        let (picker, cx) = open_picker(selector, Some(claude_acp_launchers()), cx);
+
+        picker.update_in(cx, |picker, window, cx| {
+            picker.set_query("推奨", window, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec!["▼ 推奨 (1)", "claude-sonnet"]
+        );
+
+        picker.update_in(cx, |picker, window, cx| {
+            picker.set_query("エージェント", window, cx)
+        });
+        cx.run_until_parked();
+        let mut labels = picker_labels(&picker, cx);
+        assert_eq!(
+            labels.first().map(String::as_str),
+            Some("▼ エージェント (3)")
+        );
+        labels.sort();
+        assert_eq!(
+            labels,
+            vec![
+                "@ Claude Code を起動",
+                "@ Codex で新しいスレッド",
+                "@ Zed Agent で新しいスレッド",
+                "▼ エージェント (3)",
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn external_agents_are_listed_by_name_ignoring_case(cx: &mut TestAppContext) {
+        crate::test_support::init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/project", serde_json::json!({ "file.txt": "" }))
+            .await;
+        let project = project::Project::test(fs, [std::path::Path::new("/project")], cx).await;
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    let agent_servers = settings.agent_servers.get_or_insert_default();
+                    for name in ["beta", "Zeta", "Alpha"] {
+                        agent_servers.insert(
+                            name.to_string(),
+                            serde_json::from_value(serde_json::json!({
+                                "type": "custom",
+                                "command": name,
+                            }))
+                            .unwrap(),
+                        );
+                    }
+                });
+            });
+        });
+        cx.run_until_parked();
+
+        let items = project.read_with(cx, |project, cx| {
+            external_agent_menu_items(project.agent_server_store().read(cx), cx)
+        });
+
+        assert_eq!(
+            items,
+            vec![
+                external_agent("Alpha", "Alpha"),
+                external_agent("beta", "beta"),
+                external_agent("Zeta", "Zeta"),
+            ]
+        );
     }
 }

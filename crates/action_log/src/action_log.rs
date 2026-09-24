@@ -89,6 +89,12 @@ impl ActionLog {
         self.file_read_times.get(path).copied()
     }
 
+    /// Whether the buffer was read or edited by the agent and is still being
+    /// tracked; only then does [`Self::stale_buffers`] say anything about it.
+    pub fn is_tracking(&self, buffer: &Entity<Buffer>) -> bool {
+        self.tracked_buffers.contains_key(buffer)
+    }
+
     fn update_file_read_time(&mut self, buffer: &Entity<Buffer>, cx: &App) {
         let buffer = buffer.read(cx);
         if let Some(file) = buffer.file() {

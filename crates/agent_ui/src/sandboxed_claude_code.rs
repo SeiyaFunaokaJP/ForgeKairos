@@ -21,7 +21,7 @@ use std::rc::Rc;
 use anyhow::Result;
 use gpui::{
     App, AppContext as _, AsyncWindowContext, Context, Entity, PromptButton, PromptLevel,
-    WeakEntity, Window,
+    SharedString, WeakEntity, Window,
 };
 use project::Project;
 use task::{Shell, SpawnInTerminal};
@@ -30,17 +30,38 @@ use terminal_view::TerminalView;
 use terminal_view::terminal_panel::prepare_task_for_spawn;
 use util::ResultExt as _;
 use workspace::Workspace;
+use workspace::workspace_error::{ErrorAction, ErrorSeverity, WorkspaceError};
 use zed_actions::terminal::{LaunchClaudeCode, LaunchClaudeCodeOutsideSandbox};
 
 use crate::AgentPanel;
+
+pub(crate) use session::cli_tab_session_key;
 
 /// The program the launch actions start.
 const CLAUDE_PROGRAM: &str = "claude";
 const OUTSIDE_SANDBOX_MESSAGE: &str = "Claude Code をサンドボックスの外で起動しますか？";
 /// ADR-F46 A-3 の帯と同じ言い回し。
 const OUTSIDE_SANDBOX_NOTICE: &str = "サンドボックスの外 (Zed 本体の権限) で実行されます";
+/// 外で失うもの。通信はこの PC のプロキシを指す環境変数を渡すだけで、読まない
+/// プログラムには効かない (ADR-F13 の協力方式) ので「強制ではない」と言い切る。
+const OUTSIDE_SANDBOX_LIMITS_LOCAL: &str = "書き込みの制限がなくなります。通信の制限はプロキシの\
+     設定を読むプログラムにだけ効きます (強制ではありません)。";
+/// 接続先のプロセスには、この PC のプロキシも許可リストも届かない。
+const OUTSIDE_SANDBOX_LIMITS_REMOTE: &str =
+    "書き込みと通信の制限はありません (接続先では Zed の統制が効きません)。";
+const OUTSIDE_SANDBOX_CLAUDE_LOGIN: &str =
+    "ログインは普段の Claude Code と共有します (`~/.claude`)。";
+const OUTSIDE_SANDBOX_OTHER_LOGIN: &str = "設定とログインは普段のものをそのまま使います。";
+const OUTSIDE_SANDBOX_ONCE: &str = "今回の起動だけです。常に外で起動するには、設定の「AI」\
+     ページで切り替えます。";
+/// 設定フォルダーが中 (`config`) と外 (`~/.claude` など) で違うので、動いている
+/// スレッドを外へ移すと会話の続きは読み込めない。
+const OUTSIDE_SANDBOX_NEW_SESSION: &str = "新しいセッションになります (この会話の続きには\
+     なりません)。";
 const LAUNCH_ONCE_LABEL: &str = "起動 (今回のみ)";
 const CANCEL_LABEL: &str = "キャンセル";
+/// サンドボックスでの起動に失敗した通知のボタン。押すと「外で起動」の確認に進む。
+const LAUNCH_OUTSIDE_AFTER_FAILURE_LABEL: &str = "サンドボックスの外で起動…";
 
 const COLLABORATION_REASON: &str =
     "共同編集中のプロジェクトでは、サンドボックスの Claude Code は使えません。";
@@ -99,14 +120,24 @@ fn register_launch_actions(workspace: &mut Workspace, launch_on_host: HostLaunch
                     window,
                     cx,
                 ),
+                LaunchRoute::OutsideSandboxByUserChoice => {
+                    launch_on_host(workspace, effort, window, cx)
+                }
             }
         }
     });
     workspace.register_action(
         move |workspace, action: &LaunchClaudeCodeOutsideSandbox, window, cx| {
+            let effort = action.effort.clone();
+            // The user has already said yes to every start in their own
+            // settings file, so asking again would only be noise.
+            if project::agent_sandbox::claude_code_runs_outside_sandbox_by_user_choice(cx) {
+                launch_on_host(workspace, effort, window, cx);
+                return;
+            }
             let on_remote_host = workspace.project().read(cx).is_via_remote_server();
             confirm_and_launch_outside_sandbox(
-                action.effort.clone(),
+                effort,
                 None,
                 on_remote_host,
                 launch_on_host.clone(),
@@ -127,6 +158,9 @@ struct ProjectShape {
     remote: Option<RemoteShape>,
     has_folder: bool,
     sandbox_platform: bool,
+    /// `agent.claude_code_run_outside_sandbox`, from the user's own settings
+    /// file only (a project's settings cannot let the CLI out).
+    outside_by_user_choice: bool,
 }
 
 /// The connection of a remote project, as the sandbox cares about it: only an
@@ -151,6 +185,8 @@ impl ProjectShape {
             }),
             has_folder: !sandbox_roots(project, cx).is_empty(),
             sandbox_platform: cfg!(target_os = "windows"),
+            outside_by_user_choice:
+                project::agent_sandbox::claude_code_runs_outside_sandbox_by_user_choice(cx),
         }
     }
 }
@@ -163,9 +199,15 @@ enum LaunchRoute {
     RemoteSandbox,
     /// Always confirmed first, with `reason` saying why it is not the sandbox.
     OutsideSandbox { reason: &'static str },
+    /// Outside the sandbox without asking: the user chose that for every
+    /// start in their own settings file.
+    OutsideSandboxByUserChoice,
 }
 
 fn route_for(shape: ProjectShape) -> LaunchRoute {
+    if shape.outside_by_user_choice {
+        return LaunchRoute::OutsideSandboxByUserChoice;
+    }
     let reason = if shape.is_collaborative {
         COLLABORATION_REASON
     } else if let Some(remote) = shape.remote {
@@ -215,10 +257,30 @@ fn outside_sandbox_message(program: &str) -> String {
     }
 }
 
+/// What starting outside the sandbox is, beyond where it runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OutsideSandboxStart {
+    /// A start of its own: the launch actions, an agent's card.
+    Once,
+    /// A connected thread started again outside its sandbox, whose session
+    /// cannot follow it there.
+    RestartingThread,
+}
+
 /// On a remote project the CLI is the host's and runs with that user's
 /// rights, neither this PC's nor Zed's.
-fn outside_sandbox_detail(program: &str, on_remote_host: bool, reason: Option<&str>) -> String {
-    let mut detail = if on_remote_host {
+///
+/// The three lines after the headline are what the user gives up and keeps:
+/// the limits that go, the sign-in that is shared (outside the sandbox the
+/// agent reads the account's own folder, so a folder of the fork's would
+/// guard nothing — ADR-F55), and that this is for this start only.
+fn outside_sandbox_detail(
+    program: &str,
+    on_remote_host: bool,
+    reason: Option<&str>,
+    start: OutsideSandboxStart,
+) -> String {
+    let mut lines = vec![if on_remote_host {
         format!(
             "接続先のホストの `{program}` を、そのホストのユーザーの権限で (サンドボックスの外で) \
              実行します。"
@@ -227,12 +289,31 @@ fn outside_sandbox_detail(program: &str, on_remote_host: bool, reason: Option<&s
         format!(
             "{OUTSIDE_SANDBOX_NOTICE}。この PC の `{program}` をプロジェクトのフォルダーで起動します。"
         )
-    };
+    }];
     if let Some(reason) = reason {
-        detail.push('\n');
-        detail.push_str(reason);
+        lines.push(reason.to_string());
     }
-    detail
+    lines.push(
+        if on_remote_host {
+            OUTSIDE_SANDBOX_LIMITS_REMOTE
+        } else {
+            OUTSIDE_SANDBOX_LIMITS_LOCAL
+        }
+        .to_string(),
+    );
+    lines.push(
+        if program == CLAUDE_PROGRAM || program == agent_servers::CLAUDE_AGENT_ID {
+            OUTSIDE_SANDBOX_CLAUDE_LOGIN
+        } else {
+            OUTSIDE_SANDBOX_OTHER_LOGIN
+        }
+        .to_string(),
+    );
+    lines.push(OUTSIDE_SANDBOX_ONCE.to_string());
+    if start == OutsideSandboxStart::RestartingThread {
+        lines.push(OUTSIDE_SANDBOX_NEW_SESSION.to_string());
+    }
+    lines.join("\n")
 }
 
 /// Asks, every time and with no "always", before the agent CLI `program`
@@ -246,8 +327,27 @@ pub(crate) fn confirm_running_outside_sandbox(
     window: &mut Window,
     cx: &mut App,
 ) -> impl Future<Output = bool> + use<> {
+    confirm_starting_outside_sandbox(
+        program,
+        on_remote_host,
+        reason,
+        OutsideSandboxStart::Once,
+        window,
+        cx,
+    )
+}
+
+/// [`confirm_running_outside_sandbox`] for a start that is not a plain one.
+pub(crate) fn confirm_starting_outside_sandbox(
+    program: &str,
+    on_remote_host: bool,
+    reason: Option<&str>,
+    start: OutsideSandboxStart,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl Future<Output = bool> + use<> {
     let message = outside_sandbox_message(program);
-    let detail = outside_sandbox_detail(program, on_remote_host, reason);
+    let detail = outside_sandbox_detail(program, on_remote_host, reason, start);
     let answer = window.prompt(
         PromptLevel::Warning,
         &message,
@@ -282,6 +382,47 @@ fn confirm_and_launch_outside_sandbox(
             .log_err();
     })
     .detach();
+}
+
+/// A sandboxed launch that did not come up (ADR-F49 決定 19). The notice
+/// offers the start outside the sandbox the user may want instead; the button
+/// only dispatches [`LaunchClaudeCodeOutsideSandbox`], so that start is still
+/// confirmed first.
+struct SandboxLaunchFailure {
+    message: String,
+    effort: Option<String>,
+}
+
+impl WorkspaceError for SandboxLaunchFailure {
+    fn primary_message(&self) -> SharedString {
+        self.message.clone().into()
+    }
+
+    fn primary_action(&self) -> ErrorAction {
+        ErrorAction::new(
+            LAUNCH_OUTSIDE_AFTER_FAILURE_LABEL,
+            LaunchClaudeCodeOutsideSandbox {
+                effort: self.effort.clone(),
+            },
+        )
+    }
+
+    fn secondary_action(&self) -> Option<ErrorAction> {
+        Some(ErrorAction::dismiss())
+    }
+
+    fn severity(&self) -> ErrorSeverity {
+        ErrorSeverity::Critical
+    }
+}
+
+fn show_launch_failure(
+    workspace: &mut Workspace,
+    message: String,
+    effort: Option<String>,
+    cx: &mut Context<Workspace>,
+) {
+    workspace.show_error(SandboxLaunchFailure { message, effort }, cx);
 }
 
 /// CLI のタブを置けるエージェントパネル。置けないときは `None` で、呼び出し元は
@@ -541,6 +682,34 @@ fn launch_on_host(
     );
 }
 
+/// The label an agent's highlights and annotations are framed with.
+const CLAUDE_CODE_ASSIST_LABEL: &str = "Claude Code";
+
+/// ADR-F56: Zed's IDE tools for a CLI started on this machine: the `zed` MCP
+/// server on the host's IDE server (started for it when `ide_server.enabled`
+/// is off), its token in the environment only. `None` on a remote project,
+/// whose CLI runs on the host and cannot reach this machine's loopback, and
+/// when `ide_server.assist_tools` is off.
+fn host_ide_tools(
+    workspace: &Workspace,
+    cx: &mut App,
+) -> Option<terminal_view::session_tools::ClaudeCodeIdeTools> {
+    let project = workspace.project().clone();
+    if !project.read(cx).is_local() || !ide_server::assist_tools_enabled(cx) {
+        return None;
+    }
+    let client = ide_server::host_assist_client(&project, CLAUDE_CODE_ASSIST_LABEL, cx)?;
+    let endpoint = client.assist_endpoint(cx)?;
+    Some(terminal_view::session_tools::ClaudeCodeIdeTools {
+        args: ide_server::cli_assist_arguments(&endpoint.url),
+        env: vec![(
+            ide_server::ASSIST_BEARER_ENV_VAR.to_string(),
+            endpoint.authorization,
+        )],
+        keep_alive: Some(Box::new(client)),
+    })
+}
+
 /// [`launch_on_host`] の中身。エージェントパネルが無いときの置き場
 /// (`without_agent_panel`) を差し替えられるのはテストのため。
 fn launch_on_host_in_tab(
@@ -551,16 +720,24 @@ fn launch_on_host_in_tab(
         Option<String>,
         &mut Window,
         &mut Context<Workspace>,
+        Option<terminal_view::session_tools::ClaudeCodeIdeTools>,
     ),
     window: &mut Window,
     cx: &mut Context<Workspace>,
 ) {
+    let ide_tools = host_ide_tools(workspace, cx);
     let Some(panel) = agent_panel_for_cli_tab(workspace, cx) else {
-        without_agent_panel(workspace, effort, window, cx);
+        without_agent_panel(workspace, effort, window, cx, ide_tools);
         return;
     };
 
-    let spawn_task = terminal_view::session_tools::claude_code_launch_task(effort, workspace, cx);
+    let spawn_task = terminal_view::session_tools::claude_code_launch_task(
+        effort,
+        workspace,
+        cx,
+        ide_tools.as_ref(),
+    );
+    let keep_alive = ide_tools.and_then(|ide_tools| ide_tools.keep_alive);
     // この PC なら `which`、接続先なら `command -v` を 1 往復 — どちらの案内文も
     // ターミナルパネル経路と同じものを使う (ADR-F53)。
     let lookup = terminal_view::session_tools::claude_code_launch_lookup(workspace, cx);
@@ -574,7 +751,7 @@ fn launch_on_host_in_tab(
             return;
         }
 
-        if let Err(error) = open_terminal_tab_in_agent_panel(
+        match open_terminal_tab_in_agent_panel(
             &workspace,
             panel,
             spawn_task,
@@ -583,14 +760,27 @@ fn launch_on_host_in_tab(
         )
         .await
         {
-            workspace
-                .update(cx, |workspace, cx| {
-                    workspace.show_error(
-                        format!("ターミナルでコマンドを実行できませんでした: {error:#}"),
-                        cx,
-                    )
-                })
-                .log_err();
+            Ok(terminal) => {
+                // ADR-F56: the IDE server keeps this CLI's registration (and what
+                // it drew) until the CLI exits.
+                if let Some(keep_alive) = keep_alive
+                    && let Ok(completion) =
+                        cx.update(|_, cx| terminal.read(cx).wait_for_completed_task(cx))
+                {
+                    completion.await;
+                    drop(keep_alive);
+                }
+            }
+            Err(error) => {
+                workspace
+                    .update(cx, |workspace, cx| {
+                        workspace.show_error(
+                            format!("ターミナルでコマンドを実行できませんでした: {error:#}"),
+                            cx,
+                        )
+                    })
+                    .log_err();
+            }
         }
     })
     .detach();
@@ -661,10 +851,33 @@ mod session {
     /// `$0` — never looked up on `PATH`, which reaches the Windows drives. In
     /// WSL the CLI asks `powershell.exe` for the Windows profile unless
     /// `USERPROFILE` is set; only its presence matters there.
+    ///
+    /// ADR-F56: with `ZED_IDE_ASSIST=1` it also reads the IDE session's token
+    /// out of the lock file the bridge wrote (read-only inside the sandbox) into
+    /// the variable the `--mcp-config` JSON names, as the whole `Authorization`
+    /// value (`Bearer <token>`), so that the token never appears on a command
+    /// line (ADR-F49 item 5). A lock that is not there or holds no token leaves
+    /// the variable unset: the CLI then gets a 401 from the IDE tools rather
+    /// than failing to start (checked with the real CLI 2.1.280).
     const LAUNCH_SCRIPT: &str = r#"CLAUDE_CODE_TMPDIR=${TMPDIR:-/tmp}
 USERPROFILE=$CLAUDE_CONFIG_DIR
 export CLAUDE_CODE_TMPDIR USERPROFILE
+if [ "${ZED_IDE_ASSIST:-}" = 1 ] && [ -n "${CLAUDE_CODE_SSE_PORT:-}" ] && [ -r "$CLAUDE_CONFIG_DIR/ide/$CLAUDE_CODE_SSE_PORT.lock" ]; then
+    IFS= read -r ZED_IDE_LOCK 2>/dev/null <"$CLAUDE_CONFIG_DIR/ide/$CLAUDE_CODE_SSE_PORT.lock" || :
+    case ${ZED_IDE_LOCK:-} in
+        *\"authToken\":\"*)
+            ZED_IDE_BEARER=${ZED_IDE_LOCK#*\"authToken\":\"}
+            ZED_IDE_BEARER=${ZED_IDE_BEARER%%\"*}
+            ZED_IDE_BEARER="Bearer $ZED_IDE_BEARER"
+            export ZED_IDE_BEARER
+            ;;
+    esac
+    unset ZED_IDE_LOCK
+fi
+unset ZED_IDE_ASSIST
 exec "$0" "$@""#;
+    /// ADR-F56: tells [`LAUNCH_SCRIPT`] to read the IDE session's token.
+    const ASSIST_FLAG_VARIABLE: &str = "ZED_IDE_ASSIST";
     const LAUNCH_SHELL: &str = "/bin/sh";
 
     pub(super) fn new_session_id() -> String {
@@ -758,9 +971,13 @@ exec "$0" "$@""#;
     /// sandbox whose IDE bridge could not be started): then nothing points the
     /// CLI at an IDE, so it runs as it would in a plain terminal instead of
     /// waiting for one.
+    ///
+    /// ADR-F56: `assist_tools` has [`LAUNCH_SCRIPT`] read the token the IDE
+    /// tools' `--mcp-config` names; it only means anything with an IDE port.
     pub(super) fn session_environment(
         config_dir: &str,
         ide_port: Option<u16>,
+        assist_tools: bool,
     ) -> Vec<(String, String)> {
         let mut environment = vec![("CLAUDE_CONFIG_DIR", config_dir.to_string())];
         if let Some(ide_port) = ide_port {
@@ -771,6 +988,9 @@ exec "$0" "$@""#;
                 // Otherwise the CLI works the address out with `ip route` in WSL.
                 ("CLAUDE_CODE_IDE_HOST_OVERRIDE", "127.0.0.1".to_string()),
             ]);
+            if assist_tools {
+                environment.push((ASSIST_FLAG_VARIABLE, "1".to_string()));
+            }
         }
         environment.extend([
             ("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1".to_string()),
@@ -797,9 +1017,15 @@ exec "$0" "$@""#;
     /// that sets what only exists there and then becomes the CLI, with
     /// `claude_path` as `$0`. Shared by both sandboxes; the caller appends
     /// nothing after `effort`.
+    ///
+    /// ADR-F56: `assist_port` is the IDE channel's port inside the sandbox when
+    /// the CLI is to get Zed's IDE tools: the `zed` server on the same channel's
+    /// `/mcp/zed`, all nine tools allowed up front. Its token is left for the
+    /// CLI to expand from the environment ([`LAUNCH_SCRIPT`]).
     pub(super) fn launch_invocation(
         claude_path: &str,
         effort: Option<&str>,
+        assist_port: Option<u16>,
     ) -> Result<(String, Vec<String>)> {
         ensure!(
             claude_path.starts_with('/') && !claude_path.contains(['\n', '\0']),
@@ -811,6 +1037,12 @@ exec "$0" "$@""#;
             LAUNCH_SCRIPT.to_string(),
             claude_path.to_string(),
         ];
+        if let Some(port) = assist_port {
+            args.extend(ide_server::cli_assist_arguments(&format!(
+                "http://127.0.0.1:{port}{}",
+                ide_server::ASSIST_MCP_PATH
+            )));
+        }
         if let Some(effort) = effort {
             args.extend(["--effort".to_string(), effort.to_string()]);
         }
@@ -836,18 +1068,20 @@ exec "$0" "$@""#;
         effort: Option<&str>,
         roots: &[PathBuf],
         inner_port: u16,
+        assist_tools: bool,
     ) -> Result<SessionPlan> {
         let first_root = roots
             .first()
             .context("Claude Code を実行するフォルダーがありません。")?;
-        let (program, args) = launch_invocation(claude_path, effort)?;
+        let (program, args) =
+            launch_invocation(claude_path, effort, assist_tools.then_some(inner_port))?;
         let mut writable_paths = roots.to_vec();
         writable_paths.push(PathBuf::from(&layout.config_root));
         Ok(SessionPlan {
             command: sandbox::CommandAndArgs {
                 program,
                 args,
-                env: session_environment(&layout.config_dir, Some(inner_port))
+                env: session_environment(&layout.config_dir, Some(inner_port), assist_tools)
                     .into_iter()
                     .collect(),
                 cwd: Some(first_root.clone()),
@@ -1308,6 +1542,22 @@ exec "$0" "$@""#;
         )
     }
 
+    /// Names a session's terminal task after its session id, which is also the
+    /// key its IDE session is started under ([`PendingIdeSession::start`]).
+    const SANDBOX_TASK_ID_PREFIX: &str = "terminal::claude-code-sandbox::";
+
+    /// ADR-F56: the IDE session key of the sandboxed CLI running in `terminal`,
+    /// or `None` for any other terminal.
+    pub(crate) fn cli_tab_session_key(terminal: &Terminal) -> Option<String> {
+        terminal
+            .task()?
+            .spawned_task
+            .id
+            .0
+            .strip_prefix(SANDBOX_TASK_ID_PREFIX)
+            .map(str::to_string)
+    }
+
     /// Opens the session's terminal tab on `(program, args, environment)` —
     /// the local `wsl.exe` invocation of the WSL sandbox, or the `ssh` one the
     /// project's transport builds for the host's helper. Shared so that both
@@ -1322,7 +1572,7 @@ exec "$0" "$@""#;
         cx: &mut AsyncWindowContext,
     ) -> Result<Entity<Terminal>> {
         let spawn_task = SpawnInTerminal {
-            id: TaskId(format!("terminal::claude-code-sandbox::{session_id}")),
+            id: TaskId(format!("{SANDBOX_TASK_ID_PREFIX}{session_id}")),
             full_label: SANDBOX_TAB_LABEL.to_string(),
             label: SANDBOX_TAB_LABEL.to_string(),
             command: Some(program),
@@ -1405,15 +1655,25 @@ exec "$0" "$@""#;
         }
 
         impl PendingIdeSession {
+            /// `session_id` names the session's terminal task too
+            /// (`spawn_terminal`), which is how the agent panel finds the IDE
+            /// session of a CLI tab (ADR-F56, `AddSelectionToThread`).
             pub(crate) fn start(
                 workspace: WeakEntity<Workspace>,
                 mapper: Arc<dyn ide_server::PathMapper>,
                 roots: Vec<PathBuf>,
+                session_id: &str,
                 cx: &mut App,
             ) -> (Self, String) {
                 let (sender, receiver) = mpsc::unbounded();
-                let (session, info) =
-                    ide_server::start_sandbox_session(workspace, receiver, mapper, roots, cx);
+                let (session, info) = ide_server::start_sandbox_session_for_tab(
+                    workspace,
+                    receiver,
+                    mapper,
+                    roots,
+                    session_id.to_string(),
+                    cx,
+                );
                 (
                     Self {
                         session,
@@ -1533,8 +1793,10 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             )
         };
         let Some(remote_client) = remote_client else {
-            workspace.show_error(
+            super::show_launch_failure(
+                workspace,
                 format!("{LAUNCH_FAILED_PREFIX}プロジェクトは接続先のホストに繋がっていません。"),
+                effort,
                 cx,
             );
             return;
@@ -1548,7 +1810,7 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                 roots,
                 key_roots,
                 git_dirs,
-                effort,
+                effort.clone(),
                 cx,
             )
             .await;
@@ -1563,9 +1825,12 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                         Err(error) if error.is::<sandbox::IdeBridgeSessionRunning>() => {
                             show_already_running(workspace, cx)
                         }
-                        Err(error) => {
-                            workspace.show_error(format!("{LAUNCH_FAILED_PREFIX}{error:#}"), cx)
-                        }
+                        Err(error) => super::show_launch_failure(
+                            workspace,
+                            format!("{LAUNCH_FAILED_PREFIX}{error:#}"),
+                            effort,
+                            cx,
+                        ),
                     }
                 })
                 .log_err();
@@ -1674,9 +1939,13 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                 None
             }
         };
-        let (program, args) = launch_invocation(&binary.path_on_host, effort.as_deref())?;
-        let environment =
-            session_environment(&config_dir, ide.as_ref().map(|ide| ide.forward.inner_port));
+        let ide_port = ide.as_ref().map(|ide| ide.forward.inner_port);
+        // ADR-F56: the IDE tools ride on the same channel, so only with one.
+        let assist_tools = cx.update(|_, cx| ide_server::assist_tools_enabled(cx))?;
+        let assist_port = ide_port.filter(|_| assist_tools);
+        let (program, args) =
+            launch_invocation(&binary.path_on_host, effort.as_deref(), assist_port)?;
+        let environment = session_environment(&config_dir, ide_port, assist_port.is_some());
         let first_root = roots
             .first()
             .context("Claude Code を実行するフォルダーがありません。")?
@@ -1848,7 +2117,13 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             SessionLayout::from_rendezvous(&rendezvous, session_id, project_key, inner_port)?;
         let mapper: Arc<dyn ide_server::PathMapper> = Arc::new(ide_server::IdentityPathMapper);
         let (pending, auth_token) = cx.update(|_, cx| {
-            PendingIdeSession::start(workspace.clone(), mapper.clone(), roots.to_vec(), cx)
+            PendingIdeSession::start(
+                workspace.clone(),
+                mapper.clone(),
+                roots.to_vec(),
+                session_id,
+                cx,
+            )
         })?;
         let workspace_folders = roots
             .iter()
@@ -2133,7 +2408,12 @@ shift 3
         let distro = match distro_for_roots(&roots) {
             Ok(distro) => distro,
             Err(error) => {
-                workspace.show_error(format!("{LAUNCH_FAILED_PREFIX}{error:#}"), cx);
+                super::show_launch_failure(
+                    workspace,
+                    format!("{LAUNCH_FAILED_PREFIX}{error:#}"),
+                    effort,
+                    cx,
+                );
                 return;
             }
         };
@@ -2147,7 +2427,7 @@ shift 3
                 key_roots,
                 git_dirs,
                 distro,
-                effort,
+                effort.clone(),
                 cx,
             )
             .await;
@@ -2159,9 +2439,12 @@ shift 3
                         Err(error) if error.is::<sandbox::IdeBridgeSessionRunning>() => {
                             show_already_running(workspace, cx)
                         }
-                        Err(error) => {
-                            workspace.show_error(format!("{LAUNCH_FAILED_PREFIX}{error:#}"), cx)
-                        }
+                        Err(error) => super::show_launch_failure(
+                            workspace,
+                            format!("{LAUNCH_FAILED_PREFIX}{error:#}"),
+                            effort,
+                            cx,
+                        ),
                     }
                 })
                 .log_err();
@@ -2241,6 +2524,7 @@ shift 3
         .await?;
         let layout =
             SessionLayout::from_rendezvous(&rendezvous, &session_id, &project_key, inner_port)?;
+        let assist_tools = cx.update(|_, cx| ide_server::assist_tools_enabled(cx))?;
         let plan = plan_session(
             &layout,
             &rendezvous,
@@ -2248,6 +2532,7 @@ shift 3
             effort.as_deref(),
             &roots,
             inner_port,
+            assist_tools,
         )?;
 
         let mapper: Arc<dyn ide_server::PathMapper> = Arc::new(ide_server::WslPathMapper {
@@ -2256,7 +2541,13 @@ shift 3
             distro: distro.clone().unwrap_or_default(),
         });
         let (pending, auth_token) = cx.update(|_, cx| {
-            PendingIdeSession::start(workspace.clone(), mapper.clone(), roots.clone(), cx)
+            PendingIdeSession::start(
+                workspace.clone(),
+                mapper.clone(),
+                roots.clone(),
+                &session_id,
+                cx,
+            )
         })?;
         let workspace_folders = roots
             .iter()
@@ -2607,7 +2898,7 @@ mod tests {
     use async_tungstenite::tungstenite::Message;
     use futures::channel::mpsc;
     use futures::{AsyncRead, AsyncReadExt as _, AsyncWrite, StreamExt as _};
-    use gpui::{Entity, Focusable as _, TestAppContext, VisualTestContext};
+    use gpui::{BorrowAppContext as _, Entity, Focusable as _, TestAppContext, VisualTestContext};
     use project::worktree_code_execution::{ResumeOutcome, WorktreeCodeState};
     use project::{FakeFs, Project, WorktreeCodeExecution, WorktreeId};
     use serde_json::{Value, json};
@@ -2623,9 +2914,12 @@ mod tests {
     };
     use super::{
         CLAUDE_PROGRAM, COLLABORATION_REASON, HostLauncher, LaunchRoute, NO_FOLDER_REASON,
-        OUTSIDE_SANDBOX_MESSAGE, OUTSIDE_SANDBOX_NOTICE, ProjectShape, REMOTE_CONNECTION_REASON,
-        REMOTE_NOT_LINUX_REASON, RemoteShape, UNSUPPORTED_OS_REASON, outside_sandbox_detail,
-        outside_sandbox_message, register_launch_actions, route_for,
+        OUTSIDE_SANDBOX_CLAUDE_LOGIN, OUTSIDE_SANDBOX_LIMITS_LOCAL, OUTSIDE_SANDBOX_LIMITS_REMOTE,
+        OUTSIDE_SANDBOX_MESSAGE, OUTSIDE_SANDBOX_NEW_SESSION, OUTSIDE_SANDBOX_NOTICE,
+        OUTSIDE_SANDBOX_ONCE, OUTSIDE_SANDBOX_OTHER_LOGIN, OutsideSandboxStart, ProjectShape,
+        REMOTE_CONNECTION_REASON, REMOTE_NOT_LINUX_REASON, RemoteShape, SandboxLaunchFailure,
+        UNSUPPORTED_OS_REASON, outside_sandbox_detail, outside_sandbox_message,
+        register_launch_actions, route_for, show_launch_failure,
     };
 
     const SESSION_ID: &str = "claude-0123456789abcdef0123456789abcdef";
@@ -2648,6 +2942,7 @@ mod tests {
             remote: None,
             has_folder: true,
             sandbox_platform: true,
+            outside_by_user_choice: false,
         };
         let ssh_linux = RemoteShape {
             is_ssh: true,
@@ -2664,6 +2959,29 @@ mod tests {
                     ..sandboxable
                 }),
                 LaunchRoute::RemoteSandbox
+            );
+        }
+        // ADR-F49 決定 19: the user's own choice to start it outside every
+        // time wins over every shape, the sandboxable ones included.
+        for shape in [
+            sandboxable,
+            ProjectShape {
+                remote: Some(ssh_linux),
+                ..sandboxable
+            },
+            ProjectShape {
+                is_collaborative: true,
+                has_folder: false,
+                ..sandboxable
+            },
+        ] {
+            assert_eq!(
+                route_for(ProjectShape {
+                    outside_by_user_choice: true,
+                    ..shape
+                }),
+                LaunchRoute::OutsideSandboxByUserChoice,
+                "{shape:?}"
             );
         }
         for (shape, reason) in [
@@ -2954,12 +3272,31 @@ mod tests {
 
     #[test]
     fn the_outside_sandbox_confirmation_names_what_runs_where() {
-        let local = outside_sandbox_detail(CLAUDE_PROGRAM, false, Some(NO_FOLDER_REASON));
+        let local = outside_sandbox_detail(
+            CLAUDE_PROGRAM,
+            false,
+            Some(NO_FOLDER_REASON),
+            OutsideSandboxStart::Once,
+        );
         assert!(local.starts_with(OUTSIDE_SANDBOX_NOTICE), "{local}");
         assert!(local.contains("この PC の `claude`"), "{local}");
-        assert!(local.ends_with(NO_FOLDER_REASON), "{local}");
+        assert_eq!(
+            local.lines().skip(1).collect::<Vec<_>>(),
+            [
+                NO_FOLDER_REASON,
+                OUTSIDE_SANDBOX_LIMITS_LOCAL,
+                OUTSIDE_SANDBOX_CLAUDE_LOGIN,
+                OUTSIDE_SANDBOX_ONCE,
+            ],
+            "why, then what goes, what is shared and that it is this once"
+        );
 
-        let remote = outside_sandbox_detail(CLAUDE_PROGRAM, true, Some(REMOTE_CONNECTION_REASON));
+        let remote = outside_sandbox_detail(
+            CLAUDE_PROGRAM,
+            true,
+            Some(REMOTE_CONNECTION_REASON),
+            OutsideSandboxStart::Once,
+        );
         assert!(
             remote.starts_with("接続先のホストの `claude` を"),
             "{remote}"
@@ -2967,6 +3304,27 @@ mod tests {
         assert!(
             !remote.contains("この PC") && !remote.contains("Zed 本体の権限"),
             "{remote}"
+        );
+        assert!(
+            remote.contains(OUTSIDE_SANDBOX_LIMITS_REMOTE)
+                && !remote.contains(OUTSIDE_SANDBOX_LIMITS_LOCAL),
+            "nothing of this PC's reaches the host: {remote}"
+        );
+        assert!(!remote.contains(OUTSIDE_SANDBOX_NEW_SESSION), "{remote}");
+
+        let restart = outside_sandbox_detail(
+            agent_servers::CLAUDE_AGENT_ID,
+            false,
+            None,
+            OutsideSandboxStart::RestartingThread,
+        );
+        assert!(
+            restart.contains(OUTSIDE_SANDBOX_CLAUDE_LOGIN),
+            "the ACP Claude shares the CLI's sign-in outside the sandbox: {restart}"
+        );
+        assert!(
+            restart.ends_with(OUTSIDE_SANDBOX_NEW_SESSION),
+            "the running conversation does not follow it out: {restart}"
         );
 
         assert_eq!(
@@ -2979,11 +3337,13 @@ mod tests {
             "{message}"
         );
         for on_remote_host in [false, true] {
-            let detail = outside_sandbox_detail("codex", on_remote_host, None);
+            let detail =
+                outside_sandbox_detail("codex", on_remote_host, None, OutsideSandboxStart::Once);
             assert!(
                 detail.contains("`codex`") && !detail.contains("claude"),
                 "{detail}"
             );
+            assert!(detail.contains(OUTSIDE_SANDBOX_OTHER_LOGIN), "{detail}");
         }
     }
 
@@ -3048,6 +3408,7 @@ mod tests {
             Some("high"),
             std::slice::from_ref(&root),
             PORT,
+            false,
         )
         .expect("a valid plan");
 
@@ -3133,6 +3494,7 @@ mod tests {
             None,
             std::slice::from_ref(&root),
             PORT,
+            false,
         )
         .expect("a valid plan");
         assert_eq!(
@@ -3140,10 +3502,10 @@ mod tests {
             Some(&[CLAUDE_PATH.to_string()][..])
         );
         assert!(
-            plan_session(&layout, RENDEZVOUS, "claude", None, &[root], PORT).is_err(),
+            plan_session(&layout, RENDEZVOUS, "claude", None, &[root], PORT, false).is_err(),
             "the CLI is never looked up on PATH"
         );
-        assert!(plan_session(&layout, RENDEZVOUS, CLAUDE_PATH, None, &[], PORT).is_err());
+        assert!(plan_session(&layout, RENDEZVOUS, CLAUDE_PATH, None, &[], PORT, false).is_err());
     }
 
     /// 第 3 段: the session on an SSH host is placed by the same rule as the
@@ -3175,8 +3537,8 @@ mod tests {
         }
         assert!(config_paths("/root", "not a key").is_err());
 
-        let with_ide = session_environment(&config_dir, Some(45123));
-        let without_ide = session_environment(&config_dir, None);
+        let with_ide = session_environment(&config_dir, Some(45123), false);
+        let without_ide = session_environment(&config_dir, None, false);
         let names = |environment: &[(String, String)]| {
             let mut names = environment
                 .iter()
@@ -3230,12 +3592,122 @@ mod tests {
         );
     }
 
+    /// ADR-F56: with the IDE tools on, the CLI gets the `zed` server on its IDE
+    /// channel's `/mcp/zed` with the nine tools allowed up front, and the token
+    /// only by name — the CLI expands it from what the launch script reads out
+    /// of the lock file — never on its command line. Off, none of it.
+    #[test]
+    fn the_ide_tools_reach_the_sandboxed_cli_without_a_token_on_its_command_line() {
+        let (_, args) =
+            launch_invocation(CLAUDE_PATH, Some("high"), Some(PORT)).expect("an absolute path");
+        let script = args.get(1).expect("the launch script");
+        let cli_args = args.get(2..).expect("the CLI and its arguments");
+        assert_eq!(cli_args.first().map(String::as_str), Some(CLAUDE_PATH));
+        let value_of = |option: &str| {
+            let index = cli_args
+                .iter()
+                .position(|argument| argument == option)
+                .unwrap_or_else(|| panic!("{option} is passed: {cli_args:?}"));
+            cli_args
+                .get(index + 1)
+                .unwrap_or_else(|| panic!("{option} has a value"))
+                .clone()
+        };
+        let config: serde_json::Value =
+            serde_json::from_str(&value_of("--mcp-config")).expect("the config is JSON");
+        let server = &config["mcpServers"][ide_server::MCP_SERVER_NAME];
+        assert_eq!(server["type"], "http");
+        assert_eq!(
+            server["url"],
+            format!("http://127.0.0.1:{PORT}{}", ide_server::ASSIST_MCP_PATH)
+        );
+        assert_eq!(
+            server["headers"]["Authorization"],
+            format!("${{{}}}", ide_server::ASSIST_BEARER_ENV_VAR)
+        );
+        let allowed = value_of("--allowedTools");
+        let mut allowed = allowed.split(',').collect::<Vec<_>>();
+        allowed.sort();
+        let mut expected = ide_server::ASSIST_TOOL_NAMES
+            .iter()
+            .map(|name| format!("mcp__{}__{name}", ide_server::MCP_SERVER_NAME))
+            .collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(allowed, expected);
+        assert_eq!(
+            cli_args.get(cli_args.len() - 2..),
+            Some(&["--effort".to_string(), "high".to_string()][..]),
+            "nothing follows the effort"
+        );
+        // The script is what reads the token, under the very name the JSON uses,
+        // and only when asked to.
+        assert!(
+            script.contains(&format!("{}=", ide_server::ASSIST_BEARER_ENV_VAR)),
+            "{script}"
+        );
+        assert!(script.contains("authToken"), "{script}");
+        assert!(script.contains("ZED_IDE_ASSIST"), "{script}");
+        // The variable is the whole header value, so that the JSON has no blank
+        // for a shell (Windows PowerShell and npm's `claude.ps1`) to split it at.
+        assert!(
+            script.contains(&format!(
+                "{0}=\"Bearer ${0}\"",
+                ide_server::ASSIST_BEARER_ENV_VAR
+            )),
+            "{script}"
+        );
+        assert!(
+            !value_of("--mcp-config").contains(char::is_whitespace),
+            "{cli_args:?}"
+        );
+
+        let (_, without) = launch_invocation(CLAUDE_PATH, None, None).expect("an absolute path");
+        assert_eq!(without.get(2..), Some(&[CLAUDE_PATH.to_string()][..]));
+
+        let root = PathBuf::from(path!("/project"));
+        let environment = |assist_tools: bool| {
+            let plan = plan_session(
+                &layout(),
+                RENDEZVOUS,
+                CLAUDE_PATH,
+                None,
+                std::slice::from_ref(&root),
+                PORT,
+                assist_tools,
+            )
+            .expect("a valid plan");
+            let has_config = plan
+                .command
+                .args
+                .iter()
+                .any(|argument| argument == "--mcp-config");
+            (plan.command.env, has_config)
+        };
+        let (with_tools, with_config) = environment(true);
+        assert!(with_config);
+        assert_eq!(
+            with_tools.get("ZED_IDE_ASSIST").map(String::as_str),
+            Some("1")
+        );
+        #[cfg(target_os = "windows")]
+        assert!(sandbox::is_forwardable_env_var("ZED_IDE_ASSIST"));
+        let (without_tools, without_config) = environment(false);
+        assert!(!without_config);
+        assert!(!without_tools.contains_key("ZED_IDE_ASSIST"));
+        assert!(
+            !session_environment(CONFIG_ROOT, None, true)
+                .iter()
+                .any(|(name, _)| name == "ZED_IDE_ASSIST"),
+            "no IDE channel, no token to read"
+        );
+    }
+
     /// The launch itself is shared: the shell that sets what only exists inside
     /// the sandbox and then becomes the CLI by absolute path, never by `PATH`.
     #[test]
     fn the_launch_never_looks_the_cli_up_on_path() {
         let (program, args) =
-            launch_invocation(CLAUDE_PATH, Some("high")).expect("an absolute path");
+            launch_invocation(CLAUDE_PATH, Some("high"), None).expect("an absolute path");
         assert_eq!(program, "/bin/sh");
         assert_eq!(args.first().map(String::as_str), Some("-c"));
         assert_eq!(
@@ -3249,14 +3721,14 @@ mod tests {
             )
         );
         assert_eq!(
-            launch_invocation(CLAUDE_PATH, None)
+            launch_invocation(CLAUDE_PATH, None, None)
                 .expect("an absolute path")
                 .1
                 .get(2..),
             Some(&[CLAUDE_PATH.to_string()][..])
         );
         for bad in ["claude", "~/claude", "/tmp/cl\naude"] {
-            assert!(launch_invocation(bad, None).is_err(), "{bad:?}");
+            assert!(launch_invocation(bad, None, None).is_err(), "{bad:?}");
         }
     }
 
@@ -3405,6 +3877,144 @@ mod tests {
         assert_eq!(launches.borrow().last(), Some(&Some("high".to_string())));
     }
 
+    fn set_user_settings(json: &str, cx: &mut VisualTestContext) {
+        cx.update(|_window, cx| {
+            cx.update_global::<settings::SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(json, cx)
+                    .result()
+                    .expect("valid user settings");
+            });
+        });
+        cx.run_until_parked();
+    }
+
+    const ALWAYS_OUTSIDE: &str = r#"{ "agent": { "claude_code_run_outside_sandbox": true } }"#;
+
+    /// ADR-F49 決定 19: with the user's own choice to start the CLI outside
+    /// every time, neither launch asks — and turning it back off brings the
+    /// question back.
+    #[gpui::test]
+    async fn the_users_choice_to_start_outside_is_not_asked_again(cx: &mut TestAppContext) {
+        let (_project, workspace, mut cx) = open_workspace(&[path!("/test").as_ref()], cx).await;
+        let (launcher, launches) = recording_launcher();
+        register_and_focus(&workspace, launcher, &mut cx);
+        set_user_settings(ALWAYS_OUTSIDE, &mut cx);
+
+        cx.dispatch_action(LaunchClaudeCode {
+            effort: Some("high".to_string()),
+        });
+        cx.run_until_parked();
+        assert!(
+            !cx.has_pending_prompt(),
+            "the user already said yes to every start"
+        );
+        cx.dispatch_action(LaunchClaudeCodeOutsideSandbox { effort: None });
+        cx.run_until_parked();
+        assert!(!cx.has_pending_prompt());
+        assert_eq!(*launches.borrow(), [Some("high".to_string()), None]);
+
+        set_user_settings("{}", &mut cx);
+        cx.dispatch_action(LaunchClaudeCodeOutsideSandbox { effort: None });
+        cx.run_until_parked();
+        assert!(
+            cx.has_pending_prompt(),
+            "asked again once the choice is gone"
+        );
+        cx.simulate_prompt_answer("キャンセル");
+        cx.run_until_parked();
+        assert_eq!(launches.borrow().len(), 2);
+    }
+
+    /// ADR-F49 決定 19 / ADR-F50: a project's settings cannot let the CLI out
+    /// of its sandbox — the session that would be let out can write them.
+    #[gpui::test]
+    async fn a_projects_settings_cannot_start_the_cli_outside_without_asking(
+        cx: &mut TestAppContext,
+    ) {
+        let (project, workspace, mut cx) = open_workspace(&[path!("/test").as_ref()], cx).await;
+        let (launcher, launches) = recording_launcher();
+        register_and_focus(&workspace, launcher, &mut cx);
+        let worktree_id = project.read_with(&cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the folder is open")
+                .read(cx)
+                .id()
+        });
+        cx.update(|_window, cx| {
+            cx.update_global::<settings::SettingsStore, _>(|store, cx| {
+                store
+                    .set_local_settings(
+                        worktree_id,
+                        settings::LocalSettingsPath::InWorktree(
+                            util::rel_path::RelPath::empty().into(),
+                        ),
+                        settings::LocalSettingsKind::Settings,
+                        Some(ALWAYS_OUTSIDE),
+                        cx,
+                    )
+                    .ok();
+            });
+        });
+        cx.run_until_parked();
+
+        cx.dispatch_action(LaunchClaudeCodeOutsideSandbox { effort: None });
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt(), "still asked");
+        cx.simulate_prompt_answer("キャンセル");
+        cx.run_until_parked();
+        assert!(launches.borrow().is_empty());
+    }
+
+    /// ADR-F49 決定 19: a sandboxed launch that fails says so with a way out —
+    /// the start outside the sandbox, still confirmed, with the same effort.
+    #[gpui::test]
+    async fn a_failed_sandboxed_launch_offers_the_start_outside_after_asking(
+        cx: &mut TestAppContext,
+    ) {
+        let (_project, workspace, mut cx) = open_workspace(&[path!("/test").as_ref()], cx).await;
+        let (launcher, launches) = recording_launcher();
+        register_and_focus(&workspace, launcher, &mut cx);
+
+        workspace.update(&mut cx, |workspace, cx| {
+            show_launch_failure(
+                workspace,
+                "Claude Code (サンドボックス) を起動できませんでした: WSL がありません".to_string(),
+                Some("high".to_string()),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let notification_id =
+            workspace::notifications::NotificationId::unique::<SandboxLaunchFailure>();
+        assert!(workspace.read_with(&cx, |workspace, _| {
+            workspace.notification_ids().contains(&notification_id)
+        }));
+
+        let failure = SandboxLaunchFailure {
+            message: String::new(),
+            effort: Some("high".to_string()),
+        };
+        let action = workspace::workspace_error::WorkspaceError::primary_action(&failure);
+        assert_eq!(action.label.as_ref(), "サンドボックスの外で起動…");
+        let workspace::workspace_error::ErrorActionHandler::Action(action) = action.handler else {
+            panic!("the button starts something");
+        };
+        // What the notification's button does when it is clicked.
+        cx.update(|window, cx| window.dispatch_action(action.boxed_clone(), cx));
+        cx.run_until_parked();
+        assert!(
+            cx.has_pending_prompt(),
+            "the start outside is still confirmed"
+        );
+        assert!(launches.borrow().is_empty());
+        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.run_until_parked();
+        assert_eq!(*launches.borrow(), [Some("high".to_string())]);
+    }
+
     /// ADR-F53: エージェントパネルが無い (`disable_ai` で外されている、
     /// パネル未登録) ときは、今までどおりターミナルパネルに開く。CLI は人間の
     /// 操作 (ADR-F38) なので AI が無効でも使えなければならない。
@@ -3417,7 +4027,16 @@ mod tests {
         // 置き場の判断だけを見る: 本物の起動は `claude` を本当に動かすので、
         // パネルが無いときに通る経路を記録するものに差し替える。
         let launcher: HostLauncher = Rc::new(move |workspace, effort, window, cx| {
-            super::launch_on_host_in_tab(workspace, effort, fallback.as_ref(), window, cx);
+            let fallback = fallback.clone();
+            super::launch_on_host_in_tab(
+                workspace,
+                effort,
+                &move |workspace, effort, window, cx, _ide_tools| {
+                    fallback(workspace, effort, window, cx)
+                },
+                window,
+                cx,
+            );
         });
         register_and_focus(&workspace, launcher, &mut cx);
 
@@ -3728,6 +4347,7 @@ mod tests {
                 workspace.downgrade(),
                 mapper,
                 vec![PathBuf::from(path!("/test"))],
+                "claude-00000000000000000000000000000000",
                 cx,
             )
         });

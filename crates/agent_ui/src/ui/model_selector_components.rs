@@ -1,6 +1,8 @@
 use gpui::{Action, ClickEvent, FocusHandle, prelude::*};
 use language_model::DisabledReason;
-use ui::{Chip, ElevationIndex, KeyBinding, ListItem, ListItemSpacing, Tooltip, prelude::*};
+use ui::{
+    Chip, Disclosure, ElevationIndex, KeyBinding, ListItem, ListItemSpacing, Tooltip, prelude::*,
+};
 use zed_actions::agent::ToggleModelSelector;
 
 use crate::CycleFavoriteModels;
@@ -40,6 +42,83 @@ impl RenderOnce for ModelSelectorHeader {
                 Label::new(self.title)
                     .size(LabelSize::XSmall)
                     .color(Color::Muted),
+            )
+    }
+}
+
+/// A group heading the user can select: Enter or a click folds or unfolds the
+/// group instead of choosing a model, so it is drawn like a list row (with the
+/// keyboard highlight) rather than like [`ModelSelectorHeader`].
+#[derive(IntoElement)]
+pub struct ModelSelectorGroupHeader {
+    index: usize,
+    title: SharedString,
+    count: usize,
+    is_expanded: bool,
+    is_focused: bool,
+    has_border: bool,
+}
+
+impl ModelSelectorGroupHeader {
+    pub fn new(
+        index: usize,
+        title: impl Into<SharedString>,
+        count: usize,
+        is_expanded: bool,
+    ) -> Self {
+        Self {
+            index,
+            title: title.into(),
+            count,
+            is_expanded,
+            is_focused: false,
+            has_border: false,
+        }
+    }
+
+    pub fn is_focused(mut self, is_focused: bool) -> Self {
+        self.is_focused = is_focused;
+        self
+    }
+
+    pub fn has_border(mut self, has_border: bool) -> Self {
+        self.has_border = has_border;
+        self
+    }
+}
+
+impl RenderOnce for ModelSelectorGroupHeader {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        div()
+            .when(self.has_border, |this| {
+                this.mt_1()
+                    .pt_1()
+                    .border_t_1()
+                    .border_color(cx.theme().colors().border_variant)
+            })
+            .child(
+                ListItem::new(("model-selector-group", self.index))
+                    .inset(true)
+                    .spacing(ListItemSpacing::Sparse)
+                    .toggle_state(self.is_focused)
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .gap_1()
+                            // No click handler of its own: the click falls through
+                            // to the picker row, which folds the group through
+                            // `confirm` like Enter does.
+                            .child(Disclosure::new(
+                                ("model-selector-group-disclosure", self.index),
+                                self.is_expanded,
+                            ))
+                            .child(
+                                Label::new(format!("{} ({})", self.title, self.count))
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted)
+                                    .truncate(),
+                            ),
+                    ),
             )
     }
 }

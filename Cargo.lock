@@ -284,6 +284,7 @@ dependencies = [
  "html_to_markdown",
  "http_client",
  "http_proxy",
+ "ide_query",
  "indoc",
  "itertools 0.14.0",
  "language",
@@ -8213,6 +8214,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25a2bc672d1148e28034f176e01fffebb08b35768468cc954630da77a1449005"
 
 [[package]]
+name = "ide_assist"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "collections",
+ "editor",
+ "futures 0.3.32",
+ "gpui",
+ "ide_query",
+ "language",
+ "log",
+ "markdown",
+ "project",
+ "serde_json",
+ "settings",
+ "ui",
+ "util",
+ "workspace",
+]
+
+[[package]]
+name = "ide_query"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "collections",
+ "futures 0.3.32",
+ "fuzzy",
+ "gpui",
+ "language",
+ "log",
+ "lsp",
+ "project",
+ "serde_json",
+ "settings",
+ "util",
+]
+
+[[package]]
 name = "ide_server"
 version = "0.1.0"
 dependencies = [
@@ -8226,6 +8266,7 @@ dependencies = [
  "git_ui_core",
  "gpui",
  "httparse",
+ "ide_query",
  "language",
  "libc",
  "log",
@@ -17057,6 +17098,7 @@ dependencies = [
  "futures 0.3.32",
  "fuzzy",
  "gpui",
+ "http_client",
  "itertools 0.14.0",
  "language",
  "log",
@@ -21580,6 +21622,7 @@ dependencies = [
  "gpui_tokio",
  "hdrhistogram",
  "http_client",
+ "ide_assist",
  "ide_server",
  "image",
  "image_viewer",

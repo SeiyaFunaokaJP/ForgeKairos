@@ -1,14 +1,15 @@
-use std::{cmp::Reverse, rc::Rc, sync::Arc};
+use std::{cell::RefCell, cmp::Reverse, rc::Rc, sync::Arc};
 
 use acp_thread::AgentSessionConfigOptions;
 use agent_client_protocol::schema::v1 as acp;
 use agent_servers::AgentServer;
 
-use collections::HashSet;
+use collections::{HashMap, HashSet};
 use fs::Fs;
 use fuzzy::StringMatchCandidate;
 use gpui::{
-    App, BackgroundExecutor, Context, DismissEvent, Entity, Subscription, Task, Window, prelude::*,
+    App, BackgroundExecutor, Context, DismissEvent, Entity, Focusable, Subscription, Task, Window,
+    prelude::*,
 };
 use ordered_float::OrderedFloat;
 use picker::popover_menu::PickerPopoverMenu;
@@ -22,6 +23,14 @@ use unicode_segmentation::UnicodeSegmentation;
 use util::ResultExt as _;
 use zed_actions::agent::ToggleModelSelector;
 
+use crate::model_selector::{
+    AgentLaunchEntry, AgentLaunchSource, GroupCollapseState, PickerGroup, PickerGroupKey,
+    PickerItem, PickerRow, RowAnchor, anchor_row_index, build_picker_rows,
+    filter_agent_launch_entries, group_row_index, grouped_search_text, initial_row_index,
+    refresh_rows_after_fold, render_agent_launch_row, render_group_header, row_anchor,
+};
+
+type OptionCollapseState = Rc<RefCell<GroupCollapseState<acp::SessionConfigValueId>>>;
 use crate::ui::documentation_aside_side;
 use crate::{
     CycleFavoriteModels, CycleModeSelector, CycleThinkingEffort, ToggleProfileSelector,
@@ -78,18 +87,23 @@ pub struct ConfigOptionsView {
     agent_server: Rc<dyn AgentServer>,
     fs: Arc<dyn Fs>,
     config_option_ids: Vec<acp::SessionConfigId>,
+    /// The エージェント section's rows, for the model picker only.
+    agent_launchers: Option<AgentLaunchSource>,
+    /// Folded groups per option. Kept here because every config update
+    /// rebuilds the selectors, and a fold must not spring open with it.
+    collapse_states: HashMap<acp::SessionConfigId, OptionCollapseState>,
     _refresh_task: Task<()>,
 }
 
 impl ConfigOptionsView {
-    pub fn new(
+    pub(crate) fn new(
         config_options: Rc<dyn AgentSessionConfigOptions>,
         agent_server: Rc<dyn AgentServer>,
         fs: Arc<dyn Fs>,
+        agent_launchers: Option<AgentLaunchSource>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let selectors = Self::build_selectors(&config_options, &agent_server, &fs, window, cx);
         let config_option_ids = Self::config_option_ids(&config_options);
 
         let rx = config_options.watch(cx);
@@ -105,14 +119,18 @@ impl ConfigOptionsView {
             }
         });
 
-        Self {
+        let mut this = Self {
             config_options,
-            selectors,
+            selectors: Vec::new(),
             agent_server,
             fs,
             config_option_ids,
+            agent_launchers,
+            collapse_states: HashMap::default(),
             _refresh_task: refresh_task,
-        }
+        };
+        this.selectors = this.build_selectors(window, cx);
+        this
     }
 
     pub fn toggle_category_picker(
@@ -275,42 +293,97 @@ impl ConfigOptionsView {
         // Config option updates can mutate option values for existing IDs (for example,
         // reasoning levels after a model switch). Rebuild to refresh cached picker entries.
         self.config_option_ids = Self::config_option_ids(&self.config_options);
-        self.selectors = Self::build_selectors(
-            &self.config_options,
-            &self.agent_server,
-            &self.fs,
-            window,
-            cx,
-        );
+        self.selectors = self.build_selectors(window, cx);
         cx.notify();
     }
 
     fn build_selectors(
-        config_options: &Rc<dyn AgentSessionConfigOptions>,
-        agent_server: &Rc<dyn AgentServer>,
-        fs: &Arc<dyn Fs>,
+        &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<Entity<ConfigOptionSelector>> {
-        config_options
-            .config_options()
+        let options = self.config_options.config_options();
+        // The エージェント section goes to the picker the model keybindings open
+        // (`handles_category_keybindings`), not to every model-ish option.
+        let model_config_id = options
+            .iter()
+            .find(|option| {
+                option.category.as_ref() == Some(&acp::SessionConfigOptionCategory::Model)
+                    && matches!(option.kind, acp::SessionConfigKind::Select(_))
+            })
+            .map(|option| option.id.clone());
+        options
             .into_iter()
             .map(|option| {
-                let config_options = config_options.clone();
-                let agent_server = agent_server.clone();
-                let fs = fs.clone();
+                let on_popover_closed: Rc<dyn Fn(&mut Window, &mut App)> = {
+                    let view = cx.weak_entity();
+                    let config_id = option.id.clone();
+                    Rc::new(move |window, cx| {
+                        let view = view.clone();
+                        let config_id = config_id.clone();
+                        // The closing picker is being updated right now, and
+                        // it may be the one to refresh.
+                        window.defer(cx, move |window, cx| {
+                            view.update(cx, |view, cx| {
+                                view.release_folds_held_while_open(&config_id, window, cx)
+                            })
+                            .log_err();
+                        });
+                    })
+                };
+                let grouping = PickerGrouping {
+                    collapse: self
+                        .collapse_states
+                        .entry(option.id.clone())
+                        .or_default()
+                        .clone(),
+                    agent_launchers: self
+                        .agent_launchers
+                        .clone()
+                        .filter(|_| model_config_id.as_ref() == Some(&option.id)),
+                    on_popover_closed,
+                };
+                let config_options = self.config_options.clone();
+                let agent_server = self.agent_server.clone();
+                let fs = self.fs.clone();
                 cx.new(|cx| {
                     ConfigOptionSelector::new(
                         config_options,
                         option.id.clone(),
                         agent_server,
                         fs,
+                        grouping,
                         window,
                         cx,
                     )
                 })
             })
             .collect()
+    }
+
+    /// The popover of `config_id` closed: the next opening folds by the
+    /// favorites as they are now. The picker to refresh is the current one,
+    /// which is not the one that closed if a config update rebuilt the
+    /// selectors while it was open.
+    fn release_folds_held_while_open(
+        &mut self,
+        config_id: &acp::SessionConfigId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let released = self
+            .collapse_states
+            .get(config_id)
+            .is_some_and(|collapse| collapse.borrow_mut().release_favorites_at_open());
+        if !released {
+            return;
+        }
+        if let Some(picker) = self
+            .selector_for_config_id(config_id, cx)
+            .and_then(|selector| selector.read(cx).picker.clone())
+        {
+            picker.update(cx, |picker, cx| picker.refresh(window, cx));
+        }
     }
 }
 
@@ -329,6 +402,14 @@ impl Render for ConfigOptionsView {
     }
 }
 
+/// What a selector's picker shares with the [`ConfigOptionsView`] that built
+/// it, which outlives the selector being rebuilt on every config update.
+struct PickerGrouping {
+    collapse: OptionCollapseState,
+    agent_launchers: Option<AgentLaunchSource>,
+    on_popover_closed: Rc<dyn Fn(&mut Window, &mut App)>,
+}
+
 struct ConfigOptionSelector {
     config_options: Rc<dyn AgentSessionConfigOptions>,
     config_id: acp::SessionConfigId,
@@ -345,6 +426,7 @@ impl ConfigOptionSelector {
         config_id: acp::SessionConfigId,
         agent_server: Rc<dyn AgentServer>,
         fs: Arc<dyn Fs>,
+        grouping: PickerGrouping,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -359,8 +441,14 @@ impl ConfigOptionSelector {
         let is_select = current_option
             .as_ref()
             .is_some_and(|option| matches!(&option.kind, acp::SessionConfigKind::Select(_)));
+        // The model picker ends with the エージェント section, whose rows are
+        // found by typing (「claude」), so it needs a query field however few
+        // models the agent offers.
+        let is_model = current_option.as_ref().is_some_and(|option| {
+            option.category.as_ref() == Some(&acp::SessionConfigOptionCategory::Model)
+        });
 
-        let is_searchable = option_count >= PICKER_THRESHOLD;
+        let is_searchable = option_count >= PICKER_THRESHOLD || is_model;
 
         let (picker_handle, picker) = if is_select {
             let config_options = config_options.clone();
@@ -373,6 +461,7 @@ impl ConfigOptionSelector {
                     config_id,
                     agent_server,
                     fs,
+                    grouping,
                     window,
                     picker_cx,
                 );
@@ -668,19 +757,23 @@ impl Render for ConfigOptionSelector {
     }
 }
 
-#[derive(Clone)]
-enum ConfigOptionPickerEntry {
-    Separator(SharedString),
-    Option(ConfigOptionValue),
-}
-
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 struct ConfigOptionValue {
     value: acp::SessionConfigValueId,
     name: String,
     description: Option<String>,
     group: Option<String>,
 }
+
+impl PickerItem for ConfigOptionValue {
+    type Id = acp::SessionConfigValueId;
+
+    fn item_id(&self) -> &acp::SessionConfigValueId {
+        &self.value
+    }
+}
+
+type ConfigOptionPickerEntry = PickerRow<ConfigOptionValue>;
 
 struct ConfigOptionPickerDelegate {
     config_options: Rc<dyn AgentSessionConfigOptions>,
@@ -689,10 +782,20 @@ struct ConfigOptionPickerDelegate {
     fs: Arc<dyn Fs>,
     filtered_entries: Vec<ConfigOptionPickerEntry>,
     all_options: Vec<ConfigOptionValue>,
+    /// The last search's results. Folding a group rebuilds the rows from these
+    /// on the spot, because `confirm` cannot call `Picker::refresh`.
+    filtered_options: Vec<ConfigOptionValue>,
+    filtered_agents: Vec<AgentLaunchEntry>,
+    agent_launchers: Option<AgentLaunchSource>,
+    collapse: OptionCollapseState,
+    /// Keeps the selection where it was when the list is updated for a fold
+    /// or a star.
+    reselect_row: Option<RowAnchor<acp::SessionConfigValueId>>,
     selected_index: usize,
     selected_description: Option<(usize, SharedString)>,
     favorites: HashSet<acp::SessionConfigValueId>,
     _settings_subscription: Subscription,
+    _dismiss_subscription: Subscription,
 }
 
 impl ConfigOptionPickerDelegate {
@@ -701,22 +804,25 @@ impl ConfigOptionPickerDelegate {
         config_id: acp::SessionConfigId,
         agent_server: Rc<dyn AgentServer>,
         fs: Arc<dyn Fs>,
+        grouping: PickerGrouping,
         window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Self {
         let favorites = agent_server.favorite_config_option_value_ids(&config_id, cx);
 
         let all_options = extract_options(&config_options, &config_id);
-        let filtered_entries = options_to_picker_entries(&all_options, &favorites);
-
-        let current_value = get_current_select_value(&config_options, &config_id);
-        let selected_index = current_value
-            .and_then(|current| {
-                filtered_entries.iter().position(|entry| {
-                    matches!(entry, ConfigOptionPickerEntry::Option(opt) if opt.value == current)
-                })
-            })
-            .unwrap_or(0);
+        let PickerGrouping {
+            collapse,
+            agent_launchers,
+            on_popover_closed,
+        } = grouping;
+        // A picker opens with an empty query, whatever the one this replaces
+        // was showing.
+        collapse.borrow_mut().set_query("");
+        let filtered_agents = agent_launchers
+            .as_ref()
+            .map(|agent_launchers| agent_launchers(cx))
+            .unwrap_or_default();
 
         let agent_server_for_subscription = agent_server.clone();
         let config_id_for_subscription = config_id.clone();
@@ -725,29 +831,87 @@ impl ConfigOptionPickerDelegate {
                 let new_favorites = agent_server_for_subscription
                     .favorite_config_option_value_ids(&config_id_for_subscription, cx);
                 if new_favorites != picker.delegate.favorites {
+                    if picker.focus_handle(cx).contains_focused(window, cx) {
+                        let delegate = &mut picker.delegate;
+                        delegate
+                            .collapse
+                            .borrow_mut()
+                            .hold_favorites_at_open(&delegate.favorites);
+                        delegate.reselect_row =
+                            row_anchor(&delegate.filtered_entries, delegate.selected_index);
+                    }
                     picker.delegate.favorites = new_favorites;
                     picker.refresh(window, cx);
                 }
             });
 
+        // Every way the popover closes emits this on the picker.
+        let picker = cx.entity();
+        let dismiss_subscription = cx.subscribe_in(
+            &picker,
+            window,
+            move |_, _, _: &DismissEvent, window, cx| on_popover_closed(window, cx),
+        );
+
         cx.notify();
 
-        Self {
+        let mut this = Self {
             config_options,
             config_id,
             agent_server,
             fs,
-            filtered_entries,
+            filtered_entries: Vec::new(),
+            filtered_options: all_options.clone(),
             all_options,
-            selected_index,
+            filtered_agents,
+            agent_launchers,
+            collapse,
+            reselect_row: None,
+            selected_index: 0,
             selected_description: None,
             favorites,
             _settings_subscription: settings_subscription,
-        }
+            _dismiss_subscription: dismiss_subscription,
+        };
+        this.rebuild_entries();
+        this.selected_index =
+            initial_row_index(&this.filtered_entries, this.current_value().as_ref());
+        this
     }
 
     fn current_value(&self) -> Option<acp::SessionConfigValueId> {
         get_current_select_value(&self.config_options, &self.config_id)
+    }
+
+    fn rebuild_entries(&mut self) {
+        let current_value = self.current_value();
+        self.filtered_entries = options_to_picker_entries(
+            &self.filtered_options,
+            &self.favorites,
+            current_value.as_ref(),
+            self.filtered_agents.clone(),
+            &self.collapse.borrow(),
+        );
+    }
+
+    fn toggle_group(
+        &mut self,
+        key: PickerGroupKey,
+        expanded: bool,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        self.collapse
+            .borrow_mut()
+            .set_expanded(key.clone(), !expanded);
+        self.rebuild_entries();
+        if let Some(index) = group_row_index(&self.filtered_entries, &key) {
+            self.selected_index = index;
+        }
+        self.selected_description = None;
+        self.reselect_row = Some(RowAnchor::Group(key));
+        refresh_rows_after_fold(window, cx);
+        cx.notify();
     }
 }
 
@@ -773,8 +937,8 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
 
     fn can_select(&self, ix: usize, _window: &mut Window, _cx: &mut Context<Picker<Self>>) -> bool {
         match self.filtered_entries.get(ix) {
-            Some(ConfigOptionPickerEntry::Option(_)) => true,
-            Some(ConfigOptionPickerEntry::Separator(_)) | None => false,
+            Some(PickerRow::Item { .. } | PickerRow::Group { .. } | PickerRow::Agent(_)) => true,
+            Some(PickerRow::Label(_)) | None => false,
         }
     }
 
@@ -788,36 +952,37 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
         window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Task<()> {
+        let query = query.trim().to_string();
         let all_options = self.all_options.clone();
+        let agents = self
+            .agent_launchers
+            .as_ref()
+            .map(|agent_launchers| agent_launchers(cx))
+            .unwrap_or_default();
+        let executor = cx.background_executor().clone();
 
         cx.spawn_in(window, async move |this, cx| {
-            let filtered_options = match this
-                .read_with(cx, |_, cx| {
-                    if query.is_empty() {
-                        None
-                    } else {
-                        Some((all_options.clone(), query.clone(), cx.background_executor().clone()))
-                    }
-                })
-                .ok()
-                .flatten()
-            {
-                Some((options, q, executor)) => fuzzy_search_options(options, &q, executor).await,
-                None => all_options,
+            let filtered_options = if query.is_empty() {
+                all_options
+            } else {
+                fuzzy_search_options(all_options, &query, executor.clone()).await
             };
+            let filtered_agents = filter_agent_launch_entries(agents, &query, executor).await;
 
             this.update_in(cx, |this, window, cx| {
-                this.delegate.filtered_entries =
-                    options_to_picker_entries(&filtered_options, &this.delegate.favorites);
-
-                let current_value = this.delegate.current_value();
-                let new_index = current_value
-                    .and_then(|current| {
-                        this.delegate.filtered_entries.iter().position(|entry| {
-                            matches!(entry, ConfigOptionPickerEntry::Option(opt) if opt.value == current)
-                        })
-                    })
-                    .unwrap_or(0);
+                let delegate = &mut this.delegate;
+                delegate.collapse.borrow_mut().set_query(&query);
+                delegate.filtered_options = filtered_options;
+                delegate.filtered_agents = filtered_agents;
+                delegate.rebuild_entries();
+                let current_value = delegate.current_value();
+                let new_index = delegate
+                    .reselect_row
+                    .take()
+                    .and_then(|anchor| anchor_row_index(&delegate.filtered_entries, &anchor))
+                    .unwrap_or_else(|| {
+                        initial_row_index(&delegate.filtered_entries, current_value.as_ref())
+                    });
 
                 this.set_selected_index(new_index, Some(picker::Direction::Down), true, window, cx);
                 cx.notify();
@@ -826,30 +991,40 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
         })
     }
 
-    fn confirm(&mut self, _secondary: bool, _window: &mut Window, cx: &mut Context<Picker<Self>>) {
-        if let Some(ConfigOptionPickerEntry::Option(option)) =
-            self.filtered_entries.get(self.selected_index)
-        {
-            self.agent_server.set_default_config_option(
-                self.config_id.0.as_ref(),
-                Some(AgentConfigOptionValue::ValueId(option.value.0.to_string())),
-                self.fs.clone(),
-                cx,
-            );
-            let task = self.config_options.set_config_option(
-                self.config_id.clone(),
-                acp::SessionConfigOptionValue::value_id(option.value.clone()),
-                cx,
-            );
+    fn confirm(&mut self, _secondary: bool, window: &mut Window, cx: &mut Context<Picker<Self>>) {
+        match self.filtered_entries.get(self.selected_index) {
+            Some(PickerRow::Item { item: option, .. }) => {
+                self.agent_server.set_default_config_option(
+                    self.config_id.0.as_ref(),
+                    Some(AgentConfigOptionValue::ValueId(option.value.0.to_string())),
+                    self.fs.clone(),
+                    cx,
+                );
+                let task = self.config_options.set_config_option(
+                    self.config_id.clone(),
+                    acp::SessionConfigOptionValue::value_id(option.value.clone()),
+                    cx,
+                );
 
-            cx.spawn(async move |_, _| {
-                if let Err(err) = task.await {
-                    log::error!("Failed to set config option: {:?}", err);
-                }
-            })
-            .detach();
+                cx.spawn(async move |_, _| {
+                    if let Err(err) = task.await {
+                        log::error!("Failed to set config option: {:?}", err);
+                    }
+                })
+                .detach();
 
-            cx.emit(DismissEvent);
+                cx.emit(DismissEvent);
+            }
+            Some(PickerRow::Group { key, expanded, .. }) => {
+                let key = key.clone();
+                let expanded = *expanded;
+                self.toggle_group(key, expanded, window, cx);
+            }
+            Some(PickerRow::Agent(entry)) => {
+                window.dispatch_action(entry.action.to_action(), cx);
+                cx.emit(DismissEvent);
+            }
+            Some(PickerRow::Label(_)) | None => {}
         }
     }
 
@@ -867,7 +1042,7 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
         cx: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem> {
         match self.filtered_entries.get(ix)? {
-            ConfigOptionPickerEntry::Separator(title) => Some(
+            PickerRow::Label(title) => Some(
                 div()
                     .when(ix > 0, |this| this.mt_1())
                     .child(
@@ -880,11 +1055,16 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
                     )
                     .into_any_element(),
             ),
-            ConfigOptionPickerEntry::Option(option) => {
+            PickerRow::Group { .. } => render_group_header(&self.filtered_entries, ix, selected),
+            PickerRow::Agent(entry) => Some(render_agent_launch_row(ix, entry, selected)),
+            PickerRow::Item {
+                item: option,
+                is_favorite,
+            } => {
                 let current_value = self.current_value();
                 let is_selected = current_value.as_ref() == Some(&option.value);
 
-                let is_favorite = self.favorites.contains(&option.value);
+                let is_favorite = *is_favorite;
 
                 let option_name = option.name.clone();
                 let description = option.description.clone();
@@ -1051,48 +1231,29 @@ fn setting_value_for_config_option_value(
 fn options_to_picker_entries(
     options: &[ConfigOptionValue],
     favorites: &HashSet<acp::SessionConfigValueId>,
+    current_value: Option<&acp::SessionConfigValueId>,
+    agents: Vec<AgentLaunchEntry>,
+    collapse: &GroupCollapseState<acp::SessionConfigValueId>,
 ) -> Vec<ConfigOptionPickerEntry> {
-    let mut entries = Vec::new();
-
-    let mut favorite_options = Vec::new();
-
+    let mut groups: Vec<PickerGroup<ConfigOptionValue>> = Vec::new();
     for option in options {
-        if favorites.contains(&option.value) {
-            favorite_options.push(option.clone());
+        let name = option.group.clone().map(SharedString::from);
+        match groups.last_mut() {
+            Some(group) if group.name == name => group.items.push(option.clone()),
+            _ => groups.push(PickerGroup {
+                name,
+                items: vec![option.clone()],
+            }),
         }
     }
-
-    if !favorite_options.is_empty() {
-        entries.push(ConfigOptionPickerEntry::Separator("お気に入り".into()));
-        for option in favorite_options {
-            entries.push(ConfigOptionPickerEntry::Option(option));
-        }
-
-        // If the remaining list would start ungrouped (group == None), insert a separator so
-        // Favorites doesn't visually run into the main list.
-        if let Some(option) = options.first()
-            && option.group.is_none()
-        {
-            entries.push(ConfigOptionPickerEntry::Separator(
-                "すべてのオプション".into(),
-            ));
-        }
-    }
-
-    let mut current_group: Option<String> = None;
-    for option in options {
-        if option.group != current_group {
-            if let Some(group_name) = &option.group {
-                entries.push(ConfigOptionPickerEntry::Separator(
-                    group_name.clone().into(),
-                ));
-            }
-            current_group = option.group.clone();
-        }
-        entries.push(ConfigOptionPickerEntry::Option(option.clone()));
-    }
-
-    entries
+    build_picker_rows(
+        groups,
+        favorites,
+        current_value,
+        agents,
+        collapse,
+        "すべてのオプション",
+    )
 }
 
 async fn fuzzy_search_options(
@@ -1103,7 +1264,9 @@ async fn fuzzy_search_options(
     let candidates = options
         .iter()
         .enumerate()
-        .map(|(ix, opt)| StringMatchCandidate::new(ix, &opt.name))
+        .map(|(ix, opt)| {
+            StringMatchCandidate::new(ix, &grouped_search_text(opt.group.as_deref(), &opt.name))
+        })
         .collect::<Vec<_>>();
 
     let mut matches = fuzzy::match_strings(
@@ -1117,9 +1280,20 @@ async fn fuzzy_search_options(
     )
     .await;
 
+    // Matches stay in the agent's group order (best first within a group), so
+    // that each group gets one heading to fold.
+    let group_rank = |candidate_id: usize| {
+        options
+            .get(candidate_id)
+            .and_then(|option| options.iter().position(|other| other.group == option.group))
+    };
     matches.sort_unstable_by_key(|mat| {
         let candidate = &candidates[mat.candidate_id];
-        (Reverse(OrderedFloat(mat.score)), candidate.id)
+        (
+            group_rank(mat.candidate_id),
+            Reverse(OrderedFloat(mat.score)),
+            candidate.id,
+        )
     });
 
     matches
@@ -1164,12 +1338,14 @@ fn count_config_options(option: &acp::SessionConfigOption) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent_panel::ExternalAgentMenuItem;
+    use crate::model_selector::agent_launch_entries;
     use acp_thread::AgentConnection;
     use fs::FakeFs;
-    use gpui::TestAppContext;
+    use gpui::{TestAppContext, VisualTestContext};
     use parking_lot::Mutex;
     use project::{AgentId, Project};
-    use std::{any::Any, cell::RefCell};
+    use std::{any::Any, cell::Cell};
 
     #[gpui::test]
     fn cycling_config_option_saves_selected_value_as_default(cx: &mut TestAppContext) {
@@ -1198,6 +1374,8 @@ mod tests {
                 selectors: Vec::new(),
                 agent_server,
                 fs,
+                agent_launchers: None,
+                collapse_states: HashMap::default(),
                 _refresh_task: Task::ready(()),
             });
 
@@ -1241,6 +1419,8 @@ mod tests {
                 selectors: Vec::new(),
                 agent_server,
                 fs,
+                agent_launchers: None,
+                collapse_states: HashMap::default(),
                 _refresh_task: Task::ready(()),
             });
 
@@ -1294,6 +1474,8 @@ mod tests {
                 selectors: Vec::new(),
                 agent_server,
                 fs,
+                agent_launchers: None,
+                collapse_states: HashMap::default(),
                 _refresh_task: Task::ready(()),
             });
 
@@ -1331,7 +1513,9 @@ mod tests {
             move |window, cx| {
                 let config_options: Rc<dyn AgentSessionConfigOptions> = config_options;
                 let agent_server: Rc<dyn AgentServer> = agent_server;
-                cx.new(|cx| ConfigOptionsView::new(config_options, agent_server, fs, window, cx))
+                cx.new(|cx| {
+                    ConfigOptionsView::new(config_options, agent_server, fs, None, window, cx)
+                })
             }
         });
 
@@ -1403,9 +1587,468 @@ mod tests {
         assert_eq!(names, vec!["Small", "Large"]);
     }
 
+    fn init_picker_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+        });
+    }
+
+    fn option_value(value: &str, group: Option<&str>) -> ConfigOptionValue {
+        ConfigOptionValue {
+            value: acp::SessionConfigValueId::from(value.to_string()),
+            name: value.to_string(),
+            description: None,
+            group: group.map(str::to_string),
+        }
+    }
+
+    fn searching(query: &str) -> GroupCollapseState<acp::SessionConfigValueId> {
+        let mut collapse = GroupCollapseState::default();
+        collapse.set_query(query);
+        collapse
+    }
+
+    /// `# ` marks a label, `▶`/`▼` a folded/unfolded heading with its count,
+    /// `@ ` an agent row; anything else is an option's value.
+    fn config_entry_labels(entries: &[ConfigOptionPickerEntry]) -> Vec<String> {
+        entries
+            .iter()
+            .map(|entry| match entry {
+                PickerRow::Label(label) => format!("# {label}"),
+                PickerRow::Group {
+                    name,
+                    count,
+                    expanded,
+                    ..
+                } => format!("{} {name} ({count})", if *expanded { "▼" } else { "▶" }),
+                PickerRow::Item { item, .. } => item.value.0.to_string(),
+                PickerRow::Agent(entry) => format!("@ {}", entry.label),
+            })
+            .collect()
+    }
+
+    fn grouped_model_option(current_value: &'static str) -> acp::SessionConfigOption {
+        acp::SessionConfigOption::select(
+            "model",
+            "Model",
+            current_value,
+            vec![
+                acp::SessionConfigSelectGroup::new(
+                    "anthropic",
+                    "Anthropic",
+                    vec![
+                        acp::SessionConfigSelectOption::new("sonnet", "Sonnet"),
+                        acp::SessionConfigSelectOption::new("opus", "Opus"),
+                    ],
+                ),
+                acp::SessionConfigSelectGroup::new(
+                    "openai",
+                    "OpenAI",
+                    vec![
+                        acp::SessionConfigSelectOption::new("gpt-5", "GPT-5"),
+                        acp::SessionConfigSelectOption::new("gpt-5-mini", "GPT-5 mini"),
+                    ],
+                ),
+            ],
+        )
+        .category(acp::SessionConfigOptionCategory::Model)
+    }
+
+    fn option_picker(
+        view: &Entity<ConfigOptionsView>,
+        config_id: &str,
+        cx: &mut VisualTestContext,
+    ) -> Entity<Picker<ConfigOptionPickerDelegate>> {
+        view.read_with(cx, |view, cx| {
+            view.selectors
+                .iter()
+                .find(|selector| selector.read(cx).config_id.0.as_ref() == config_id)
+                .and_then(|selector| selector.read(cx).picker.clone())
+                .expect("a select option has a picker")
+        })
+    }
+
+    fn picker_labels(
+        picker: &Entity<Picker<ConfigOptionPickerDelegate>>,
+        cx: &mut VisualTestContext,
+    ) -> Vec<String> {
+        picker.read_with(cx, |picker, _| {
+            config_entry_labels(&picker.delegate.filtered_entries)
+        })
+    }
+
+    #[gpui::test]
+    async fn acp_model_groups_fold_behind_favorites_and_stay_folded_across_rebuilds(
+        cx: &mut TestAppContext,
+    ) {
+        init_picker_test(cx);
+        let agent_server = Rc::new(TestAgentServer {
+            favorites: RefCell::new(HashSet::from_iter([acp::SessionConfigValueId::from(
+                "sonnet",
+            )])),
+            ..TestAgentServer::default()
+        });
+        let config_options = Rc::new(TestSessionConfigOptions::new(vec![grouped_model_option(
+            "sonnet",
+        )]));
+        let fs: Arc<dyn Fs> = FakeFs::new(cx.executor());
+        let (view, cx) = cx.add_window_view({
+            let config_options = config_options.clone();
+            move |window, cx| {
+                let config_options: Rc<dyn AgentSessionConfigOptions> = config_options;
+                let agent_server: Rc<dyn AgentServer> = agent_server;
+                ConfigOptionsView::new(config_options, agent_server, fs, None, window, cx)
+            }
+        });
+        cx.run_until_parked();
+
+        let picker = option_picker(&view, "model", cx);
+        assert_eq!(
+            picker_labels(&picker, cx),
+            vec!["# お気に入り", "sonnet", "▶ Anthropic (2)", "▶ OpenAI (2)"]
+        );
+        let dismissed = Rc::new(Cell::new(false));
+        cx.update({
+            let dismissed = dismissed.clone();
+            |_, cx| {
+                cx.subscribe(&picker, move |_, _: &DismissEvent, _| dismissed.set(true))
+                    .detach();
+            }
+        });
+
+        picker.update_in(cx, |picker, window, cx| {
+            picker.delegate.set_selected_index(3, window, cx);
+            picker.delegate.confirm(false, window, cx);
+        });
+        cx.run_until_parked();
+        let unfolded = vec![
+            "# お気に入り",
+            "sonnet",
+            "▶ Anthropic (2)",
+            "▼ OpenAI (2)",
+            "gpt-5",
+            "gpt-5-mini",
+        ];
+        assert_eq!(picker_labels(&picker, cx), unfolded);
+        picker.read_with(cx, |picker, _| {
+            assert_eq!(picker.delegate.selected_index, 3, "still on the heading");
+            assert!(
+                picker.delegate.reselect_row.is_none(),
+                "the list was updated for the new number of rows"
+            );
+        });
+        assert!(
+            config_options.set_values.borrow().is_empty(),
+            "a heading is not an option to choose"
+        );
+        assert!(!dismissed.get(), "and the popover stays open");
+
+        // Every config update rebuilds the selectors, pickers included.
+        view.update_in(cx, |view, window, cx| view.rebuild_selectors(window, cx));
+        cx.run_until_parked();
+        let rebuilt = option_picker(&view, "model", cx);
+        assert_ne!(rebuilt.entity_id(), picker.entity_id());
+        assert_eq!(picker_labels(&rebuilt, cx), unfolded);
+    }
+
+    #[test]
+    fn short_ungrouped_acp_lists_are_never_folded() {
+        let favorites = HashSet::from_iter([acp::SessionConfigValueId::from("m0")]);
+        let short = (0..4)
+            .map(|index| option_value(&format!("m{index}"), None))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            config_entry_labels(&options_to_picker_entries(
+                &short,
+                &favorites,
+                None,
+                Vec::new(),
+                &GroupCollapseState::default(),
+            )),
+            vec![
+                "# お気に入り",
+                "m0",
+                "# すべてのオプション",
+                "m0",
+                "m1",
+                "m2",
+                "m3"
+            ]
+        );
+
+        let long = (0..12)
+            .map(|index| option_value(&format!("m{index}"), None))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            config_entry_labels(&options_to_picker_entries(
+                &long,
+                &favorites,
+                None,
+                Vec::new(),
+                &GroupCollapseState::default(),
+            )),
+            vec!["# お気に入り", "m0", "▶ すべてのオプション (12)"]
+        );
+    }
+
+    #[gpui::test]
+    async fn acp_search_names_groups_and_gives_each_group_one_heading(cx: &mut TestAppContext) {
+        let options = vec![
+            option_value("x", Some("Alpha")),
+            option_value("x-with-a-much-longer-name", Some("Alpha")),
+            option_value("x-mid", Some("Beta")),
+            option_value("gpt-5", Some("OpenAI")),
+            option_value("gpt-6", Some("OpenAI")),
+        ];
+
+        let found = fuzzy_search_options(options.clone(), "openai", cx.executor()).await;
+        assert_eq!(
+            found
+                .iter()
+                .map(|option| option.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["gpt-5", "gpt-6"]
+        );
+
+        let found = fuzzy_search_options(options, "x", cx.executor()).await;
+        let rows = options_to_picker_entries(
+            &found,
+            &HashSet::default(),
+            None,
+            Vec::new(),
+            &searching("x"),
+        );
+        assert_eq!(
+            config_entry_labels(&rows),
+            vec![
+                "▼ Alpha (2)",
+                "x",
+                "x-with-a-much-longer-name",
+                "▼ Beta (1)",
+                "x-mid"
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn an_acp_star_leaves_the_open_list_unfolded_across_rebuilds_until_it_closes(
+        cx: &mut TestAppContext,
+    ) {
+        init_picker_test(cx);
+        let agent_server = Rc::new(TestAgentServer::default());
+        let config_options = Rc::new(TestSessionConfigOptions::new(vec![grouped_model_option(
+            "gpt-5",
+        )]));
+        let fs: Arc<dyn Fs> = FakeFs::new(cx.executor());
+        let (view, cx) = cx.add_window_view({
+            let agent_server = agent_server.clone();
+            move |window, cx| {
+                let config_options: Rc<dyn AgentSessionConfigOptions> = config_options;
+                let agent_server: Rc<dyn AgentServer> = agent_server;
+                ConfigOptionsView::new(config_options, agent_server, fs, None, window, cx)
+            }
+        });
+        cx.run_until_parked();
+        view.update_in(cx, |view, window, cx| {
+            assert!(view.toggle_category_picker(
+                acp::SessionConfigOptionCategory::Model,
+                window,
+                cx
+            ));
+        });
+        let picker = option_picker(&view, "model", cx);
+        // What the popover does on its next frames once it is shown.
+        picker.update_in(cx, |picker, window, cx| {
+            window.focus(&picker.focus_handle(cx), cx)
+        });
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        assert!(
+            cx.update(|window, cx| picker.focus_handle(cx).contains_focused(window, cx)),
+            "the popover is open"
+        );
+        let unfolded = vec![
+            "▼ Anthropic (2)",
+            "sonnet",
+            "opus",
+            "▼ OpenAI (2)",
+            "gpt-5",
+            "gpt-5-mini",
+        ];
+        assert_eq!(picker_labels(&picker, cx), unfolded);
+
+        agent_server
+            .favorites
+            .borrow_mut()
+            .insert(acp::SessionConfigValueId::from("opus"));
+        cx.update(|_, cx| cx.update_global::<SettingsStore, _>(|_, _| {}));
+        cx.run_until_parked();
+        let starred = vec![
+            "# お気に入り",
+            "opus",
+            "▼ Anthropic (2)",
+            "sonnet",
+            "opus",
+            "▼ OpenAI (2)",
+            "gpt-5",
+            "gpt-5-mini",
+        ];
+        assert_eq!(picker_labels(&picker, cx), starred, "nothing folds");
+
+        view.update_in(cx, |view, window, cx| view.rebuild_selectors(window, cx));
+        cx.run_until_parked();
+        let rebuilt = option_picker(&view, "model", cx);
+        assert_ne!(rebuilt.entity_id(), picker.entity_id());
+        assert_eq!(
+            picker_labels(&rebuilt, cx),
+            starred,
+            "a config update while open does not fold it either"
+        );
+
+        picker.update(cx, |_, cx| cx.emit(DismissEvent));
+        cx.run_until_parked();
+        assert_eq!(
+            picker_labels(&rebuilt, cx),
+            vec![
+                "# お気に入り",
+                "opus",
+                "▶ Anthropic (2)",
+                "▼ OpenAI (2)",
+                "gpt-5",
+                "gpt-5-mini",
+            ],
+            "the picker the next opening shows folds behind the favorites"
+        );
+    }
+
+    #[gpui::test]
+    async fn the_acp_model_picker_takes_a_query_and_ends_with_the_agent_section(
+        cx: &mut TestAppContext,
+    ) {
+        init_picker_test(cx);
+        let launched = Rc::new(RefCell::new(Vec::<AgentId>::new()));
+        cx.update(|cx| {
+            let launched = launched.clone();
+            cx.on_action(move |action: &crate::NewExternalAgentThread, _| {
+                launched.borrow_mut().push(action.agent.clone());
+            });
+        });
+        let config_options = Rc::new(TestSessionConfigOptions::new(vec![
+            acp::SessionConfigOption::select(
+                "mode",
+                "Mode",
+                "ask",
+                vec![
+                    acp::SessionConfigSelectOption::new("ask", "Ask"),
+                    acp::SessionConfigSelectOption::new("code", "Code"),
+                ],
+            )
+            .category(acp::SessionConfigOptionCategory::Mode),
+            acp::SessionConfigOption::select(
+                "model",
+                "Model",
+                "default",
+                vec![
+                    acp::SessionConfigSelectOption::new("default", "Default"),
+                    acp::SessionConfigSelectOption::new("opus", "Opus"),
+                    acp::SessionConfigSelectOption::new("haiku", "Haiku"),
+                ],
+            )
+            .category(acp::SessionConfigOptionCategory::Model),
+        ]));
+        let agent_launchers: AgentLaunchSource = Rc::new(|_| {
+            agent_launch_entries(
+                &AgentId::new("test-agent"),
+                true,
+                vec![ExternalAgentMenuItem {
+                    id: AgentId::new("codex-acp"),
+                    display_name: "Codex".into(),
+                    icon_path: None,
+                }],
+            )
+        });
+        let fs: Arc<dyn Fs> = FakeFs::new(cx.executor());
+        let (view, cx) = cx.add_window_view({
+            let config_options = config_options.clone();
+            move |window, cx| {
+                let config_options: Rc<dyn AgentSessionConfigOptions> = config_options;
+                let agent_server: Rc<dyn AgentServer> = Rc::new(TestAgentServer::default());
+                ConfigOptionsView::new(
+                    config_options,
+                    agent_server,
+                    fs,
+                    Some(agent_launchers),
+                    window,
+                    cx,
+                )
+            }
+        });
+        cx.run_until_parked();
+
+        let model = option_picker(&view, "model", cx);
+        let mode = option_picker(&view, "mode", cx);
+        assert_eq!(
+            picker_labels(&model, cx),
+            vec!["default", "opus", "haiku", "▶ エージェント (3)"]
+        );
+        assert_eq!(
+            picker_labels(&mode, cx),
+            vec!["ask", "code"],
+            "only the model picker carries the agents"
+        );
+
+        model.update_in(cx, |picker, window, cx| {
+            picker.set_query("codex", window, cx)
+        });
+        mode.update_in(cx, |picker, window, cx| {
+            picker.set_query("codex", window, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            model.read_with(cx, |picker, cx| picker.query(cx)),
+            "codex",
+            "three models still get a query field"
+        );
+        assert_eq!(
+            mode.read_with(cx, |picker, cx| picker.query(cx)),
+            "",
+            "other short lists keep their plain menu"
+        );
+        assert_eq!(
+            picker_labels(&model, cx),
+            vec!["▼ エージェント (1)", "@ Codex で新しいスレッド"]
+        );
+
+        let dismissed = Rc::new(Cell::new(false));
+        cx.update({
+            let dismissed = dismissed.clone();
+            |window, cx| {
+                cx.subscribe(&model, move |_, _: &DismissEvent, _| dismissed.set(true))
+                    .detach();
+                window.refresh();
+            }
+        });
+        cx.run_until_parked();
+        model.update_in(cx, |picker, window, cx| {
+            assert_eq!(picker.delegate.selected_index, 1);
+            picker.delegate.confirm(false, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(launched.borrow().as_slice(), &[AgentId::new("codex-acp")]);
+        assert!(dismissed.get());
+        assert!(
+            config_options.set_values.borrow().is_empty(),
+            "starting an agent leaves this thread's model alone"
+        );
+    }
+
     #[derive(Default)]
     struct TestAgentServer {
         saved_defaults: Arc<Mutex<Vec<(String, Option<AgentConfigOptionValue>)>>>,
+        favorites: RefCell<HashSet<acp::SessionConfigValueId>>,
     }
 
     impl AgentServer for TestAgentServer {
@@ -1440,6 +2083,14 @@ mod tests {
             self.saved_defaults
                 .lock()
                 .push((config_id.to_string(), value));
+        }
+
+        fn favorite_config_option_value_ids(
+            &self,
+            _config_id: &acp::SessionConfigId,
+            _cx: &mut App,
+        ) -> HashSet<acp::SessionConfigValueId> {
+            self.favorites.borrow().clone()
         }
     }
 

@@ -604,8 +604,12 @@ impl WorktreeCode {
 
 /// Reads an ADR-F50 setting from the user's own settings file only: project
 /// settings can be written by the very agent the pause is about, and the IDE
-/// never merges a remote host's settings.
-fn from_user_settings<T>(cx: &App, read: impl Fn(&SettingsContent) -> Option<T>) -> Option<T> {
+/// never merges a remote host's settings. ADR-F49 decision 19's "always
+/// outside the sandbox" switches are read through here for the same reason.
+pub(crate) fn from_user_settings<T>(
+    cx: &App,
+    read: impl Fn(&SettingsContent) -> Option<T>,
+) -> Option<T> {
     let user = cx.try_global::<SettingsStore>()?.raw_user_settings()?;
     [
         Some(user.content.as_ref()),

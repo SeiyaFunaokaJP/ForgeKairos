@@ -57,6 +57,8 @@ struct OutgoingNotification<'a> {
     params: serde_json::Value,
 }
 
+/// JSON-RPC の「サーバーのエラー」の範囲。口が設定で閉じている接続への要求を断るときに使う。
+pub const REFUSED: i32 = -32000;
 pub const METHOD_NOT_FOUND: i32 = -32601;
 pub const INVALID_PARAMS: i32 = -32602;
 pub const INTERNAL_ERROR: i32 = -32603;

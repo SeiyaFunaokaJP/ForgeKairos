@@ -90,6 +90,78 @@ pub fn init(cx: &mut App) {
     let migration_task = migrate_thread_metadata(cx);
     migrate_thread_remote_connections(cx, migration_task);
     migrate_thread_ids(cx);
+    load_threads_started_outside_sandbox(cx);
+}
+
+/// ADR-F49 decision 19 (8c): where the threads whose agent was started outside
+/// its sandbox are written down. Beside the metadata rather than in it, like
+/// the draft prompts: nothing but the panel reads it, and a thread's row has
+/// no column to put it in.
+const THREADS_STARTED_OUTSIDE_SANDBOX_NAMESPACE: &str = "agent_threads_started_outside_sandbox";
+
+/// The threads whose agent was started outside its sandbox, in memory, so that
+/// the tab and the thread list can ask on every frame. A session started there
+/// lives in the account's own configuration folder (`~/.claude` for Claude),
+/// which the sandbox cannot read: reading it back in the sandbox fails, so a
+/// thread written down here is offered back outside, not in.
+#[derive(Default)]
+struct ThreadsStartedOutsideSandbox(HashSet<ThreadId>);
+
+impl Global for ThreadsStartedOutsideSandbox {}
+
+fn load_threads_started_outside_sandbox(cx: &mut App) {
+    let threads = KeyValueStore::global(cx)
+        .scoped(THREADS_STARTED_OUTSIDE_SANDBOX_NAMESPACE)
+        .read_all()
+        .log_err()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(key, _)| uuid::Uuid::parse_str(&key).log_err().map(ThreadId))
+        .collect();
+    cx.set_global(ThreadsStartedOutsideSandbox(threads));
+}
+
+/// Whether the agent of `thread_id` was started outside its sandbox.
+pub fn thread_started_outside_sandbox(thread_id: ThreadId, cx: &App) -> bool {
+    cx.try_global::<ThreadsStartedOutsideSandbox>()
+        .is_some_and(|threads| threads.0.contains(&thread_id))
+}
+
+/// Writes down that the agent of `thread_id` runs outside its sandbox.
+pub fn record_thread_started_outside_sandbox(thread_id: ThreadId, cx: &mut App) {
+    if !cx
+        .default_global::<ThreadsStartedOutsideSandbox>()
+        .0
+        .insert(thread_id)
+    {
+        return;
+    }
+    let kvp = KeyValueStore::global(cx);
+    let key = thread_id.to_key_string();
+    cx.background_spawn(async move {
+        kvp.scoped(THREADS_STARTED_OUTSIDE_SANDBOX_NAMESPACE)
+            .write(key, "1".to_string())
+            .await
+    })
+    .detach_and_log_err(cx);
+}
+
+fn forget_thread_started_outside_sandbox(thread_id: ThreadId, cx: &mut App) {
+    if !cx
+        .default_global::<ThreadsStartedOutsideSandbox>()
+        .0
+        .remove(&thread_id)
+    {
+        return;
+    }
+    let kvp = KeyValueStore::global(cx);
+    let key = thread_id.to_key_string();
+    cx.background_spawn(async move {
+        kvp.scoped(THREADS_STARTED_OUTSIDE_SANDBOX_NAMESPACE)
+            .delete(key)
+            .await
+    })
+    .detach_and_log_err(cx);
 }
 
 /// Migrate existing thread metadata from native agent thread store to the new metadata storage.
@@ -1159,6 +1231,7 @@ impl ThreadMetadataStore {
             .try_send(DbOperation::Delete(thread_id))
             .log_err();
         crate::draft_prompt_store::delete(thread_id, cx).detach_and_log_err(cx);
+        forget_thread_started_outside_sandbox(thread_id, cx);
         cx.notify();
     }
 

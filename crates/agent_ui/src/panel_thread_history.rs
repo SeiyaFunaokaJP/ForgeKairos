@@ -323,11 +323,22 @@ impl PanelThreadHistory {
                     .agent_server_store
                     .upgrade()
                     .and_then(|store| store.read(cx).agent_icon(&thread.agent_id));
-                let icon = if thread.agent_id.as_ref() == agent::ZED_AGENT_ID.as_ref() {
+                let is_zed_agent = thread.agent_id.as_ref() == agent::ZED_AGENT_ID.as_ref();
+                let icon = if is_zed_agent {
                     IconName::ZedAgent
                 } else {
                     IconName::Sparkle
                 };
+                // ADR-F49 決定 19 (8c): the banner's colour on the icon of a
+                // thread whose agent was started outside its sandbox, which is
+                // where it comes back. A thread started in the sandbox comes
+                // back there whatever the settings say now, so they are not
+                // asked.
+                let outside_sandbox = !is_zed_agent
+                    && crate::thread_metadata_store::thread_started_outside_sandbox(
+                        thread.thread_id,
+                        cx,
+                    );
 
                 let row =
                     ThreadItem::new(("panel-history-entry", index), self.row_title(&thread, cx))
@@ -335,6 +346,7 @@ impl PanelThreadHistory {
                         .when_some(icon_from_external_svg, |this, svg| {
                             this.custom_icon_from_external_svg(svg)
                         })
+                        .when(outside_sandbox, |this| this.icon_color(Color::Warning))
                         // 狭いときは日付を渡さない = 2 行目ごと消える。
                         .when(!self.slim, |this| {
                             this.timestamp(format_history_entry_timestamp(thread.updated_at))

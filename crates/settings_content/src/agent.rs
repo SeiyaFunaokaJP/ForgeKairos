@@ -227,6 +227,35 @@ pub struct AutoCompactSettingsContent {
 
 #[with_fallible_options]
 #[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, Default)]
+pub struct ContextAttachmentsSettingsContent {
+    /// Files larger than this many bytes are attached as an outline (their
+    /// symbols with line numbers) instead of their full content.
+    ///
+    /// Default: 16384
+    pub inline_max_bytes: Option<usize>,
+    /// When the attachments of one message add up to more than this many
+    /// bytes, the largest ones are sent as an outline or a reference until the
+    /// message fits. Attachments set to be sent in full are never reduced.
+    ///
+    /// Default: 65536
+    pub message_budget_bytes: Option<usize>,
+    /// Largest outline sent for one file, in bytes. Deeper symbols are
+    /// dropped first when an outline does not fit.
+    ///
+    /// Default: 8192
+    pub outline_max_bytes: Option<usize>,
+    /// Largest part of a fetched web page that is attached, in bytes.
+    ///
+    /// Default: 32768
+    pub fetch_max_bytes: Option<usize>,
+    /// Most files whose diagnostics are attached with a diagnostics mention.
+    ///
+    /// Default: 50
+    pub diagnostics_max_files: Option<usize>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, Default)]
 pub struct AgentSettingsContent {
     /// Whether the Agent is enabled.
     ///
@@ -367,6 +396,11 @@ pub struct AgentSettingsContent {
     ///
     /// Default: false
     pub attach_active_file: Option<bool>,
+    /// Limits on how much of an attachment (a file, a directory, a selection,
+    /// a fetched page, diagnostics or a branch diff) is sent to the agent.
+    /// Anything over these limits is sent as an outline or a reference the
+    /// agent can follow up on instead of in full.
+    pub context_attachments: Option<ContextAttachmentsSettingsContent>,
     /// Byte budget for a repository map prepended to the agent's system prompt,
     /// right after the list of project root directories. `0` disables it.
     /// Values above 32768 are clamped to 32768.
@@ -399,6 +433,13 @@ pub struct AgentSettingsContent {
     ///
     /// Default: ""
     pub terminal_init_command: Option<String>,
+    /// 「Claude Code を起動」を、確認なしで常にサンドボックスの外で起動するか
+    /// (ADR-F49 決定 19)。外では書き込みの制限がなくなり、通信の制限はプロキシの
+    /// 設定を読むプログラムにだけ効きます (SSH の接続先では統制が効きません)。
+    /// ユーザー設定にだけ書け、プロジェクトの設定では変えられません。
+    ///
+    /// Default: false
+    pub claude_code_run_outside_sandbox: Option<bool>,
     /// How thinking blocks should be displayed by default in the agent panel.
     ///
     /// Default: automatic
@@ -894,6 +935,15 @@ pub enum CustomAgentServerSettings {
         ///
         /// Default: true
         allow_subscription_sign_in: Option<bool>,
+        /// このエージェントを、確認なしで常にサンドボックスの外で起動するか
+        /// (ADR-F49 決定 19)。
+        ///
+        /// 外では書き込みの制限がなくなり、通信の制限はプロキシの設定を読む
+        /// プログラムにだけ効きます。ユーザー設定にだけ書け、プロジェクトの
+        /// 設定 (`.zed/settings.json`) では変えられません。
+        ///
+        /// Default: false
+        run_outside_sandbox: Option<bool>,
     },
     // Used for the ACP extension migration
     #[serde(alias = "extension")]
@@ -932,6 +982,15 @@ pub enum CustomAgentServerSettings {
         ///
         /// Default: true
         allow_subscription_sign_in: Option<bool>,
+        /// このエージェントを、確認なしで常にサンドボックスの外で起動するか
+        /// (ADR-F49 決定 19)。
+        ///
+        /// 外では書き込みの制限がなくなり、通信の制限はプロキシの設定を読む
+        /// プログラムにだけ効きます。ユーザー設定にだけ書け、プロジェクトの
+        /// 設定 (`.zed/settings.json`) では変えられません。
+        ///
+        /// Default: false
+        run_outside_sandbox: Option<bool>,
     },
 }
 

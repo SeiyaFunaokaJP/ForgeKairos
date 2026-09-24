@@ -49,6 +49,71 @@ pub const DEFAULT_IDLE_DISCONNECT_MINUTES: u64 = 5;
 /// the model can scope, not in every request's system prompt.
 pub const MAX_SYSTEM_PROMPT_REPO_MAP_BYTES: usize = 32_768;
 
+/// How much of each chat attachment is sent to the agent, mirroring
+/// `agent.context_attachments` in `assets/settings/default.json`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ContextAttachmentSettings {
+    pub inline_max_bytes: usize,
+    pub message_budget_bytes: usize,
+    pub outline_max_bytes: usize,
+    pub fetch_max_bytes: usize,
+    pub diagnostics_max_files: usize,
+}
+
+impl ContextAttachmentSettings {
+    pub const DEFAULT: Self = Self {
+        inline_max_bytes: 16_384,
+        message_budget_bytes: 65_536,
+        outline_max_bytes: 8_192,
+        fetch_max_bytes: 32_768,
+        diagnostics_max_files: 50,
+    };
+
+    /// Values below these floors would leave no room for the outline header or
+    /// the reference an attachment is reduced to, so they are raised to them.
+    const FLOOR: Self = Self {
+        inline_max_bytes: 1_024,
+        message_budget_bytes: 4_096,
+        outline_max_bytes: 512,
+        fetch_max_bytes: 1_024,
+        diagnostics_max_files: 1,
+    };
+
+    fn from_content(content: Option<settings::ContextAttachmentsSettingsContent>) -> Self {
+        let content = content.unwrap_or_default();
+        let default = Self::DEFAULT;
+        let floor = Self::FLOOR;
+        Self {
+            inline_max_bytes: content
+                .inline_max_bytes
+                .unwrap_or(default.inline_max_bytes)
+                .max(floor.inline_max_bytes),
+            message_budget_bytes: content
+                .message_budget_bytes
+                .unwrap_or(default.message_budget_bytes)
+                .max(floor.message_budget_bytes),
+            outline_max_bytes: content
+                .outline_max_bytes
+                .unwrap_or(default.outline_max_bytes)
+                .max(floor.outline_max_bytes),
+            fetch_max_bytes: content
+                .fetch_max_bytes
+                .unwrap_or(default.fetch_max_bytes)
+                .max(floor.fetch_max_bytes),
+            diagnostics_max_files: content
+                .diagnostics_max_files
+                .unwrap_or(default.diagnostics_max_files)
+                .max(floor.diagnostics_max_files),
+        }
+    }
+}
+
+impl Default for ContextAttachmentSettings {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PanelLayout {
     pub(crate) agent_dock: Option<DockPosition>,
@@ -241,6 +306,7 @@ pub struct AgentSettings {
     /// [`AUTO_COMPACT_MIN_CONTEXT_WINDOW_FLOOR`].
     pub auto_compact_min_context_window: u64,
     pub attach_active_file: bool,
+    pub context_attachments: ContextAttachmentSettings,
     /// Byte budget for the repository map prepended to the system prompt,
     /// already clamped to `0..=`[`MAX_SYSTEM_PROMPT_REPO_MAP_BYTES`]. `0`
     /// disables it.
@@ -835,6 +901,7 @@ impl Settings for AgentSettings {
                 .unwrap_or(DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW)
                 .max(AUTO_COMPACT_MIN_CONTEXT_WINDOW_FLOOR),
             attach_active_file: agent.attach_active_file.unwrap_or(false),
+            context_attachments: ContextAttachmentSettings::from_content(agent.context_attachments),
             system_prompt_repo_map_bytes: agent
                 .system_prompt_repo_map_bytes
                 .unwrap_or(0)

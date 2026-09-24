@@ -123,7 +123,7 @@ impl ThreadItem {
         cx: &mut Context<Self>,
     ) -> Self {
         let thread_id = conversation_view.read(cx).thread_id;
-        let tab_title = conversation_view.read(cx).title(cx);
+        let tab_title = conversation_view.read(cx).tab_title(cx);
 
         let subscriptions = vec![
             cx.observe(&conversation_view, |this, conversation_view, cx| {
@@ -197,7 +197,7 @@ impl ThreadItem {
         conversation_view: &Entity<ConversationView>,
         cx: &mut Context<Self>,
     ) {
-        let title = conversation_view.read(cx).title(cx);
+        let title = conversation_view.read(cx).tab_title(cx);
         if self.tab_title == title {
             return;
         }
@@ -928,7 +928,7 @@ impl Item for ThreadItem {
     }
 
     fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
-        self.conversation_view.read(cx).title(cx)
+        self.conversation_view.read(cx).tab_title(cx)
     }
 
     fn tab_icon(&self, _: &Window, cx: &App) -> Option<Icon> {

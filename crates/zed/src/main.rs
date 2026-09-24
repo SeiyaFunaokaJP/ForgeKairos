@@ -830,6 +830,7 @@ fn main() {
         git_ui::init(cx);
         browser_panel::init(cx);
         ide_server::init(cx);
+        ide_assist::init(cx);
         feedback::init(cx);
         markdown_preview::init(cx);
         tabular_data_preview::init(cx);

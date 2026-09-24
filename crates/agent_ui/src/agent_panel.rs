@@ -1025,49 +1025,83 @@ pub fn init(cx: &mut App) {
                     }
                 })
                 .register_action(|workspace, action: &ReviewBranchDiff, window, cx| {
-                    let Some(panel) = workspace.panel::<AgentPanel>(cx) else {
+                    if workspace.panel::<AgentPanel>(cx).is_none() {
                         return;
-                    };
+                    }
 
-                    let mention_uri = MentionUri::GitDiff {
-                        base_ref: action.base_ref.to_string(),
-                    };
-                    let diff_uri = mention_uri.to_uri().to_string();
-
-                    let content_blocks = vec![
-                        acp::ContentBlock::Text(acp::TextContent::new(
-                            "Please review this branch diff carefully. Point out any issues, \
-                             potential bugs, or improvement opportunities you find.\n\n"
-                                .to_string(),
-                        )),
-                        acp::ContentBlock::Resource(acp::EmbeddedResource::new(
-                            acp::EmbeddedResourceResource::TextResourceContents(
-                                acp::TextResourceContents::new(
-                                    action.diff_text.to_string(),
-                                    diff_uri,
-                                ),
-                            ),
-                        )),
-                    ];
-
-                    workspace.focus_panel::<AgentPanel>(window, cx);
-
-                    panel.update(cx, |panel, cx| {
-                        panel.external_thread(
-                            None,
-                            None,
-                            None,
-                            None,
-                            Some(AgentInitialContent::ContentBlock {
-                                blocks: content_blocks,
-                                auto_submit: true,
-                            }),
-                            true,
-                            AgentThreadSource::GitPanel,
-                            window,
+                    let base_ref = action.base_ref.to_string();
+                    let diff_text = action.diff_text.to_string();
+                    let project = workspace.project().clone();
+                    // Without the repository the diff's files cannot be
+                    // checked against the project and `private_files`, so
+                    // nothing is sent.
+                    let Some(repository) = project.read(cx).active_repository(cx) else {
+                        workspace.show_error(
+                            anyhow::anyhow!("レビューするリポジトリが見つかりません。"),
                             cx,
                         );
-                    });
+                        return;
+                    };
+                    cx.spawn_in(window, async move |workspace, cx| {
+                        // The review sends a summary with a larger share of
+                        // the patch than a chat attachment, rather than the
+                        // whole patch of a branch that may touch hundreds of
+                        // files.
+                        const REVIEW_DIFF_BYTES: usize = 64 * 1024;
+                        let content = agent::branch_diff_for_agent(
+                            project,
+                            repository,
+                            &diff_text,
+                            Some(agent::GitDiffSummaryRequest::branch(
+                                &base_ref,
+                                true,
+                                REVIEW_DIFF_BYTES,
+                            )),
+                            cx,
+                        )
+                        .await;
+
+                        let mention_uri = MentionUri::GitDiff { base_ref };
+                        let diff_uri = mention_uri.to_uri().to_string();
+
+                        let content_blocks = vec![
+                            acp::ContentBlock::Text(acp::TextContent::new(
+                                "Please review this branch diff carefully. Point out any issues, \
+                                 potential bugs, or improvement opportunities you find.\n\n"
+                                    .to_string(),
+                            )),
+                            acp::ContentBlock::Resource(acp::EmbeddedResource::new(
+                                acp::EmbeddedResourceResource::TextResourceContents(
+                                    acp::TextResourceContents::new(content, diff_uri),
+                                ),
+                            )),
+                        ];
+
+                        workspace.update_in(cx, |workspace, window, cx| {
+                            let Some(panel) = workspace.panel::<AgentPanel>(cx) else {
+                                return;
+                            };
+                            workspace.focus_panel::<AgentPanel>(window, cx);
+
+                            panel.update(cx, |panel, cx| {
+                                panel.external_thread(
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    Some(AgentInitialContent::ContentBlock {
+                                        blocks: content_blocks,
+                                        auto_submit: true,
+                                    }),
+                                    true,
+                                    AgentThreadSource::GitPanel,
+                                    window,
+                                    cx,
+                                );
+                            });
+                        })
+                    })
+                    .detach_and_log_err(cx);
                 })
                 .register_action(
                     |workspace, action: &ResolveConflictsWithAgent, window, cx| {
@@ -1205,17 +1239,20 @@ pub fn init(cx: &mut App) {
                                     && let Some(agent_terminal) = panel.terminals.get(&terminal_id)
                                 {
                                     // Resolve mentions against the cwd: live cwd, else spawn dir.
-                                    let working_directory = agent_terminal
-                                        .view
-                                        .read(cx)
-                                        .terminal()
-                                        .read(cx)
+                                    let terminal = agent_terminal.view.read(cx).terminal().read(cx);
+                                    let working_directory = terminal
                                         .working_directory()
                                         .or_else(|| agent_terminal.working_directory.clone());
-                                    let text = format_selection_for_terminal(
+                                    let tab_key =
+                                        crate::sandboxed_claude_code::cli_tab_session_key(terminal);
+                                    let runs_claude_code =
+                                        tab_key.is_some() || runs_claude_code_on_host(terminal);
+                                    let text = mention_selection_in_terminal(
                                         &selection,
                                         &panel.project,
                                         working_directory.as_deref(),
+                                        tab_key.as_deref(),
+                                        runs_claude_code,
                                         cx,
                                     );
                                     if !text.is_empty() {
@@ -1247,14 +1284,40 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-fn format_selection_for_terminal(
+/// The task id of the Claude Code the launch actions start on this machine
+/// (`terminal_view::session_tools::claude_code_launch_task`).
+const HOST_CLAUDE_CODE_TASK_ID: &str = "terminal::launch-claude-code";
+
+/// ADR-F56: whether `terminal` runs Claude Code outside a sandbox — started by the
+/// launch action, or typed into the tab. Only such a tab's selection may go through
+/// the host's IDE server: its `at_mentioned` reaches whichever Claude Code is
+/// connected there, which is not the CLI of a tab running another agent.
+fn runs_claude_code_on_host(terminal: &terminal::Terminal) -> bool {
+    terminal
+        .task()
+        .is_some_and(|task| task.spawned_task.id.0 == HOST_CLAUDE_CODE_TASK_ID)
+        || terminal
+            .foreground_process_command_name()
+            .is_some_and(|program| program_name(&program) == "claude")
+}
+
+/// ADR-F56: what to paste into a CLI tab for `selection`. In a tab that runs Claude
+/// Code (`runs_claude_code`), each editor range goes to the CLI as an IDE
+/// `at_mentioned` when it is connected to Zed's IDE server (the tab's own sandbox
+/// session, or the host server outside a sandbox) and is then left out of the text;
+/// otherwise it becomes the CLI's own `@<path>#L<a>-<b>` reference, with the path as
+/// the CLI sees it (mapped into the sandbox). Any other tab gets the plain
+/// `<path>:<a>-<b>` mention, as before. A terminal selection is pasted as it is.
+fn mention_selection_in_terminal(
     selection: &AgentContextSelection,
     project: &Entity<Project>,
     working_directory: Option<&std::path::Path>,
-    cx: &App,
+    tab_key: Option<&str>,
+    runs_claude_code: bool,
+    cx: &mut App,
 ) -> String {
     match selection {
-        AgentContextSelection::Editor(ranges) => {
+        AgentContextSelection::Editor(ranges) if !runs_claude_code => {
             let path_style = project.read(cx).path_style(cx);
             let mut parts: Vec<String> = Vec::new();
             for (buffer, range) in ranges {
@@ -1281,7 +1344,70 @@ fn format_selection_for_terminal(
                 format!("{} ", parts.join(" "))
             }
         }
+        AgentContextSelection::Editor(ranges) => {
+            let path_style = project.read(cx).path_style(cx);
+            let mut parts: Vec<String> = Vec::new();
+            for (buffer, range) in ranges {
+                let (project_path, start_row, end_row) = {
+                    let buffer = buffer.read(cx);
+                    let Some(project_path) = buffer.project_path(cx) else {
+                        continue;
+                    };
+                    let snapshot = buffer.snapshot();
+                    let point_range = range.to_point(&snapshot);
+                    // Selecting whole lines ends the selection at column 0 of the next
+                    // line, which is not part of it.
+                    let end_row = if point_range.end.row > point_range.start.row
+                        && point_range.end.column == 0
+                    {
+                        point_range.end.row - 1
+                    } else {
+                        point_range.end.row
+                    };
+                    (project_path, point_range.start.row, end_row)
+                };
+                let Some(abs_path) = project.read(cx).absolute_path(&project_path, cx) else {
+                    continue;
+                };
+                let cli_path = match ide_server::mention_selection_in_cli(
+                    tab_key, project, &abs_path, start_row, end_row, cx,
+                ) {
+                    ide_server::CliMention::Sent | ide_server::CliMention::Unreachable => continue,
+                    ide_server::CliMention::Paste {
+                        cli_path: Some(cli_path),
+                    } => cli_path,
+                    ide_server::CliMention::Paste { cli_path: None } => mention_path_for_terminal(
+                        project,
+                        &project_path,
+                        working_directory,
+                        path_style,
+                        cx,
+                    ),
+                };
+                parts.push(format!(
+                    "@{cli_path}{}",
+                    cli_line_range_suffix(start_row, end_row)
+                ));
+            }
+            if parts.is_empty() {
+                String::new()
+            } else {
+                // Trailing space so the mention doesn't fuse with the next input.
+                format!("{} ", parts.join(" "))
+            }
+        }
         AgentContextSelection::Terminal(texts) => texts.join("\n"),
+    }
+}
+
+/// The CLI's own line reference (`#L3`, `#L3-7`) for 0-based rows.
+fn cli_line_range_suffix(start_row: u32, end_row: u32) -> String {
+    let start = start_row + 1;
+    let end = end_row + 1;
+    if start == end {
+        format!("#L{start}")
+    } else {
+        format!("#L{start}-{end}")
     }
 }
 
@@ -7049,6 +7175,44 @@ impl Panel for AgentPanel {
     }
 }
 
+/// A configured external agent as the `+` menu and the model selector's
+/// エージェント section show it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ExternalAgentMenuItem {
+    pub(crate) id: AgentId,
+    pub(crate) display_name: SharedString,
+    pub(crate) icon_path: Option<SharedString>,
+}
+
+/// The configured external agents, by display name ignoring case. Shared by the
+/// `+` menu and the model selector so that both name an agent the same way.
+pub(crate) fn external_agent_menu_items(
+    agent_server_store: &project::AgentServerStore,
+    cx: &App,
+) -> Vec<ExternalAgentMenuItem> {
+    let registry_store = project::AgentRegistryStore::try_global(cx);
+    let registry_store = registry_store.as_ref().map(|store| store.read(cx));
+    agent_server_store
+        .external_agents()
+        .map(|agent_id| {
+            let registry_agent = registry_store.and_then(|store| store.agent(agent_id));
+            let display_name = agent_server_store
+                .agent_display_name(agent_id)
+                .or_else(|| registry_agent.map(|agent| agent.name().clone()))
+                .unwrap_or_else(|| agent_id.0.clone());
+            let icon_path = agent_server_store
+                .agent_icon(agent_id)
+                .or_else(|| registry_agent.and_then(|agent| agent.icon_path().cloned()));
+            ExternalAgentMenuItem {
+                id: agent_id.clone(),
+                display_name,
+                icon_path,
+            }
+        })
+        .sorted_unstable_by_key(|item| item.display_name.to_lowercase())
+        .collect()
+}
+
 impl AgentPanel {
     fn ensure_thread_initialized(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if matches!(self.base_view, BaseView::Uninitialized) {
@@ -7619,6 +7783,28 @@ impl AgentPanel {
                                 .separator();
                         }
 
+                        // ADR-F49 決定 19 (8c): 動いているスレッドを外へ移す
+                        // 入口。確認 (新しいセッションになる旨を含む) はビュー側。
+                        if let Some(conversation_view) = conversation_view.as_ref()
+                            && conversation_view.read(cx).can_restart_outside_sandbox(cx)
+                        {
+                            let conversation_view = conversation_view.downgrade();
+                            menu = menu
+                                .header("サンドボックス")
+                                .entry(
+                                    crate::conversation_view::RESTART_OUTSIDE_SANDBOX_LABEL,
+                                    None,
+                                    move |window, cx| {
+                                        conversation_view
+                                            .update(cx, |view, cx| {
+                                                view.restart_outside_sandbox(window, cx)
+                                            })
+                                            .log_err();
+                                    },
+                                )
+                                .separator();
+                        }
+
                         if has_thread_messages {
                             menu = menu.header("現在のスレッド");
 
@@ -7958,36 +8144,40 @@ impl AgentPanel {
                                         );
                                     }),
                             )
+                            // ADR-F49 決定 19: サンドボックスが使える環境でも、
+                            // 外で動かしたい人の入口。確認はアクション側で毎回
+                            // (設定で常に外にしていれば出さない)。
+                            .item(
+                                ContextMenuEntry::new("Claude Code をサンドボックスの外で起動…")
+                                    .action(Box::new(
+                                        zed_actions::terminal::LaunchClaudeCodeOutsideSandbox::default(),
+                                    ))
+                                    .icon(IconName::Terminal)
+                                    .icon_color(Color::Muted)
+                                    .documentation_aside(
+                                        crate::ui::documentation_aside_side(cx),
+                                        |_| {
+                                            Label::new(
+                                                "書き込みの制限がなくなり、通信の制限は\
+                                                 プロキシを読むものにだけ効きます。\n\
+                                                 ログインは普段の Claude Code と共有します。",
+                                            )
+                                            .into_any_element()
+                                        },
+                                    )
+                                    .handler(move |window, cx| {
+                                        window.dispatch_action(
+                                            Box::new(
+                                                zed_actions::terminal::LaunchClaudeCodeOutsideSandbox::default(),
+                                            ),
+                                            cx,
+                                        );
+                                    }),
+                            )
                         })
                         .map(|mut menu| {
-                            let agent_server_store = agent_server_store.read(cx);
-                            let registry_store = project::AgentRegistryStore::try_global(cx);
-                            let registry_store_ref = registry_store.as_ref().map(|s| s.read(cx));
-
-                            struct AgentMenuItem {
-                                id: AgentId,
-                                display_name: SharedString,
-                            }
-
-                            let agent_items = agent_server_store
-                                .external_agents()
-                                .map(|agent_id| {
-                                    let display_name = agent_server_store
-                                        .agent_display_name(agent_id)
-                                        .or_else(|| {
-                                            registry_store_ref
-                                                .as_ref()
-                                                .and_then(|store| store.agent(agent_id))
-                                                .map(|a| a.name().clone())
-                                        })
-                                        .unwrap_or_else(|| agent_id.0.clone());
-                                    AgentMenuItem {
-                                        id: agent_id.clone(),
-                                        display_name,
-                                    }
-                                })
-                                .sorted_unstable_by_key(|e| e.display_name.to_lowercase())
-                                .collect::<Vec<_>>();
+                            let agent_items =
+                                external_agent_menu_items(agent_server_store.read(cx), cx);
 
                             if !agent_items.is_empty() {
                                 menu = menu.separator().header("外部エージェント");
@@ -7995,15 +8185,7 @@ impl AgentPanel {
                             for item in &agent_items {
                                 let mut entry = ContextMenuEntry::new(item.display_name.clone());
 
-                                let icon_path =
-                                    agent_server_store.agent_icon(&item.id).or_else(|| {
-                                        registry_store_ref
-                                            .as_ref()
-                                            .and_then(|store| store.agent(&item.id))
-                                            .and_then(|a| a.icon_path().cloned())
-                                    });
-
-                                if let Some(icon_path) = icon_path {
+                                if let Some(icon_path) = item.icon_path.clone() {
                                     entry = entry.custom_icon_svg(icon_path);
                                 } else {
                                     entry = entry.icon(IconName::Sparkle);
@@ -9243,6 +9425,80 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::time::Instant;
+
+    /// ADR-F56: a CLI tab that is not connected to Zed's IDE gets the CLI's own
+    /// `@<path>#L<a>-<b>` references (`#L<a>` for one line), and a selection of
+    /// whole lines does not count the line it ends on at column 0.
+    #[gpui::test]
+    async fn test_a_selection_becomes_the_clis_own_line_references(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            util::path!("/project"),
+            json!({ "src": { "main.rs": "one\ntwo\nthree\nfour\n" } }),
+        )
+        .await;
+        let project = Project::test(fs, [Path::new(util::path!("/project"))], cx).await;
+        let buffer = project
+            .update(cx, |project, cx| {
+                project.open_local_buffer(util::path!("/project/src/main.rs"), cx)
+            })
+            .await
+            .expect("the file opens");
+        let range = |start: language::Point, end: language::Point, cx: &mut TestAppContext| {
+            buffer.read_with(cx, |buffer, _| {
+                buffer.anchor_before(start)..buffer.anchor_after(end)
+            })
+        };
+        let whole_lines = range(language::Point::new(1, 0), language::Point::new(3, 0), cx);
+        let within_a_line = range(language::Point::new(0, 1), language::Point::new(0, 2), cx);
+        let selection = AgentContextSelection::Editor(vec![
+            (buffer.clone(), whole_lines),
+            (buffer.clone(), within_a_line),
+        ]);
+
+        let text = cx.update(|cx| {
+            mention_selection_in_terminal(
+                &selection,
+                &project,
+                Some(Path::new(util::path!("/project"))),
+                None,
+                true,
+                cx,
+            )
+        });
+        let path = if cfg!(windows) {
+            "src\\main.rs"
+        } else {
+            "src/main.rs"
+        };
+        assert_eq!(text, format!("@{path}#L2-3 @{path}#L1 "));
+
+        // A tab running another agent keeps the plain mention, and nothing goes
+        // through the host's IDE server to whichever Claude Code is connected there.
+        let other = cx.update(|cx| {
+            mention_selection_in_terminal(
+                &selection,
+                &project,
+                Some(Path::new(util::path!("/project"))),
+                None,
+                false,
+                cx,
+            )
+        });
+        assert_eq!(other, format!("{path}:2-4 {path}:1 "));
+
+        assert_eq!(cli_line_range_suffix(0, 0), "#L1");
+        assert_eq!(cli_line_range_suffix(4, 9), "#L5-10");
+        let terminal_text = AgentContextSelection::Terminal(vec!["ls".to_string()]);
+        assert_eq!(
+            cx.update(|cx| {
+                mention_selection_in_terminal(&terminal_text, &project, None, None, true, cx)
+            }),
+            "ls",
+            "a terminal selection is pasted as it is"
+        );
+    }
 
     #[test]
     fn test_is_known_terminal_agent_command() {
@@ -11894,8 +12150,19 @@ mod tests {
             .collect();
 
         // Lines are 1-based and inclusive; the path is presented as
-        // `<rel-path>:<start>-<end>`, with a trailing space.
+        // `<rel-path>:<start>-<end>`, with a trailing space. ADR-F56: this tab
+        // does not run Claude Code, so it keeps this form.
         assert_eq!(pasted, "file.rs:2-3 ");
+
+        // ADR-F56: the Claude Code the launch action starts is recognised by its task.
+        workspace.read_with(&cx, |workspace, cx| {
+            assert_eq!(
+                terminal_view::session_tools::claude_code_launch_task(None, workspace, cx, None)
+                    .id
+                    .0,
+                HOST_CLAUDE_CODE_TASK_ID
+            );
+        });
     }
 
     #[gpui::test]

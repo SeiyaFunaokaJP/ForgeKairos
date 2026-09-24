@@ -791,6 +791,14 @@ pub trait Addon: 'static {
     fn to_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
+
+    /// Called when the user presses Escape in the editor and nothing of the editor's own was
+    /// dismissed. Returns whether the addon had something on screen to dismiss. The addon is
+    /// borrowed from the editor, so it has to schedule the removal (e.g. `cx.defer`) rather than
+    /// update the editor here.
+    fn dismiss_on_escape(&self, _window: &mut Window, _cx: &mut App) -> bool {
+        false
+    }
 }
 
 struct ChangeLocation {
@@ -3387,6 +3395,15 @@ impl Editor {
         if self.mode.is_full() && self.has_active_diagnostic_group() {
             self.dismiss_diagnostics(cx);
             dismissed = true;
+        }
+
+        // Addon overlays (an agent's annotations and code tour) outlive the Escape that closes a
+        // menu, and Vim's insert-mode Escape (`is_user_requested == false`) must not throw them
+        // away on every mode switch.
+        if !dismissed && is_user_requested {
+            for addon in self.addons.values() {
+                dismissed |= addon.dismiss_on_escape(window, cx);
+            }
         }
 
         dismissed

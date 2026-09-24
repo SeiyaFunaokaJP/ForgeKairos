@@ -6597,6 +6597,7 @@ async fn test_every_tool_is_known_to_write_worktrees_or_not(cx: &mut TestAppCont
         "find_path",
         "find_references",
         "get_code_actions",
+        "git_diff",
         "go_to_definition",
         "grep",
         "list_agents_and_models",
@@ -6606,6 +6607,12 @@ async fn test_every_tool_is_known_to_write_worktrees_or_not(cx: &mut TestAppCont
         "search_web",
         "skill",
         "spawn_agent",
+        "hover",
+        "search_symbols",
+        "highlight_code",
+        "annotate_code",
+        "code_tour",
+        "clear_annotations",
     ];
     init_test(cx);
 

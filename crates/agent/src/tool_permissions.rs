@@ -1221,6 +1221,7 @@ mod tests {
             auto_compact_min_context_window:
                 agent_settings::DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW,
             attach_active_file: false,
+            context_attachments: Default::default(),
             system_prompt_repo_map_bytes: 0,
             idle_disconnect_minutes: agent_settings::DEFAULT_IDLE_DISCONNECT_MINUTES,
             enable_feedback: false,

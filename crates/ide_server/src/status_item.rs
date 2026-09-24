@@ -176,6 +176,26 @@ impl IdeServerStatusItem {
             zed_actions::ide_server::is_claude_code_connected(server.read(cx).project_id, cx)
         })
     }
+
+    /// 繋がっている CLI (ホストの WebSocket・サンドボックスのセッション) と、ホストのサーバーを
+    /// 使うアシストのクライアント (ホストで起動した CLI のタブ・ACP の接続) の数。
+    pub(crate) fn connection_count(&self, cx: &App) -> usize {
+        self.server.as_ref().map_or(0, |server| {
+            let server = server.read(cx);
+            server.connected_client_count()
+                + server.assist_client_count()
+                + sandbox_client::connected_session_count(server.project_id, cx)
+        })
+    }
+}
+
+/// ADR-F56: エージェントに渡している IDE ツールの一覧 (ツールチップ・メニューに出す)。
+pub(crate) fn assist_tools_summary(cx: &App) -> &'static str {
+    if IdeServerSettings::get_global(cx).assist_tools {
+        "IDE ツール: ハイライト・注釈・ツアー・定義・参照・シンボル検索"
+    } else {
+        "IDE ツール: 無効 (設定の「AI」で切り替え)"
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -189,9 +209,16 @@ pub(crate) enum Shown {
 
 impl Render for IdeServerStatusItem {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let assist_summary = assist_tools_summary(cx);
+        let connection_count = self.connection_count(cx);
         match self.shown(cx) {
             None => return Empty.into_any_element(),
             Some(Shown::SandboxConnection) => {
+                let tooltip: SharedString = format!(
+                    "サンドボックスの中の Claude Code がこのプロジェクトに接続しています \
+                     (接続 {connection_count})\n{assist_summary}"
+                )
+                .into();
                 return Button::new(
                     "ide-server-status-trigger",
                     "Claude Code (サンドボックス): 接続中",
@@ -202,9 +229,7 @@ impl Render for IdeServerStatusItem {
                         .size(IconSize::Small)
                         .color(Color::Accent),
                 )
-                .tooltip(Tooltip::text(
-                    "サンドボックスの中の Claude Code がこのプロジェクトに接続しています",
-                ))
+                .tooltip(Tooltip::text(tooltip))
                 .into_any_element();
             }
             Some(Shown::HostServer) => {}
@@ -230,14 +255,16 @@ impl Render for IdeServerStatusItem {
         };
         let tooltip: SharedString = match port {
             Some(port) if !has_lock_file => format!(
-                "127.0.0.1:{port} で待ち受け中。リモートのワークスペースなので、\
-                 CLI が自動で見つけるためのロックファイルは書いていません \
-                 (「MCP 設定をコピー」で貼れば繋がります)"
+                "127.0.0.1:{port} で待ち受け中 (接続 {connection_count})。リモートのワークスペース\
+                 なので、CLI が自動で見つけるためのロックファイルは書いていません \
+                 (「MCP 設定をコピー」で貼れば繋がります)\n{assist_summary}"
             )
             .into(),
-            Some(port) => {
-                format!("127.0.0.1:{port} で待ち受け中。クリックで操作メニューを開きます").into()
-            }
+            Some(port) => format!(
+                "127.0.0.1:{port} で待ち受け中 (接続 {connection_count})。\
+                 クリックで操作メニューを開きます\n{assist_summary}"
+            )
+            .into(),
             None => "待ち受けポートの確保を待っています".into(),
         };
         let is_running = port.is_some();
@@ -260,7 +287,8 @@ impl Render for IdeServerStatusItem {
             .with_handle(self.menu_handle.clone())
             .menu(move |window, cx| {
                 Some(ContextMenu::build(window, cx, |menu, _window, _cx| {
-                    menu.action("無効にする", Box::new(ToggleIdeServer))
+                    menu.header(format!("{assist_summary} (接続 {connection_count})"))
+                        .action("無効にする", Box::new(ToggleIdeServer))
                         .action_disabled_when(
                             !is_running,
                             "MCP 設定をコピー",

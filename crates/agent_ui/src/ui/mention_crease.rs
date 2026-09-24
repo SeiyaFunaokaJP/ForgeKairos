@@ -1,4 +1,4 @@
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, rc::Rc, time::Duration};
 
 use acp_thread::MentionUri;
 use agent_client_protocol::schema::v1 as acp;
@@ -11,9 +11,10 @@ use language::Buffer;
 use rope::Point;
 use settings::Settings;
 use theme_settings::ThemeSettings;
-use ui::{ButtonLike, TintColor, Tooltip, prelude::*};
+use ui::{ButtonLike, ContextMenu, TintColor, Tooltip, prelude::*, right_click_menu};
 use workspace::{OpenOptions, Workspace};
 
+use crate::mention_set::{AttachmentEstimate, AttachmentMode, format_token_estimate};
 use crate::open_abs_path_at_point;
 
 #[derive(IntoElement)]
@@ -27,6 +28,8 @@ pub struct MentionCrease {
     is_loading: bool,
     tooltip: Option<SharedString>,
     image_preview: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
+    estimate: Option<AttachmentEstimate>,
+    on_mode_change: Option<Rc<dyn Fn(AttachmentMode, &mut App)>>,
 }
 
 impl MentionCrease {
@@ -45,7 +48,19 @@ impl MentionCrease {
             is_loading: false,
             tooltip: None,
             image_preview: None,
+            estimate: None,
+            on_mode_change: None,
         }
+    }
+
+    pub fn estimate(mut self, estimate: Option<AttachmentEstimate>) -> Self {
+        self.estimate = estimate;
+        self
+    }
+
+    pub fn on_mode_change(mut self, on_mode_change: Rc<dyn Fn(AttachmentMode, &mut App)>) -> Self {
+        self.on_mode_change = Some(on_mode_change);
+        self
     }
 
     pub fn mention_uri(mut self, mention_uri: Option<MentionUri>) -> Self {
@@ -88,14 +103,22 @@ impl RenderOnce for MentionCrease {
         let font_size = settings.agent_buffer_font_size(cx);
         let buffer_font = settings.buffer_font.clone();
         let is_loading = self.is_loading;
-        let tooltip = self.tooltip;
         let image_preview = self.image_preview;
+        let estimate = self.estimate;
+        let tooltip = match (self.tooltip, estimate) {
+            (tooltip, Some(estimate)) => estimate_tooltip(tooltip, &estimate),
+            (tooltip, None) => tooltip,
+        };
+        let mode_menu = self
+            .on_mode_change
+            .zip(estimate.filter(|estimate| estimate.switchable));
+        let id = self.id;
 
         let button_height = DefiniteLength::Absolute(AbsoluteLength::Pixels(
             px(window.line_height().into()) - px(1.),
         ));
 
-        ButtonLike::new(self.id)
+        let button = ButtonLike::new(id.clone())
             .style(ButtonStyle::Outlined)
             .size(ButtonSize::Compact)
             .height(button_height)
@@ -121,6 +144,18 @@ impl RenderOnce for MentionCrease {
                             .color(Color::Muted),
                     )
                     .child(self.label.clone())
+                    .when_some(
+                        estimate.and_then(|estimate| Some((estimate_label(&estimate)?, estimate))),
+                        |this, (label, estimate)| {
+                            this.child(Label::new(label).size(LabelSize::Small).color(
+                                if estimate.reduced_for_budget {
+                                    Color::Warning
+                                } else {
+                                    Color::Muted
+                                },
+                            ))
+                        },
+                    )
                     .map(|this| {
                         if is_loading {
                             this.with_animation(
@@ -144,8 +179,77 @@ impl RenderOnce for MentionCrease {
                         this.tooltip(Tooltip::text(tooltip_text))
                     })
                 }
-            })
+            });
+
+        match mode_menu {
+            Some((on_mode_change, estimate)) => right_click_menu(id)
+                .trigger(move |_, _, _| button)
+                .menu(move |window, cx| {
+                    let on_mode_change = on_mode_change.clone();
+                    ContextMenu::build(window, cx, move |mut menu, _, _| {
+                        for (mode, label) in [
+                            (AttachmentMode::Auto, "自動 (大きければアウトライン)"),
+                            (AttachmentMode::Full, "全文で送る"),
+                            (AttachmentMode::Summary, "要約で送る"),
+                        ] {
+                            let on_mode_change = on_mode_change.clone();
+                            menu = menu.toggleable_entry(
+                                label,
+                                estimate.mode == mode,
+                                IconPosition::Start,
+                                None,
+                                move |_, cx| on_mode_change(mode, cx),
+                            );
+                        }
+                        menu
+                    })
+                })
+                .into_any_element(),
+            None => button.into_any_element(),
+        }
     }
+}
+
+/// `~4.1k`, with the mode when the user picked one. Attachments sent as a
+/// bare link (a directory the agent reads with its tools) have no size to
+/// show.
+fn estimate_label(estimate: &AttachmentEstimate) -> Option<String> {
+    let tokens = (estimate.bytes > 0).then(|| format_token_estimate(estimate.tokens()));
+    let mode = match estimate.mode {
+        AttachmentMode::Auto => None,
+        AttachmentMode::Full => Some("全文"),
+        AttachmentMode::Summary => Some("要約"),
+    };
+    match (tokens, mode) {
+        (Some(tokens), Some(mode)) => Some(format!("{tokens} {mode}")),
+        (Some(tokens), None) => Some(tokens),
+        (None, Some(mode)) => Some(mode.to_string()),
+        (None, None) => None,
+    }
+}
+
+fn estimate_tooltip(
+    tooltip: Option<SharedString>,
+    estimate: &AttachmentEstimate,
+) -> Option<SharedString> {
+    let mut lines = tooltip
+        .map(|tooltip| vec![tooltip.to_string()])
+        .unwrap_or_default();
+    if estimate.bytes > 0 {
+        lines.push(format!(
+            "概算 {} トークン",
+            format_token_estimate(estimate.tokens()).trim_start_matches('~')
+        ));
+    }
+    if estimate.reduced_for_budget {
+        // Selections, symbols and web pages are reduced to a reference with no
+        // content at all, which "outline" alone would hide.
+        lines.push("大きいのでアウトライン (または参照だけ) で送ります".to_string());
+    }
+    if estimate.switchable {
+        lines.push("右クリックで全文 / 要約を切り替え".to_string());
+    }
+    (!lines.is_empty()).then(|| lines.join("\n").into())
 }
 
 fn open_mention_uri(

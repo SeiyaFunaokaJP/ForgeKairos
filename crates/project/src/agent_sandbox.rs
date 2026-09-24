@@ -300,23 +300,46 @@ pub fn agent_config_dir(
     path
 }
 
-/// ADR-F53, revised by ADR-F55: `CLAUDE_CONFIG_DIR` for the ACP Claude agent
-/// started **outside** the sandbox — the host route the user confirmed
-/// (決定 19), and a Windows start whose WSL sandbox could not be built.
+/// ADR-F49 decision 19: whether the user has chosen, in their own settings
+/// file, to start `agent_id` outside its sandbox every time
+/// (`agent_servers.<id>.run_outside_sandbox`).
 ///
-/// A folder of the fork's own, unlike the sandboxed route's, which is the CLI
-/// session's. Outside the sandbox the CLI runs in the account's own
-/// `~/.claude`, where its credentials sit beside global hooks, MCP servers and
-/// every project's history, and nothing keeps an agent this IDE starts from
-/// writing there. So this route is pointed at a folder of the fork's instead
-/// and signs itself in there: the account's folder is neither read, written,
-/// moved nor removed. That does mean this route asks for its own sign-in, even
-/// where the CLI tab on the same machine already has one.
-///
-/// One folder for the whole account rather than one per project: outside the
-/// sandbox there is no per-project isolation to hold up anyway.
-pub fn claude_acp_host_config_dir() -> PathBuf {
-    paths::external_agents_dir().join("claude-acp-config")
+/// Only the user's file counts — the rule ADR-F50 set for its own switch
+/// ([`crate::worktree_code_execution`]): a project's `.zed/settings.json` can
+/// be written by the very agent this lets out, and the IDE never merges a
+/// remote host's settings. Agents named by their old extension id are found
+/// under the registry id they are started by, as the merged settings do.
+pub fn runs_outside_sandbox_by_user_choice(agent_id: &str, cx: &App) -> bool {
+    crate::worktree_code_execution::from_user_settings(cx, |content| {
+        content
+            .agent_servers
+            .as_ref()?
+            .0
+            .iter()
+            .filter(|(id, _)| crate::agent_server_store::registry_id_for(id) == agent_id)
+            .find_map(|(_, settings)| match settings {
+                settings::CustomAgentServerSettings::Custom {
+                    run_outside_sandbox,
+                    ..
+                }
+                | settings::CustomAgentServerSettings::Registry {
+                    run_outside_sandbox,
+                    ..
+                } => *run_outside_sandbox,
+            })
+    })
+    .unwrap_or(false)
+}
+
+/// ADR-F49 decision 19: whether the user has chosen, in their own settings
+/// file, to start the Claude Code CLI outside its sandbox every time
+/// (`agent.claude_code_run_outside_sandbox`). Read the way
+/// [`runs_outside_sandbox_by_user_choice`] is, for the same reason.
+pub fn claude_code_runs_outside_sandbox_by_user_choice(cx: &App) -> bool {
+    crate::worktree_code_execution::from_user_settings(cx, |content| {
+        content.agent.as_ref()?.claude_code_run_outside_sandbox
+    })
+    .unwrap_or(false)
 }
 
 /// The account's home, below which the sandboxed agents' per-project folders

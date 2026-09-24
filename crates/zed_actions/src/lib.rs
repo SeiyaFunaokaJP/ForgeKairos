@@ -439,8 +439,11 @@ pub mod terminal {
     #[serde(deny_unknown_fields)]
     pub struct InstallClaudeCode;
 
-    /// Claude Code CLI をターミナルで起動します。Windows のローカルのプロジェクトではサンドボックス
-    /// (WSL) の中で起動し、それ以外では起動のたびに確認してからサンドボックスの外で起動します。
+    /// Claude Code CLI をエージェントパネルのタブ (パネルが無ければターミナル) で起動します。
+    /// Windows のローカルのプロジェクトではサンドボックス (WSL) の中で、SSH で繋いだ Linux の
+    /// プロジェクトでは接続先のサンドボックスの中で起動し、それ以外では起動のたびに確認してから
+    /// サンドボックスの外で起動します。設定で「常にサンドボックスの外で起動」にしていれば、確認
+    /// せずに外で起動します。
     #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
     #[action(namespace = terminal)]
     #[serde(deny_unknown_fields)]
@@ -451,8 +454,9 @@ pub mod terminal {
         pub effort: Option<String>,
     }
 
-    /// この PC の Claude Code CLI を、サンドボックスの外 (Zed 本体の権限) で起動します。
-    /// 起動のたびに確認します。
+    /// Claude Code CLI を、サンドボックスの外 (Zed 本体の権限。SSH では接続先のユーザーの権限) で
+    /// 起動します。起動のたびに確認します (設定で「常にサンドボックスの外で起動」にしていれば
+    /// 確認しません)。
     #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
     #[action(namespace = terminal)]
     #[serde(deny_unknown_fields)]

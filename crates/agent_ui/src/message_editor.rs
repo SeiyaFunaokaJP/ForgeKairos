@@ -9,12 +9,13 @@ use crate::{
     },
     mention_set::{Mention, MentionImage, MentionSet, insert_crease_for_mention},
 };
-use acp_thread::MentionUri;
+use acp_thread::{AcpThread, AgentThreadEntry, MentionUri};
 use agent::ThreadStore;
 use agent_client_protocol::schema::v1 as acp;
 use agent_settings::AgentSettings;
 use anyhow::{Result, anyhow};
 use base64::Engine as _;
+use collections::HashSet;
 use editor::{
     Addon, AnchorRangeExt, ContextMenuOptions, Editor, EditorElement, EditorEvent, EditorMode,
     EditorStyle, Inlay, MultiBuffer, MultiBufferOffset, MultiBufferSnapshot, ToOffset,
@@ -209,6 +210,7 @@ pub struct MessageEditor {
     local_commands: SharedLocalCommands,
     agent_id: AgentId,
     thread_store: Option<Entity<ThreadStore>>,
+    thread: Option<WeakEntity<AcpThread>>,
     /// ウィンドウに紐づくフォーカス購読。別ウィンドウへ移されたら
     /// [`MessageEditor::rebind_window_focus_listeners`] で丸ごと張り替えるので、
     /// `detach()` せずここで持つ。
@@ -646,6 +648,7 @@ impl MessageEditor {
             local_commands,
             agent_id,
             thread_store,
+            thread: None,
             _focus_subscriptions: focus_subscriptions,
             _subscriptions: subscriptions,
             _parse_slash_command_task: Task::ready(()),
@@ -781,9 +784,14 @@ impl MessageEditor {
             .is_some_and(|menu| matches!(menu, CodeContextMenu::Completions(_)) && menu.visible())
     }
 
-    #[cfg(test)]
     pub fn mention_set(&self) -> &Entity<MentionSet> {
         &self.mention_set
+    }
+
+    /// The thread this editor writes messages for, whose earlier turns decide
+    /// whether the active file still needs attaching.
+    pub fn set_thread(&mut self, thread: WeakEntity<AcpThread>) {
+        self.thread = Some(thread);
     }
 
     fn validate_slash_commands(
@@ -890,39 +898,54 @@ impl MessageEditor {
             )
         };
         let agent_id = self.agent_id.clone();
-        let build_task = self.build_content_blocks(full_mention_content, cx);
+        // Attaching what the user is looking at must never be the reason a
+        // message fails to send, so an active file that can't be resolved
+        // (unsaved buffer outside the project, a file that vanished) is
+        // logged and dropped by `contents_within_budget`.
         let active_file = self.active_file_mention(cx);
+        let contents = self.mention_set.update(cx, |mention_set, cx| {
+            mention_set.contents_within_budget(full_mention_content, active_file, cx)
+        });
+        let editor = self.editor.clone();
         let supports_embedded_context =
             self.session_capabilities.read().supports_embedded_context();
 
-        cx.spawn(async move |_, _cx| {
+        cx.spawn(async move |_, cx| {
             Self::validate_slash_commands(
                 &text,
                 &available_commands,
                 &available_skills,
                 &agent_id,
             )?;
-            let (mut chunks, mut tracked_buffers) = build_task.await?;
+            let (mut contents, active_file) = contents.await?;
+            let (mut chunks, mut tracked_buffers) = editor.update(cx, |editor, cx| {
+                let crease_snapshot = editor.display_map.read(cx).crease_snapshot();
+                let buffer_snapshot = editor.buffer().read(cx).snapshot(cx);
+                let text = editor.text(cx);
+                build_chunks_from_creases(
+                    &text,
+                    &crease_snapshot,
+                    &buffer_snapshot,
+                    supports_embedded_context,
+                    true,
+                    |crease_id| {
+                        contents
+                            .remove(crease_id)
+                            .map(|(uri, mention)| (uri, Some(mention)))
+                    },
+                )
+            });
 
-            if let Some((uri, mention_task)) = active_file {
-                // Attaching what the user is looking at must never be the
-                // reason a message fails to send, so a mention that can't be
-                // resolved (unsaved buffer outside the project, a file that
-                // vanished) is logged and dropped.
-                match mention_task.await {
-                    Ok(mention) => chunks.insert(
-                        0,
-                        mention_to_content_block(
-                            &uri,
-                            Some(&mention),
-                            supports_embedded_context,
-                            &mut tracked_buffers,
-                        ),
+            if let Some((uri, mention)) = active_file {
+                chunks.insert(
+                    0,
+                    mention_to_content_block(
+                        &uri,
+                        Some(&mention),
+                        supports_embedded_context,
+                        &mut tracked_buffers,
                     ),
-                    Err(error) => {
-                        log::warn!("failed to attach the active editor to the message: {error:#}")
-                    }
-                }
+                );
             }
 
             Ok((chunks, tracked_buffers))
@@ -943,8 +966,13 @@ impl MessageEditor {
         }
 
         let workspace = self.workspace.upgrade()?;
-        let uri = Self::active_file_mention_uri(&workspace, cx)?;
+        let (uri, buffer) = Self::active_file_mention_uri(&workspace, cx)?;
         if self.mention_set.read(cx).mentions().contains(&uri) {
+            return None;
+        }
+        if let Some(thread) = self.thread.as_ref().and_then(|thread| thread.upgrade())
+            && attached_in_earlier_turn(thread.read(cx), &uri, &buffer, cx)
+        {
             return None;
         }
 
@@ -956,7 +984,10 @@ impl MessageEditor {
         Some((uri, task))
     }
 
-    fn active_file_mention_uri(workspace: &Entity<Workspace>, cx: &mut App) -> Option<MentionUri> {
+    fn active_file_mention_uri(
+        workspace: &Entity<Workspace>,
+        cx: &mut App,
+    ) -> Option<(MentionUri, Entity<Buffer>)> {
         let editor = workspace.read(cx).active_item(cx)?.act_as::<Editor>(cx)?;
         let project = workspace.read(cx).project().clone();
 
@@ -985,16 +1016,19 @@ impl MessageEditor {
         let project_path = buffer.read(cx).project_path(cx)?;
         let abs_path = project.read(cx).absolute_path(&project_path, cx)?;
 
-        Some(match selected_rows {
+        let uri = match selected_rows {
             Some(line_range) => MentionUri::Selection {
                 abs_path: Some(abs_path),
                 line_range,
                 column: None,
             },
             None => MentionUri::File { abs_path },
-        })
+        };
+        Some((uri, buffer))
     }
 
+    /// The draft as it stands, with each attachment as its mode produces it:
+    /// the message budget only reduces attachments when the message is sent.
     pub fn draft_contents(&self, cx: &mut Context<Self>) -> Task<Result<Vec<acp::ContentBlock>>> {
         let build_task = self.build_content_blocks(false, cx);
         cx.spawn(async move |_, _cx| {
@@ -1008,9 +1042,9 @@ impl MessageEditor {
         full_mention_content: bool,
         cx: &mut Context<Self>,
     ) -> Task<Result<(Vec<acp::ContentBlock>, Vec<Entity<Buffer>>)>> {
-        let contents = self
-            .mention_set
-            .update(cx, |store, cx| store.contents(full_mention_content, cx));
+        let contents = self.mention_set.update(cx, |store, cx| {
+            store.contents_before_budget(full_mention_content, cx)
+        });
         let editor = self.editor.clone();
         let supports_embedded_context =
             self.session_capabilities.read().supports_embedded_context();
@@ -1026,6 +1060,7 @@ impl MessageEditor {
                     &crease_snapshot,
                     &buffer_snapshot,
                     supports_embedded_context,
+                    false,
                     |crease_id| {
                         contents
                             .remove(crease_id)
@@ -1051,6 +1086,7 @@ impl MessageEditor {
             &crease_snapshot,
             &buffer_snapshot,
             supports_embedded_context,
+            false,
             |crease_id| mention_set.resolved_mention_for_crease(crease_id),
         );
         chunks
@@ -1286,37 +1322,17 @@ impl MessageEditor {
                     };
                     drop(tx);
 
+                    let confirm_task = self.mention_set.update(cx, |mention_set, cx| {
+                        mention_set.confirm_mention_for_uri(
+                            mention_uri.clone(),
+                            false,
+                            project.read(cx).client().http_client(),
+                            cx,
+                        )
+                    });
                     let mention_task = cx
-                        .spawn({
-                            let project = project.clone();
-                            async move |_, cx| {
-                                let project_path = project
-                                    .update(cx, |project, cx| {
-                                        project.project_path_for_absolute_path(&file_path, cx)
-                                    })
-                                    .ok_or_else(|| {
-                                        format!(
-                                            "project path not found for pasted selection {file_path:?}"
-                                        )
-                                    })?;
-
-                                let buffer = project
-                                    .update(cx, |project, cx| project.open_buffer(project_path, cx))
-                                    .await
-                                    .map_err(|e| e.to_string())?;
-
-                                Ok(buffer.update(cx, |buffer, cx| {
-                                    let start =
-                                        Point::new(*line_range.start(), 0).min(buffer.max_point());
-                                    let end = Point::new(*line_range.end() + 1, 0)
-                                        .min(buffer.max_point());
-                                    let content = buffer.text_for_range(start..end).collect();
-                                    Mention::Text {
-                                        content,
-                                        tracked_buffers: vec![cx.entity()],
-                                    }
-                                }))
-                            }
+                        .spawn(async move |_, _| {
+                            confirm_task.await.map_err(|error| error.to_string())
                         })
                         .shared();
 
@@ -1983,10 +1999,10 @@ impl MessageEditor {
             drop(tx);
 
             self.mention_set.update(cx, |mention_set, cx| {
-                mention_set.insert_mention(
+                mention_set.insert_restored_mention(
                     crease_id,
                     mention_uri.clone(),
-                    Task::ready(Ok(mention)).shared(),
+                    mention,
                     crease_entity,
                     cx,
                 )
@@ -2203,12 +2219,15 @@ impl Addon for MessageEditorAddon {
 }
 
 /// Walks the editor's creases in order, interleaving plain-text chunks from
-/// `text` with mention blocks produced from `resolve`.
+/// `text` with mention blocks produced from `resolve`. With
+/// `skip_repeated_content`, an attachment whose URI and content were already
+/// embedded earlier in the message is sent as its link only.
 fn build_chunks_from_creases(
     text: &str,
     crease_snapshot: &CreaseSnapshot,
     buffer_snapshot: &MultiBufferSnapshot,
     supports_embedded_context: bool,
+    skip_repeated_content: bool,
     mut resolve: impl FnMut(&CreaseId) -> Option<(MentionUri, Option<Mention>)>,
 ) -> (Vec<acp::ContentBlock>, Vec<Entity<Buffer>>) {
     let mut ix = text
@@ -2217,6 +2236,7 @@ fn build_chunks_from_creases(
         .map_or(text.len(), |(i, _)| i);
     let mut chunks = Vec::new();
     let mut tracked_buffers = Vec::new();
+    let mut embedded_uris = HashSet::default();
 
     for (crease_id, crease) in crease_snapshot.creases() {
         let Some((uri, mention)) = resolve(&crease_id) else {
@@ -2226,12 +2246,29 @@ fn build_chunks_from_creases(
         if crease_range.start.0 > ix {
             chunks.push(text[ix..crease_range.start.0].into());
         }
-        chunks.push(mention_to_content_block(
-            &uri,
-            mention.as_ref(),
-            supports_embedded_context,
-            &mut tracked_buffers,
-        ));
+        // Only the same content is skipped: the message budget may have
+        // reduced one copy of an attachment and not another, and the one it
+        // kept whole must still reach the agent.
+        let repeats_embedded_content = match &mention {
+            Some(Mention::Text { content, .. })
+                if skip_repeated_content && supports_embedded_context =>
+            {
+                !embedded_uris.insert((uri.clone(), content.clone()))
+            }
+            _ => false,
+        };
+        if repeats_embedded_content {
+            chunks.push(acp::ContentBlock::Text(acp::TextContent::new(
+                uri.as_link().to_string(),
+            )));
+        } else {
+            chunks.push(mention_to_content_block(
+                &uri,
+                mention.as_ref(),
+                supports_embedded_context,
+                &mut tracked_buffers,
+            ));
+        }
         ix = crease_range.end.0;
     }
 
@@ -2242,6 +2279,48 @@ fn build_chunks_from_creases(
         }
     }
     (chunks, tracked_buffers)
+}
+
+/// Whether `uri` was already sent with its content in a turn the agent still
+/// has in full, and the file has not changed since: then attaching the active
+/// file again would only repeat it.
+fn attached_in_earlier_turn(
+    thread: &AcpThread,
+    uri: &MentionUri,
+    buffer: &Entity<Buffer>,
+    cx: &App,
+) -> bool {
+    let uri = uri.to_uri().to_string();
+    let entries = thread.entries();
+    let Some(sent_at) = entries.iter().rposition(|entry| match entry {
+        AgentThreadEntry::UserMessage(message) => message.chunks.iter().any(|chunk| {
+            matches!(
+                chunk,
+                acp::ContentBlock::Resource(acp::EmbeddedResource {
+                    resource: acp::EmbeddedResourceResource::TextResourceContents(resource),
+                    ..
+                }) if resource.uri == uri
+            )
+        }),
+        _ => false,
+    }) else {
+        return false;
+    };
+    // A compaction replaces what came before it, attachments included, with
+    // a summary.
+    let compacted_since = entries
+        .get(sent_at + 1..)
+        .unwrap_or_default()
+        .iter()
+        .any(|entry| matches!(entry, AgentThreadEntry::ContextCompaction(_)));
+    if compacted_since {
+        return false;
+    }
+    let action_log = thread.action_log().read(cx);
+    action_log.is_tracking(buffer)
+        && !action_log
+            .stale_buffers(cx)
+            .any(|stale_buffer| stale_buffer == buffer)
 }
 
 fn image_preview_task_for_mention(
@@ -2381,7 +2460,7 @@ mod tests {
     use std::{ops::Range, path::Path, path::PathBuf, rc::Rc, sync::Arc};
 
     use super::PromptLocalCommand;
-    use acp_thread::MentionUri;
+    use acp_thread::{AgentConnection as _, MentionUri};
     use agent::{ThreadStore, outline};
     use agent_client_protocol::schema::v1 as acp;
     use base64::Engine as _;
@@ -2410,7 +2489,7 @@ mod tests {
     use crate::completion_provider::{AgentContextSelection, AvailableSkill, PromptContextType};
     use crate::{
         conversation_view::tests::init_test,
-        mention_set::insert_crease_for_mention,
+        mention_set::{AttachmentMode, insert_crease_for_mention},
         message_editor::{
             Mention, MessageEditor, MessageEditorEvent, SessionCapabilities, parse_mention_links,
         },
@@ -4506,6 +4585,478 @@ mod tests {
             vec![acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
                 "test.txt", file_uri
             ))]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_attach_active_file_skips_file_sent_in_earlier_turn(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let app_state = cx.update(AppState::test);
+        cx.update(|cx| {
+            editor::init(cx);
+            workspace::init(app_state.clone(), cx);
+        });
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(
+                path!("/dir"),
+                json!({ "test.txt": "line1\nline2\nline3\n" }),
+            )
+            .await;
+
+        let project = Project::test(app_state.fs.clone(), [path!("/dir").as_ref()], cx).await;
+        let connection = Rc::new(acp_thread::StubAgentConnection::new());
+        let thread = cx
+            .update(|cx| {
+                connection.clone().new_session(
+                    project.clone(),
+                    workspace::PathList::new(&[Path::new(path!("/dir"))]),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        let window =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = window
+            .read_with(cx, |mw, _| mw.workspace().clone())
+            .unwrap();
+        let worktree_id = project.update(cx, |project, cx| {
+            project.worktrees(cx).next().unwrap().read(cx).id()
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|_, cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.agent.get_or_insert_default().attach_active_file = Some(true);
+                });
+            });
+        });
+
+        let message_editor = workspace.update_in(&mut cx, |workspace, window, cx| {
+            let workspace_handle = cx.weak_entity();
+            let message_editor = cx.new(|cx| {
+                let mut editor = MessageEditor::new(
+                    workspace_handle,
+                    project.downgrade(),
+                    None,
+                    Default::default(),
+                    "Test Agent".into(),
+                    "Test",
+                    EditorMode::AutoHeight {
+                        min_lines: 1,
+                        max_lines: None,
+                    },
+                    window,
+                    cx,
+                );
+                editor
+                    .session_capabilities
+                    .write()
+                    .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+                editor.set_thread(thread.downgrade());
+                editor
+            });
+            workspace.active_pane().update(cx, |pane, cx| {
+                pane.add_item(
+                    Box::new(cx.new(|_| MessageEditorItem(message_editor.clone()))),
+                    true,
+                    true,
+                    None,
+                    window,
+                    cx,
+                );
+            });
+            message_editor
+        });
+
+        let editor = workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath {
+                        worktree_id,
+                        path: rel_path("test.txt").into(),
+                    },
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<Editor>()
+            .unwrap();
+        let buffer = editor.read_with(&cx, |editor, cx| {
+            editor.buffer().read(cx).as_singleton().unwrap()
+        });
+        let action_log = thread.read_with(&cx, |thread, _| thread.action_log().clone());
+
+        message_editor.update_in(&mut cx, |message_editor, window, cx| {
+            message_editor
+                .editor
+                .update(cx, |editor, cx| editor.set_text("続き", window, cx));
+        });
+        let contents = |cx: &mut VisualTestContext| {
+            message_editor.update(cx, |message_editor, cx| message_editor.contents(false, cx))
+        };
+        let attaches_file = |content: &[acp::ContentBlock]| {
+            matches!(content.first(), Some(acp::ContentBlock::Resource(_)))
+        };
+
+        let first = contents(&mut cx).await.unwrap().0;
+        let Some(sent_file) = first.first().cloned() else {
+            panic!("expected the active file to be attached, got: {first:?}");
+        };
+        assert!(attaches_file(&first), "{first:?}");
+
+        // What the thread view does when that message is sent.
+        thread.update(&mut cx, |thread, cx| {
+            thread.push_user_content_block(None, sent_file, cx);
+        });
+        action_log.update(&mut cx, |action_log, cx| {
+            action_log.buffer_read(buffer.clone(), cx);
+        });
+
+        let content = contents(&mut cx).await.unwrap().0;
+        pretty_assertions::assert_eq!(content, vec!["続き".into()]);
+
+        // An edit since that turn makes the file worth sending again.
+        buffer.update(&mut cx, |buffer, cx| {
+            buffer.edit([(0..0, "new ")], None, cx)
+        });
+        let content = contents(&mut cx).await.unwrap().0;
+        assert!(attaches_file(&content), "{content:?}");
+
+        action_log.update(&mut cx, |action_log, cx| {
+            action_log.buffer_read(buffer.clone(), cx);
+        });
+        let content = contents(&mut cx).await.unwrap().0;
+        assert!(!attaches_file(&content), "{content:?}");
+
+        // So does a compaction, which replaces the earlier turns with a summary.
+        thread.update(&mut cx, |thread, cx| {
+            thread.push_context_compaction(
+                acp_thread::ContextCompaction {
+                    id: acp_thread::ContextCompactionId("compaction".into()),
+                    status: acp_thread::ContextCompactionStatus::Completed,
+                    summary: None,
+                },
+                cx,
+            );
+        });
+        let content = contents(&mut cx).await.unwrap().0;
+        assert!(attaches_file(&content), "{content:?}");
+    }
+
+    async fn setup_embedded_message_editor(
+        files: Value,
+        cx: &mut TestAppContext,
+    ) -> (Entity<MessageEditor>, &mut VisualTestContext) {
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/project", files).await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+
+        let message_editor = cx.update(|window, cx| {
+            cx.new(|cx| {
+                let editor = MessageEditor::new(
+                    workspace.downgrade(),
+                    project.downgrade(),
+                    None,
+                    Default::default(),
+                    "Test Agent".into(),
+                    "Test",
+                    EditorMode::AutoHeight {
+                        min_lines: 1,
+                        max_lines: None,
+                    },
+                    window,
+                    cx,
+                );
+                editor
+                    .session_capabilities
+                    .write()
+                    .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+                editor
+            })
+        });
+
+        cx.run_until_parked();
+        (message_editor, cx)
+    }
+
+    fn set_context_attachment_limits(
+        inline_max_bytes: usize,
+        message_budget_bytes: usize,
+        cx: &mut VisualTestContext,
+    ) {
+        cx.update(|_, cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    let limits = settings
+                        .agent
+                        .get_or_insert_default()
+                        .context_attachments
+                        .get_or_insert_default();
+                    limits.inline_max_bytes = Some(inline_max_bytes);
+                    limits.message_budget_bytes = Some(message_budget_bytes);
+                });
+            });
+        });
+    }
+
+    fn resource_texts(blocks: &[acp::ContentBlock]) -> Vec<(String, String)> {
+        blocks
+            .iter()
+            .filter_map(|block| match block {
+                acp::ContentBlock::Resource(acp::EmbeddedResource {
+                    resource: acp::EmbeddedResourceResource::TextResourceContents(resource),
+                    ..
+                }) => Some((resource.uri.clone(), resource.text.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn resource_text(resources: &[(String, String)], file_name: &str) -> String {
+        resources
+            .iter()
+            .find(|(uri, _)| uri.ends_with(file_name))
+            .map(|(_, text)| text.clone())
+            .unwrap_or_else(|| panic!("no resource for {file_name} in {resources:?}"))
+    }
+
+    #[gpui::test]
+    async fn test_message_budget_reduces_largest_attachment_first(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let big = "big line of text\n".repeat(1_800);
+        let medium = "medium line\n".repeat(1_700);
+        let small = "small\n";
+        let (message_editor, cx) = setup_embedded_message_editor(
+            json!({"big.txt": big.clone(), "medium.txt": medium.clone(), "small.txt": small}),
+            cx,
+        )
+        .await;
+        set_context_attachment_limits(128 * 1024, 40 * 1024, cx);
+        insert_dragged_project_paths(
+            &message_editor,
+            vec!["big.txt", "medium.txt", "small.txt"],
+            cx,
+        );
+
+        let mention_set = message_editor.read_with(cx, |editor, _| editor.mention_set().clone());
+        let total = mention_set.read_with(cx, |mention_set, cx| mention_set.total_estimate(cx));
+        assert_eq!(total.reduced_count, 1);
+
+        let blocks = message_editor
+            .update(cx, |editor, cx| editor.contents(false, cx))
+            .await
+            .unwrap()
+            .0;
+        let resources = resource_texts(&blocks);
+        assert_eq!(resources.len(), 3, "{blocks:?}");
+        // The largest file goes as an outline, still under its own URI so the
+        // agent can read the ranges it needs.
+        let big_text = resource_text(&resources, "big.txt");
+        assert!(
+            big_text.contains("Its full content was not attached."),
+            "{big_text}"
+        );
+        assert_eq!(resource_text(&resources, "medium.txt"), medium);
+        assert_eq!(resource_text(&resources, "small.txt"), small);
+
+        // Pinning the largest one to its full content reduces the next one.
+        let big_crease = mention_set.read_with(cx, |mention_set, _| {
+            mention_set
+                .creases()
+                .into_iter()
+                .find(|crease_id| {
+                    mention_set
+                        .mention_uri_for_crease(crease_id)
+                        .is_some_and(|uri| uri.name() == "big.txt")
+                })
+                .expect("big.txt is mentioned")
+        });
+        mention_set.update(cx, |mention_set, cx| {
+            mention_set.set_mode(big_crease, AttachmentMode::Full, cx)
+        });
+        cx.run_until_parked();
+
+        let blocks = message_editor
+            .update(cx, |editor, cx| editor.contents(false, cx))
+            .await
+            .unwrap()
+            .0;
+        let resources = resource_texts(&blocks);
+        assert_eq!(resource_text(&resources, "big.txt"), big);
+        let medium_text = resource_text(&resources, "medium.txt");
+        assert!(
+            medium_text.contains("Its full content was not attached."),
+            "{medium_text}"
+        );
+        assert_eq!(resource_text(&resources, "small.txt"), small);
+
+        // Without embedded context the attachments stay links, as before.
+        message_editor.update(cx, |editor, _cx| {
+            editor
+                .session_capabilities
+                .write()
+                .set_prompt_capabilities(acp::PromptCapabilities::new());
+        });
+        let blocks = message_editor
+            .update(cx, |editor, cx| editor.contents(false, cx))
+            .await
+            .unwrap()
+            .0;
+        assert!(resource_texts(&blocks).is_empty(), "{blocks:?}");
+        assert_eq!(
+            blocks
+                .iter()
+                .filter(|block| matches!(block, acp::ContentBlock::ResourceLink(_)))
+                .count(),
+            3,
+            "{blocks:?}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_expanded_directory_takes_what_the_other_attachments_leave(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        // Leaves less of the 64 KB budget than even a directory map needs.
+        let big = "big line of text\n".repeat(3_800);
+        let (message_editor, cx) = setup_embedded_message_editor(
+            json!({
+                "big.txt": big.clone(),
+                "dir": {"a.txt": "alpha\n".repeat(300), "b.txt": "beta\n".repeat(300)},
+            }),
+            cx,
+        )
+        .await;
+        set_context_attachment_limits(128 * 1024, 64 * 1024, cx);
+        insert_dragged_project_paths(&message_editor, vec!["big.txt", "dir"], cx);
+
+        let mention_set = message_editor.read_with(cx, |editor, _| editor.mention_set().clone());
+        let total = mention_set.read_with(cx, |mention_set, cx| mention_set.total_estimate(cx));
+        assert_eq!(total.reduced_count, 0, "the chips show nothing reduced");
+
+        // An agent without tools gets the directory expanded, in what the
+        // file leaves of the budget rather than at the file's expense.
+        let blocks = message_editor
+            .update(cx, |editor, cx| editor.contents(true, cx))
+            .await
+            .unwrap()
+            .0;
+        let resources = resource_texts(&blocks);
+        assert_eq!(resource_text(&resources, "big.txt"), big);
+        let directory = resources
+            .iter()
+            .find(|(uri, _)| uri.trim_end_matches('/').ends_with("dir"))
+            .map(|(_, text)| text.clone())
+            .unwrap_or_else(|| panic!("no resource for dir in {resources:?}"));
+        assert!(!directory.contains("alpha"), "{directory}");
+        assert!(
+            directory.contains("Not included to keep the message small"),
+            "{directory}"
+        );
+        assert!(
+            big.len() + directory.len() <= 64 * 1024 + 1_024,
+            "{} + {}",
+            big.len(),
+            directory.len()
+        );
+
+        // Without the file the directory has room for its files.
+        let big_crease = mention_set.read_with(cx, |mention_set, _| {
+            mention_set
+                .creases()
+                .into_iter()
+                .find(|crease_id| {
+                    mention_set
+                        .mention_uri_for_crease(crease_id)
+                        .is_some_and(|uri| uri.name() == "big.txt")
+                })
+                .expect("big.txt is mentioned")
+        });
+        mention_set.update(cx, |mention_set, cx| {
+            mention_set.set_mode(big_crease, AttachmentMode::Summary, cx)
+        });
+        cx.run_until_parked();
+        let blocks = message_editor
+            .update(cx, |editor, cx| editor.contents(true, cx))
+            .await
+            .unwrap()
+            .0;
+        let resources = resource_texts(&blocks);
+        let directory = resources
+            .iter()
+            .find(|(uri, _)| uri.trim_end_matches('/').ends_with("dir"))
+            .map(|(_, text)| text.clone())
+            .unwrap_or_else(|| panic!("no resource for dir in {resources:?}"));
+        assert!(directory.contains("alpha"), "{directory}");
+    }
+
+    #[gpui::test]
+    async fn test_same_attachment_twice_is_embedded_once(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let (message_editor, cx) =
+            setup_embedded_message_editor(json!({"a.txt": "alpha\n"}), cx).await;
+        insert_dragged_project_paths(&message_editor, vec!["a.txt", "a.txt"], cx);
+
+        let blocks = message_editor
+            .update(cx, |editor, cx| editor.contents(false, cx))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(resource_texts(&blocks).len(), 1, "{blocks:?}");
+        assert!(
+            blocks.iter().any(|block| matches!(
+                block,
+                acp::ContentBlock::Text(text) if text.text.starts_with("[@a.txt](file:")
+            )),
+            "the repeated mention should stay in the message as a link: {blocks:?}"
+        );
+
+        // A draft keeps both mentions as they are, so restoring it gives back
+        // both chips.
+        let draft = message_editor
+            .update(cx, |editor, cx| editor.draft_contents(cx))
+            .await
+            .unwrap();
+        assert_eq!(resource_texts(&draft).len(), 2, "{draft:?}");
+
+        // Copies that differ (here one is reduced to a summary) are both
+        // sent, so the full one is not lost behind the reduced one.
+        let mention_set = message_editor.read_with(cx, |editor, _| editor.mention_set().clone());
+        let crease_id = mention_set
+            .read_with(cx, |mention_set, _| {
+                mention_set.creases().into_iter().next()
+            })
+            .expect("a.txt is mentioned");
+        mention_set.update(cx, |mention_set, cx| {
+            mention_set.set_mode(crease_id, AttachmentMode::Summary, cx)
+        });
+        cx.run_until_parked();
+        let blocks = message_editor
+            .update(cx, |editor, cx| editor.contents(false, cx))
+            .await
+            .unwrap()
+            .0;
+        let resources = resource_texts(&blocks);
+        assert_eq!(resources.len(), 2, "{blocks:?}");
+        assert!(
+            resources.iter().any(|(_, text)| text == "alpha\n"),
+            "{resources:?}"
         );
     }
 

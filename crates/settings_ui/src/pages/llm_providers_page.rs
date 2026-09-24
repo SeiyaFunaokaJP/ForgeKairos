@@ -17,7 +17,8 @@ use settings::{
 };
 use ui::{
     Banner, ButtonLink, Checkbox, ConfiguredApiCard, ContextMenu, Divider, DividerColor,
-    DropdownMenu, DropdownStyle, IconPosition, PopoverMenu, ToggleState, Tooltip, prelude::*,
+    DropdownMenu, DropdownStyle, IconPosition, PopoverMenu, SwitchField, ToggleState, Tooltip,
+    prelude::*,
 };
 use util::ResultExt as _;
 
@@ -175,9 +176,41 @@ fn render_claude_subscription_card(
                         .color(Color::Muted),
                 )
                 .child(render_claude_cli_status(&settings_window.claude_cli))
-                .child(render_claude_code_buttons(settings_window, window, cx)),
+                .child(render_claude_code_buttons(settings_window, window, cx))
+                .child(render_claude_code_outside_sandbox(cx)),
         )
         .into_any_element()
+}
+
+const CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL: &str = "常にサンドボックスの外で起動";
+const CLAUDE_CODE_OUTSIDE_SANDBOX_DESCRIPTION: &str = "「Claude Code を起動」を、確認なしで毎回\
+     サンドボックスの外で起動します。書き込みの制限がなくなり、通信の制限はプロキシの設定を読む\
+     ものにだけ効きます (SSH の接続先では統制が効きません)。ログインは普段の Claude Code と\
+     共有します。ユーザー設定にだけ保存されます。";
+
+/// ADR-F49 決定 19 (8c): `agent.claude_code_run_outside_sandbox`. The switch
+/// shows what the launch acts on: the user's own settings file only.
+fn render_claude_code_outside_sandbox(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
+    SwitchField::new(
+        "claude-code-run-outside-sandbox",
+        Some(CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL),
+        Some(CLAUDE_CODE_OUTSIDE_SANDBOX_DESCRIPTION.into()),
+        project::agent_sandbox::claude_code_runs_outside_sandbox_by_user_choice(cx),
+        |state, _window, cx| {
+            set_claude_code_run_outside_sandbox(*state == ToggleState::Selected, cx);
+        },
+    )
+    .tab_index(0)
+}
+
+fn set_claude_code_run_outside_sandbox(enabled: bool, cx: &mut App) {
+    let fs = <dyn fs::Fs>::global(cx);
+    settings::update_settings_file(fs, cx, move |settings, _| {
+        settings
+            .agent
+            .get_or_insert_default()
+            .claude_code_run_outside_sandbox = Some(enabled);
+    });
 }
 
 /// Whether the official `claude` CLI is on `PATH`, and what it reports as its
@@ -359,8 +392,9 @@ fn render_claude_code_buttons(
                         .color(Color::Muted),
                 )
                 .tooltip(Tooltip::text(if has_workspace {
-                    "設定ウィンドウを閉じ、Claude Code をターミナルで起動します。\
-                     Windows のローカルのプロジェクトではサンドボックス (WSL) の中で起動します"
+                    "設定ウィンドウを閉じ、Claude Code をエージェントパネルのタブで起動します。\
+                     Windows のローカルのプロジェクトではサンドボックス (WSL) の中で、\
+                     SSH で繋いだ Linux では接続先のサンドボックスの中で起動します"
                 } else {
                     no_workspace_tooltip
                 }))
@@ -377,8 +411,9 @@ fn render_claude_code_buttons(
             .style(ButtonStyle::Outlined)
             .disabled(!has_workspace)
             .tooltip(Tooltip::text(if has_workspace {
-                "設定ウィンドウを閉じ、この PC の `claude` をサンドボックスの外 \
-                 (Zed 本体の権限) で起動します。起動のたびに確認します"
+                "設定ウィンドウを閉じ、この PC (SSH では接続先) の `claude` をサンドボックスの外で\
+                 起動します。起動のたびに確認します (下の「常にサンドボックスの外で起動」が\
+                 オンなら確認しません)"
             } else {
                 no_workspace_tooltip
             }))
@@ -2218,6 +2253,51 @@ fn parse_u64_field(value: &str, name: &str) -> Result<u64, SharedString> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ADR-F49 決定 19 (8c): Claude Code の「常にサンドボックスの外で起動」は
+    /// `agent.claude_code_run_outside_sandbox` に書かれ、読み戻せる。
+    #[gpui::test]
+    async fn the_claude_code_switch_writes_a_setting_that_reads_back(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use fs::Fs as _;
+
+        let fs = fs::FakeFs::new(cx.executor());
+        cx.update(|cx| {
+            let store = settings::SettingsStore::test(cx);
+            cx.set_global(store);
+            <dyn fs::Fs>::set_global(fs.clone(), cx);
+        });
+        fs.create_dir(paths::settings_file().parent().expect("設定ファイルの親"))
+            .await
+            .expect("設定ファイルの置き場を作れる");
+        fs.save(
+            paths::settings_file(),
+            &"{}".into(),
+            language::LineEnding::Unix,
+        )
+        .await
+        .expect("設定ファイルを置ける");
+
+        for enabled in [true, false] {
+            cx.update(|cx| set_claude_code_run_outside_sandbox(enabled, cx));
+            cx.run_until_parked();
+            let text = fs
+                .load(paths::settings_file())
+                .await
+                .expect("設定ファイルを読める");
+            let content: serde_json::Value =
+                serde_json::from_str(&text).expect("設定ファイルは JSON");
+            assert_eq!(
+                content
+                    .get("agent")
+                    .and_then(|agent| agent.get("claude_code_run_outside_sandbox"))
+                    .and_then(serde_json::Value::as_bool),
+                Some(enabled),
+                "{text}"
+            );
+        }
+    }
 
     #[test]
     fn the_claude_subscription_card_sits_where_the_chatgpt_one_does() {

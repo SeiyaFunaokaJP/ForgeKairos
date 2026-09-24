@@ -6,7 +6,10 @@ use picker::popover_menu::PickerPopoverMenu;
 use ui::{PopoverMenuHandle, Tooltip, prelude::*};
 
 use crate::ui::ModelSelectorTooltip;
-use crate::{ModelSelector, model_selector::acp_model_selector};
+use crate::{
+    ModelSelector,
+    model_selector::{AgentLaunchSource, acp_model_selector},
+};
 
 pub struct ModelSelectorPopover {
     selector: Entity<ModelSelector>,
@@ -18,12 +21,14 @@ impl ModelSelectorPopover {
         selector: Rc<dyn AgentModelSelector>,
         menu_handle: PopoverMenuHandle<ModelSelector>,
         focus_handle: FocusHandle,
+        agent_launchers: Option<AgentLaunchSource>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
-            selector: cx
-                .new(move |cx| acp_model_selector(selector, focus_handle.clone(), window, cx)),
+            selector: cx.new(move |cx| {
+                acp_model_selector(selector, focus_handle.clone(), agent_launchers, window, cx)
+            }),
             menu_handle,
         }
     }

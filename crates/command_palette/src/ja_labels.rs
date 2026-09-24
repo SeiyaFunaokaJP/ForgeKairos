@@ -1064,6 +1064,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "ide_server::SendSelectionToClaudeCode",
         "IDE サーバー: 選択範囲を Claude Code に送る",
     ),
+    // エージェントのコードツアー (ADR-F56)
+    ("ide_assist::NextTourStep", "ツアー: 次へ"),
+    ("ide_assist::PreviousTourStep", "ツアー: 前へ"),
+    ("ide_assist::EndTour", "ツアー: 終了"),
     // ピッカー・セレクター
     ("command_palette::Toggle", "コマンドパレット"),
     ("file_finder::Toggle", "ファイルへ移動"),

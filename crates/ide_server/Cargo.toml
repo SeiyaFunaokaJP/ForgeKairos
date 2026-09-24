@@ -29,6 +29,7 @@ futures.workspace = true
 git_ui_core.workspace = true
 gpui.workspace = true
 httparse.workspace = true
+ide_query.workspace = true
 language.workspace = true
 log.workspace = true
 lsp.workspace = true

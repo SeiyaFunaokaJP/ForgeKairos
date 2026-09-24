@@ -38,6 +38,9 @@ pub struct DiagnosticsOptions {
     pub include_errors: bool,
     pub include_warnings: bool,
     pub path_matcher: Option<PathMatcher>,
+    /// Most files whose diagnostics are written out; the rest are only
+    /// counted.
+    pub max_files: Option<usize>,
 }
 
 /// Collects project diagnostics into a formatted string.
@@ -90,6 +93,9 @@ pub fn collect_diagnostics(
 
         let mut found_any_diagnostics = false;
         let mut project_summary = DiagnosticSummary::default();
+        let mut written_files = 0;
+        let mut skipped_files = 0;
+        let mut skipped_summary = DiagnosticSummary::default();
         for (project_path, path, summary) in diagnostic_summaries {
             if let Some(path_matcher) = &options.path_matcher
                 && !path_matcher.is_match(&path)
@@ -109,6 +115,21 @@ pub fn collect_diagnostics(
             if options.include_warnings {
                 project_summary.warning_count += summary.warning_count;
             }
+
+            if options
+                .max_files
+                .is_some_and(|max_files| written_files >= max_files)
+            {
+                skipped_files += 1;
+                if options.include_errors {
+                    skipped_summary.error_count += summary.error_count;
+                }
+                if options.include_warnings {
+                    skipped_summary.warning_count += summary.warning_count;
+                }
+                continue;
+            }
+            written_files += 1;
 
             let file_path = path.display(path_style).to_string();
             if !glob_is_exact_file_match {
@@ -134,6 +155,16 @@ pub fn collect_diagnostics(
 
         if !found_any_diagnostics {
             return Ok(None);
+        }
+
+        if skipped_files > 0 {
+            writeln!(
+                text,
+                "[… diagnostics of {skipped_files} more files ({} errors, {} warnings) were left out; \
+                 ask for a specific file or use a diagnostics tool to see them …]",
+                skipped_summary.error_count, skipped_summary.warning_count
+            )
+            .ok();
         }
 
         let mut label = String::new();
@@ -250,4 +281,98 @@ fn collect_diagnostic(
 
     writeln!(text, "```").unwrap();
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fs::FakeFs;
+    use gpui::TestAppContext;
+    use language::{Diagnostic, DiagnosticEntry, DiagnosticSourceKind, PointUtf16};
+    use lsp::LanguageServerId;
+    use serde_json::json;
+    use settings::SettingsStore;
+    use std::path::PathBuf;
+    use text::Unclipped;
+    use util::path;
+
+    #[gpui::test]
+    async fn test_max_files_writes_the_first_files_and_counts_the_rest(cx: &mut TestAppContext) {
+        let settings_store = cx.update(SettingsStore::test);
+        cx.set_global(settings_store);
+
+        let files = (0..5)
+            .map(|index| (format!("file{index}.rs"), json!("fn broken() {}\n")))
+            .collect::<serde_json::Map<_, _>>();
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/project"), serde_json::Value::Object(files))
+            .await;
+        let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+        for index in 0..5 {
+            project.update(cx, |project, cx| {
+                project.lsp_store().update(cx, |lsp_store, cx| {
+                    lsp_store
+                        .update_diagnostic_entries(
+                            LanguageServerId(0),
+                            PathBuf::from(path!("/project")).join(format!("file{index}.rs")),
+                            None,
+                            None,
+                            vec![DiagnosticEntry::new(
+                                Unclipped(PointUtf16::new(0, 0))..Unclipped(PointUtf16::new(0, 2)),
+                                Diagnostic {
+                                    severity: DiagnosticSeverity::ERROR,
+                                    message: format!("error {index}"),
+                                    source_kind: DiagnosticSourceKind::Pushed,
+                                    is_primary: true,
+                                    group_id: index,
+                                    ..Diagnostic::default()
+                                },
+                            )],
+                            cx,
+                        )
+                        .expect("the diagnostics apply");
+                });
+            });
+        }
+        cx.run_until_parked();
+
+        let collect = |max_files: Option<usize>, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                collect_diagnostics(
+                    project.clone(),
+                    DiagnosticsOptions {
+                        include_errors: true,
+                        include_warnings: true,
+                        path_matcher: None,
+                        max_files,
+                    },
+                    cx,
+                )
+            })
+        };
+
+        let limited = collect(Some(2), cx)
+            .await
+            .unwrap()
+            .expect("there are diagnostics");
+        assert_eq!(limited.matches("// error: error").count(), 2, "{limited}");
+        assert!(
+            limited.contains(
+                "[… diagnostics of 3 more files (3 errors, 0 warnings) were left out; ask for"
+            ),
+            "{limited}"
+        );
+        assert!(limited.starts_with("Diagnostics: 5 errors"), "{limited}");
+
+        let unlimited = collect(None, cx)
+            .await
+            .unwrap()
+            .expect("there are diagnostics");
+        assert_eq!(
+            unlimited.matches("// error: error").count(),
+            5,
+            "{unlimited}"
+        );
+        assert!(!unlimited.contains("were left out"), "{unlimited}");
+    }
 }

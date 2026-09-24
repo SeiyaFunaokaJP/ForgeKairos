@@ -17,6 +17,10 @@ use futures::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _, Stre
 use gpui::{
     AppContext as _, Entity, Focusable as _, TestAppContext, UpdateGlobal as _, WindowHandle,
 };
+use ide_query::{
+    AssistSource, CodeAnnotation, CodeDisplay, CodeHighlight, CodeTour, DisplayOutcome, LineRange,
+    QueryLocation, SkippedDisplay, SymbolHit,
+};
 use language::{Diagnostic, DiagnosticEntry, DiagnosticSeverity, DiagnosticSourceKind, PointUtf16};
 use lsp::LanguageServerId;
 use project::{FakeFs, Fs as _, Project};
@@ -112,7 +116,7 @@ fn spawn_test_server(
         let (stream, _peer) = listener.accept().await?;
         let (incoming_tx, mut incoming_rx) = mpsc::channel::<String>(0);
         let (outbox, outgoing) = transport::outbox();
-        let (kind_tx, _kind_rx) = oneshot::channel();
+        let (route_tx, _route_rx) = oneshot::channel();
         let pump = smol::spawn(async move {
             while let Some(text) = incoming_rx.next().await {
                 if let Some(response) = responder(text) {
@@ -124,10 +128,15 @@ fn spawn_test_server(
         let result = transport::serve_connection(
             stream,
             auth_token,
-            transport::MessageLimits::same(transport::HOST_MAX_MESSAGE_BYTES),
+            |_| {
+                Ok(transport::Admitted {
+                    limits: transport::MessageLimits::same(transport::HOST_MAX_MESSAGE_BYTES),
+                    hold: None,
+                })
+            },
             incoming_tx,
             outgoing,
-            kind_tx,
+            route_tx,
             futures::future::pending(),
         )
         .await;
@@ -325,11 +334,11 @@ async fn test_workspace_with_fs(
     )
     .await;
     let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
-    let project_id = project.entity_id();
+    let weak_project = project.downgrade();
     let (multi_workspace, cx) =
         cx.add_window_view(|window, cx| MultiWorkspace::test_new(project, window, cx));
     let workspace = multi_workspace.read_with(cx, |multi, _| multi.workspace().clone());
-    let server = cx.new(|cx| IdeServer::new(workspace.downgrade(), project_id, cx));
+    let server = cx.new(|cx| IdeServer::new(workspace.downgrade(), weak_project, cx));
     (fs, workspace, server)
 }
 
@@ -2831,6 +2840,8 @@ async fn sandbox_diff_tabs_do_not_take_keyboard_focus(cx: &mut TestAppContext) {
     assert!(!proposal_focused);
 }
 
+/// ADR-F56: どの口に来たかは要求の頭を読むまで分からないので、CLI の IDE の口の枠 (4) は頭を
+/// 読んでから数え、超えた接続は `503` で断る。
 #[gpui::test]
 async fn sandbox_session_limits_its_connections(cx: &mut TestAppContext) {
     let fixture = start_sandbox_fixture(cx).await;
@@ -2839,22 +2850,62 @@ async fn sandbox_session_limits_its_connections(cx: &mut TestAppContext) {
         clients.push(connect(&fixture, cx).await);
     }
 
-    let (server_end, mut client_end) = memory_stream_pair();
+    match open_websocket(&fixture, &fixture.auth_token).await {
+        Ok(_) => panic!("a connection beyond the limit must be refused"),
+        Err(WebSocketError::Http(response)) => assert_eq!(response.status(), 503),
+        Err(error) => panic!("expected a 503, got {error}"),
+    }
+    assert_eq!(clients.len(), sandbox_client::MAX_CONNECTIONS);
+
+    // 閉じた分は空く。
+    drop(clients.pop());
+    cx.run_until_parked();
+    let _reconnected = connect(&fixture, cx).await;
+}
+
+/// ADR-F56: 頭を読む前に受けておけるのは、両方の口の枠の合計まで。それを超えた接続は、
+/// 何も読まずにすぐ閉じる (黙ったまま繋ぎっぱなしにする相手に抱え込まれないため)。
+#[gpui::test]
+async fn sandbox_session_closes_connections_beyond_both_limits_at_once(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let total = sandbox_client::MAX_CONNECTIONS + crate::assist_tools::MAX_ASSIST_CONNECTIONS;
+    let mut silent = Vec::new();
+    for _ in 0..total {
+        let (server_end, client_end) = memory_stream_pair();
+        fixture
+            .connections
+            .unbounded_send(server_end)
+            .expect("the session accepts connections");
+        silent.push(client_end);
+    }
+    cx.run_until_parked();
+
+    let (server_end, client_end) = memory_stream_pair();
     fixture
         .connections
         .unbounded_send(server_end)
         .expect("the session accepts connections");
     cx.run_until_parked();
-    let mut byte = [0u8; 1];
-    assert_eq!(
-        client_end
-            .read(&mut byte)
-            .await
-            .expect("reading the refused connection"),
-        0,
-        "the connection beyond the limit is closed at once"
+    // 読んで確かめると、閉じるのが頭の待ち時間の切れたあとでも通ってしまうので、時計を
+    // 進めずに相手の端が閉じたかを見る。
+    assert!(
+        closed_by_the_session(&client_end),
+        "the connection beyond both limits is closed at once"
     );
-    assert_eq!(clients.len(), sandbox_client::MAX_CONNECTIONS);
+    assert!(
+        silent
+            .iter()
+            .all(|client_end| !closed_by_the_session(client_end)),
+        "the connections within the limits wait for their request"
+    );
+}
+
+fn closed_by_the_session(client_end: &MemoryStream) -> bool {
+    client_end
+        .incoming
+        .lock()
+        .expect("the pipe lock is not poisoned")
+        .closed
 }
 
 #[gpui::test]
@@ -3402,5 +3453,1409 @@ async fn reads_a_sandbox_file_from_one_verified_handle(cx: &mut TestAppContext) 
             read("real/fifo", 100).expect("the FIFO is inspected"),
             SandboxFile::NotRegular
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// アシストのツール (ADR-F56)
+// ---------------------------------------------------------------------------
+
+/// 表示の呼び出しを記録するだけの `CodeDisplay` (本物は `ide_assist`)。
+#[derive(Default)]
+struct FakeDisplay {
+    calls: Mutex<Vec<DisplayCall>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum DisplayCall {
+    Highlights(AssistSource, Vec<CodeHighlight>),
+    Annotations(AssistSource, Vec<CodeAnnotation>),
+    Tour(AssistSource, CodeTour),
+    Clear(AssistSource),
+}
+
+impl FakeDisplay {
+    fn record(&self, call: DisplayCall) {
+        self.calls
+            .lock()
+            .expect("the call log is not poisoned")
+            .push(call);
+    }
+
+    fn take_calls(&self) -> Vec<DisplayCall> {
+        std::mem::take(&mut *self.calls.lock().expect("the call log is not poisoned"))
+    }
+}
+
+impl CodeDisplay for FakeDisplay {
+    fn show_highlights(
+        &self,
+        _project: &Entity<Project>,
+        source: AssistSource,
+        highlights: Vec<CodeHighlight>,
+        _cx: &mut gpui::App,
+    ) -> gpui::Task<anyhow::Result<DisplayOutcome>> {
+        let shown = highlights.len();
+        self.record(DisplayCall::Highlights(source, highlights));
+        gpui::Task::ready(Ok(DisplayOutcome {
+            shown,
+            skipped: Vec::new(),
+        }))
+    }
+
+    fn show_annotations(
+        &self,
+        _project: &Entity<Project>,
+        source: AssistSource,
+        annotations: Vec<CodeAnnotation>,
+        _cx: &mut gpui::App,
+    ) -> gpui::Task<anyhow::Result<DisplayOutcome>> {
+        let shown = annotations.len();
+        self.record(DisplayCall::Annotations(source, annotations));
+        gpui::Task::ready(Ok(DisplayOutcome {
+            shown,
+            skipped: Vec::new(),
+        }))
+    }
+
+    fn start_tour(
+        &self,
+        _project: &Entity<Project>,
+        source: AssistSource,
+        tour: CodeTour,
+        _cx: &mut gpui::App,
+    ) -> gpui::Task<anyhow::Result<DisplayOutcome>> {
+        let shown = tour.steps.len();
+        let skipped = tour
+            .steps
+            .first()
+            .map(|step| SkippedDisplay {
+                path: step.path.clone(),
+                reason: "テストで飛ばした".to_string(),
+            })
+            .into_iter()
+            .collect();
+        self.record(DisplayCall::Tour(source, tour));
+        gpui::Task::ready(Ok(DisplayOutcome { shown, skipped }))
+    }
+
+    fn clear(&self, _project: &Entity<Project>, source: &AssistSource, _cx: &mut gpui::App) {
+        self.record(DisplayCall::Clear(source.clone()));
+    }
+}
+
+fn install_fake_display(cx: &mut TestAppContext) -> Arc<FakeDisplay> {
+    let display = Arc::new(FakeDisplay::default());
+    cx.update(|cx| cx.set_global(ide_query::GlobalCodeDisplay(display.clone())));
+    display
+}
+
+/// アシストのツールの検査に掛かるファイルを足す。
+async fn add_assist_files(fixture: &SandboxFixture, cx: &mut TestAppContext) {
+    fixture
+        .fs
+        .insert_tree(
+            path!("/test/src"),
+            json!({ "lib.rs": "pub fn lib() {}\n", "nested": { "deep.rs": "fn deep() {}\n" } }),
+        )
+        .await;
+    fixture
+        .fs
+        .insert_file(path!("/test/.env"), b"SECRET=hunter2\n".to_vec())
+        .await;
+    fixture
+        .fs
+        .insert_file(path!("/test/huge.txt"), vec![b'a'; 5 * 1024 * 1024])
+        .await;
+    fixture
+        .fs
+        .insert_tree(path!("/test/.git"), json!({ "config": "[core]\n" }))
+        .await;
+    fixture
+        .fs
+        .insert_symlink(
+            path!("/test/link.rs"),
+            PathBuf::from(path!("/outside/secret.rs")),
+        )
+        .await;
+    cx.run_until_parked();
+}
+
+/// ブリッジに接続を 1 本渡し、`path` に streamable HTTP の MCP 要求を 1 件送って応答をすべて読む。
+async fn post_mcp_to(fixture: &SandboxFixture, token: &str, path: &str, request: &Value) -> String {
+    let (server_end, mut client_end) = memory_stream_pair();
+    fixture
+        .connections
+        .unbounded_send(server_end)
+        .expect("the session accepts connections");
+    let body = request.to_string();
+    client_end
+        .write_all(
+            format!(
+                "POST {path} HTTP/1.1\r\n\
+                 Host: 127.0.0.1\r\n\
+                 Authorization: Bearer {token}\r\n\
+                 Content-Type: application/json\r\n\
+                 Content-Length: {}\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        )
+        .await
+        .expect("writing the request");
+    let mut response = String::new();
+    client_end
+        .read_to_string(&mut response)
+        .await
+        .expect("reading the response");
+    response
+}
+
+async fn call_assist_tool(fixture: &SandboxFixture, name: &str, arguments: Value) -> Value {
+    let response = post_mcp_to(
+        fixture,
+        &fixture.auth_token,
+        transport::ASSIST_MCP_PATH,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": name, "arguments": arguments }
+        }),
+    )
+    .await;
+    assert!(
+        response.starts_with("HTTP/1.1 200 OK"),
+        "{name}: expected a 200, got {response:?}"
+    );
+    http_body(&response)
+}
+
+fn tool_error_text(response: &Value) -> String {
+    assert_eq!(response["result"]["isError"], json!(true), "{response}");
+    first_text(response)
+}
+
+fn project_path(
+    project: &Entity<Project>,
+    path: &str,
+    cx: &mut TestAppContext,
+) -> project::ProjectPath {
+    project.read_with(cx, |project, cx| {
+        project
+            .find_project_path(Path::new(path), cx)
+            .expect("the path is in a worktree")
+    })
+}
+
+fn sorted(names: &[&str]) -> Vec<String> {
+    let mut names = names
+        .iter()
+        .map(|name| name.to_string())
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
+/// `/mcp/zed` はサンドボックスのセッションと同じトークン・同じ転送で 9 本を出し、CLI の
+/// IDE の口 (WebSocket・`/mcp`) の一覧は変えない。initialize には `instructions` が入る。
+#[gpui::test]
+async fn the_assist_endpoint_offers_the_nine_tools_beside_the_cli_endpoint(
+    cx: &mut TestAppContext,
+) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let list = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" });
+
+    let assist = post_mcp_to(
+        &fixture,
+        &fixture.auth_token,
+        transport::ASSIST_MCP_PATH,
+        &list,
+    )
+    .await;
+    assert!(assist.starts_with("HTTP/1.1 200 OK"), "{assist:?}");
+    assert_eq!(
+        tool_names(&http_body(&assist)),
+        sorted(&crate::ASSIST_TOOL_NAMES)
+    );
+    let ide = post_mcp_to(
+        &fixture,
+        &fixture.auth_token,
+        transport::IDE_MCP_PATH,
+        &list,
+    )
+    .await;
+    assert_eq!(
+        tool_names(&http_body(&ide)),
+        vec![
+            "closeAllDiffTabs",
+            "close_tab",
+            "getDiagnostics",
+            "openDiff"
+        ],
+        "the CLI's own tools are unchanged"
+    );
+
+    let initialize = json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "initialize",
+        "params": { "protocolVersion": "2025-06-18", "capabilities": {} }
+    });
+    let assist = http_body(
+        &post_mcp_to(
+            &fixture,
+            &fixture.auth_token,
+            transport::ASSIST_MCP_PATH,
+            &initialize,
+        )
+        .await,
+    );
+    let instructions = assist["result"]["instructions"]
+        .as_str()
+        .expect("the assist endpoint tells the model where it is");
+    assert!(instructions.contains("Zed editor"), "{instructions}");
+    assert!(instructions.lines().count() <= 10, "{instructions}");
+    assert!(instructions.contains("highlightCode") && instructions.contains("searchSymbols"));
+
+    let mut client = connect(&fixture, cx).await;
+    let response = client
+        .request("initialize", initialize["params"].clone())
+        .await;
+    assert!(
+        response["result"].get("instructions").is_none(),
+        "the CLI's `ide` endpoint is not given instructions: {response}"
+    );
+    assert_eq!(
+        tool_names(&client.request("tools/list", json!({})).await).len(),
+        4
+    );
+
+    for token in ["wrong-token", ""] {
+        let response = post_mcp_to(&fixture, token, transport::ASSIST_MCP_PATH, &list).await;
+        assert!(
+            response.starts_with("HTTP/1.1 401"),
+            "{token:?}: expected a 401, got {response:?}"
+        );
+    }
+}
+
+/// アシストの口は streamable HTTP だけ。WebSocket で来たら断る (CLI の IDE の口と取り違えない)。
+#[gpui::test]
+async fn the_assist_endpoint_does_not_take_websockets(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let (server_end, client_end) = memory_stream_pair();
+    fixture
+        .connections
+        .unbounded_send(server_end)
+        .expect("the session accepts connections");
+    let request = async_tungstenite::tungstenite::http::Request::builder()
+        .method("GET")
+        .uri("ws://127.0.0.1:41234/mcp/zed")
+        .header("Host", "127.0.0.1:41234")
+        .header("Connection", "Upgrade")
+        .header("Upgrade", "websocket")
+        .header("Sec-WebSocket-Version", "13")
+        .header("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+        .header(
+            transport::CLAUDE_CODE_AUTH_HEADER,
+            fixture.auth_token.as_str(),
+        )
+        .body(())
+        .expect("building the upgrade request");
+    match async_tungstenite::client_async(request, client_end).await {
+        Ok(_) => panic!("a WebSocket on the assist endpoint must be refused"),
+        Err(WebSocketError::Http(response)) => assert_eq!(response.status(), 404),
+        Err(error) => panic!("expected a 404, got {error}"),
+    }
+}
+
+/// `ide_server.assist_tools` を切れば、アシストの口は理由を返して何もしない。
+#[gpui::test]
+async fn the_assist_endpoint_follows_the_setting(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    cx.update(|cx| {
+        settings::SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.ide_server.get_or_insert_default().assist_tools = Some(false);
+            });
+        });
+    });
+    let response = post_mcp_to(
+        &fixture,
+        &fixture.auth_token,
+        transport::ASSIST_MCP_PATH,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+    )
+    .await;
+    let body = http_body(&response);
+    assert_eq!(body["error"]["code"], json!(protocol::REFUSED), "{body}");
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("無効")),
+        "{body}"
+    );
+}
+
+/// ACP の制限セッションも同じ転送の `/mcp/zed` で 9 本を出す。`/mcp` は `getDiagnostics` のまま。
+#[gpui::test]
+async fn a_restricted_session_offers_the_assist_endpoint_too(cx: &mut TestAppContext) {
+    let fixture = start_restricted_sandbox_fixture(cx).await;
+    let list = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" });
+    let assist = post_mcp_to(
+        &fixture,
+        &fixture.auth_token,
+        transport::ASSIST_MCP_PATH,
+        &list,
+    )
+    .await;
+    assert_eq!(
+        tool_names(&http_body(&assist)),
+        sorted(&crate::ASSIST_TOOL_NAMES)
+    );
+    let ide = post_mcp_to(
+        &fixture,
+        &fixture.auth_token,
+        transport::IDE_MCP_PATH,
+        &list,
+    )
+    .await;
+    assert_eq!(tool_names(&http_body(&ide)), vec!["getDiagnostics"]);
+}
+
+/// アシストの口の同時接続は、CLI の IDE の口の枠 (4) とは別に 16 本まで。
+#[gpui::test]
+async fn the_assist_endpoint_counts_its_connections_apart(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut clients = Vec::new();
+    for _ in 0..sandbox_client::MAX_CONNECTIONS {
+        clients.push(connect(&fixture, cx).await);
+    }
+    // CLI の枠が埋まっていても、アシストの口は答える。
+    let response = post_mcp_to(
+        &fixture,
+        &fixture.auth_token,
+        transport::ASSIST_MCP_PATH,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+    )
+    .await;
+    assert!(response.starts_with("HTTP/1.1 200 OK"), "{response:?}");
+    assert_eq!(clients.len(), sandbox_client::MAX_CONNECTIONS);
+    // 頭を読む前の総数 (両方の枠の合計) に掛からないよう、CLI の接続は閉じておく。
+    drop(clients);
+    cx.run_until_parked();
+
+    // 本文を送らずに枠を握る接続を、アシストの口に上限まで並べる。
+    let mut held = Vec::new();
+    for _ in 0..crate::assist_tools::MAX_ASSIST_CONNECTIONS {
+        let (server_end, mut client_end) = memory_stream_pair();
+        fixture
+            .connections
+            .unbounded_send(server_end)
+            .expect("the session accepts connections");
+        client_end
+            .write_all(
+                format!(
+                    "POST /mcp/zed HTTP/1.1\r\nHost: 127.0.0.1\r\n\
+                     Authorization: Bearer {}\r\nContent-Length: 10\r\n\r\n",
+                    fixture.auth_token
+                )
+                .as_bytes(),
+            )
+            .await
+            .expect("writing a head");
+        held.push(client_end);
+    }
+    cx.run_until_parked();
+    let response = post_mcp_to(
+        &fixture,
+        &fixture.auth_token,
+        transport::ASSIST_MCP_PATH,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+    )
+    .await;
+    assert!(
+        response.starts_with("HTTP/1.1 503"),
+        "the assist endpoint refuses beyond its own limit: {response:?}"
+    );
+    // アシストの口が埋まっていても、CLI の IDE の口は繋がる。
+    let _client = connect(&fixture, cx).await;
+    assert_eq!(held.len(), crate::assist_tools::MAX_ASSIST_CONNECTIONS);
+}
+
+/// 表示のツールは、検査を通したパスを `ProjectPath` にして、このセッションを出どころとして
+/// 渡す。絶対パス (CLI から見えるパス)・ルートからの相対パス・ルートの名前から始まる相対パスを
+/// 受ける。セッションが終わると、描いたものを消す。
+#[gpui::test]
+async fn the_display_tools_pass_project_paths_and_the_session_as_the_source(
+    cx: &mut TestAppContext,
+) {
+    let mut fixture = start_sandbox_fixture(cx).await;
+    add_assist_files(&fixture, cx).await;
+    let display = install_fake_display(cx);
+    let main_path = project_path(&fixture.project, path!("/test/main.rs"), cx);
+    let lib_path = project_path(&fixture.project, path!("/test/src/lib.rs"), cx);
+    let deep_path = project_path(&fixture.project, path!("/test/src/nested/deep.rs"), cx);
+
+    let response = call_assist_tool(
+        &fixture,
+        "highlightCode",
+        json!({ "items": [
+            { "path": format!("{CLIENT_ROOT}/main.rs"), "startLine": 1, "endLine": 2, "note": "入口" },
+            { "path": "src/lib.rs", "startLine": 1, "endLine": 1 },
+            { "path": "test/src/nested/deep.rs", "startLine": 1, "endLine": 1 },
+        ] }),
+    )
+    .await;
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    assert_eq!(first_text_as_json(&response)["shown"], json!(3));
+    let calls = display.take_calls();
+    let [DisplayCall::Highlights(source, highlights)] = calls.as_slice() else {
+        panic!("one highlight call: {calls:?}");
+    };
+    assert_eq!(source.label.as_ref(), "Claude Code");
+    assert!(source.id.starts_with("zed-ide-session-"), "{source:?}");
+    assert_eq!(
+        highlights,
+        &vec![
+            CodeHighlight {
+                path: main_path.clone(),
+                lines: LineRange {
+                    start_line: 1,
+                    end_line: 2
+                },
+                note: Some("入口".to_string()),
+            },
+            CodeHighlight {
+                path: lib_path.clone(),
+                lines: LineRange {
+                    start_line: 1,
+                    end_line: 1
+                },
+                note: None,
+            },
+            CodeHighlight {
+                path: deep_path,
+                lines: LineRange {
+                    start_line: 1,
+                    end_line: 1
+                },
+                note: None,
+            },
+        ]
+    );
+    let session_source = source.clone();
+
+    let response = call_assist_tool(
+        &fixture,
+        "annotateCode",
+        json!({ "items": [
+            { "path": "main.rs", "startLine": 2, "endLine": 3, "markdown": "**説明**" },
+        ] }),
+    )
+    .await;
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    assert_eq!(
+        display.take_calls(),
+        vec![DisplayCall::Annotations(
+            session_source.clone(),
+            vec![CodeAnnotation {
+                path: main_path.clone(),
+                lines: LineRange {
+                    start_line: 2,
+                    end_line: 3
+                },
+                markdown: "**説明**".to_string(),
+            }]
+        )]
+    );
+
+    let response = call_assist_tool(
+        &fixture,
+        "startCodeTour",
+        json!({ "title": "ツアー", "steps": [
+            { "path": "main.rs", "startLine": 1, "endLine": 1, "title": "1", "markdown": "a" },
+            { "path": "src/lib.rs", "startLine": 1, "endLine": 1, "title": "2", "markdown": "b" },
+        ] }),
+    )
+    .await;
+    let outcome = first_text_as_json(&response);
+    assert_eq!(outcome["shown"], json!(2));
+    assert_eq!(
+        outcome["skipped"],
+        json!([{ "path": format!("{CLIENT_ROOT}/main.rs"), "reason": "テストで飛ばした" }]),
+        "skipped paths are shown the way the CLI sees them"
+    );
+    let calls = display.take_calls();
+    let [DisplayCall::Tour(source, tour)] = calls.as_slice() else {
+        panic!("one tour call: {calls:?}");
+    };
+    assert_eq!(source, &session_source);
+    assert_eq!(tour.title, "ツアー");
+    assert_eq!(
+        tour.steps
+            .iter()
+            .map(|step| step.path.clone())
+            .collect::<Vec<_>>(),
+        vec![main_path, lib_path]
+    );
+
+    let response = call_assist_tool(&fixture, "clearAnnotations", json!({})).await;
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    assert_eq!(
+        display.take_calls(),
+        vec![DisplayCall::Clear(session_source.clone())]
+    );
+
+    end_session(&mut fixture, cx).await;
+    assert!(
+        display
+            .take_calls()
+            .contains(&DisplayCall::Clear(session_source)),
+        "ending the session clears what it drew"
+    );
+}
+
+/// どの読み取り・表示のツールも、既存の検査と `private_files` の拒否を通してから動く。
+/// 断る理由は日本語の短文で、中身 (hunter2) は出さない。表示には何も渡さない。
+#[gpui::test]
+async fn the_assist_tools_refuse_what_the_checks_refuse(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    add_assist_files(&fixture, cx).await;
+    let display = install_fake_display(cx);
+
+    let refused = [
+        (format!("{CLIENT_OUTSIDE}/secret.rs"), "外"),
+        (format!("{CLIENT_ROOT}/../outside/secret.rs"), "`..` を含む"),
+        (format!("{CLIENT_ROOT}/link.rs"), "リンク"),
+        (format!("{CLIENT_ROOT}/.git/config"), "走査"),
+        (format!("{CLIENT_ROOT}/.env"), "private_files"),
+        (".env".to_string(), "private_files"),
+        (format!("{CLIENT_ROOT}/huge.txt"), "4 MiB"),
+        (format!("{CLIENT_ROOT}/src"), "ディレクトリ"),
+        (format!("{CLIENT_ROOT}/missing.rs"), "見つかりません"),
+        ("../outside/secret.rs".to_string(), "`..` を含む"),
+        ("src/../../outside/secret.rs".to_string(), "`..` を含む"),
+        (String::new(), "空"),
+    ];
+    for (path, reason) in &refused {
+        for (tool, arguments) in [
+            (
+                "highlightCode",
+                json!({ "items": [{ "path": path, "startLine": 1, "endLine": 1 }] }),
+            ),
+            (
+                "annotateCode",
+                json!({ "items": [{ "path": path, "startLine": 1, "endLine": 1, "markdown": "x" }] }),
+            ),
+            ("getHover", json!({ "path": path, "line": 1 })),
+            ("getDocumentSymbols", json!({ "path": path })),
+            (
+                "findDefinition",
+                json!({ "path": path, "line": 1, "symbol": "main" }),
+            ),
+            (
+                "findReferences",
+                json!({ "path": path, "line": 1, "column": 4 }),
+            ),
+        ] {
+            let response = call_assist_tool(&fixture, tool, arguments).await;
+            let text = tool_error_text(&response);
+            assert!(text.contains(reason), "{tool} {path:?}: {text}");
+            assert!(!response.to_string().contains("hunter2"), "{response}");
+        }
+    }
+    assert!(
+        display.take_calls().is_empty(),
+        "nothing refused reaches the editor"
+    );
+
+    // 検査を通ったパスは言語サーバーの問い合わせ (`ide_query`) まで届く。言語サーバーの
+    // 居ないこのテストでは失敗するが、それは検査で断ったのではない。
+    let response = call_assist_tool(
+        &fixture,
+        "getHover",
+        json!({ "path": "main.rs", "line": 1 }),
+    )
+    .await;
+    let text = tool_error_text(&response);
+    assert!(
+        !text.contains("扱えません") && !text.contains("見つかりません"),
+        "{text}"
+    );
+}
+
+/// CLI に渡す引数には秘密も空白も無い。`Authorization` の値は丸ごと環境変数から CLI が展開する
+/// (Windows PowerShell 5.1 と npm の `claude.ps1` は空白を含む引数を割り、CLI が起動しない)。
+#[test]
+fn the_cli_arguments_hold_no_secret_and_no_blank() {
+    let arguments = crate::cli_assist_arguments("http://127.0.0.1:4000/mcp/zed?client=abc");
+    let [config_option, config, allowed_option, allowed] = arguments.as_slice() else {
+        panic!("four arguments: {arguments:?}");
+    };
+    assert_eq!(config_option, "--mcp-config");
+    assert_eq!(allowed_option, "--allowedTools");
+    for argument in &arguments {
+        assert!(!argument.contains(char::is_whitespace), "{argument:?}");
+    }
+    let config: Value = serde_json::from_str(config).expect("the config is JSON");
+    let server = &config["mcpServers"][crate::MCP_SERVER_NAME];
+    assert_eq!(
+        server["headers"]["Authorization"],
+        json!(format!("${{{}}}", crate::ASSIST_BEARER_ENV_VAR))
+    );
+    assert_eq!(allowed.split(',').count(), crate::ASSIST_TOOL_NAMES.len());
+}
+
+/// `ide_query` の失敗の見せ方: 言語サーバーが居ないことはそれと分かる短文で、ほかはサンドボックス
+/// には `ide_query` の一文だけ (原因の連鎖 = ホストのエラー文は見せない)、ホストには全部。
+#[test]
+fn query_failures_tell_a_missing_language_server_apart() {
+    use crate::assist_tools::query_failure;
+    let not_running = || {
+        anyhow::anyhow!(ide_query::LanguageServerNotRunning {
+            path: "test/main.rs".to_string(),
+        })
+    };
+    let sandbox_scope = tools::ToolScope::Assist(Some(Arc::new(session_paths())));
+    for (sandboxed, scope) in [
+        (true, sandbox_scope.clone()),
+        (false, tools::ToolScope::Assist(None)),
+    ] {
+        let text = tools::error_text(
+            "getHover",
+            &query_failure(sandboxed, "getHover", not_running()),
+            &scope,
+        );
+        assert!(text.contains("言語サーバーが起動していません"), "{text}");
+        assert!(
+            text.contains("もう一度呼んでください"),
+            "the agent is told to wait and ask again: {text}"
+        );
+        assert!(!text.contains("test/main.rs"), "{text}");
+    }
+
+    let with_cause = || {
+        anyhow::Error::msg("C:/Users/secret/host-only.rs")
+            .context("`test/main.rs` の 3 行目に `main` がありません")
+    };
+    let sandboxed = tools::error_text(
+        "findDefinition",
+        &query_failure(true, "findDefinition", with_cause()),
+        &sandbox_scope,
+    );
+    assert_eq!(sandboxed, "`test/main.rs` の 3 行目に `main` がありません");
+    let host = tools::error_text(
+        "findDefinition",
+        &query_failure(false, "findDefinition", with_cause()),
+        &tools::ToolScope::Assist(None),
+    );
+    assert!(host.contains("host-only.rs"), "{host}");
+}
+
+/// query 担当の上限の前提: hover は 8,000 文字で切り (文字の境界で)、searchSymbols の limit は
+/// 既定 50・上限 100、getDocumentSymbols は 500 件で切る。`ide_query` が空で返した中身は
+/// 空のまま (キーごと出さない)。
+#[gpui::test]
+async fn read_results_are_cut_to_their_limits(cx: &mut TestAppContext) {
+    use crate::assist_tools::{hover_json, search_limit};
+
+    let short = hover_json(Some("型: `u32`".to_string()));
+    assert_eq!(short["hover"], json!("型: `u32`"));
+    assert_eq!(short["truncated"], json!(false));
+    let long = hover_json(Some("あ".repeat(8_001)));
+    assert_eq!(
+        long["hover"].as_str().map(|hover| hover.chars().count()),
+        Some(8_000)
+    );
+    assert_eq!(long["truncated"], json!(true));
+    assert_eq!(
+        hover_json(None),
+        json!({ "hover": null, "truncated": false })
+    );
+
+    assert_eq!(search_limit(&json!({})).expect("the default"), 50);
+    assert_eq!(search_limit(&json!({ "limit": 7 })).expect("as asked"), 7);
+    assert_eq!(search_limit(&json!({ "limit": 500 })).expect("capped"), 100);
+    assert!(search_limit(&json!({ "limit": "ten" })).is_err());
+
+    let fixture = start_sandbox_fixture(cx).await;
+    let main_path = project_path(&fixture.project, path!("/test/main.rs"), cx);
+    let hits = (0..600)
+        .map(|index| SymbolHit {
+            name: format!("symbol_{index}"),
+            kind: "function".to_string(),
+            container: None,
+            path: main_path.clone(),
+            lines: LineRange {
+                start_line: 1,
+                end_line: 1,
+            },
+            signature: if index == 0 {
+                String::new()
+            } else {
+                "fn main()".to_string()
+            },
+            in_project: true,
+            score: 1.0,
+        })
+        .collect::<Vec<_>>();
+    let project = fixture.project.clone();
+    let mut async_cx = cx.to_async();
+    let formatted = crate::assist_tools::format_symbols_for_test(
+        project.clone(),
+        crate::assist_tools::AssistPaths::Host,
+        hits,
+        &mut async_cx,
+    )
+    .await;
+    assert_eq!(
+        formatted["symbols"].as_array().map(Vec::len),
+        Some(500),
+        "getDocumentSymbols stops at 500"
+    );
+    assert_eq!(formatted["truncated"], json!(true));
+    assert!(
+        formatted["symbols"][0].get("signature").is_none(),
+        "an empty signature stays empty"
+    );
+    assert_eq!(formatted["symbols"][1]["signature"], json!("fn main()"));
+
+    let formatted = crate::assist_tools::format_locations_for_test(
+        project,
+        crate::assist_tools::AssistPaths::Host,
+        vec![QueryLocation {
+            path: main_path,
+            lines: LineRange {
+                start_line: 2,
+                end_line: 2,
+            },
+            in_project: true,
+            preview: String::new(),
+        }],
+        &mut async_cx,
+    )
+    .await;
+    assert!(
+        formatted["locations"][0].get("preview").is_none(),
+        "a preview `ide_query` left empty is not filled in: {formatted}"
+    );
+}
+
+/// 件数・文字数の上限と、行の形。上限を超えたら理由を返して何もしない。
+#[gpui::test]
+async fn the_assist_tools_enforce_their_limits(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let display = install_fake_display(cx);
+    let item = json!({ "path": "main.rs", "startLine": 1, "endLine": 1 });
+    let annotation = json!({ "path": "main.rs", "startLine": 1, "endLine": 1, "markdown": "x" });
+    let step =
+        json!({ "path": "main.rs", "startLine": 1, "endLine": 1, "title": "t", "markdown": "x" });
+    let too_long = "あ".repeat(ide_query::MAX_DISPLAY_MARKDOWN_CHARS + 1);
+
+    for (tool, arguments, reason) in [
+        (
+            "highlightCode",
+            json!({ "items": vec![item.clone(); ide_query::MAX_HIGHLIGHTS + 1] }),
+            "件まで",
+        ),
+        ("highlightCode", json!({ "items": [] }), "空"),
+        (
+            "highlightCode",
+            json!({ "items": [{ "path": "main.rs", "startLine": 1, "endLine": 1, "note": too_long }] }),
+            "文字まで",
+        ),
+        (
+            "highlightCode",
+            json!({ "items": [{ "path": "main.rs", "startLine": 3, "endLine": 2 }] }),
+            "endLine",
+        ),
+        (
+            "highlightCode",
+            json!({ "items": [{ "path": "main.rs", "startLine": 0, "endLine": 2 }] }),
+            "startLine",
+        ),
+        (
+            "annotateCode",
+            json!({ "items": vec![annotation; ide_query::MAX_ANNOTATIONS + 1] }),
+            "件まで",
+        ),
+        (
+            "annotateCode",
+            json!({ "items": [{ "path": "main.rs", "startLine": 1, "endLine": 1, "markdown": too_long }] }),
+            "文字まで",
+        ),
+        (
+            "startCodeTour",
+            json!({ "title": "t", "steps": vec![step; ide_query::MAX_TOUR_STEPS + 1] }),
+            "件まで",
+        ),
+        (
+            "searchSymbols",
+            json!({ "query": "main", "limit": 0 }),
+            "limit",
+        ),
+        (
+            "searchSymbols",
+            json!({ "query": "x".repeat(1001) }),
+            "文字まで",
+        ),
+        ("searchSymbols", json!({ "query": " " }), "空"),
+        ("getHover", json!({ "path": "main.rs", "line": 0 }), "line"),
+        (
+            "getHover",
+            json!({ "path": "main.rs", "line": 1, "column": 0 }),
+            "column",
+        ),
+    ] {
+        let response = call_assist_tool(&fixture, tool, arguments).await;
+        let text = tool_error_text(&response);
+        assert!(text.contains(reason), "{tool}: {text}");
+    }
+    assert!(display.take_calls().is_empty());
+}
+
+/// 読み取り結果は、プロジェクトの中で検査を通るファイルのものだけ中身 (プレビュー・
+/// シグネチャ) を返す。プロジェクトの外 (依存ライブラリのソース)・`private_files`・リンクの先は
+/// パスと行だけ。パスは CLI から見える形。
+#[gpui::test]
+async fn read_results_carry_contents_only_from_checked_project_files(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    add_assist_files(&fixture, cx).await;
+    let (outside_worktree, _) = fixture
+        .project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/outside/secret.rs"), false, cx)
+        })
+        .await
+        .expect("the dependency's file opens as an invisible worktree");
+    cx.run_until_parked();
+    let outside_path = outside_worktree.read_with(cx, |worktree, _| project::ProjectPath {
+        worktree_id: worktree.id(),
+        path: util::rel_path::RelPath::empty_arc(),
+    });
+    let location = |path: project::ProjectPath, in_project: bool, preview: &str| QueryLocation {
+        path,
+        lines: LineRange {
+            start_line: 1,
+            end_line: 1,
+        },
+        in_project,
+        preview: preview.to_string(),
+    };
+    // セッションのルートに入っていない、プロジェクトの別の (見えている) ワークツリー。
+    fixture
+        .fs
+        .insert_tree(
+            path!("/other"),
+            json!({ "visible.rs": "// hunter2
+" }),
+        )
+        .await;
+    fixture
+        .project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/other"), true, cx)
+        })
+        .await
+        .expect("a second visible worktree");
+    cx.run_until_parked();
+    let main_path = project_path(&fixture.project, path!("/test/main.rs"), cx);
+    let env_path = project_path(&fixture.project, path!("/test/.env"), cx);
+    let link_path = project_path(&fixture.project, path!("/test/link.rs"), cx);
+    let other_path = project_path(&fixture.project, path!("/other/visible.rs"), cx);
+    let locations = vec![
+        location(main_path.clone(), true, "fn main() {"),
+        // 言語サーバーはプロジェクトの外と言ったが、中身は出さない。
+        location(
+            outside_path.clone(),
+            false,
+            "const SECRET: &str = \"hunter2\";",
+        ),
+        // プロジェクトの中でも `private_files` とリンクの先は出さない。
+        location(env_path, true, "SECRET=hunter2"),
+        location(link_path, true, "const SECRET: &str = \"hunter2\";"),
+        // セッションのルートの外 (サンドボックスから見えないワークツリー) も出さない。
+        location(other_path, true, "// hunter2"),
+    ];
+
+    let paths = session_paths();
+    let project = fixture.project.clone();
+    let mut async_cx = cx.to_async();
+    let request = tools::SandboxRequest::new(&paths, &project, &mut async_cx).await;
+    let formatted = crate::assist_tools::format_locations_for_test(
+        project.clone(),
+        crate::assist_tools::AssistPaths::Sandbox(request),
+        locations.clone(),
+        &mut async_cx,
+    )
+    .await;
+    assert!(!formatted.to_string().contains("hunter2"), "{formatted}");
+    let results = formatted["locations"]
+        .as_array()
+        .expect("the locations are an array");
+    assert_eq!(results.len(), 5);
+    assert_eq!(results[0]["path"], json!(format!("{CLIENT_ROOT}/main.rs")));
+    assert_eq!(results[0]["preview"], json!("fn main() {"));
+    assert_eq!(results[0]["inProject"], json!(true));
+    for result in &results[1..] {
+        assert_eq!(result["inProject"], json!(false), "{result}");
+        assert!(result.get("preview").is_none(), "{result}");
+        assert_eq!(result["startLine"], json!(1));
+    }
+    assert_eq!(formatted["truncated"], json!(false));
+
+    // シンボルも同じ: シグネチャは検査を通ったファイルのものだけ。
+    let hit = |path: project::ProjectPath, in_project: bool, signature: &str| SymbolHit {
+        name: "main".to_string(),
+        kind: "function".to_string(),
+        container: None,
+        path,
+        lines: LineRange {
+            start_line: 1,
+            end_line: 3,
+        },
+        signature: signature.to_string(),
+        in_project,
+        score: 1.0,
+    };
+    let request = tools::SandboxRequest::new(&paths, &project, &mut async_cx).await;
+    let formatted = crate::assist_tools::format_symbols_for_test(
+        project.clone(),
+        crate::assist_tools::AssistPaths::Sandbox(request),
+        vec![
+            hit(main_path, true, "fn main()"),
+            hit(outside_path, false, "hunter2"),
+        ],
+        &mut async_cx,
+    )
+    .await;
+    assert!(!formatted.to_string().contains("hunter2"), "{formatted}");
+    assert_eq!(formatted["symbols"][0]["signature"], json!("fn main()"));
+    assert_eq!(formatted["symbols"][0]["name"], json!("main"));
+    assert!(formatted["symbols"][1].get("signature").is_none());
+
+    // ホストのクライアントも中身の扱いは同じで、パスはホストの絶対パス。サンドボックスの
+    // セッションのルートは関係なく、プロジェクトの別のワークツリーの中身は出す。
+    let formatted = crate::assist_tools::format_locations_for_test(
+        project,
+        crate::assist_tools::AssistPaths::Host,
+        locations,
+        &mut async_cx,
+    )
+    .await;
+    let results = formatted["locations"]
+        .as_array()
+        .expect("the locations are an array");
+    assert!(
+        !serde_json::to_string(&results[..4])
+            .expect("serializing")
+            .contains("hunter2"),
+        "{formatted}"
+    );
+    assert_eq!(results[0]["path"], json!(path!("/test/main.rs")));
+    assert_eq!(results[4]["preview"], json!("// hunter2"));
+}
+
+/// ADR-F53 と同じく、リモートのプロジェクトではアシストのツールのパスも接続先
+/// (`verify_agent_read`) に確かめさせる。リンクは断り、正規のパスは表示へ渡す。
+#[gpui::test]
+async fn remote_assist_paths_are_checked_on_the_host(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    add_assist_files(&fixture, cx).await;
+    let display = install_fake_display(cx);
+    let source = AssistSource {
+        id: "remote".into(),
+        label: "Claude Code".into(),
+    };
+    let paths = session_paths();
+    let main_path = project_path(&fixture.project, path!("/test/main.rs"), cx);
+
+    for (path, refused) in [
+        (format!("{CLIENT_ROOT}/main.rs"), false),
+        (format!("{CLIENT_ROOT}/link.rs"), true),
+        (format!("{CLIENT_ROOT}/.env"), true),
+        (format!("{CLIENT_OUTSIDE}/secret.rs"), true),
+    ] {
+        let request = remote_request(&paths, &fixture.project, cx).await;
+        let project = fixture.project.clone();
+        let mut async_cx = cx.to_async();
+        let result = crate::assist_tools::run_assist_tool_with(
+            "highlightCode",
+            json!({ "items": [{ "path": path, "startLine": 1, "endLine": 1 }] }),
+            project,
+            crate::assist_tools::AssistPaths::Sandbox(request),
+            &source,
+            &mut async_cx,
+        )
+        .await;
+        assert_eq!(result.is_err(), refused, "{path}: {result:?}");
+    }
+    assert_eq!(
+        display.take_calls(),
+        vec![DisplayCall::Highlights(
+            source,
+            vec![CodeHighlight {
+                path: main_path,
+                lines: LineRange {
+                    start_line: 1,
+                    end_line: 1
+                },
+                note: None,
+            }]
+        )]
+    );
+}
+
+fn client_id_of(url: &str) -> Option<String> {
+    url.split_once("client=")
+        .map(|(_, client)| client.to_string())
+}
+
+/// ホストのサーバーは `enabled` でなくても、アシストのクライアントが居るあいだだけ動く。
+/// IDE の口 (WebSocket・`/mcp`・ロックファイル) は閉じたままで、クライアントを落とすと
+/// 描いたものを消してサーバーも止まる。
+#[gpui::test]
+async fn a_host_assist_client_runs_the_server_without_opening_the_ide_endpoint(
+    cx: &mut TestAppContext,
+) {
+    let lock_directory = tempfile::tempdir().expect("a temporary lock directory");
+    let fixture = start_sandbox_fixture(cx).await;
+    cx.update(|cx| crate::set_lock_directory(lock_directory.path().to_path_buf(), cx));
+    let display = install_fake_display(cx);
+    let server = cx
+        .update(|cx| crate::server_for_project(&fixture.project, cx))
+        .expect("the workspace has a server");
+    assert!(server.read_with(cx, |server, _| server.running.is_none()));
+
+    let client = cx
+        .update(|cx| crate::host_assist_client(&fixture.project, "Claude Code", cx))
+        .expect("a client registers");
+    cx.run_until_parked();
+    let (endpoint, agent_endpoint, source) = cx.update(|cx| {
+        (
+            client.assist_endpoint(cx).expect("the assist endpoint"),
+            client.agent_endpoint(cx).expect("the agent's endpoint"),
+            client.source(cx).expect("the client's source"),
+        )
+    });
+    assert!(
+        endpoint.url.contains("/mcp/zed?client="),
+        "{}",
+        endpoint.url
+    );
+    assert_eq!(
+        agent_endpoint, endpoint,
+        "without `enabled` an agent gets the assist tools alone"
+    );
+    assert_eq!(source.label.as_ref(), "Claude Code");
+    server.read_with(cx, |server, _| {
+        assert!(server.running.is_some(), "the server runs for the client");
+        assert_eq!(server.port(), None, "the IDE endpoint stays closed");
+        assert_eq!(server.lock_file_path(), None);
+    });
+    assert!(lock_files(lock_directory.path()).is_empty());
+    assert!(
+        cx.update(|cx| crate::terminal_environment(&fixture.project, cx))
+            .is_empty(),
+        "terminals are not pointed at an IDE endpoint that is closed"
+    );
+
+    let client_id = client_id_of(&endpoint.url);
+    let route = |endpoint, kind| transport::Route {
+        kind,
+        endpoint,
+        client: client_id.clone(),
+    };
+    let gate = server.read_with(cx, |server, _| server.connection_gate());
+    assert!(
+        gate.admit(&route(
+            transport::Endpoint::Ide,
+            transport::ConnectionKind::WebSocket
+        ))
+        .is_err(),
+        "a CLI cannot open the IDE endpoint without `enabled`"
+    );
+    assert!(
+        gate.admit(&route(
+            transport::Endpoint::Assist,
+            transport::ConnectionKind::Http
+        ))
+        .is_ok()
+    );
+    let scope = server
+        .read_with(cx, |server, cx| {
+            server.connection_scope(
+                &route(transport::Endpoint::Assist, transport::ConnectionKind::Http),
+                cx,
+            )
+        })
+        .expect("the assist endpoint is open");
+    assert_eq!(scope.assist.as_ref(), Some(&source));
+    assert_eq!(
+        tool_names(&json!({ "result": tools::list_tools_result(&scope) })),
+        sorted(&crate::ASSIST_TOOL_NAMES)
+    );
+
+    // `enabled` を入れると IDE の口が開く。HTTP の `/mcp` には全ツールとアシストのツール、
+    // CLI の WebSocket にはこれまでどおり全ツールだけ。
+    cx.update(|cx| {
+        settings::SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.ide_server.get_or_insert_default().enabled = Some(true);
+            });
+        });
+    });
+    cx.run_until_parked();
+    let (http_scope, websocket_scope) = server.read_with(cx, |server, cx| {
+        (
+            server.connection_scope(
+                &route(transport::Endpoint::Ide, transport::ConnectionKind::Http),
+                cx,
+            ),
+            server.connection_scope(
+                &route(
+                    transport::Endpoint::Ide,
+                    transport::ConnectionKind::WebSocket,
+                ),
+                cx,
+            ),
+        )
+    });
+    let full = tools::tools().len();
+    let http_scope = http_scope.expect("the IDE endpoint is open");
+    assert_eq!(http_scope.assist.as_ref(), Some(&source));
+    assert_eq!(
+        tool_names(&json!({ "result": tools::list_tools_result(&http_scope) })).len(),
+        full + crate::ASSIST_TOOL_NAMES.len()
+    );
+    assert_eq!(
+        tool_names(&json!({ "result": tools::list_tools_result(&websocket_scope.expect("open")) }))
+            .len(),
+        full
+    );
+    assert!(server.read_with(cx, |server, _| server.port()).is_some());
+    assert!(
+        cx.update(|cx| client.agent_endpoint(cx))
+            .is_some_and(|endpoint| endpoint.url.contains("/mcp?client=")),
+        "with `enabled` an agent gets the whole set"
+    );
+    assert_eq!(lock_files(lock_directory.path()).len(), 1);
+
+    // `enabled` を切っても、クライアントが居れば同じポートとトークンで待ち受け続ける。
+    cx.update(|cx| {
+        settings::SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.ide_server.get_or_insert_default().enabled = Some(false);
+            });
+        });
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        cx.update(|cx| client.assist_endpoint(cx)),
+        Some(endpoint),
+        "the port and token a running CLI holds stay valid"
+    );
+    assert!(lock_files(lock_directory.path()).is_empty());
+
+    drop(client);
+    cx.run_until_parked();
+    cx.update(|_| {});
+    cx.run_until_parked();
+    assert!(
+        display.take_calls().contains(&DisplayCall::Clear(source)),
+        "dropping the client clears what it drew"
+    );
+    assert!(
+        server.read_with(cx, |server, _| server.running.is_none()),
+        "nothing needs the server any more"
+    );
+}
+
+/// エージェントパネルの CLI のタブへの選択範囲: そのタブのセッションに CLI が繋がっていれば
+/// `at_mentioned` で送り、繋がっていなければ CLI から見えるパスを返す (`@path#L` を貼る)。
+/// ワークツリーの外のファイルは CLI から見えないので、送りも貼りもしない。
+#[gpui::test]
+async fn a_selection_goes_to_the_cli_of_its_own_tab(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let (connections, incoming_connections) = unbounded::<MemoryStream>();
+    let (session, info) = cx.update(|cx| {
+        crate::start_sandbox_session_for_tab(
+            fixture.workspace.downgrade(),
+            incoming_connections,
+            sandbox_mapper(),
+            vec![PathBuf::from(path!("/test"))],
+            "claude-tab".to_string(),
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    let tab = SandboxFixture {
+        fs: fixture.fs.clone(),
+        project: fixture.project.clone(),
+        window: fixture.window,
+        workspace: fixture.workspace.clone(),
+        connections,
+        session: Some(session),
+        auth_token: info.auth_token,
+    };
+    let main = Path::new(path!("/test/main.rs"));
+    let mention = |tab_key: Option<&str>, path: &Path, cx: &mut TestAppContext| {
+        let project = fixture.project.clone();
+        cx.update(|cx| crate::mention_selection_in_cli(tab_key, &project, path, 0, 2, cx))
+    };
+
+    assert_eq!(
+        mention(Some("claude-tab"), main, cx),
+        crate::CliMention::Paste {
+            cli_path: Some(format!("{CLIENT_ROOT}/main.rs"))
+        },
+        "not connected: the CLI's own path, to paste"
+    );
+    assert_eq!(
+        mention(
+            Some("claude-tab"),
+            Path::new(path!("/outside/secret.rs")),
+            cx
+        ),
+        crate::CliMention::Unreachable
+    );
+    assert_eq!(
+        mention(None, main, cx),
+        crate::CliMention::Paste { cli_path: None },
+        "a tab outside the sandbox, with no host server running"
+    );
+
+    let mut client = connect(&tab, cx).await;
+    assert_eq!(
+        mention(Some("claude-tab"), main, cx),
+        crate::CliMention::Sent
+    );
+    let notification = client.notification("at_mentioned", |_| true).await;
+    assert_eq!(
+        notification["params"],
+        json!({ "filePath": format!("{CLIENT_ROOT}/main.rs"), "lineStart": 0, "lineEnd": 2 })
+    );
+    // 別のタブ (キー違い) の選択は、このセッションの CLI には送らない。
+    assert_eq!(
+        mention(Some("claude-other"), main, cx),
+        crate::CliMention::Paste { cli_path: None }
+    );
+}
+
+/// ADR-F56: `private_files` (`.env` など) は、サンドボックスの CLI には選択範囲も診断も見せない。
+#[gpui::test]
+async fn private_files_stay_out_of_the_sandboxed_cli(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    add_assist_files(&fixture, cx).await;
+    let mut client = connect(&fixture, cx).await;
+
+    open_path(&fixture, path!("/test/.env"), cx).await;
+    let notification = client
+        .notification("selection_changed", |params| params["filePath"].is_null())
+        .await;
+    assert_eq!(notification["params"]["text"], json!(""));
+
+    set_diagnostic(&fixture.project, path!("/test/.env"), "hunter2 leaked", cx);
+    set_diagnostic(
+        &fixture.project,
+        path!("/test/main.rs"),
+        "unknown macro",
+        cx,
+    );
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    cx.run_until_parked();
+    let response = client.call_tool("getDiagnostics", json!({})).await;
+    assert!(!response.to_string().contains("hunter2"), "{response}");
+    assert!(response.to_string().contains("unknown macro"), "{response}");
+}
+
+/// query 担当の前提 (4): リモートのワークツリーの項目は proto の変換で `is_private` が常に false
+/// なので、`private_files` の判定は項目の旗ではなく設定のパターンでも行う。
+#[gpui::test]
+async fn private_files_are_judged_by_the_settings_not_only_the_entry(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    add_assist_files(&fixture, cx).await;
+    let env_path = project_path(&fixture.project, path!("/test/.env"), cx);
+    let main_path = project_path(&fixture.project, path!("/test/main.rs"), cx);
+    cx.update(|cx| {
+        assert!(
+            tools::is_private_file(&env_path, None, cx),
+            "without the entry's flag, the pattern still matches"
+        );
+        assert!(!tools::is_private_file(&main_path, None, cx));
+    });
+}
+
+/// 表示の枠の見出し (`AssistSource.label`) は Zed が決めた名前だけ。MCP の `clientInfo.name`
+/// やツールの引数で「Zed」を名乗っても見出しには出ず、登録の無い `client=` は固定の
+/// 「外部エージェント」になる。
+#[gpui::test]
+async fn the_frame_label_is_never_what_the_client_claims(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let display = install_fake_display(cx);
+    let response = post_mcp_to(
+        &fixture,
+        &fixture.auth_token,
+        transport::ASSIST_MCP_PATH,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": { "name": "Zed", "version": "1.0.0" }
+            }
+        }),
+    )
+    .await;
+    assert!(response.starts_with("HTTP/1.1 200 OK"), "{response:?}");
+    let response = call_assist_tool(
+        &fixture,
+        "highlightCode",
+        json!({
+            "label": "Zed",
+            "source": { "id": "x", "label": "Zed" },
+            "items": [{ "path": "main.rs", "startLine": 1, "endLine": 1 }]
+        }),
+    )
+    .await;
+    assert_eq!(response["result"]["isError"], json!(false), "{response}");
+    let calls = display.take_calls();
+    let [DisplayCall::Highlights(source, _)] = calls.as_slice() else {
+        panic!("one highlight call: {calls:?}");
+    };
+    assert_eq!(source.label.as_ref(), "Claude Code");
+
+    let server = cx
+        .update(|cx| crate::server_for_project(&fixture.project, cx))
+        .expect("the workspace has a server");
+    let _client = cx
+        .update(|cx| crate::host_assist_client(&fixture.project, "Claude Code", cx))
+        .expect("a client registers");
+    cx.run_until_parked();
+    for forged in [
+        Some("Zed".to_string()),
+        Some("not-registered".to_string()),
+        None,
+    ] {
+        let scope = server.read_with(cx, |server, cx| {
+            server.connection_scope(
+                &transport::Route {
+                    kind: transport::ConnectionKind::Http,
+                    endpoint: transport::Endpoint::Assist,
+                    client: forged.clone(),
+                },
+                cx,
+            )
+        });
+        let label = scope
+            .expect("the assist endpoint is open")
+            .assist
+            .expect("with the assist tools")
+            .label;
+        assert_eq!(label.as_ref(), "外部エージェント", "{forged:?}");
     }
 }

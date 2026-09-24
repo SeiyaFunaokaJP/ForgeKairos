@@ -70,6 +70,12 @@ If you are unsure how to fulfill the user's request, gather more information wit
 - As you learn about the structure of the project, scope searches to targeted subtrees instead of repeatedly searching the whole repository.
 - If the user specifies a partial file path and you do not know the full path, use `find_path` rather than `grep` before reading or editing the file.
 {{/if}}
+{{#if (contains available_tools 'search_symbols') }}
+- To find where a function, type or other symbol is declared, `search_symbols` is usually more direct than `grep`: it matches the words inside names, so "user token" finds `validate_user_token`.
+{{/if}}
+{{#if (contains available_tools 'code_tour') }}
+- You run inside the Zed editor the user is looking at. When pointing at specific code would help them follow you, show it there: `highlight_code` for a few places, `annotate_code` for explanations attached to code, `code_tour` for an explanation that moves across several places.
+{{/if}}
 
 ## Making Code Changes
 

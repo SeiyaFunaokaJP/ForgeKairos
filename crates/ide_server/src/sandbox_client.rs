@@ -19,6 +19,9 @@
 //!
 //! 外部の ACP エージェント (Claude Code CLI 以外) 用には、同じ口を `getDiagnostics` だけに
 //! 絞った**制限セッション**を出す ([`start_restricted_sandbox_session`]、ADR-F49 決定 24)。
+//!
+//! どちらのセッションも、同じトークン・同じ転送の `POST /mcp/zed` でアシストのツールを出す
+//! (ADR-F56)。同時接続はセッションの IDE の口の枠とは別に数える。
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -29,20 +32,27 @@ use editor::{Editor, EditorEvent};
 use futures::stream::FuturesUnordered;
 use futures::{AsyncRead, AsyncWrite, Stream, StreamExt as _};
 use gpui::{
-    App, AppContext as _, AsyncApp, BorrowAppContext as _, Context, Entity, EntityId, Subscription,
-    Task, WeakEntity,
+    App, AppContext as _, AsyncApp, BorrowAppContext as _, Context, Entity, EntityId, SharedString,
+    Subscription, Task, WeakEntity,
 };
-use project::File as WorktreeFile;
+use ide_query::AssistSource;
+use project::{File as WorktreeFile, Project, ProjectPath};
 use serde_json::Value;
+use settings::Settings as _;
 use smol::lock::Semaphore;
 use workspace::Workspace;
 
 use util::path_mapping::{self, PathMapper, SandboxPaths};
 
+use crate::assist_tools::{
+    ASSIST_MESSAGE_LIMITS, ASSIST_UNAVAILABLE_MESSAGE, MAX_ASSIST_CONNECTIONS,
+};
 use crate::protocol::LockFileContents;
-use crate::tools::{self, OpenDiffs, SelectionSnapshot, ToolHost, ToolScope};
-use crate::transport::{MessageLimits, Outbox};
-use crate::{IDE_NAME, IdeServerRegistry, OpenTransport};
+use crate::tools::{self, ConnectionScope, OpenDiffs, SelectionSnapshot, ToolHost, ToolScope};
+use crate::transport::{Endpoint, MessageLimits, Outbox, Route};
+use crate::{
+    ConnectionGate, EndpointGate, IDE_NAME, IdeServerRegistry, IdeServerSettings, OpenTransport,
+};
 
 /// サンドボックスのロックファイルに書く pid。理由は [`sandbox_lock_file_contents`]。
 const SANDBOX_LOCK_PID: u32 = 0;
@@ -100,10 +110,85 @@ pub struct SandboxSessionInfo {
 }
 
 /// 落とすとセッションが終わる。転送されてきた接続も、処理中の要求も閉じ、このセッションが
-/// 開いた差分タブを畳む。
+/// 開いた差分タブを畳み、描いたハイライト・注釈・ツアーを消す。
 #[must_use = "dropping the handle ends the sandbox IDE session"]
 pub struct SandboxIdeSessionHandle {
+    session: WeakEntity<SandboxIdeSession>,
     _task: Task<()>,
+}
+
+impl SandboxIdeSessionHandle {
+    /// ADR-F56: アシストのツールの表示の枠に出す名前 (ACP のエージェント名など)。
+    pub fn set_assist_label(&self, label: impl Into<SharedString>, cx: &mut App) {
+        let label = label.into();
+        self.session
+            .update(cx, |session, _| session.assist_label = label)
+            .ok();
+    }
+}
+
+/// CLI のタブの Claude Code に、選択範囲をどう渡すか (ADR-F56)。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CliMention {
+    /// IDE の口 (`at_mentioned`) で届けた。タブには何も貼らない。
+    Sent,
+    /// IDE に繋がっていないので、`@<path>#L<行>` をタブに貼る。`path` は CLI から見えるパス。
+    /// `None` なら呼び出し側がホストのパスで組み立てる (サンドボックスの外の CLI)。
+    Paste { cli_path: Option<String> },
+    /// CLI から見えないファイル (サンドボックスのワークツリーの外)。貼りも送りもしない。
+    Unreachable,
+}
+
+/// ADR-F56: `AddSelectionToThread` をエージェントパネルの CLI のタブに向けたとき。
+///
+/// `tab_key` はそのタブのサンドボックスのセッション ([`start_sandbox_session_for_tab`] の
+/// キー)。セッションに CLI が繋がっていれば `at_mentioned` で送り、繋がっていなければ CLI から
+/// 見えるパスを返す。サンドボックスの外のタブ (`tab_key` が `None`) は、ホストのサーバーに
+/// 繋がっている CLI に送る。行は 0 始まり (`at_mentioned` の形)。
+pub fn mention_selection_in_cli(
+    tab_key: Option<&str>,
+    project: &Entity<Project>,
+    host_path: &Path,
+    start_line: u32,
+    end_line: u32,
+    cx: &mut App,
+) -> CliMention {
+    let session = tab_key.and_then(|tab_key| session_for_tab(tab_key, cx));
+    if let Some(session) = session {
+        let sent = session.update(cx, |session, cx| {
+            session.send_at_mention(host_path, start_line, end_line, cx)
+        });
+        if sent {
+            return CliMention::Sent;
+        }
+        return match session.read(cx).paths.to_client(host_path) {
+            Some(cli_path) => CliMention::Paste {
+                cli_path: Some(cli_path),
+            },
+            None => CliMention::Unreachable,
+        };
+    }
+    // サンドボックスのタブでも、IDE の中継が上がらなかった (SSH) セッションには IDE の
+    // セッションが無い。接続先のパスはプロジェクトのパスそのものなので、そのまま貼れる。
+    if tab_key.is_none()
+        && let Some(server) = crate::server_for_project(project, cx)
+    {
+        let sent = server.update(cx, |server, cx| {
+            server.send_at_mention(host_path, start_line, end_line, cx)
+        });
+        if sent {
+            return CliMention::Sent;
+        }
+    }
+    CliMention::Paste { cli_path: None }
+}
+
+fn session_for_tab(tab_key: &str, cx: &App) -> Option<Entity<SandboxIdeSession>> {
+    cx.try_global::<IdeServerRegistry>()?
+        .sandbox_sessions
+        .iter()
+        .filter_map(WeakEntity::upgrade)
+        .find(|session| session.read(cx).tab_key.as_deref() == Some(tab_key))
 }
 
 /// サンドボックスのセッションが誰のためのものか。
@@ -126,10 +211,27 @@ impl SessionKind {
         }
     }
 
+    /// IDE の口 (CLI の WebSocket・制限セッションの `/mcp`) で同時に開いておけるトランスポート。
     fn max_connections(self) -> usize {
         match self {
             SessionKind::ClaudeCodeCli => MAX_CONNECTIONS,
             SessionKind::Restricted => MAX_RESTRICTED_CONNECTIONS,
+        }
+    }
+
+    /// 要求の頭を読む前に受けておけるトランスポートの総数。どの口に来たかは頭を読むまで
+    /// 分からないので、ここでは両方の口の枠の合計で抑え、口ごとの枠は頭を読んでから数える
+    /// (ADR-F56)。
+    fn max_transports(self) -> usize {
+        self.max_connections() + MAX_ASSIST_CONNECTIONS
+    }
+
+    /// アシストのツールの表示の枠に出す名前の既定。制限セッションは、呼び出し側が
+    /// [`SandboxIdeSessionHandle::set_assist_label`] でエージェント名にする。
+    fn default_assist_label(self) -> &'static str {
+        match self {
+            SessionKind::ClaudeCodeCli => "Claude Code",
+            SessionKind::Restricted => "エージェント",
         }
     }
 
@@ -175,6 +277,32 @@ where
         connections,
         Arc::new(SandboxPaths::new(mapper, worktree_roots)),
         SessionKind::ClaudeCodeCli,
+        None,
+        cx,
+    )
+}
+
+/// [`start_sandbox_session`] に、セッションの CLI が走るタブのキーを添えたもの (ADR-F56)。
+/// エージェントパネルの `AddSelectionToThread` は、このキーでタブからセッションを引き、選択範囲を
+/// そのタブの CLI だけに送る ([`mention_selection_in_cli`])。
+pub fn start_sandbox_session_for_tab<S, C>(
+    workspace: WeakEntity<Workspace>,
+    connections: C,
+    mapper: Arc<dyn PathMapper>,
+    worktree_roots: Vec<PathBuf>,
+    tab_key: String,
+    cx: &mut App,
+) -> (SandboxIdeSessionHandle, SandboxSessionInfo)
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    C: Stream<Item = S> + Send + Unpin + 'static,
+{
+    start_session(
+        workspace,
+        connections,
+        Arc::new(SandboxPaths::new(mapper, worktree_roots)),
+        SessionKind::ClaudeCodeCli,
+        Some(tab_key),
         cx,
     )
 }
@@ -203,7 +331,14 @@ where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     C: Stream<Item = S> + Send + Unpin + 'static,
 {
-    start_session(workspace, connections, paths, SessionKind::Restricted, cx)
+    start_session(
+        workspace,
+        connections,
+        paths,
+        SessionKind::Restricted,
+        None,
+        cx,
+    )
 }
 
 fn start_session<S, C>(
@@ -211,6 +346,7 @@ fn start_session<S, C>(
     connections: C,
     paths: Arc<SandboxPaths>,
     kind: SessionKind,
+    tab_key: Option<String>,
     cx: &mut App,
 ) -> (SandboxIdeSessionHandle, SandboxSessionInfo)
 where
@@ -218,7 +354,8 @@ where
     C: Stream<Item = S> + Send + Unpin + 'static,
 {
     let auth_token: Arc<str> = uuid::Uuid::new_v4().to_string().into();
-    let session = cx.new(|cx| SandboxIdeSession::new(paths, kind, cx));
+    let session = cx.new(|cx| SandboxIdeSession::new(paths, kind, tab_key, cx));
+    let weak_session = session.downgrade();
     // レジストリに載せるのはユーザーに見せるためなので、制限セッションは載せない。
     if kind.is_visible_to_the_user() && cx.has_global::<IdeServerRegistry>() {
         let weak_session = session.downgrade();
@@ -237,14 +374,17 @@ where
                 workspace,
                 connections,
                 auth_token,
-                kind.max_connections(),
+                kind.max_transports(),
                 cx,
             )
             .await
         }
     });
     (
-        SandboxIdeSessionHandle { _task: task },
+        SandboxIdeSessionHandle {
+            session: weak_session,
+            _task: task,
+        },
         SandboxSessionInfo {
             auth_token: auth_token.to_string(),
         },
@@ -339,10 +479,24 @@ pub struct SandboxIdeSession {
     last_selection: Option<Value>,
     selection_subscription: Option<Subscription>,
     workspace_subscription: Option<Subscription>,
+    /// 結び付いたプロジェクト。表示を消すのに使う (ワークスペースは解放の途中で読めないことがある)。
+    project: Option<WeakEntity<Project>>,
+    /// ADR-F56: このセッションの CLI が走るタブ ([`start_sandbox_session_for_tab`])。
+    tab_key: Option<String>,
+    /// ADR-F56: アシストのツールの表示の枠に出す名前。
+    assist_label: SharedString,
+    /// 口ごとに開いているトランスポート (IDE の口とアシストの口で別の枠)。
+    ide_transports: Arc<AtomicUsize>,
+    assist_transports: Arc<AtomicUsize>,
 }
 
 impl SandboxIdeSession {
-    fn new(paths: Arc<SandboxPaths>, kind: SessionKind, cx: &mut Context<Self>) -> Self {
+    fn new(
+        paths: Arc<SandboxPaths>,
+        kind: SessionKind,
+        tab_key: Option<String>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         // ハンドルを落とされたときは `run_session` の後始末が走らないので、ここで畳む。
         cx.on_release(|this, cx| this.shut_down(cx)).detach();
         Self {
@@ -357,6 +511,19 @@ impl SandboxIdeSession {
             last_selection: None,
             selection_subscription: None,
             workspace_subscription: None,
+            project: None,
+            tab_key,
+            assist_label: kind.default_assist_label().into(),
+            ide_transports: Arc::new(AtomicUsize::new(0)),
+            assist_transports: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// ADR-F56: このセッションのエージェントが描く表示の出どころ。セッションが終わると消す。
+    fn assist_source(&self) -> AssistSource {
+        AssistSource {
+            id: format!("zed-ide-session-{}", self.entity_id.as_u64()).into(),
+            label: self.assist_label.clone(),
         }
     }
 
@@ -407,6 +574,7 @@ impl SandboxIdeSession {
         );
 
         self.project_id = Some(project.entity_id());
+        self.project = Some(project.downgrade());
         self.workspace = Some(workspace.downgrade());
         // 制限セッションは通知を送らないので、アクティブなエディターも追わない
         // (ADR-F49 決定 24)。
@@ -430,7 +598,8 @@ impl SandboxIdeSession {
         Ok(())
     }
 
-    /// セッションの終わり: 差分タブを畳み、接続中の表示を戻す。何度呼んでもよい。
+    /// セッションの終わり: 差分タブを畳み、このセッションが描いたハイライト・注釈・ツアーを
+    /// 消し、接続中の表示を戻す。何度呼んでもよい。
     fn shut_down(&mut self, cx: &mut App) {
         self.connections.clear();
         self.selection_subscription = None;
@@ -438,7 +607,21 @@ impl SandboxIdeSession {
         for diff in self.open_diffs.take_all() {
             diff.update(cx, |diff, cx| diff.dismiss(cx));
         }
+        self.clear_assist_display(cx);
         self.publish_connection_state(cx);
+    }
+
+    fn clear_assist_display(&self, cx: &mut App) {
+        let Some(display) = ide_query::code_display(cx) else {
+            return;
+        };
+        let Some(project) = self.project.as_ref().and_then(WeakEntity::upgrade) else {
+            return;
+        };
+        let source = self.assist_source();
+        // セッションはワークスペースの更新の中で落とされうる (ウィンドウを閉じたとき)。
+        // 表示の側はエディターとワークスペースを更新するので、今の更新の外で消す。
+        cx.defer(move |cx| display.clear(&project, &source, cx));
     }
 
     fn publish_connection_state(&self, cx: &mut App) {
@@ -519,6 +702,14 @@ impl SandboxIdeSession {
         if !worktree_is_a_root || entry.is_external {
             return None;
         }
+        // ADR-F56: `private_files` (`.env` など) の選択は、パスも本文も CLI に見せない。
+        let project_path = ProjectPath {
+            worktree_id: worktree.id(),
+            path: file.path.clone(),
+        };
+        if tools::is_private_file(&project_path, Some(entry), cx) {
+            return None;
+        }
         self.paths.to_client(&worktree.absolutize(&file.path))
     }
 
@@ -596,6 +787,36 @@ impl ToolHost for SandboxIdeSession {
     fn max_open_diffs(&self) -> Option<usize> {
         Some(MAX_OPEN_DIFFS)
     }
+
+    /// ADR-F56: IDE の口とアシストの口で、同時接続の枠を別に持つ。アシストの口の枠
+    /// ([`MAX_ASSIST_CONNECTIONS`]) は CLI の 4 本とも制限セッションの 16 本とも別。
+    fn connection_gate(&self) -> ConnectionGate {
+        ConnectionGate {
+            ide: EndpointGate {
+                quota: Some((self.ide_transports.clone(), self.kind.max_connections())),
+                ..EndpointGate::unlimited(self.kind.message_limits())
+            },
+            assist: EndpointGate {
+                quota: Some((self.assist_transports.clone(), MAX_ASSIST_CONNECTIONS)),
+                ..EndpointGate::unlimited(ASSIST_MESSAGE_LIMITS)
+            },
+        }
+    }
+
+    /// ADR-F56: `/mcp/zed` にはアシストのツールを、セッションと同じパスの規則で出す。
+    /// 設定 `ide_server.assist_tools` が切れていれば、要求をその理由で断る。
+    fn connection_scope(&self, route: &Route, cx: &App) -> Result<ConnectionScope, String> {
+        match route.endpoint {
+            Endpoint::Ide => Ok(ConnectionScope::without_assist(self.tool_scope())),
+            Endpoint::Assist if IdeServerSettings::get_global(cx).assist_tools => {
+                Ok(ConnectionScope {
+                    tools: ToolScope::Assist(Some(self.paths.clone())),
+                    assist: Some(self.assist_source()),
+                })
+            }
+            Endpoint::Assist => Err(ASSIST_UNAVAILABLE_MESSAGE.to_string()),
+        }
+    }
 }
 
 /// このワークスペースに結び付いたサンドボックスのセッション。
@@ -618,6 +839,22 @@ pub(crate) fn sessions_for_workspace(
                 .is_some_and(|workspace| workspace.entity_id() == workspace_id)
         })
         .collect()
+}
+
+/// このプロジェクトのサンドボックスのセッションのうち、CLI が WebSocket で繋がっているものの数。
+pub(crate) fn connected_session_count(project_id: EntityId, cx: &App) -> usize {
+    let Some(registry) = cx.try_global::<IdeServerRegistry>() else {
+        return 0;
+    };
+    registry
+        .sandbox_sessions
+        .iter()
+        .filter_map(WeakEntity::upgrade)
+        .filter(|session| {
+            let session = session.read(cx);
+            session.project_id == Some(project_id) && !session.connections.is_empty()
+        })
+        .count()
 }
 
 /// このプロジェクトのサンドボックスのセッションに、WebSocket で繋がっている CLI があるか。

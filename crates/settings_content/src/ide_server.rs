@@ -14,4 +14,12 @@ pub struct IdeServerSettingsContent {
     ///
     /// Default: false
     pub enabled: Option<bool>,
+    /// Whether to give agents Zed's IDE tools (the `zed` MCP server: highlights,
+    /// annotations, code tours, hover, definitions, references and symbol
+    /// search), in the Claude Code CLI tabs and in external agents' sessions
+    /// alike. Independent of `enabled`: the server starts for them on demand
+    /// and writes no lock file unless `enabled` is on.
+    ///
+    /// Default: true
+    pub assist_tools: Option<bool>,
 }

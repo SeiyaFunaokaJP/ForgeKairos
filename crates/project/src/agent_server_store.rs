@@ -233,6 +233,12 @@ static EXTENSION_TO_REGISTRY_IDS: LazyLock<HashMap<&'static str, &'static str>> 
         ])
     });
 
+/// The id an agent written down under `id` in `agent_servers` is started by:
+/// its registry id when `id` is the old extension one.
+pub(crate) fn registry_id_for(id: &str) -> &str {
+    EXTENSION_TO_REGISTRY_IDS.get(id).copied().unwrap_or(id)
+}
+
 impl AgentServerStore {
     pub fn migrate_agent_server_from_extensions(
         &mut self,
@@ -261,6 +267,7 @@ impl AgentServerStore {
                     default_config_options: HashMap::default(),
                     favorite_config_option_values: HashMap::default(),
                     allow_subscription_sign_in: None,
+                    run_outside_sandbox: None,
                 }),
             );
         });
@@ -693,16 +700,6 @@ impl AgentServerStore {
         envelope: TypedEnvelope<proto::GetAgentServerCommand>,
         mut cx: AsyncApp,
     ) -> Result<proto::AgentServerCommand> {
-        // ADR-F49 MEDIUM-5: the agent's policy comes from its id and where it
-        // came from, on the host it runs on as on the client.
-        let profile = this.read_with(&cx, |this, _| {
-            SandboxedAgentProfile::for_agent(
-                &envelope.payload.name,
-                this.external_agents
-                    .get(&*envelope.payload.name)
-                    .is_some_and(|entry| entry.source == ExternalAgentSource::Registry),
-            )
-        });
         let command = this
             .update(&mut cx, |this, cx| {
                 let AgentServerStoreState::Local {
@@ -793,27 +790,7 @@ impl AgentServerStore {
         // different machine. Injected after the agent's own settings have had
         // their say, the same ordering as the local path, so a proxy spelled
         // out in `agent_servers.<name>.env` still wins.
-        let mut env = command.env.unwrap_or_default();
-        if http_client::child_process_proxy().is_some() {
-            http_client::apply_child_process_proxy_env(&mut env);
-        }
-        // ADR-F55: the agent runs on this host, so the folder that keeps this
-        // route out of the account's own `~/.claude` is this host's — the
-        // client cannot name it, since a path of the client's names nothing
-        // here. Only the start outside the sandbox uses it; the sandbox's own
-        // per-project folder, which the CLI session shares, is laid over the
-        // agent's environment when it is placed, below.
-        if let Some(config_dir) = point_the_acp_claude_at_the_forks_folder(&profile, &mut env) {
-            let fs = this.read_with(&cx, |this, _| match &this.state {
-                AgentServerStoreState::Local { fs, .. } => Some(fs.clone()),
-                AgentServerStoreState::Remote { .. } | AgentServerStoreState::Collab => None,
-            });
-            if let Some(fs) = fs {
-                // Not fatal: the agent still starts, and its own message says
-                // what it could not write.
-                fs.create_dir(&config_dir).await.log_err();
-            }
-        }
+        let env = host_route_environment(command.env);
 
         let (sandbox, sandbox_error) = match command.sandbox {
             Some(sandbox) if !envelope.payload.project_roots.is_empty() => {
@@ -1042,34 +1019,29 @@ fn agent_environment(
     env
 }
 
-/// ADR-F53, revised by ADR-F55: points the ACP Claude agent at the fork's own
-/// configuration folder **on the machine that starts it**, so that the
-/// account's `~/.claude` — the official CLI's credentials, global hooks, MCP
-/// servers and history — is neither read nor written by an agent this IDE
-/// starts. The agent signs itself in there instead. (In the sandbox the
-/// folder *is* the CLI session's, so one sign-in covers both; this is only the
-/// route that has no sandbox.) Answers with the folder where it named one, so
-/// that the caller can create it.
+/// The environment of an agent this host is asked to describe, as it runs
+/// outside its sandbox: what the agent's settings and distribution resolved,
+/// plus this host's egress proxy.
 ///
-/// The agent's own settings are already in `env` when this is reached and are
-/// left as they are, as they are on the client's own machine: a folder the
-/// user spelled out is their own word. The sandbox does not come through here
-/// — there the profile's per-project folder is laid over the agent's
-/// environment last, and nothing can name another.
-fn point_the_acp_claude_at_the_forks_folder(
-    profile: &SandboxedAgentProfile,
-    env: &mut HashMap<String, String>,
-) -> Option<PathBuf> {
-    const CONFIG_DIR_VARIABLE: &str = "CLAUDE_CONFIG_DIR";
-    if *profile != SandboxedAgentProfile::Claude || env.contains_key(CONFIG_DIR_VARIABLE) {
-        return None;
+/// ADR-F14: this only runs in `remote_server`, and the agent it describes is
+/// spawned on this host, so the proxy to point it at is this host's — the one
+/// `AcpConnection::stdio` deliberately withholds from a remote agent because a
+/// loopback port there means a different machine. Injected after the agent's
+/// own settings have had their say, the same ordering as the local path, so a
+/// proxy spelled out in `agent_servers.<name>.env` still wins.
+///
+/// No configuration folder is named here (8c, the rest of ADR-F55): outside
+/// the sandbox the agent can read the account's `~/.claude` anyway, so a
+/// folder of the fork's would guard nothing and only make the user sign in
+/// twice. A `CLAUDE_CONFIG_DIR` the user spelled out in the agent's settings is
+/// already in `command_env` and stays. The sandbox's own per-project folder is
+/// laid over this when the sandbox is placed.
+fn host_route_environment(command_env: Option<HashMap<String, String>>) -> HashMap<String, String> {
+    let mut env = command_env.unwrap_or_default();
+    if http_client::child_process_proxy().is_some() {
+        http_client::apply_child_process_proxy_env(&mut env);
     }
-    let config_dir = crate::agent_sandbox::claude_acp_host_config_dir();
-    env.insert(
-        CONFIG_DIR_VARIABLE.to_string(),
-        config_dir.to_string_lossy().into_owned(),
-    );
-    Some(config_dir)
+    env
 }
 
 /// ADR-F49 MEDIUM-5: what a host it connects to says it placed for the agent,
@@ -2095,6 +2067,10 @@ pub enum CustomAgentServerSettings {
         /// ADR-F55: whether a subscription sign-in may be offered for this
         /// agent. `None` is the default, which is that it may.
         allow_subscription_sign_in: Option<bool>,
+        /// ADR-F49 decision 19: whether this agent always starts outside its
+        /// sandbox. Only the user's own settings file is read for it
+        /// ([`crate::agent_sandbox::runs_outside_sandbox_by_user_choice`]).
+        run_outside_sandbox: Option<bool>,
     },
     Registry {
         /// Additional environment variables to pass to the agent.
@@ -2122,6 +2098,10 @@ pub enum CustomAgentServerSettings {
         /// ADR-F55: whether a subscription sign-in may be offered for this
         /// agent. `None` is the default, which is that it may.
         allow_subscription_sign_in: Option<bool>,
+        /// ADR-F49 decision 19: whether this agent always starts outside its
+        /// sandbox. Only the user's own settings file is read for it
+        /// ([`crate::agent_sandbox::runs_outside_sandbox_by_user_choice`]).
+        run_outside_sandbox: Option<bool>,
     },
 }
 
@@ -2183,6 +2163,21 @@ impl CustomAgentServerSettings {
             } => *allow_subscription_sign_in,
         }
     }
+
+    /// ADR-F49 decision 19: `run_outside_sandbox` as written, `None` where the
+    /// user said nothing.
+    pub fn run_outside_sandbox(&self) -> Option<bool> {
+        match self {
+            CustomAgentServerSettings::Custom {
+                run_outside_sandbox,
+                ..
+            }
+            | CustomAgentServerSettings::Registry {
+                run_outside_sandbox,
+                ..
+            } => *run_outside_sandbox,
+        }
+    }
 }
 
 impl From<settings::CustomAgentServerSettings> for CustomAgentServerSettings {
@@ -2196,6 +2191,7 @@ impl From<settings::CustomAgentServerSettings> for CustomAgentServerSettings {
                 default_config_options,
                 favorite_config_option_values,
                 allow_subscription_sign_in,
+                run_outside_sandbox,
             } => CustomAgentServerSettings::Custom {
                 command: AgentServerCommand {
                     path: PathBuf::from(shellexpand::tilde(&path.to_string_lossy()).as_ref()),
@@ -2207,6 +2203,7 @@ impl From<settings::CustomAgentServerSettings> for CustomAgentServerSettings {
                 default_config_options,
                 favorite_config_option_values,
                 allow_subscription_sign_in,
+                run_outside_sandbox,
             },
             settings::CustomAgentServerSettings::Registry {
                 env,
@@ -2214,12 +2211,14 @@ impl From<settings::CustomAgentServerSettings> for CustomAgentServerSettings {
                 default_config_options,
                 favorite_config_option_values,
                 allow_subscription_sign_in,
+                run_outside_sandbox,
             } => CustomAgentServerSettings::Registry {
                 env,
                 default_mode,
                 default_config_options,
                 favorite_config_option_values,
                 allow_subscription_sign_in,
+                run_outside_sandbox,
             },
         }
     }
@@ -2374,48 +2373,26 @@ mod tests {
         );
     }
 
-    /// ADR-F55: an agent started on the host this project is connected to is
-    /// pointed at that host's own folder, since the client's path names
-    /// nothing there — and only the ACP Claude agent is pointed anywhere.
-    /// Outside the sandbox that folder is never the account's `~/.claude`.
+    /// 8c (the rest of ADR-F55): an agent this host starts outside its sandbox
+    /// is pointed at no folder of the fork's — it uses the account's own, as
+    /// the official CLI there does — while a folder the user spelled out in the
+    /// agent's settings is their own word and stays.
     #[test]
-    fn the_host_names_the_acp_claudes_folder_unless_the_agents_settings_do() {
-        let mut env = HashMap::default();
-        let named =
-            point_the_acp_claude_at_the_forks_folder(&SandboxedAgentProfile::Claude, &mut env)
-                .expect("the host names its own folder");
-        assert_eq!(named, crate::agent_sandbox::claude_acp_host_config_dir());
-        assert_eq!(
-            env.get("CLAUDE_CONFIG_DIR").map(String::as_str),
-            Some(named.to_string_lossy().as_ref()),
-        );
-        assert_ne!(
-            named,
-            paths::home_dir().join(".claude"),
-            "never the account's own folder, which the official CLI uses here"
-        );
+    fn the_host_route_names_no_configuration_folder_of_its_own() {
+        for command_env in [None, Some(HashMap::default())] {
+            let env = host_route_environment(command_env);
+            assert!(!env.contains_key("CLAUDE_CONFIG_DIR"), "{env:?}");
+        }
 
-        let mut from_settings =
-            HashMap::from_iter([("CLAUDE_CONFIG_DIR".to_string(), "/srv/claude".to_string())]);
-        assert_eq!(
-            point_the_acp_claude_at_the_forks_folder(
-                &SandboxedAgentProfile::Claude,
-                &mut from_settings
-            ),
-            None,
-            "a folder the user spelled out is their own word"
-        );
+        let from_settings = host_route_environment(Some(HashMap::from_iter([(
+            "CLAUDE_CONFIG_DIR".to_string(),
+            "/srv/claude".to_string(),
+        )])));
         assert_eq!(
             from_settings.get("CLAUDE_CONFIG_DIR").map(String::as_str),
-            Some("/srv/claude")
+            Some("/srv/claude"),
+            "a folder the user spelled out is their own word"
         );
-
-        let mut codex = HashMap::default();
-        assert_eq!(
-            point_the_acp_claude_at_the_forks_folder(&SandboxedAgentProfile::Codex, &mut codex),
-            None
-        );
-        assert!(codex.is_empty(), "{codex:?}");
     }
 
     /// ADR-F49 decision 18 (C): each named process costs a `/proc` read and a
@@ -2851,6 +2828,7 @@ mod tests {
                                     default_config_options: HashMap::default(),
                                     favorite_config_option_values: HashMap::default(),
                                     allow_subscription_sign_in: None,
+                                    run_outside_sandbox: None,
                                 }
                                 .into(),
                             )

@@ -157,6 +157,14 @@
     },
   },
   {
+    // The editor showing the current step of an agent's code tour.
+    "context": "Editor && ide_assist_tour",
+    "bindings": {
+      "ctrl-alt-]": "ide_assist::NextTourStep",
+      "ctrl-alt-[": "ide_assist::PreviousTourStep",
+    },
+  },
+  {
     "context": "Editor && !edit_prediction",
     "bindings": {
       "alt-\\": "editor::ShowEditPrediction",

@@ -8603,7 +8603,7 @@ fn collaboration_page() -> SettingsPage {
 }
 
 fn ai_page(cx: &App) -> SettingsPage {
-    fn general_section() -> [SettingsPageItem; 12] {
+    fn general_section() -> [SettingsPageItem; 13] {
         [
             SettingsPageItem::SectionHeader("全般"),
             // The only UI writer of `agent.enabled` (ADR-F13, `docs/jp-enhance/DESIGN.md`):
@@ -8818,6 +8818,22 @@ fn ai_page(cx: &App) -> SettingsPage {
                     pick: |settings_content| settings_content.ide_server.as_ref()?.enabled.as_ref(),
                     write: |settings_content, value, _| {
                         settings_content.ide_server.get_or_insert_default().enabled = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "エージェントに IDE ツールを渡す",
+                description: "Claude Code のタブや外部のエージェントに、ハイライト・注釈・ツアー・定義・参照・シンボル検索のツールを渡します。「IDE サーバーを有効にする」とは別の設定で、ロックファイルは書きません。外向きの通信はしません。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("ide_server.assist_tools"),
+                    pick: |settings_content| {
+                        settings_content.ide_server.as_ref()?.assist_tools.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content.ide_server.get_or_insert_default().assist_tools = value;
                     },
                 }),
                 metadata: None,
@@ -9267,6 +9283,156 @@ fn ai_page(cx: &App) -> SettingsPage {
                     },
                 }),
                 metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "添付を全文で送る上限 (バイト)",
+                description: "これより大きいファイルは全文ではなくアウトライン (シンボルと行番号の一覧) で送り、必要な範囲だけエージェントに読ませます。1024 未満は 1024 として扱われます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.context_attachments.inline_max_bytes"),
+                    pick: |settings_content| {
+                        settings_content
+                            .agent
+                            .as_ref()?
+                            .context_attachments
+                            .as_ref()?
+                            .inline_max_bytes
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .agent
+                            .get_or_insert_default()
+                            .context_attachments
+                            .get_or_insert_default()
+                            .inline_max_bytes = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("16384"),
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "1 メッセージの添付の合計上限 (バイト)",
+                description: "1 つのメッセージの添付の合計がこれを超えたら、大きいものから順にアウトラインや参照だけに減らして送ります。「全文で送る」にした添付は減らしません。4096 未満は 4096 として扱われます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.context_attachments.message_budget_bytes"),
+                    pick: |settings_content| {
+                        settings_content
+                            .agent
+                            .as_ref()?
+                            .context_attachments
+                            .as_ref()?
+                            .message_budget_bytes
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .agent
+                            .get_or_insert_default()
+                            .context_attachments
+                            .get_or_insert_default()
+                            .message_budget_bytes = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("65536"),
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "アウトラインの上限 (バイト)",
+                description: "大きいファイルを添付したときに送るアウトラインの大きさの上限です。収まらないときは深い階層のシンボルから省きます。512 未満は 512 として扱われます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.context_attachments.outline_max_bytes"),
+                    pick: |settings_content| {
+                        settings_content
+                            .agent
+                            .as_ref()?
+                            .context_attachments
+                            .as_ref()?
+                            .outline_max_bytes
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .agent
+                            .get_or_insert_default()
+                            .context_attachments
+                            .get_or_insert_default()
+                            .outline_max_bytes = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("8192"),
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Web ページの添付の上限 (バイト)",
+                description: "@fetch で添付した Web ページの本文のうち、送る部分の上限です。1024 未満は 1024 として扱われます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.context_attachments.fetch_max_bytes"),
+                    pick: |settings_content| {
+                        settings_content
+                            .agent
+                            .as_ref()?
+                            .context_attachments
+                            .as_ref()?
+                            .fetch_max_bytes
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .agent
+                            .get_or_insert_default()
+                            .context_attachments
+                            .get_or_insert_default()
+                            .fetch_max_bytes = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("32768"),
+                    ..Default::default()
+                })),
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "診断を添付するファイル数の上限",
+                description: "@diagnostics で添付する診断を、この数のファイルまでに絞ります。1 未満は 1 として扱われます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.context_attachments.diagnostics_max_files"),
+                    pick: |settings_content| {
+                        settings_content
+                            .agent
+                            .as_ref()?
+                            .context_attachments
+                            .as_ref()?
+                            .diagnostics_max_files
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .agent
+                            .get_or_insert_default()
+                            .context_attachments
+                            .get_or_insert_default()
+                            .diagnostics_max_files = value;
+                    },
+                }),
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    placeholder: Some("50"),
+                    ..Default::default()
+                })),
                 files: USER,
             }),
             SettingsPageItem::SettingItem(SettingItem {

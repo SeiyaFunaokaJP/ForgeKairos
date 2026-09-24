@@ -24,7 +24,13 @@
 //!   出す ([`start_sandbox_session`]、ADR-F49)
 //! - サンドボックスの中で動く外部の ACP エージェントには、同じ口を `getDiagnostics` だけに
 //!   絞って出す ([`start_restricted_sandbox_session`]、ADR-F49 決定 24)
+//! - どの経路のエージェントにも、`POST /mcp/zed` で**アシストのツール** (ハイライト・注釈・
+//!   ツアー・定義・参照・シンボル検索、ADR-F56) を出す。`ide_server.enabled` とは独立で、
+//!   `ide_server.assist_tools` (既定 true) で切れる。ホストのサーバーは、アシストの
+//!   クライアント ([`host_assist_client`]) が居るあいだだけでも動く (ロックファイルは
+//!   `enabled` のときだけ書く)
 
+mod assist_tools;
 mod diff_view;
 mod path_mapping;
 mod protocol;
@@ -36,7 +42,7 @@ mod transport;
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use anyhow::Context as _;
@@ -47,8 +53,9 @@ use futures::stream::FuturesUnordered;
 use futures::{AsyncRead, AsyncWrite, FutureExt as _, StreamExt as _};
 use gpui::{
     App, AppContext as _, AsyncApp, BackgroundExecutor, BorrowAppContext as _, Entity, EntityId,
-    Global, Subscription, Task, TaskExt as _, WeakEntity,
+    Global, SharedString, Subscription, Task, TaskExt as _, WeakEntity,
 };
+use ide_query::AssistSource;
 use project::Project;
 use settings::{RegisterSetting, Settings, SettingsStore};
 use smol::lock::{Semaphore, SemaphoreGuardArc};
@@ -56,18 +63,23 @@ use smol::net::{TcpListener, TcpStream};
 use util::ResultExt as _;
 use workspace::Workspace;
 
+pub use assist_tools::{
+    ASSIST_BEARER_ENV_VAR, ASSIST_TOOL_NAMES, cli_assist_arguments, cli_assist_config_json,
+};
 pub use diff_view::{IdeServerDiff, IdeServerDiffOutcome};
 pub use path_mapping::{
     MAX_SANDBOX_FILE_BYTES, RealRoots, SandboxFile, has_link_below_root, real_roots,
 };
 pub use protocol::{LockFileContents, lock_file_directory, lock_file_path};
 pub use sandbox_client::{
-    SandboxIdeSessionHandle, SandboxSessionInfo, sandbox_lock_file_contents,
-    start_restricted_sandbox_session, start_sandbox_session,
+    CliMention, SandboxIdeSessionHandle, SandboxSessionInfo, mention_selection_in_cli,
+    sandbox_lock_file_contents, start_restricted_sandbox_session, start_sandbox_session,
+    start_sandbox_session_for_tab,
 };
 pub use status_item::IdeServerStatusItem;
 pub use tools::RESTRICTED_TOOL_NAMES;
 pub(crate) use tools::{SelectionSnapshot, ToolHost};
+pub use transport::{ASSIST_MCP_PATH, IDE_MCP_PATH};
 pub use util::path_mapping::{IdentityPathMapper, PathMapper, WslPathMapper};
 
 /// Claude Code CLI が「どのインスタンスに繋げばよいか」を決めるための環境変数。
@@ -100,6 +112,8 @@ const STALE_LOCK_PROBE_TIMEOUT: Duration = Duration::from_millis(300);
 #[derive(Clone, Debug, PartialEq, RegisterSetting)]
 pub struct IdeServerSettings {
     pub enabled: bool,
+    /// ADR-F56: エージェントにアシストのツール (MCP サーバー `zed`) を渡すか。
+    pub assist_tools: bool,
 }
 
 impl Settings for IdeServerSettings {
@@ -107,8 +121,15 @@ impl Settings for IdeServerSettings {
         let ide_server = content.ide_server.clone().unwrap_or_default();
         Self {
             enabled: ide_server.enabled.unwrap_or(false),
+            assist_tools: ide_server.assist_tools.unwrap_or(true),
         }
     }
+}
+
+/// ADR-F56: エージェントにアシストのツールを渡す設定か。IDE サーバーの設定が登録されていない
+/// プロセス (一部のテスト) では渡さない。
+pub fn assist_tools_enabled(cx: &App) -> bool {
+    cx.has_global::<IdeServerRegistry>() && IdeServerSettings::get_global(cx).assist_tools
 }
 
 pub fn init(cx: &mut App) {
@@ -121,8 +142,9 @@ pub fn init(cx: &mut App) {
             }
             let workspace_id = cx.entity_id();
             let project_id = workspace.project().entity_id();
+            let project = workspace.project().downgrade();
             let workspace_handle = cx.weak_entity();
-            let server = cx.new(|cx| IdeServer::new(workspace_handle, project_id, cx));
+            let server = cx.new(|cx| IdeServer::new(workspace_handle, project, cx));
             cx.update_global::<IdeServerRegistry, ()>(|registry, _| {
                 registry.servers.insert(workspace_id, server);
                 registry
@@ -266,13 +288,183 @@ pub fn workspace_for_project(project: &Entity<Project>, cx: &App) -> Option<Weak
     Some(server_for_project(project, cx)?.read(cx).workspace.clone())
 }
 
+/// ADR-F56: ホストのサーバーを使うアシストのクライアント (ホストで起動した CLI のタブ・
+/// サンドボックスの外の ACP の接続)。持っているあいだはサーバーが動き (`enabled` でなくても)、
+/// 落とすと登録が外れ、このクライアントが描いたハイライト・注釈・ツアーが消える。
+#[must_use = "dropping the client ends its registration and clears what it drew"]
+pub struct HostAssistClient {
+    registration: Entity<HostAssistRegistration>,
+}
+
+struct HostAssistRegistration {
+    server: WeakEntity<IdeServer>,
+    client_id: String,
+}
+
+/// ADR-F56: このプロジェクトのホストのサーバーに、アシストのクライアントを 1 つ登録する。
+/// `label` は表示の枠に出る名前 (「Claude Code」やエージェント名)。サーバーが必要なら
+/// ここで起動する。プロジェクトを開いているワークスペースが無ければ `None`。
+pub fn host_assist_client(
+    project: &Entity<Project>,
+    label: impl Into<SharedString>,
+    cx: &mut App,
+) -> Option<HostAssistClient> {
+    let server = server_for_project(project, cx)?;
+    let client_id = uuid::Uuid::new_v4().simple().to_string();
+    let label = label.into();
+    server.update(cx, |server, cx| {
+        server.register_assist_client(client_id.clone(), label, cx)
+    });
+    let weak_server = server.downgrade();
+    let registration = cx.new(|cx| {
+        cx.on_release(|registration: &mut HostAssistRegistration, cx| {
+            let server = registration.server.clone();
+            let client_id = registration.client_id.clone();
+            // 持ち主 (ACP の接続・CLI のタブ) が落ちるのは、どの更新の最中でもありうる。
+            cx.defer(move |cx| {
+                if let Some(server) = server.upgrade() {
+                    server.update(cx, |server, cx| {
+                        server.unregister_assist_client(&client_id, cx)
+                    });
+                }
+            });
+        })
+        .detach();
+        HostAssistRegistration {
+            server: weak_server,
+            client_id,
+        }
+    });
+    Some(HostAssistClient { registration })
+}
+
+impl HostAssistClient {
+    fn server_and_id<'a>(&self, cx: &'a App) -> Option<(&'a IdeServer, String)> {
+        let registration = self.registration.read(cx);
+        let server = registration.server.upgrade()?;
+        let client_id = registration.client_id.clone();
+        Some((server.read(cx), client_id))
+    }
+
+    /// アシストのツールだけの口 (`/mcp/zed?client=<id>`)。ホストで起動した CLI に渡す。
+    /// `ide_server.assist_tools` が無効か、サーバーが動いていなければ `None`。
+    pub fn assist_endpoint(&self, cx: &App) -> Option<McpEndpoint> {
+        let (server, client_id) = self.server_and_id(cx)?;
+        if !IdeServerSettings::get_global(cx).assist_tools {
+            return None;
+        }
+        server.endpoint_for(transport::ASSIST_MCP_PATH, Some(&client_id))
+    }
+
+    /// サンドボックスの外の ACP のエージェントに渡す口。`ide_server.enabled` なら全ツールの
+    /// `/mcp` (アシストのツールも含む)、そうでなければアシストのツールだけの `/mcp/zed`。
+    /// どちらも無効なら `None`。
+    pub fn agent_endpoint(&self, cx: &App) -> Option<McpEndpoint> {
+        let (server, client_id) = self.server_and_id(cx)?;
+        let settings = IdeServerSettings::get_global(cx);
+        if settings.enabled {
+            server.endpoint_for(transport::IDE_MCP_PATH, Some(&client_id))
+        } else if settings.assist_tools {
+            server.endpoint_for(transport::ASSIST_MCP_PATH, Some(&client_id))
+        } else {
+            None
+        }
+    }
+
+    /// このクライアントが描く表示の出どころ。
+    pub fn source(&self, cx: &App) -> Option<AssistSource> {
+        let (server, client_id) = self.server_and_id(cx)?;
+        Some(server.assist_source(Some(&client_id)))
+    }
+}
+
+/// Zed が名前を決めていないクライアント (`.mcp.json` を貼った外部のクライアント、登録の無い
+/// `client=`)。表示の枠の見出しは、クライアントの申告 (MCP の `clientInfo.name`・ツールの引数)
+/// からは決して取らない: 「Zed」などを名乗らせると、Zed 自身の表示に見せかけられるため。
+const UNKNOWN_ASSIST_CLIENT_LABEL: &str = "外部エージェント";
+
+/// 口ごとの受け入れの判断 (ADR-F56)。要求の頭を読んだところで、トランスポートが
+/// バックグラウンドで使う。
+#[derive(Clone)]
+pub(crate) struct ConnectionGate {
+    pub(crate) ide: EndpointGate,
+    pub(crate) assist: EndpointGate,
+}
+
+#[derive(Clone)]
+pub(crate) struct EndpointGate {
+    /// `None` なら常に開いている。
+    pub(crate) open: Option<Arc<AtomicBool>>,
+    pub(crate) limits: transport::MessageLimits,
+    /// 同時に開いておけるトランスポートの数と、その上限。`None` なら上限なし。
+    pub(crate) quota: Option<(Arc<AtomicUsize>, usize)>,
+}
+
+impl EndpointGate {
+    pub(crate) fn unlimited(limits: transport::MessageLimits) -> Self {
+        Self {
+            open: None,
+            limits,
+            quota: None,
+        }
+    }
+}
+
+impl ConnectionGate {
+    /// どちらの口も開いていて、同時接続の枠が無い。
+    pub(crate) fn unlimited(ide_limits: transport::MessageLimits) -> Self {
+        Self {
+            ide: EndpointGate::unlimited(ide_limits),
+            assist: EndpointGate::unlimited(assist_tools::ASSIST_MESSAGE_LIMITS),
+        }
+    }
+
+    pub(crate) fn admit(
+        &self,
+        route: &transport::Route,
+    ) -> Result<transport::Admitted, transport::Refusal> {
+        let gate = match route.endpoint {
+            transport::Endpoint::Ide => &self.ide,
+            transport::Endpoint::Assist => &self.assist,
+        };
+        if gate
+            .open
+            .as_ref()
+            .is_some_and(|open| !open.load(Ordering::SeqCst))
+        {
+            return Err(transport::Refusal::NotFound);
+        }
+        let hold = match &gate.quota {
+            Some((count, limit)) => {
+                Some(OpenTransport::try_new(count, *limit).ok_or(transport::Refusal::Busy)?)
+            }
+            None => None,
+        };
+        Ok(transport::Admitted {
+            limits: gate.limits,
+            hold,
+        })
+    }
+}
+
 struct RunningServer {
     port: u16,
     auth_token: Arc<str>,
-    /// リモートのワークスペースではロックファイルを書かないので `None`。
+    /// ロックファイルを書いていないあいだ (`enabled` でない・リモートのワークスペース) は `None`。
     lock_path: Option<std::path::PathBuf>,
     connections: Vec<Arc<transport::Outbox>>,
+    /// ADR-F56: IDE の口 (WebSocket と `/mcp`) を開いているか。`ide_server.enabled` のときだけ。
+    /// アシストのクライアントのためだけに動いているあいだは閉じている。
+    ide_open: Arc<AtomicBool>,
+    /// ADR-F56: アシストの口 (`/mcp/zed`) を開いているか (`ide_server.assist_tools`)。
+    assist_open: Arc<AtomicBool>,
     _accept_task: Task<()>,
+}
+
+impl RunningServer {
+    fn serves_ide(&self) -> bool {
+        self.ide_open.load(Ordering::SeqCst)
+    }
 }
 
 impl Drop for RunningServer {
@@ -280,31 +472,35 @@ impl Drop for RunningServer {
     /// 落とす経路 (`stop`、`IdeServer` の drop、アプリ終了) が増えても取り残しが
     /// 出ないようにするため。
     fn drop(&mut self) {
-        let Some(lock_path) = self.lock_path.as_ref() else {
-            return;
-        };
-        if let Err(error) = std::fs::remove_file(lock_path)
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            log::error!(
-                "ide_server: could not remove {}: {error}",
-                lock_path.display()
-            );
+        if let Some(lock_path) = self.lock_path.take() {
+            remove_lock_file_at(&lock_path);
         }
+    }
+}
+
+fn remove_lock_file_at(lock_path: &Path) {
+    if let Err(error) = std::fs::remove_file(lock_path)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        log::error!(
+            "ide_server: could not remove {}: {error}",
+            lock_path.display()
+        );
     }
 }
 
 pub struct IdeServer {
     workspace: WeakEntity<Workspace>,
+    /// 表示を消すのに使う (ワークスペースは更新や解放の途中で読めないことがある)。
+    project: WeakEntity<Project>,
     project_id: EntityId,
     running: Option<RunningServer>,
-    /// `start` は bind が終わるまで `running` を埋められない。そのあいだに設定の変更が
-    /// もう一度届くと 2 本目が立ち上がり、あとから入れ替えられたほうのロックファイルが
-    /// 誰にも消されずに残る。この旗が「起動処理が飛んでいる」ことを表す。
-    starting: bool,
     latest_selection: Option<SelectionSnapshot>,
     selection_subscription: Option<Subscription>,
     open_diffs: tools::OpenDiffs,
+    /// ADR-F56: このサーバーを使うアシストのクライアント (ID → 表示の枠に出す名前)。
+    /// 1 つでもあれば、`enabled` でなくてもサーバーを動かしておく。
+    assist_clients: HashMap<String, SharedString>,
     _settings_subscription: Subscription,
     _quit_subscription: Subscription,
     _workspace_subscription: Option<Subscription>,
@@ -313,9 +509,10 @@ pub struct IdeServer {
 impl IdeServer {
     fn new(
         workspace: WeakEntity<Workspace>,
-        project_id: EntityId,
+        project: WeakEntity<Project>,
         cx: &mut gpui::Context<Self>,
     ) -> Self {
+        let project_id = project.entity_id();
         let settings_subscription = cx.observe_global::<SettingsStore>(|this, cx| {
             this.apply_settings(cx);
         });
@@ -339,20 +536,26 @@ impl IdeServer {
         });
         Self {
             workspace,
+            project,
             project_id,
             running: None,
-            starting: false,
             latest_selection: None,
             selection_subscription: None,
             open_diffs: tools::OpenDiffs::default(),
+            assist_clients: HashMap::default(),
             _settings_subscription: settings_subscription,
             _quit_subscription: quit_subscription,
             _workspace_subscription: workspace_subscription,
         }
     }
 
+    /// IDE の口 (ロックファイル・`.mcp.json`) で待ち受けているポート。アシストの
+    /// クライアントのためだけに動いているあいだ (`enabled` でない) は `None`。
     pub fn port(&self) -> Option<u16> {
-        self.running.as_ref().map(|running| running.port)
+        self.running
+            .as_ref()
+            .filter(|running| running.serves_ide())
+            .map(|running| running.port)
     }
 
     /// WebSocket で繋がっている Claude Code CLI の数。
@@ -362,16 +565,84 @@ impl IdeServer {
             .map_or(0, |running| running.connections.len())
     }
 
+    /// ADR-F56: 登録されているアシストのクライアント (ホストで起動した CLI・ACP の接続) の数。
+    pub fn assist_client_count(&self) -> usize {
+        self.assist_clients.len()
+    }
+
     pub fn mcp_endpoint(&self) -> Option<McpEndpoint> {
+        self.running
+            .as_ref()
+            .filter(|running| running.serves_ide())?;
+        self.endpoint_for(transport::IDE_MCP_PATH, None)
+    }
+
+    /// 動いているサーバーの `path` (と、あればクライアントの ID) を指すエンドポイント。
+    fn endpoint_for(&self, path: &str, client_id: Option<&str>) -> Option<McpEndpoint> {
         let running = self.running.as_ref()?;
+        let query = client_id
+            .map(|client_id| format!("?{}={client_id}", transport::CLIENT_QUERY_NAME))
+            .unwrap_or_default();
         Some(McpEndpoint {
-            url: format!("http://127.0.0.1:{}/mcp", running.port),
+            url: format!("http://127.0.0.1:{}{path}{query}", running.port),
             authorization: format!("Bearer {}", running.auth_token),
         })
     }
 
     pub fn lock_file_path(&self) -> Option<&Path> {
         self.running.as_ref()?.lock_path.as_deref()
+    }
+
+    /// ADR-F56: 要求を送ってきたクライアントの、表示の出どころ。登録の無いクライアント
+    /// (`.mcp.json` を貼った外部のクライアントなど) は、このサーバーの 1 つの出どころにまとめる。
+    fn assist_source(&self, client_id: Option<&str>) -> AssistSource {
+        match client_id.and_then(|client_id| {
+            self.assist_clients
+                .get(client_id)
+                .map(|label| (client_id, label))
+        }) {
+            Some((client_id, label)) => AssistSource {
+                id: format!("zed-ide-client-{client_id}").into(),
+                label: label.clone(),
+            },
+            None => AssistSource {
+                id: format!("zed-ide-server-{}", self.project_id.as_u64()).into(),
+                label: UNKNOWN_ASSIST_CLIENT_LABEL.into(),
+            },
+        }
+    }
+
+    fn register_assist_client(
+        &mut self,
+        client_id: String,
+        label: SharedString,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        self.assist_clients.insert(client_id, label);
+        self.apply_settings(cx);
+        cx.notify();
+    }
+
+    fn unregister_assist_client(&mut self, client_id: &str, cx: &mut gpui::Context<Self>) {
+        let source = self.assist_source(Some(client_id));
+        if self.assist_clients.remove(client_id).is_none() {
+            return;
+        }
+        self.clear_assist_display(source, cx);
+        self.apply_settings(cx);
+        cx.notify();
+    }
+
+    /// `source` が描いたハイライト・注釈・ツアーを消す。
+    fn clear_assist_display(&self, source: AssistSource, cx: &mut App) {
+        let Some(display) = ide_query::code_display(cx) else {
+            return;
+        };
+        let Some(project) = self.project.upgrade() else {
+            return;
+        };
+        // 表示の側はエディターとワークスペースを更新するので、今の更新の外で消す。
+        cx.defer(move |cx| display.clear(&project, &source, cx));
     }
 
     fn on_workspace_event(
@@ -429,102 +700,137 @@ impl IdeServer {
             .is_some_and(|workspace| workspace.read(cx).project().read(cx).is_local())
     }
 
+    /// 設定とアシストのクライアントの有無から、サーバーを動かすか・どの口を開けるかを決める。
+    ///
+    /// - `enabled`: IDE の口 (WebSocket・`/mcp`) を開け、ロックファイルを書き、選択範囲を追う
+    /// - `assist_tools` かつクライアントあり: 少なくともアシストの口 (`/mcp/zed`) のために動かす
+    ///
+    /// 口の開け閉めでは待ち受けもトークンも変えない。起動済みの CLI のタブや ACP の接続が
+    /// 持っているポートとトークンが、設定を切り替えたあとも使えるように。
     fn apply_settings(&mut self, cx: &mut gpui::Context<Self>) {
-        let enabled = IdeServerSettings::get_global(cx).enabled;
-        match (enabled, self.running.is_some() || self.starting) {
-            (true, false) => self.start(cx),
-            (false, true) => {
+        let settings = IdeServerSettings::get_global(cx).clone();
+        let wanted = settings.enabled || (settings.assist_tools && !self.assist_clients.is_empty());
+        if !wanted {
+            if self.running.is_some() {
                 self.stop();
+                // 登録の無いクライアントの表示は、サーバーと一緒に消す。
+                self.clear_assist_display(self.assist_source(None), cx);
                 // サンドボックスのセッションは設定と無関係に動くので、単に「未接続」にはしない。
+                self.publish_connection_state(cx);
+            }
+            return;
+        }
+        if self.running.is_none()
+            && let Err(error) = self.start(cx)
+        {
+            log::error!("ide_server: could not start the IDE server: {error:#}");
+            return;
+        }
+        let Some(running) = self.running.as_ref() else {
+            return;
+        };
+        running
+            .assist_open
+            .store(settings.assist_tools, Ordering::SeqCst);
+        let was_serving_ide = running.ide_open.swap(settings.enabled, Ordering::SeqCst);
+        match (was_serving_ide, settings.enabled) {
+            (false, true) => {
+                // ロックファイルの中身と選択範囲はワークスペースを読む。ここはワークスペースを
+                // 更新中の経路 (CLI の起動アクションからのアシストのクライアントの登録) からも
+                // 呼ばれるので、読むのは 1 tick あとにする。
+                let this = cx.weak_entity();
+                cx.defer(move |cx| {
+                    if let Some(this) = this.upgrade() {
+                        this.update(cx, |this, cx| {
+                            this.write_lock_file(cx);
+                            this.watch_active_editor(cx);
+                            cx.notify();
+                        });
+                    }
+                });
+            }
+            (true, false) => {
+                self.close_ide_endpoint();
                 self.publish_connection_state(cx);
             }
             _ => {}
         }
     }
 
-    fn start(&mut self, cx: &mut gpui::Context<Self>) {
+    /// 127.0.0.1 の空きポートで待ち受ける。口はまだどちらも閉じていて、開けるのは
+    /// [`Self::apply_settings`]。bind は loopback なのでその場で済ませる (非同期にすると、
+    /// そのあいだに届いた設定の変更が 2 本目を立ち上げうる)。
+    fn start(&mut self, cx: &mut gpui::Context<Self>) -> anyhow::Result<()> {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .context("binding the IDE server to 127.0.0.1")?;
+        let port = listener.local_addr()?.port();
+        let listener = TcpListener::try_from(listener)
+            .context("handing the IDE server's socket to the async runtime")?;
         let auth_token: Arc<str> = uuid::Uuid::new_v4().to_string().into();
+        let accept_task = cx.spawn({
+            let auth_token = auth_token.clone();
+            async move |this, cx| {
+                loop {
+                    let Ok((stream, peer)) = listener.accept().await else {
+                        break;
+                    };
+                    if !peer.ip().is_loopback() {
+                        log::warn!("ide_server: refused a non-loopback connection from {peer}");
+                        continue;
+                    }
+                    let Some(this) = this.upgrade() else {
+                        break;
+                    };
+                    IdeServer::serve(this, stream, auth_token.clone(), cx);
+                }
+            }
+        });
+        self.running = Some(RunningServer {
+            port,
+            auth_token,
+            lock_path: None,
+            connections: Vec::new(),
+            ide_open: Arc::new(AtomicBool::new(false)),
+            assist_open: Arc::new(AtomicBool::new(false)),
+            _accept_task: accept_task,
+        });
+        log::info!("ide_server: listening on 127.0.0.1:{port}");
+        cx.notify();
+        Ok(())
+    }
+
+    /// ロックファイルを書く (ローカルのワークスペースだけ)。サーバーを登録したあとに書く:
+    /// 先に書くと、登録前に止められたときに消し手が居なくなる。
+    fn write_lock_file(&mut self, cx: &mut gpui::Context<Self>) {
+        if !self.writes_lock_file(cx) {
+            return;
+        }
+        let directory = lock_directory(cx);
         let workspace_folders = self
             .workspace
             .upgrade()
             .map(|workspace| tools::workspace_folder_paths(&workspace, cx))
             .unwrap_or_default();
-        let writes_lock_file = self.writes_lock_file(cx);
-        let directory = lock_directory(cx);
-        let bind = cx.background_spawn(async move {
-            let listener = TcpListener::bind("127.0.0.1:0")
-                .await
-                .context("binding the IDE server to 127.0.0.1")?;
-            let port = listener.local_addr()?.port();
-            anyhow::Ok((listener, port))
-        });
-
-        self.starting = true;
+        let Some(running) = self.running.as_mut() else {
+            return;
+        };
+        if running.lock_path.is_some() || !running.serves_ide() {
+            return;
+        }
+        let lock_path = protocol::lock_file_path(&directory, running.port);
+        running.lock_path = Some(lock_path.clone());
+        let contents = protocol::LockFileContents {
+            pid: std::process::id(),
+            workspace_folders,
+            ide_name: IDE_NAME.to_string(),
+            transport: "ws".to_string(),
+            running_in_windows: cfg!(target_os = "windows"),
+            auth_token: running.auth_token.to_string(),
+        };
+        let Some(json) = contents.to_json().log_err() else {
+            return;
+        };
         cx.spawn(async move |this, cx| {
-            let bound = bind.await;
-            let (listener, port) = match bound {
-                Ok(bound) => bound,
-                Err(error) => {
-                    this.update(cx, |this, _| this.starting = false).ok();
-                    return Err(error);
-                }
-            };
-
-            // ロックファイルはサーバーを登録したあとに書く。先に書くと、登録前に
-            // 止められたときに消し手が居なくなる。
-            let lock_path = this.update(cx, |this, cx| {
-                this.starting = false;
-                // 起動待ちのあいだに無効化されていたら、そのまま畳む。
-                if !IdeServerSettings::get_global(cx).enabled {
-                    return None;
-                }
-                let accept_task = cx.spawn({
-                    let auth_token = auth_token.clone();
-                    async move |this, cx| {
-                        loop {
-                            let Ok((stream, peer)) = listener.accept().await else {
-                                break;
-                            };
-                            if !peer.ip().is_loopback() {
-                                log::warn!(
-                                    "ide_server: refused a non-loopback connection from {peer}"
-                                );
-                                continue;
-                            }
-                            let Some(this) = this.upgrade() else {
-                                break;
-                            };
-                            IdeServer::serve(this, stream, auth_token.clone(), cx);
-                        }
-                    }
-                });
-                let lock_path =
-                    writes_lock_file.then(|| protocol::lock_file_path(&directory, port));
-                this.running = Some(RunningServer {
-                    port,
-                    auth_token: auth_token.clone(),
-                    lock_path: lock_path.clone(),
-                    connections: Vec::new(),
-                    _accept_task: accept_task,
-                });
-                log::info!("ide_server: listening on 127.0.0.1:{port}");
-                this.watch_active_editor(cx);
-                cx.notify();
-                lock_path
-            })?;
-
-            let Some(lock_path) = lock_path else {
-                return Ok(());
-            };
-            let contents = protocol::LockFileContents {
-                pid: std::process::id(),
-                workspace_folders,
-                ide_name: IDE_NAME.to_string(),
-                transport: "ws".to_string(),
-                running_in_windows: cfg!(target_os = "windows"),
-                auth_token: auth_token.to_string(),
-            };
-            let json = contents.to_json()?;
             let executor = cx.background_executor().clone();
             cx.background_spawn({
                 let lock_path = lock_path.clone();
@@ -538,7 +844,7 @@ impl IdeServer {
             .await
             .context("writing the Claude Code IDE lock file")?;
 
-            // 書き終わるまでのあいだに止められていたら、`RunningServer` の drop は
+            // 書き終わるまでのあいだに止められて (口を閉じられて) いたら、消す側は
             // まだ存在しないファイルを消しに行っている。ここで拾い直す。
             let still_ours = this
                 .read_with(cx, |this, _| {
@@ -551,13 +857,28 @@ impl IdeServer {
             if !still_ours {
                 std::fs::remove_file(&lock_path).log_err();
             }
-            Ok(())
+            anyhow::Ok(())
         })
         .detach_and_log_err(cx);
     }
 
+    /// `enabled` が切れたが、アシストのクライアントのために待ち受けは続けるとき: ロックファイルを
+    /// 消し、繋がっている CLI を切り、選択範囲を追うのをやめる。
+    fn close_ide_endpoint(&mut self) {
+        if let Some(running) = self.running.as_mut() {
+            if let Some(lock_path) = running.lock_path.take() {
+                remove_lock_file_at(&lock_path);
+            }
+            for connection in running.connections.drain(..) {
+                connection.finish();
+            }
+        }
+        self.selection_subscription = None;
+        self.latest_selection = None;
+        self.open_diffs = tools::OpenDiffs::default();
+    }
+
     fn stop(&mut self) {
-        self.starting = false;
         // ロックファイルは `RunningServer` の drop が消す。
         let Some(running) = self.running.take() else {
             return;
@@ -619,7 +940,11 @@ impl IdeServer {
     ///
     /// 購読は `Subscription` を差し替えることで自動的に張り替わる。
     fn watch_active_editor(&mut self, cx: &mut gpui::Context<Self>) {
-        if self.running.is_none() {
+        if !self
+            .running
+            .as_ref()
+            .is_some_and(|running| running.serves_ide())
+        {
             self.selection_subscription = None;
             return;
         }
@@ -699,6 +1024,64 @@ impl ToolHost for IdeServer {
         }
         self.publish_connection_state(cx);
     }
+
+    /// 口の開け閉めは設定で決まる ([`IdeServer::apply_settings`])。同時接続の枠は置かない
+    /// (相手はサンドボックスの外の、利用者自身の権限のプロセス)。
+    fn connection_gate(&self) -> ConnectionGate {
+        let closed = || Some(Arc::new(AtomicBool::new(false)));
+        let (ide_open, assist_open) = match self.running.as_ref() {
+            Some(running) => (
+                Some(running.ide_open.clone()),
+                Some(running.assist_open.clone()),
+            ),
+            None => (closed(), closed()),
+        };
+        ConnectionGate {
+            ide: EndpointGate {
+                open: ide_open,
+                ..EndpointGate::unlimited(self.message_limits())
+            },
+            assist: EndpointGate {
+                open: assist_open,
+                ..EndpointGate::unlimited(assist_tools::ASSIST_MESSAGE_LIMITS)
+            },
+        }
+    }
+
+    /// ADR-F56: WebSocket (CLI の `ide`) にはこれまでどおり全ツール、`/mcp` (外部のエージェントの
+    /// `zed`) には全ツールとアシストのツール、`/mcp/zed` にはアシストのツールだけを出す。
+    fn connection_scope(
+        &self,
+        route: &transport::Route,
+        cx: &App,
+    ) -> Result<tools::ConnectionScope, String> {
+        let settings = IdeServerSettings::get_global(cx);
+        match (route.endpoint, route.kind) {
+            (transport::Endpoint::Ide, _) if !settings.enabled => {
+                Err(assist_tools::IDE_SERVER_DISABLED_MESSAGE.to_string())
+            }
+            (transport::Endpoint::Ide, transport::ConnectionKind::WebSocket) => Ok(
+                tools::ConnectionScope::without_assist(tools::ToolScope::Full),
+            ),
+            (transport::Endpoint::Ide, transport::ConnectionKind::Http) => {
+                Ok(tools::ConnectionScope {
+                    tools: tools::ToolScope::Full,
+                    assist: settings
+                        .assist_tools
+                        .then(|| self.assist_source(route.client.as_deref())),
+                })
+            }
+            (transport::Endpoint::Assist, _) if settings.assist_tools => {
+                Ok(tools::ConnectionScope {
+                    tools: tools::ToolScope::Assist(None),
+                    assist: Some(self.assist_source(route.client.as_deref())),
+                })
+            }
+            (transport::Endpoint::Assist, _) => {
+                Err(assist_tools::ASSIST_UNAVAILABLE_MESSAGE.to_string())
+            }
+        }
+    }
 }
 
 /// 接続中の全員に通知を撃ち、閉じた接続を刈り取る。`selection_changed` は、相手が読むまで
@@ -738,12 +1121,12 @@ pub(crate) async fn run_connection<S, H>(
     // 送信を (トランスポートの読み込みを止めて) 待たせる。
     let (incoming_tx, mut incoming_rx) = mpsc::channel::<String>(0);
     let (outbox, outgoing) = transport::outbox();
-    let (kind_tx, kind_rx) = oneshot::channel();
-    let (session_permits, undelivered_limit, message_limits) = this.read_with(&cx, |this, _| {
+    let (route_tx, route_rx) = oneshot::channel();
+    let (session_permits, undelivered_limit, gate) = this.read_with(&cx, |this, _| {
         (
             this.request_permits(),
             this.max_undelivered_responses(),
-            this.message_limits(),
+            this.connection_gate(),
         )
     });
     let handshake_deadline = cx.background_executor().timer(transport::HANDSHAKE_TIMEOUT);
@@ -753,10 +1136,10 @@ pub(crate) async fn run_connection<S, H>(
         if let Err(error) = transport::serve_connection(
             stream,
             auth_token,
-            message_limits,
+            move |route| gate.admit(route),
             incoming_tx,
             outgoing,
-            kind_tx,
+            route_tx,
             handshake_deadline,
         )
         .await
@@ -765,7 +1148,16 @@ pub(crate) async fn run_connection<S, H>(
         }
     });
     let connection_permits = undelivered_limit.map(|limit| Arc::new(Semaphore::new(limit)));
-    let is_websocket = kind_rx.await.ok() == Some(transport::ConnectionKind::WebSocket);
+    let route = route_rx.await.ok();
+    // 口が決まらないまま切れた接続 (認証の失敗・枠の外) からは、要求は 1 件も来ない。
+    let scope = match route.as_ref() {
+        Some(route) => this.read_with(&cx, |this, cx| this.connection_scope(route, cx)),
+        None => Err(String::new()),
+    };
+    let is_websocket = scope.is_ok()
+        && route
+            .as_ref()
+            .is_some_and(|route| route.kind == transport::ConnectionKind::WebSocket);
     if is_websocket {
         this.update(&mut cx, |this, cx| this.add_connection(outbox.clone(), cx));
     }
@@ -802,8 +1194,10 @@ pub(crate) async fn run_connection<S, H>(
                     pending.push({
                         let this = this.clone();
                         let mut cx = cx.clone();
+                        let scope = scope.clone();
                         async move {
-                            let response = handle_message(&this, &text, connection, &mut cx).await;
+                            let response =
+                                handle_message_in(&this, &text, connection, &scope, &mut cx).await;
                             drop(session_permit);
                             (response, connection_permit)
                         }
@@ -835,6 +1229,16 @@ impl OpenTransport {
     pub(crate) fn new(count: &Arc<AtomicUsize>) -> Self {
         count.fetch_add(1, Ordering::SeqCst);
         Self(count.clone())
+    }
+
+    /// `count` が `limit` に達していなければ数に入れる。
+    pub(crate) fn try_new(count: &Arc<AtomicUsize>, limit: usize) -> Option<Self> {
+        let previous = count.fetch_add(1, Ordering::SeqCst);
+        if previous >= limit {
+            count.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        Some(Self(count.clone()))
     }
 }
 
@@ -868,11 +1272,27 @@ where
     }
 }
 
-/// 1 件の JSON-RPC メッセージを処理する。応答が要らない (通知) なら `None`。
+/// 1 件の JSON-RPC メッセージを、そのホストの既定の口 (アシストのツールなし) として処理する。
+#[cfg(test)]
 pub(crate) async fn handle_message<H: ToolHost>(
     this: &Entity<H>,
     text: &str,
     connection: tools::ConnectionId,
+    cx: &mut AsyncApp,
+) -> Option<String> {
+    let scope = this.read_with(cx, |this, _| {
+        tools::ConnectionScope::without_assist(this.tool_scope())
+    });
+    handle_message_in(this, text, connection, &Ok(scope), cx).await
+}
+
+/// 1 件の JSON-RPC メッセージを処理する。応答が要らない (通知) なら `None`。`scope` が `Err` の
+/// 接続 (口が設定で閉じているなど) には、要求ごとにその理由で断る。
+pub(crate) async fn handle_message_in<H: ToolHost>(
+    this: &Entity<H>,
+    text: &str,
+    connection: tools::ConnectionId,
+    scope: &Result<tools::ConnectionScope, String>,
     cx: &mut AsyncApp,
 ) -> Option<String> {
     let message: protocol::IncomingMessage = match serde_json::from_str(text) {
@@ -892,18 +1312,25 @@ pub(crate) async fn handle_message<H: ToolHost>(
         handle_notification(&method, &params);
         return None;
     };
+    let scope = match scope {
+        Ok(scope) => scope,
+        Err(reason) => {
+            return Some(protocol::error_response(
+                id,
+                protocol::REFUSED,
+                reason.clone(),
+            ));
+        }
+    };
 
     Some(match method.as_str() {
-        "initialize" => protocol::success_response(id, tools::initialize_result(&params)),
+        "initialize" => protocol::success_response(id, tools::initialize_result_in(&params, scope)),
         "ping" => protocol::success_response(id, serde_json::json!({})),
-        "tools/list" => {
-            let scope = this.read_with(cx, |this, _| this.tool_scope());
-            protocol::success_response(id, tools::list_tools_result(&scope))
-        }
+        "tools/list" => protocol::success_response(id, tools::list_tools_result(scope)),
         "tools/call" => match tools::parse_call_params(params) {
             Ok(params) => {
                 let name = params.name.clone();
-                match tools::call_tool(this, params, connection, cx).await {
+                match tools::call_tool(this, params, connection, scope, cx).await {
                     Some(result) => protocol::success_response(id, result),
                     // MCP の仕様どおり、出していないツールは JSON-RPC のエラーで答える。
                     None => protocol::error_response(

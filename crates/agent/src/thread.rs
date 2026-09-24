@@ -6,11 +6,15 @@ use crate::tool_permissions::{
     build_permission_judge_prompt, parse_permission_judge_response,
 };
 use crate::{
+    AnnotateCodeTool, ClearAnnotationsTool, CodeTourTool, HighlightCodeTool, HoverTool,
+    SearchSymbolsTool, ZED_AGENT_ASSIST_LABEL,
+};
+use crate::{
     ApplyCodeActionTool, AskUserTool, CodeActionStore, ContextServerRegistry, CopyPathTool,
     CreateDirectoryTool, CreateThreadTool, DbLanguageModel, DbThread, DeletePathTool,
     DiagnosticsTool, EditFileTool, FetchTool, FindPathTool, FindReferencesTool, GetCodeActionsTool,
-    GoToDefinitionTool, GrepTool, ListAgentsAndModelsTool, ListDirectoryTool, MovePathTool,
-    ProjectSnapshot, ReadFileTool, RenameTool, RepoMapTool, RepoMapToolInput,
+    GitDiffTool, GoToDefinitionTool, GrepTool, ListAgentsAndModelsTool, ListDirectoryTool,
+    MovePathTool, ProjectSnapshot, ReadFileTool, RenameTool, RepoMapTool, RepoMapToolInput,
     SandboxedTerminalTool, SpawnAgentTool, SystemPromptTemplate, Template, Templates,
     TerminalExecution, TerminalTool, ToolPermissionDecision, WebSearchTool, WriteFileTool,
     decide_permission_for_paths_outside_project, decide_permission_from_settings,
@@ -19,6 +23,7 @@ use crate::{
 use acp_thread::{ClientUserMessageId, MentionUri};
 use action_log::ActionLog;
 use agent_settings::UserAgentsMd;
+use ide_query::AssistSource;
 
 use crate::sandboxing::{
     SandboxRequest, ThreadSandbox, ThreadSandboxGrants, sandbox_git_dirs,
@@ -2290,6 +2295,7 @@ impl Thread {
             update_agent_location,
         ));
         self.add_tool(RepoMapTool::new(self.project.clone()));
+        self.add_tool(GitDiffTool::new(self.project.clone()));
         // Register terminal tool variants; `enabled_tools` exposes the one
         // matching the current sandbox state to the model as `terminal`.
         self.add_tool(TerminalTool::new(self.project.clone(), environment.clone()));
@@ -2315,6 +2321,29 @@ impl Thread {
         ));
         self.add_tool(GoToDefinitionTool::new(self.project.clone()));
         self.add_tool(RenameTool::new(self.project.clone()));
+
+        self.add_tool(HoverTool::new(self.project.clone()));
+        self.add_tool(SearchSymbolsTool::new(self.project.clone()));
+        let assist_source = AssistSource {
+            id: self.id.0.clone().into(),
+            label: ZED_AGENT_ASSIST_LABEL.into(),
+        };
+        self.add_tool(HighlightCodeTool::new(
+            self.project.clone(),
+            assist_source.clone(),
+        ));
+        self.add_tool(AnnotateCodeTool::new(
+            self.project.clone(),
+            assist_source.clone(),
+        ));
+        self.add_tool(CodeTourTool::new(
+            self.project.clone(),
+            assist_source.clone(),
+        ));
+        self.add_tool(ClearAnnotationsTool::new(
+            self.project.clone(),
+            assist_source,
+        ));
 
         if self.depth() < MAX_SUBAGENT_DEPTH {
             self.add_tool(SpawnAgentTool::new(environment.clone()));
@@ -7755,6 +7784,83 @@ mod tests {
     }
 
     #[test]
+    fn test_reduced_attachments_keep_the_context_tags() {
+        let file_path = if cfg!(windows) {
+            "C:\\project\\big.rs"
+        } else {
+            "/project/big.rs"
+        };
+        let file_uri = MentionUri::File {
+            abs_path: file_path.into(),
+        };
+        let outline = "# `big.rs` (900 lines, 40.0 KB). Its full content was not attached.\n\
+                       fn main [L1-20]\n";
+        let diff_uri = MentionUri::GitDiff {
+            base_ref: "main".into(),
+        };
+        let diff_summary = "Changes since the merge base with `main`: 1 file changed, +1 -0.\n\n\
+                            | File | + | - |\n| --- | ---: | ---: |\n| `big.rs` | 1 | 0 |\n";
+        let message = UserMessage {
+            id: ClientUserMessageId::new(),
+            content: vec![
+                UserMessageContent::Text("Look at ".into()),
+                UserMessageContent::from_content_block(
+                    acp::ContentBlock::Resource(acp::EmbeddedResource::new(
+                        acp::EmbeddedResourceResource::TextResourceContents(
+                            acp::TextResourceContents::new(outline, file_uri.to_uri().to_string()),
+                        ),
+                    )),
+                    PathStyle::local(),
+                ),
+                UserMessageContent::from_content_block(
+                    acp::ContentBlock::Resource(acp::EmbeddedResource::new(
+                        acp::EmbeddedResourceResource::TextResourceContents(
+                            acp::TextResourceContents::new(
+                                diff_summary,
+                                diff_uri.to_uri().to_string(),
+                            ),
+                        ),
+                    )),
+                    PathStyle::local(),
+                ),
+            ]
+            .into(),
+        };
+
+        let request = message.to_request();
+        let context = request
+            .content
+            .iter()
+            .filter_map(|content| match content {
+                language_model::MessageContent::Text(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+        let files_start = context.find("<files>").expect("a <files> section");
+        let files_end = context
+            .find("</files>")
+            .expect("the <files> section is closed");
+        assert!(
+            context[files_start..files_end].contains("Its full content was not attached."),
+            "{context}"
+        );
+        let diffs_start = context.find("<diffs>").expect("a <diffs> section");
+        let diffs_end = context
+            .find("</diffs>")
+            .expect("the <diffs> section is closed");
+        assert!(
+            context[diffs_start..diffs_end].contains("Branch diff against main:"),
+            "{context}"
+        );
+        assert!(
+            context[diffs_start..diffs_end].contains("| `big.rs` | 1 | 0 |"),
+            "{context}"
+        );
+        assert!(context.contains("<context>\n"), "{context}");
+        assert!(context.ends_with("</context>"), "{context}");
+    }
+
+    #[test]
     fn test_summary_compaction_renders_for_request_and_markdown() {
         let message = Message::Compaction(CompactionInfo::Summary("Older context".into()));
 
@@ -10118,6 +10224,7 @@ mod tests {
                 FindPathTool::NAME,
                 DiagnosticsTool::NAME,
                 RepoMapTool::NAME,
+                GitDiffTool::NAME,
             ] {
                 assert!(
                     enabled(name),

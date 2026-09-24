@@ -1,8 +1,9 @@
 use crate::diagnostics::{DiagnosticsOptions, codeblock_fence_for_path, collect_diagnostics};
 use acp_thread::{MentionUri, selection_name};
-use agent::{ThreadStore, outline};
+use agent::{RepoMapTool, RepoMapToolInput, ThreadStore, outline};
 use agent_client_protocol::schema::v1 as acp;
 use agent_servers::{AgentServer, AgentServerDelegate};
+use agent_settings::{AgentSettings, ContextAttachmentSettings};
 use anyhow::{Context as _, Result, anyhow};
 use collections::{HashMap, HashSet};
 use editor::{
@@ -13,7 +14,7 @@ use editor::{
 use futures::{AsyncReadExt as _, FutureExt as _, future::Shared};
 use gpui::{
     AppContext, ClipboardEntry, Context, Empty, Entity, EntityId, Image, ImageFormat, Img,
-    SharedString, Task, WeakEntity,
+    SharedString, Subscription, Task, WeakEntity,
 };
 use http_client::{AsyncBody, HttpClientWithUrl};
 use itertools::Either;
@@ -23,6 +24,7 @@ use multi_buffer::MultiBufferRow;
 use postage::stream::Stream as _;
 use project::{Project, ProjectItem, ProjectPath, Worktree};
 use rope::Point;
+use settings::Settings as _;
 use std::{
     cell::RefCell,
     ffi::OsStr,
@@ -57,11 +59,77 @@ pub struct MentionImage {
     pub format: ImageFormat,
 }
 
+/// How much of an attachment is sent. `Auto` applies the limits in
+/// `agent.context_attachments` and may reduce the attachment further when the
+/// message goes over its budget; the user can pin an attachment to `Full` or
+/// `Summary` from its chip.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum AttachmentMode {
+    #[default]
+    Auto,
+    Full,
+    Summary,
+}
+
+/// What a mention chip shows about the attachment behind it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttachmentEstimate {
+    pub bytes: usize,
+    pub mode: AttachmentMode,
+    /// The message is over its budget and this attachment is one that will be
+    /// sent as an outline or a reference to make it fit.
+    pub reduced_for_budget: bool,
+    /// Whether the chip offers to switch between full content and a summary.
+    pub switchable: bool,
+}
+
+impl AttachmentEstimate {
+    pub fn tokens(&self) -> usize {
+        estimated_tokens(self.bytes)
+    }
+}
+
+/// A rough token count for `bytes` of text: tokenizers average about four
+/// bytes of English or code per token.
+pub fn estimated_tokens(bytes: usize) -> usize {
+    bytes.div_ceil(4)
+}
+
+/// `~850` / `~4.1k` / `~120k`.
+pub fn format_token_estimate(tokens: usize) -> String {
+    if tokens < 1_000 {
+        format!("~{tokens}")
+    } else if tokens < 100_000 {
+        format!("~{:.1}k", tokens as f64 / 1_000.0)
+    } else {
+        format!("~{}k", tokens / 1_000)
+    }
+}
+
+/// The message-wide total the send area shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AttachmentsEstimate {
+    pub bytes: usize,
+    pub reduced_count: usize,
+}
+
 pub struct MentionSet {
     project: WeakEntity<Project>,
     thread_store: Option<Entity<ThreadStore>>,
     mentions: HashMap<CreaseId, (MentionUri, MentionTask)>,
     crease_entities: HashMap<CreaseId, Entity<LoadingContext>>,
+    /// Modes other than `Auto`, per crease.
+    modes: HashMap<CreaseId, AttachmentMode>,
+    /// Content supplied by the caller rather than read from the mention's
+    /// URI (terminal output, and content restored from an earlier message),
+    /// kept so that switching modes can reshape it.
+    raw_texts: HashMap<CreaseId, MentionTask>,
+    /// Mentions restored from an earlier message: their content was already
+    /// shaped when it was first sent, so `Auto` sends it as it is.
+    restored: HashSet<CreaseId>,
+    /// Size of each resolved mention in its current mode.
+    resolved_sizes: HashMap<CreaseId, usize>,
+    size_tasks: HashMap<CreaseId, Task<()>>,
 }
 
 impl MentionSet {
@@ -71,25 +139,51 @@ impl MentionSet {
             thread_store,
             mentions: HashMap::default(),
             crease_entities: HashMap::default(),
+            modes: HashMap::default(),
+            raw_texts: HashMap::default(),
+            restored: HashSet::default(),
+            resolved_sizes: HashMap::default(),
+            size_tasks: HashMap::default(),
         }
     }
 
+    /// The resolved mentions, with every mention reduced as the message budget
+    /// requires (see [`plan_budget`]).
     pub fn contents(
         &self,
         full_mention_content: bool,
-        cx: &mut App,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<HashMap<CreaseId, (MentionUri, Mention)>>> {
+        let task = self.contents_within_budget(full_mention_content, None, cx);
+        cx.background_spawn(async move {
+            let (contents, _) = task.await?;
+            Ok(contents)
+        })
+    }
+
+    /// The resolved mentions exactly as their modes produce them, before the
+    /// message budget is applied.
+    pub fn contents_before_budget(
+        &self,
+        full_mention_content: bool,
+        cx: &mut Context<Self>,
     ) -> Task<Result<HashMap<CreaseId, (MentionUri, Mention)>>> {
         let Some(project) = self.project.upgrade() else {
             return Task::ready(Err(anyhow!("Project not found")));
         };
         let mentions = self.mentions.clone();
-        cx.spawn(async move |cx| {
+        let modes = self.modes.clone();
+        let budget = AgentSettings::get_global(cx)
+            .context_attachments
+            .message_budget_bytes;
+        cx.spawn(async move |_, cx| {
             let mut contents = HashMap::default();
             for (crease_id, (mention_uri, task)) in mentions {
                 let content = if full_mention_content
                     && let MentionUri::Directory { abs_path } = &mention_uri
                 {
-                    cx.update(|cx| full_mention_for_directory(&project, abs_path, cx))
+                    let mode = modes.get(&crease_id).copied().unwrap_or_default();
+                    cx.update(|cx| full_mention_for_directory(&project, abs_path, mode, budget, cx))
                         .await?
                 } else {
                     task.await.map_err(|e| anyhow!("{e}"))?
@@ -101,13 +195,165 @@ impl MentionSet {
         })
     }
 
+    /// Resolves every mention (plus `extra`, an attachment that has no crease
+    /// such as the automatically attached active file), then reduces the
+    /// largest `Auto` ones to an outline or a reference until the message fits
+    /// `agent.context_attachments.message_budget_bytes`.
+    pub fn contents_within_budget(
+        &self,
+        full_mention_content: bool,
+        extra: Option<(MentionUri, Task<Result<Mention>>)>,
+        cx: &mut Context<Self>,
+    ) -> Task<
+        Result<(
+            HashMap<CreaseId, (MentionUri, Mention)>,
+            Option<(MentionUri, Mention)>,
+        )>,
+    > {
+        // Directories are expanded only once the rest is planned (see below),
+        // so they are resolved here as the links the chips measure.
+        let contents = self.contents_before_budget(false, cx);
+        let project = self.project.clone();
+        let modes = self.modes.clone();
+        let restored = self.restored.clone();
+        let settings = AgentSettings::get_global(cx).context_attachments;
+        cx.spawn(async move |mention_set, cx| {
+            let mut contents = contents.await?;
+            let mut extra = match extra {
+                Some((uri, task)) => match task.await {
+                    Ok(mention) => Some((uri, mention)),
+                    Err(error) => {
+                        log::warn!("failed to attach the active editor to the message: {error:#}");
+                        None
+                    }
+                },
+                None => None,
+            };
+
+            let mut candidates = contents
+                .iter()
+                .map(|(crease_id, (uri, mention))| BudgetCandidate {
+                    key: Some(*crease_id),
+                    size: mention_size(mention),
+                    reducible: modes.get(crease_id).copied().unwrap_or_default()
+                        == AttachmentMode::Auto
+                        && !restored.contains(crease_id)
+                        && is_reducible(uri, mention),
+                    reduced_size_bound: reduced_size_bound(uri, &settings),
+                })
+                .collect::<Vec<_>>();
+            // Stable order, so that equal sizes are reduced the same way every
+            // time the same message is sent.
+            candidates.sort_by_key(|candidate| candidate.key);
+
+            // The chips predict their reductions from the creases alone (see
+            // `planned_reductions`), so the automatically attached file, which
+            // has no chip, must not change which of them are reduced: it is
+            // planned separately and gives way first.
+            let mut reduced = plan_budget(&candidates, settings.message_budget_bytes);
+            if let Some((uri, mention)) = &extra {
+                let creases_total = candidates
+                    .iter()
+                    .map(|candidate| {
+                        if reduced.contains(&candidate.key) {
+                            candidate.reduced_size_bound.min(candidate.size)
+                        } else {
+                            candidate.size
+                        }
+                    })
+                    .sum::<usize>();
+                let size = mention_size(mention);
+                if is_reducible(uri, mention)
+                    && creases_total + size > settings.message_budget_bytes
+                    && reduced_size_bound(uri, &settings) < size
+                {
+                    reduced.insert(None);
+                }
+            }
+            for key in reduced {
+                let (uri, mention) = match key {
+                    Some(crease_id) => match contents.get(&crease_id) {
+                        Some(entry) => entry.clone(),
+                        None => continue,
+                    },
+                    None => match &extra {
+                        Some(entry) => entry.clone(),
+                        None => continue,
+                    },
+                };
+                let summary = mention_set
+                    .update(cx, |mention_set, cx| {
+                        mention_set.summarize(&uri, &mention, cx)
+                    })?
+                    .await;
+                let summary = match summary {
+                    Ok(summary) => summary,
+                    Err(error) => {
+                        log::warn!("failed to summarize {uri:?} for the message budget: {error:#}");
+                        continue;
+                    }
+                };
+                match key {
+                    Some(crease_id) => {
+                        contents.insert(crease_id, (uri, summary));
+                    }
+                    None => extra = Some((uri, summary)),
+                }
+            }
+
+            // A directory expanded for an agent without tools can only be
+            // measured by expanding it, which the chips do not do; it takes
+            // what the other attachments leave of the budget instead of
+            // pushing them into reductions the chips did not predict.
+            if full_mention_content {
+                let mut used = contents
+                    .values()
+                    .map(|(_, mention)| mention_size(mention))
+                    .sum::<usize>()
+                    + extra
+                        .as_ref()
+                        .map_or(0, |(_, mention)| mention_size(mention));
+                let mut directories = contents
+                    .iter()
+                    .filter_map(|(crease_id, (uri, _))| match uri {
+                        MentionUri::Directory { abs_path } => Some((*crease_id, abs_path.clone())),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                directories.sort_by_key(|(crease_id, _)| *crease_id);
+                for (crease_id, abs_path) in directories {
+                    let project = project.upgrade().context("project not found")?;
+                    let mode = modes.get(&crease_id).copied().unwrap_or_default();
+                    let remaining = settings.message_budget_bytes.saturating_sub(used);
+                    let mention = cx
+                        .update(|cx| {
+                            full_mention_for_directory(&project, &abs_path, mode, remaining, cx)
+                        })
+                        .await?;
+                    used += mention_size(&mention);
+                    contents.insert(crease_id, (MentionUri::Directory { abs_path }, mention));
+                }
+            }
+            Ok((contents, extra))
+        })
+    }
+
     pub fn remove_invalid(&mut self, snapshot: &EditorSnapshot) {
         for (crease_id, crease) in snapshot.crease_snapshot.creases() {
             if !crease.range().start.is_valid(snapshot.buffer_snapshot()) {
-                self.mentions.remove(&crease_id);
-                self.crease_entities.remove(&crease_id);
+                self.forget(&crease_id);
             }
         }
+    }
+
+    fn forget(&mut self, crease_id: &CreaseId) {
+        self.mentions.remove(crease_id);
+        self.crease_entities.remove(crease_id);
+        self.modes.remove(crease_id);
+        self.raw_texts.remove(crease_id);
+        self.restored.remove(crease_id);
+        self.resolved_sizes.remove(crease_id);
+        self.size_tasks.remove(crease_id);
     }
 
     pub fn insert_mention(
@@ -116,13 +362,259 @@ impl MentionSet {
         uri: MentionUri,
         task: MentionTask,
         crease_entity: Option<Entity<LoadingContext>>,
-        cx: &mut App,
+        cx: &mut Context<Self>,
     ) {
+        // Terminal output cannot be read again from its URI, so its raw text
+        // is kept and shaped here rather than by a `confirm_mention_for_*`.
+        let task = if matches!(uri, MentionUri::TerminalSelection { .. }) {
+            self.raw_texts.insert(crease_id, task.clone());
+            shape_raw_text_task(&uri, task, AttachmentMode::Auto, cx)
+        } else {
+            task
+        };
         self.mentions.insert(crease_id, (uri, task));
         if let Some(entity) = crease_entity {
-            self.crease_entities.insert(crease_id, entity);
+            self.attach_crease_entity(crease_id, entity, cx);
         }
+        self.track_size(crease_id, cx);
         self.recompute_disambiguation(cx);
+    }
+
+    /// Inserts a mention whose content comes from an earlier message (editing
+    /// a sent message, or content handed over when a thread starts).
+    pub fn insert_restored_mention(
+        &mut self,
+        crease_id: CreaseId,
+        uri: MentionUri,
+        mention: Mention,
+        crease_entity: Option<Entity<LoadingContext>>,
+        cx: &mut Context<Self>,
+    ) {
+        let task = Task::ready(Ok(mention)).shared();
+        if matches!(mention_kind(&uri), MentionKind::RawText) {
+            self.raw_texts.insert(crease_id, task.clone());
+        }
+        self.restored.insert(crease_id);
+        self.mentions.insert(crease_id, (uri, task));
+        if let Some(entity) = crease_entity {
+            self.attach_crease_entity(crease_id, entity, cx);
+        }
+        self.track_size(crease_id, cx);
+        self.recompute_disambiguation(cx);
+    }
+
+    fn attach_crease_entity(
+        &mut self,
+        crease_id: CreaseId,
+        entity: Entity<LoadingContext>,
+        cx: &mut Context<Self>,
+    ) {
+        let mention_set = cx.weak_entity();
+        entity.update(cx, |loading_context, cx| {
+            loading_context.attach(mention_set, crease_id, cx);
+        });
+        self.crease_entities.insert(crease_id, entity);
+    }
+
+    fn track_size(&mut self, crease_id: CreaseId, cx: &mut Context<Self>) {
+        let Some((_, task)) = self.mentions.get(&crease_id) else {
+            return;
+        };
+        self.resolved_sizes.remove(&crease_id);
+        let task = task.clone();
+        self.size_tasks.insert(
+            crease_id,
+            cx.spawn(async move |this, cx| {
+                let Ok(mention) = task.await else {
+                    return;
+                };
+                this.update(cx, |this, cx| {
+                    this.resolved_sizes
+                        .insert(crease_id, mention_size(&mention));
+                    cx.notify();
+                })
+                .ok();
+            }),
+        );
+        cx.notify();
+    }
+
+    pub fn mode(&self, crease_id: &CreaseId) -> AttachmentMode {
+        self.modes.get(crease_id).copied().unwrap_or_default()
+    }
+
+    /// Switches how much of an attachment is sent and resolves it again.
+    pub fn set_mode(&mut self, crease_id: CreaseId, mode: AttachmentMode, cx: &mut Context<Self>) {
+        let Some((uri, _)) = self.mentions.get(&crease_id).cloned() else {
+            return;
+        };
+        if self.mode(&crease_id) == mode || !is_switchable(&uri) {
+            return;
+        }
+        if mode == AttachmentMode::Auto {
+            self.modes.remove(&crease_id);
+        } else {
+            self.modes.insert(crease_id, mode);
+        }
+
+        let task = if let Some(raw) = self.raw_texts.get(&crease_id).cloned() {
+            if mode == AttachmentMode::Auto && self.restored.contains(&crease_id) {
+                raw
+            } else {
+                shape_raw_text_task(&uri, raw, mode, cx)
+            }
+        } else if mode == AttachmentMode::Auto && self.restored.contains(&crease_id) {
+            // The restored content is gone once another mode replaced it, so
+            // `Auto` reads the attachment afresh.
+            self.restored.remove(&crease_id);
+            self.resolve_uri(uri.clone(), mode, cx)
+        } else {
+            self.resolve_uri(uri.clone(), mode, cx)
+        };
+        self.mentions.insert(crease_id, (uri, task));
+        self.track_size(crease_id, cx);
+    }
+
+    fn resolve_uri(
+        &mut self,
+        uri: MentionUri,
+        mode: AttachmentMode,
+        cx: &mut Context<Self>,
+    ) -> MentionTask {
+        let task = match uri {
+            MentionUri::File { abs_path } => {
+                self.confirm_mention_for_file_with_mode(abs_path, false, mode, cx)
+            }
+            MentionUri::Symbol {
+                abs_path,
+                line_range,
+                ..
+            }
+            | MentionUri::Selection {
+                abs_path: Some(abs_path),
+                line_range,
+                ..
+            } => self.confirm_mention_for_symbol_with_mode(abs_path, line_range, mode, cx),
+            MentionUri::Fetch { url } => match self.http_client(cx) {
+                Some(http_client) => {
+                    self.confirm_mention_for_fetch_with_mode(url, http_client, mode, cx)
+                }
+                None => Task::ready(Err(anyhow!("project not found"))),
+            },
+            MentionUri::Diagnostics {
+                include_errors,
+                include_warnings,
+            } => self.confirm_mention_for_diagnostics_with_mode(
+                include_errors,
+                include_warnings,
+                mode,
+                cx,
+            ),
+            MentionUri::GitDiff { base_ref } => {
+                self.confirm_mention_for_git_diff_with_mode(base_ref.into(), mode, cx)
+            }
+            MentionUri::Directory { .. } => Task::ready(Ok(Mention::Link)),
+            other => Task::ready(Err(anyhow!("{other:?} cannot be resolved again"))),
+        };
+        cx.spawn(async move |_, _| task.await.map_err(|error| error.to_string()))
+            .shared()
+    }
+
+    fn http_client(&self, cx: &App) -> Option<Arc<HttpClientWithUrl>> {
+        let project = self.project.upgrade()?;
+        Some(project.read(cx).client().http_client())
+    }
+
+    /// The reduced form of an attachment that the message budget replaces it
+    /// with: an outline for a file, the file table for a branch diff, a
+    /// reference for the rest.
+    fn summarize(
+        &mut self,
+        uri: &MentionUri,
+        mention: &Mention,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Mention>> {
+        let settings = AgentSettings::get_global(cx).context_attachments;
+        match uri {
+            MentionUri::File { abs_path } => self.confirm_mention_for_file_with_mode(
+                abs_path.clone(),
+                false,
+                AttachmentMode::Summary,
+                cx,
+            ),
+            MentionUri::GitDiff { base_ref } => self.confirm_mention_for_git_diff_with_mode(
+                base_ref.clone().into(),
+                AttachmentMode::Summary,
+                cx,
+            ),
+            _ => match mention {
+                Mention::Text {
+                    content,
+                    tracked_buffers,
+                } => Task::ready(Ok(Mention::Text {
+                    content: summarize_text(uri, content, &settings),
+                    tracked_buffers: tracked_buffers.clone(),
+                })),
+                other => Task::ready(Ok(other.clone())),
+            },
+        }
+    }
+
+    /// What the chip of `crease_id` shows, once its mention has resolved.
+    pub fn attachment_estimate(
+        &self,
+        crease_id: &CreaseId,
+        cx: &App,
+    ) -> Option<AttachmentEstimate> {
+        let (uri, _) = self.mentions.get(crease_id)?;
+        let bytes = *self.resolved_sizes.get(crease_id)?;
+        let reduced = self.planned_reductions(cx);
+        Some(AttachmentEstimate {
+            bytes,
+            mode: self.mode(crease_id),
+            reduced_for_budget: reduced.contains(&Some(*crease_id)),
+            switchable: is_switchable(uri),
+        })
+    }
+
+    /// The total the send area shows: every resolved attachment, counting the
+    /// ones the budget reduces at their reduced size.
+    pub fn total_estimate(&self, cx: &App) -> AttachmentsEstimate {
+        let settings = AgentSettings::get_global(cx).context_attachments;
+        let reduced = self.planned_reductions(cx);
+        let mut total = AttachmentsEstimate::default();
+        for (crease_id, bytes) in &self.resolved_sizes {
+            if reduced.contains(&Some(*crease_id)) {
+                total.reduced_count += 1;
+                if let Some((uri, _)) = self.mentions.get(crease_id) {
+                    total.bytes += (*bytes).min(reduced_size_bound(uri, &settings));
+                }
+            } else {
+                total.bytes += bytes;
+            }
+        }
+        total
+    }
+
+    fn planned_reductions(&self, cx: &App) -> HashSet<Option<CreaseId>> {
+        let settings = AgentSettings::get_global(cx).context_attachments;
+        let mut candidates = self
+            .resolved_sizes
+            .iter()
+            .filter_map(|(crease_id, size)| {
+                let (uri, _) = self.mentions.get(crease_id)?;
+                Some(BudgetCandidate {
+                    key: Some(*crease_id),
+                    size: *size,
+                    reducible: self.mode(crease_id) == AttachmentMode::Auto
+                        && !self.restored.contains(crease_id)
+                        && is_switchable(uri),
+                    reduced_size_bound: reduced_size_bound(uri, &settings),
+                })
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|candidate| candidate.key);
+        plan_budget(&candidates, settings.message_budget_bytes)
     }
 
     /// Creates the appropriate confirmation task for a mention based on its URI type.
@@ -173,10 +665,10 @@ impl MentionSet {
         }
     }
 
-    pub fn remove_mention(&mut self, crease_id: &CreaseId, cx: &mut App) {
-        self.mentions.remove(crease_id);
-        self.crease_entities.remove(crease_id);
+    pub fn remove_mention(&mut self, crease_id: &CreaseId, cx: &mut Context<Self>) {
+        self.forget(crease_id);
         self.recompute_disambiguation(cx);
+        cx.notify();
     }
 
     pub fn creases(&self) -> HashSet<CreaseId> {
@@ -208,11 +700,22 @@ impl MentionSet {
     pub fn set_mentions(&mut self, mentions: HashMap<CreaseId, (MentionUri, MentionTask)>) {
         self.crease_entities
             .retain(|id, _| mentions.contains_key(id));
+        self.modes.retain(|id, _| mentions.contains_key(id));
+        self.raw_texts.retain(|id, _| mentions.contains_key(id));
+        self.restored.retain(|id| mentions.contains_key(id));
+        self.resolved_sizes
+            .retain(|id, _| mentions.contains_key(id));
+        self.size_tasks.retain(|id, _| mentions.contains_key(id));
         self.mentions = mentions;
     }
 
     pub fn clear(&mut self) -> impl Iterator<Item = (CreaseId, (MentionUri, MentionTask))> {
         self.crease_entities.clear();
+        self.modes.clear();
+        self.raw_texts.clear();
+        self.restored.clear();
+        self.resolved_sizes.clear();
+        self.size_tasks.clear();
         self.mentions.drain()
     }
 
@@ -358,8 +861,9 @@ impl MentionSet {
             .shared();
         self.mentions.insert(crease_id, (mention_uri, task.clone()));
         if let Some(entity) = crease_entity {
-            self.crease_entities.insert(crease_id, entity);
+            self.attach_crease_entity(crease_id, entity, cx);
         }
+        self.track_size(crease_id, cx);
         self.recompute_disambiguation(cx);
 
         // Notify the user if we failed to load the mentioned context
@@ -373,8 +877,8 @@ impl MentionSet {
                         // Remove mention
                         editor.edit([(start_anchor..end_anchor, "")], cx);
                     });
-                    this.mentions.remove(&crease_id);
-                    this.crease_entities.remove(&crease_id);
+                    this.forget(&crease_id);
+                    cx.notify();
                 })
                 .ok();
             }
@@ -385,6 +889,16 @@ impl MentionSet {
         &self,
         abs_path: PathBuf,
         supports_images: bool,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Mention>> {
+        self.confirm_mention_for_file_with_mode(abs_path, supports_images, AttachmentMode::Auto, cx)
+    }
+
+    fn confirm_mention_for_file_with_mode(
+        &self,
+        abs_path: PathBuf,
+        supports_images: bool,
+        mode: AttachmentMode,
         cx: &mut Context<Self>,
     ) -> Task<Result<Mention>> {
         let Some(project) = self.project.upgrade() else {
@@ -422,6 +936,7 @@ impl MentionSet {
             });
         }
 
+        let settings = AgentSettings::get_global(cx).context_attachments;
         let buffer = project.update(cx, |project, cx| project.open_buffer(project_path, cx));
         cx.spawn(async move |_, cx| {
             let buffer = match buffer.await {
@@ -430,15 +945,25 @@ impl MentionSet {
                     return Ok(Mention::Link);
                 }
             };
-            let buffer_content = outline::get_buffer_content_or_outline(
-                buffer.clone(),
-                Some(&abs_path.to_string_lossy()),
-                &cx,
-            )
-            .await?;
+            let content = match mode {
+                AttachmentMode::Full => buffer.read_with(cx, |buffer, _| buffer.text()),
+                AttachmentMode::Auto | AttachmentMode::Summary => {
+                    let inline_max_bytes =
+                        (mode == AttachmentMode::Auto).then_some(settings.inline_max_bytes);
+                    outline::get_attachment_content(
+                        buffer.clone(),
+                        Some(&abs_path.to_string_lossy()),
+                        inline_max_bytes,
+                        settings.outline_max_bytes,
+                        &cx,
+                    )
+                    .await?
+                    .text
+                }
+            };
 
             Ok(Mention::Text {
-                content: buffer_content.text,
+                content,
                 tracked_buffers: vec![buffer],
             })
         })
@@ -450,8 +975,25 @@ impl MentionSet {
         http_client: Arc<HttpClientWithUrl>,
         cx: &mut Context<Self>,
     ) -> Task<Result<Mention>> {
+        self.confirm_mention_for_fetch_with_mode(url, http_client, AttachmentMode::Auto, cx)
+    }
+
+    fn confirm_mention_for_fetch_with_mode(
+        &self,
+        url: url::Url,
+        http_client: Arc<HttpClientWithUrl>,
+        mode: AttachmentMode,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Mention>> {
+        let settings = AgentSettings::get_global(cx).context_attachments;
         cx.background_executor().spawn(async move {
             let content = fetch_url_content(http_client, url.to_string()).await?;
+            let uri = MentionUri::Fetch { url };
+            let content = match mode {
+                AttachmentMode::Full => content,
+                AttachmentMode::Auto => truncate_fetched_page(&content, settings.fetch_max_bytes),
+                AttachmentMode::Summary => summarize_text(&uri, &content, &settings),
+            };
             Ok(Mention::Text {
                 content,
                 tracked_buffers: Vec::new(),
@@ -465,6 +1007,17 @@ impl MentionSet {
         line_range: RangeInclusive<u32>,
         cx: &mut Context<Self>,
     ) -> Task<Result<Mention>> {
+        self.confirm_mention_for_symbol_with_mode(abs_path, line_range, AttachmentMode::Auto, cx)
+    }
+
+    fn confirm_mention_for_symbol_with_mode(
+        &self,
+        abs_path: PathBuf,
+        line_range: RangeInclusive<u32>,
+        mode: AttachmentMode,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Mention>> {
+        let settings = AgentSettings::get_global(cx).context_attachments;
         let Some(project) = self.project.upgrade() else {
             return Task::ready(Err(anyhow!("project not found")));
         };
@@ -482,9 +1035,14 @@ impl MentionSet {
             let mention = buffer.update(cx, |buffer, cx| {
                 let start = Point::new(*line_range.start(), 0).min(buffer.max_point());
                 let end = Point::new(*line_range.end() + 1, 0).min(buffer.max_point());
-                let content = buffer.text_for_range(start..end).collect();
+                let content: String = buffer.text_for_range(start..end).collect();
+                let uri = MentionUri::Selection {
+                    abs_path: Some(abs_path),
+                    line_range,
+                    column: None,
+                };
                 Mention::Text {
-                    content,
+                    content: shape_raw_text(&uri, content, mode, &settings),
                     tracked_buffers: vec![cx.entity()],
                 }
             });
@@ -561,7 +1119,7 @@ impl MentionSet {
                 line_range: line_range.clone(),
                 column: None,
             };
-            let crease = crease_for_mention(
+            let (crease, crease_entity) = crease_with_loading_context(
                 selection_name(abs_path.as_deref(), &line_range).into(),
                 uri.icon_path(cx),
                 uri.tooltip_text(),
@@ -569,25 +1127,27 @@ impl MentionSet {
                 Some(workspace.clone()),
                 range,
                 editor.downgrade(),
+                cx,
             );
 
-            let crease_id = editor.update(cx, |editor, cx| {
+            let Some(crease_id) = editor.update(cx, |editor, cx| {
                 let crease_ids = editor.insert_creases(vec![crease.clone()], cx);
                 editor.fold_creases(vec![crease], false, window, cx);
-                crease_ids.first().copied().unwrap()
-            });
+                crease_ids.first().copied()
+            }) else {
+                continue;
+            };
 
-            self.mentions.insert(
-                crease_id,
-                (
-                    uri,
-                    Task::ready(Ok(Mention::Text {
-                        content: text,
-                        tracked_buffers: vec![buffer],
-                    }))
-                    .shared(),
-                ),
-            );
+            let raw = Task::ready(Ok(Mention::Text {
+                content: text,
+                tracked_buffers: vec![buffer],
+            }))
+            .shared();
+            self.raw_texts.insert(crease_id, raw.clone());
+            let task = shape_raw_text_task(&uri, raw, AttachmentMode::Auto, cx);
+            self.mentions.insert(crease_id, (uri, task));
+            self.attach_crease_entity(crease_id, crease_entity, cx);
+            self.track_size(crease_id, cx);
         }
 
         // Take this explanation with a grain of salt but, with creases being
@@ -648,9 +1208,25 @@ impl MentionSet {
         include_warnings: bool,
         cx: &mut Context<Self>,
     ) -> Task<Result<Mention>> {
+        self.confirm_mention_for_diagnostics_with_mode(
+            include_errors,
+            include_warnings,
+            AttachmentMode::Auto,
+            cx,
+        )
+    }
+
+    fn confirm_mention_for_diagnostics_with_mode(
+        &self,
+        include_errors: bool,
+        include_warnings: bool,
+        mode: AttachmentMode,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Mention>> {
         let Some(project) = self.project.upgrade() else {
             return Task::ready(Err(anyhow!("project not found")));
         };
+        let settings = AgentSettings::get_global(cx).context_attachments;
 
         let diagnostics_task = collect_diagnostics(
             project,
@@ -658,6 +1234,7 @@ impl MentionSet {
                 include_errors,
                 include_warnings,
                 path_matcher: None,
+                max_files: (mode != AttachmentMode::Full).then_some(settings.diagnostics_max_files),
             },
             cx,
         );
@@ -665,6 +1242,18 @@ impl MentionSet {
             let content = diagnostics_task
                 .await?
                 .unwrap_or_else(|| "No diagnostics found.".into());
+            let content = if mode == AttachmentMode::Summary {
+                summarize_text(
+                    &MentionUri::Diagnostics {
+                        include_errors,
+                        include_warnings,
+                    },
+                    &content,
+                    &settings,
+                )
+            } else {
+                content
+            };
             Ok(Mention::Text {
                 content,
                 tracked_buffers: Vec::new(),
@@ -677,6 +1266,15 @@ impl MentionSet {
         base_ref: SharedString,
         cx: &mut Context<Self>,
     ) -> Task<Result<Mention>> {
+        self.confirm_mention_for_git_diff_with_mode(base_ref, AttachmentMode::Auto, cx)
+    }
+
+    fn confirm_mention_for_git_diff_with_mode(
+        &self,
+        base_ref: SharedString,
+        mode: AttachmentMode,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Mention>> {
         let Some(project) = self.project.upgrade() else {
             return Task::ready(Err(anyhow!("project not found")));
         };
@@ -687,26 +1285,343 @@ impl MentionSet {
 
         let diff_receiver = repo.update(cx, |repo, cx| {
             repo.diff(
-                git::repository::DiffType::MergeBase { base_ref: base_ref },
+                git::repository::DiffType::MergeBase {
+                    base_ref: base_ref.clone(),
+                },
                 cx,
             )
         });
 
-        cx.spawn(async move |_, _| {
+        cx.spawn(async move |_, cx| {
             let diff_text = diff_receiver.await??;
-            if diff_text.is_empty() {
-                Ok(Mention::Text {
-                    content: "No changes found in branch diff.".into(),
-                    tracked_buffers: Vec::new(),
-                })
-            } else {
-                Ok(Mention::Text {
-                    content: diff_text,
-                    tracked_buffers: Vec::new(),
-                })
-            }
+            let request = match mode {
+                AttachmentMode::Full => None,
+                AttachmentMode::Auto | AttachmentMode::Summary => {
+                    Some(agent::GitDiffSummaryRequest::branch(
+                        &base_ref,
+                        mode == AttachmentMode::Auto,
+                        BRANCH_DIFF_ATTACHMENT_BYTES,
+                    ))
+                }
+            };
+            let content =
+                agent::branch_diff_for_agent(project, repo, &diff_text, request, cx).await;
+            Ok(Mention::Text {
+                content,
+                tracked_buffers: Vec::new(),
+            })
         })
     }
+}
+
+/// What a branch diff mention sends by default: the file table, the changed
+/// symbols and as much of the patch as fits.
+const BRANCH_DIFF_ATTACHMENT_BYTES: usize = 16 * 1024;
+
+/// A budget candidate: one attachment of a message being sent.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BudgetCandidate<K> {
+    pub key: K,
+    pub size: usize,
+    /// Whether this attachment may be sent as an outline or a reference.
+    pub reducible: bool,
+    /// At most how large it is once reduced.
+    pub reduced_size_bound: usize,
+}
+
+/// Picks the attachments to reduce so that the message fits `budget`: the
+/// largest reducible ones first, until the estimated total is within budget.
+/// Candidates are expected in a stable order, which breaks ties in size.
+pub(crate) fn plan_budget<K: Copy + Eq + std::hash::Hash>(
+    candidates: &[BudgetCandidate<K>],
+    budget: usize,
+) -> HashSet<K> {
+    let mut total = candidates
+        .iter()
+        .map(|candidate| candidate.size)
+        .sum::<usize>();
+    let mut reduced = HashSet::default();
+    if total <= budget {
+        return reduced;
+    }
+
+    let mut reducible = candidates
+        .iter()
+        .filter(|candidate| candidate.reducible && candidate.reduced_size_bound < candidate.size)
+        .collect::<Vec<_>>();
+    reducible.sort_by_key(|candidate| std::cmp::Reverse(candidate.size));
+    for candidate in reducible {
+        if total <= budget {
+            break;
+        }
+        total = total - candidate.size + candidate.reduced_size_bound;
+        reduced.insert(candidate.key);
+    }
+    reduced
+}
+
+fn mention_size(mention: &Mention) -> usize {
+    match mention {
+        Mention::Text { content, .. } => content.len(),
+        Mention::Image(_) | Mention::Link => 0,
+    }
+}
+
+enum MentionKind {
+    /// Read again from the URI when its mode changes.
+    Resolvable,
+    /// Only the text supplied with it exists.
+    RawText,
+    /// Sent as it is in every mode.
+    Fixed,
+}
+
+fn mention_kind(uri: &MentionUri) -> MentionKind {
+    match uri {
+        MentionUri::File { abs_path } if !is_raster_image_path(abs_path) => MentionKind::Resolvable,
+        MentionUri::Symbol { .. }
+        | MentionUri::Selection {
+            abs_path: Some(_), ..
+        }
+        | MentionUri::Fetch { .. }
+        | MentionUri::Diagnostics { .. }
+        | MentionUri::GitDiff { .. }
+        | MentionUri::Directory { .. } => MentionKind::Resolvable,
+        MentionUri::TerminalSelection { .. } | MentionUri::Selection { abs_path: None, .. } => {
+            MentionKind::RawText
+        }
+        MentionUri::File { .. }
+        | MentionUri::PastedImage { .. }
+        | MentionUri::Thread { .. }
+        | MentionUri::Rule { .. }
+        | MentionUri::MergeConflict { .. }
+        | MentionUri::Skill { .. } => MentionKind::Fixed,
+    }
+}
+
+/// Whether the attachment has a full and a reduced form to choose between.
+/// Threads and skills are already summaries or instructions, and images are
+/// out of scope.
+fn is_switchable(uri: &MentionUri) -> bool {
+    !matches!(mention_kind(uri), MentionKind::Fixed)
+}
+
+fn is_reducible(uri: &MentionUri, mention: &Mention) -> bool {
+    is_switchable(uri) && matches!(mention, Mention::Text { .. })
+}
+
+/// At most how large an attachment of this kind is once the budget reduces
+/// it, used to predict whether reducing it is enough.
+fn reduced_size_bound(uri: &MentionUri, settings: &ContextAttachmentSettings) -> usize {
+    const NOTE_BYTES: usize = 512;
+    match uri {
+        MentionUri::File { .. } | MentionUri::Directory { .. } => {
+            settings.outline_max_bytes + NOTE_BYTES + 1024
+        }
+        MentionUri::GitDiff { .. } => BRANCH_DIFF_ATTACHMENT_BYTES / 2,
+        MentionUri::TerminalSelection { .. } | MentionUri::Selection { abs_path: None, .. } => {
+            SUMMARY_HEAD_LINES * 256 + SUMMARY_TAIL_LINES * 256 + NOTE_BYTES
+        }
+        _ => NOTE_BYTES,
+    }
+}
+
+/// Lines of a long selection, symbol, terminal output or pasted text that are
+/// sent in `Auto` mode: its first and last ones, with the middle left out.
+const MAX_LINES_IN_FULL: usize = 200;
+const KEPT_HEAD_LINES: usize = 80;
+const KEPT_TAIL_LINES: usize = 40;
+/// What is kept of terminal output once the message budget reduces it.
+const SUMMARY_HEAD_LINES: usize = 20;
+const SUMMARY_TAIL_LINES: usize = 10;
+
+/// Keeps the first `head` and last `tail` lines of `text` when it has more
+/// than `max_lines`, replacing the middle with a line that gives its range.
+/// `first_row` is the zero-based row of the text's first line in its file, so
+/// the range can be read back; it is 0 for text that is not from a file.
+pub(crate) fn elide_middle_lines(
+    text: &str,
+    first_row: u32,
+    max_lines: usize,
+    head: usize,
+    tail: usize,
+) -> String {
+    let lines = text.split_inclusive('\n').collect::<Vec<_>>();
+    if lines.len() <= max_lines || lines.len() <= head + tail {
+        return text.to_string();
+    }
+    let omitted = lines.len() - head - tail;
+    let first_omitted = first_row as usize + head + 1;
+    let last_omitted = first_omitted + omitted - 1;
+    let mut output = lines[..head].concat();
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+    writeln!(
+        output,
+        "… L{first_omitted}-{last_omitted} ({omitted} lines) omitted …"
+    )
+    .ok();
+    output.push_str(&lines[lines.len() - tail..].concat());
+    output
+}
+
+fn selection_first_row(uri: &MentionUri) -> u32 {
+    match uri {
+        MentionUri::Symbol { line_range, .. } | MentionUri::Selection { line_range, .. } => {
+            *line_range.start()
+        }
+        _ => 0,
+    }
+}
+
+/// Shapes text supplied with a mention (a selection, terminal output) for
+/// `mode`.
+fn shape_raw_text(
+    uri: &MentionUri,
+    text: String,
+    mode: AttachmentMode,
+    settings: &ContextAttachmentSettings,
+) -> String {
+    match mode {
+        AttachmentMode::Full => text,
+        AttachmentMode::Auto => elide_middle_lines(
+            &text,
+            selection_first_row(uri),
+            MAX_LINES_IN_FULL,
+            KEPT_HEAD_LINES,
+            KEPT_TAIL_LINES,
+        ),
+        AttachmentMode::Summary => summarize_text(uri, &text, settings),
+    }
+}
+
+fn shape_raw_text_task(
+    uri: &MentionUri,
+    raw: MentionTask,
+    mode: AttachmentMode,
+    cx: &mut App,
+) -> MentionTask {
+    let uri = uri.clone();
+    let settings = AgentSettings::get_global(cx).context_attachments;
+    cx.background_spawn(async move {
+        match raw.await? {
+            Mention::Text {
+                content,
+                tracked_buffers,
+            } => Ok(Mention::Text {
+                content: shape_raw_text(&uri, content, mode, &settings),
+                tracked_buffers,
+            }),
+            other => Ok(other),
+        }
+    })
+    .shared()
+}
+
+/// The reduced form of an attachment whose full content is `text`, for the
+/// kinds that are reduced without reading anything again.
+fn summarize_text(uri: &MentionUri, text: &str, settings: &ContextAttachmentSettings) -> String {
+    let line_count = text.lines().count();
+    let size = format!("{:.1} KB", text.len() as f64 / 1024.0);
+    match uri {
+        MentionUri::Symbol {
+            abs_path,
+            line_range,
+            ..
+        }
+        | MentionUri::Selection {
+            abs_path: Some(abs_path),
+            line_range,
+            ..
+        } => format!(
+            "Lines {}-{} of `{}` ({line_count} lines, {size}) were attached but not included \
+             to keep the message small. Read that range with your file-reading tool if you need it.\n",
+            line_range.start() + 1,
+            line_range.end() + 1,
+            abs_path.display(),
+        ),
+        MentionUri::Fetch { url } => format!(
+            "The web page {url} ({size}) was attached but not included to keep the message \
+             small. Fetch it if you need its content.\n"
+        ),
+        MentionUri::Diagnostics { .. } => summarize_diagnostics(text),
+        _ => {
+            let excerpt = elide_middle_lines(
+                text,
+                0,
+                SUMMARY_HEAD_LINES + SUMMARY_TAIL_LINES,
+                SUMMARY_HEAD_LINES,
+                SUMMARY_TAIL_LINES,
+            );
+            // A few very long lines stay large even with the middle left out.
+            truncate_with_note(
+                &excerpt,
+                settings.outline_max_bytes,
+                "the rest was left out",
+            )
+        }
+    }
+}
+
+/// Keeps the headline counts and the list of files of a diagnostics
+/// attachment, without the code excerpts.
+fn summarize_diagnostics(text: &str) -> String {
+    let mut lines = text.lines();
+    let mut output = String::new();
+    if let Some(label) = lines.next() {
+        output.push_str(label);
+        output.push('\n');
+    }
+    let mut in_fence = false;
+    let mut files = Vec::new();
+    for line in lines {
+        if line.starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if !in_fence && !line.is_empty() && line != "diagnostics" && !line.starts_with('[') {
+            files.push(line);
+        }
+    }
+    if !files.is_empty() {
+        writeln!(output, "Files with diagnostics: {}", files.join(", ")).ok();
+    }
+    output.push_str(
+        "The diagnostics themselves were left out to keep the message small; \
+         check them with a diagnostics tool if you need the details.\n",
+    );
+    output
+}
+
+fn truncate_fetched_page(content: &str, max_bytes: usize) -> String {
+    truncate_with_note(content, max_bytes, "fetch the page again for the rest")
+}
+
+/// Keeps at most `max_bytes` of `content`, cutting at a line boundary when
+/// there is one, and says how much was left out.
+fn truncate_with_note(content: &str, max_bytes: usize, rest: &str) -> String {
+    if content.len() <= max_bytes {
+        return content.to_string();
+    }
+    let mut cut = content.floor_char_boundary(max_bytes);
+    if let Some(newline) = content[..cut].rfind('\n')
+        && newline > cut / 2
+    {
+        cut = newline + 1;
+    }
+    let mut output = content[..cut].to_string();
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+    writeln!(
+        output,
+        "[… the first {:.1} KB of {:.1} KB are shown; {rest} …]",
+        cut as f64 / 1024.0,
+        content.len() as f64 / 1024.0
+    )
+    .ok();
+    output
 }
 
 /// Computes disambiguated labels for a set of mentions, so that mentions sharing
@@ -752,7 +1667,7 @@ mod tests {
     use super::*;
 
     use fs::FakeFs;
-    use gpui::TestAppContext;
+    use gpui::{TestAppContext, UpdateGlobal as _};
     use project::Project;
     use prompt_store;
     use release_channel;
@@ -834,6 +1749,500 @@ mod tests {
             }
             other => panic!("Expected selection mention to resolve as text, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_elide_middle_lines_keeps_head_and_tail() {
+        let text: String = (1..=250).map(|number| format!("行 {number}\n")).collect();
+        let elided = elide_middle_lines(&text, 10, 200, 80, 40);
+        let lines = elided.lines().collect::<Vec<_>>();
+        assert_eq!(lines.len(), 80 + 1 + 40);
+        assert_eq!(lines[0], "行 1");
+        assert_eq!(lines[79], "行 80");
+        assert_eq!(lines[80], "… L91-220 (130 lines) omitted …");
+        assert_eq!(lines[81], "行 211");
+        assert_eq!(lines[120], "行 250");
+
+        let short: String = (1..=200).map(|number| format!("{number}\n")).collect();
+        assert_eq!(elide_middle_lines(&short, 0, 200, 80, 40), short);
+    }
+
+    #[test]
+    fn test_plan_budget_reduces_largest_reducible_first() {
+        let candidate = |key: u32, size: usize, reducible: bool| BudgetCandidate {
+            key,
+            size,
+            reducible,
+            reduced_size_bound: 1_000,
+        };
+        let candidates = [
+            candidate(1, 10_000, true),
+            candidate(2, 40_000, true),
+            candidate(3, 30_000, true),
+        ];
+        assert_eq!(
+            plan_budget(&candidates, 50_000),
+            [2].into_iter().collect::<HashSet<_>>()
+        );
+        assert_eq!(
+            plan_budget(&candidates, 20_000),
+            [2, 3].into_iter().collect::<HashSet<_>>()
+        );
+        assert!(plan_budget(&candidates, 80_000).is_empty());
+
+        // An attachment pinned to its full content is never reduced, even
+        // when it is the largest one.
+        let candidates = [
+            candidate(1, 10_000, true),
+            candidate(2, 40_000, false),
+            candidate(3, 30_000, true),
+        ];
+        assert_eq!(
+            plan_budget(&candidates, 50_000),
+            [1, 3].into_iter().collect::<HashSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_truncate_fetched_page_cuts_on_line_and_char_boundaries() {
+        let page = "日本語の段落です。\n".repeat(200);
+        let truncated = truncate_fetched_page(&page, 1_000);
+        assert!(truncated.len() < 1_200, "{}", truncated.len());
+        let (kept, note) = truncated
+            .rsplit_once("[…")
+            .expect("the truncation is noted");
+        assert!(
+            kept.lines().all(|line| line == "日本語の段落です。"),
+            "{kept}"
+        );
+        assert!(note.contains("of 5.5 KB are shown"), "{note}");
+        assert_eq!(truncate_fetched_page("short", 1_000), "short");
+    }
+
+    #[test]
+    fn test_summarize_diagnostics_keeps_counts_and_files() {
+        let text = concat!(
+            "Diagnostics: 2 errors, 1 warnings\n",
+            "diagnostics\n",
+            "src/a.rs\n",
+            "```rust\n",
+            "fn a() {}\n",
+            "// error: bad\n",
+            "```\n",
+            "src/b.rs\n",
+            "```rust\n",
+            "let x = 1;\n",
+            "// warning: unused\n",
+            "```\n",
+        );
+        let summary = summarize_diagnostics(text);
+        assert!(
+            summary.starts_with("Diagnostics: 2 errors, 1 warnings\n"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("Files with diagnostics: src/a.rs, src/b.rs\n"),
+            "{summary}"
+        );
+        assert!(!summary.contains("fn a()"), "{summary}");
+    }
+
+    #[test]
+    fn test_shape_raw_text_modes() {
+        let settings = ContextAttachmentSettings::DEFAULT;
+        let uri = MentionUri::Selection {
+            abs_path: Some(path!("/project/a.rs").into()),
+            line_range: 4..=303,
+            column: None,
+        };
+        let text: String = (0..300).map(|number| format!("line {number}\n")).collect();
+        assert_eq!(
+            shape_raw_text(&uri, text.clone(), AttachmentMode::Full, &settings),
+            text
+        );
+        let auto = shape_raw_text(&uri, text.clone(), AttachmentMode::Auto, &settings);
+        assert!(
+            auto.contains("\n… L85-264 (180 lines) omitted …\n"),
+            "{auto}"
+        );
+        assert_eq!(auto.lines().count(), 80 + 1 + 40);
+        let summary = shape_raw_text(&uri, text, AttachmentMode::Summary, &settings);
+        assert!(summary.starts_with("Lines 5-304 of `"), "{summary}");
+
+        let terminal = MentionUri::TerminalSelection { line_count: 300 };
+        let output: String = (0..300).map(|number| format!("out {number}\n")).collect();
+        let summary = shape_raw_text(&terminal, output, AttachmentMode::Summary, &settings);
+        assert_eq!(summary.lines().count(), 20 + 1 + 10, "{summary}");
+    }
+
+    async fn file_mention_text(
+        mention_set: &Entity<MentionSet>,
+        name: &str,
+        mode: AttachmentMode,
+        cx: &mut TestAppContext,
+    ) -> String {
+        let task = mention_set.update(cx, |mention_set, cx| {
+            mention_set.confirm_mention_for_file_with_mode(
+                Path::new(path!("/project")).join(name),
+                false,
+                mode,
+                cx,
+            )
+        });
+        match task.await.unwrap() {
+            Mention::Text { content, .. } => content,
+            other => panic!("expected a text mention, got {other:?}"),
+        }
+    }
+
+    #[gpui::test]
+    async fn test_file_mention_modes(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let large = "a line of plain text\n".repeat(2_000);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            "/project",
+            json!({"large.txt": large.clone(), "small.txt": "small\n"}),
+        )
+        .await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+        let mention_set = cx.new(|_cx| MentionSet::new(project.downgrade(), None));
+
+        let auto = file_mention_text(&mention_set, "large.txt", AttachmentMode::Auto, cx).await;
+        assert!(
+            auto.contains("large.txt` (2001 lines, 41.0 KB). Its full content was not attached."),
+            "{auto}"
+        );
+        assert!(auto.len() < 2 * 1024, "{}", auto.len());
+
+        let full = file_mention_text(&mention_set, "large.txt", AttachmentMode::Full, cx).await;
+        assert_eq!(full, large);
+
+        let small = file_mention_text(&mention_set, "small.txt", AttachmentMode::Auto, cx).await;
+        assert_eq!(small, "small\n");
+        let summary =
+            file_mention_text(&mention_set, "small.txt", AttachmentMode::Summary, cx).await;
+        assert!(
+            summary.contains("Its full content was not attached."),
+            "{summary}"
+        );
+
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .agent
+                        .get_or_insert_default()
+                        .context_attachments
+                        .get_or_insert_default()
+                        .inline_max_bytes = Some(64 * 1024);
+                });
+            });
+        });
+        let auto = file_mention_text(&mention_set, "large.txt", AttachmentMode::Auto, cx).await;
+        assert_eq!(auto, large, "a raised inline limit sends the file in full");
+    }
+
+    #[gpui::test]
+    async fn test_set_mode_resolves_again(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let large = "a line of plain text\n".repeat(5_000);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/project", json!({"large.txt": large.clone()}))
+            .await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+        let mention_set = cx.new(|_cx| MentionSet::new(project.downgrade(), None));
+        let abs_path = PathBuf::from(path!("/project/large.txt"));
+        let crease_id = CreaseId::default();
+
+        mention_set.update(cx, |mention_set, cx| {
+            let task = mention_set.confirm_mention_for_file(abs_path.clone(), false, cx);
+            let task = cx
+                .spawn(async move |_, _| task.await.map_err(|error| error.to_string()))
+                .shared();
+            mention_set.insert_mention(
+                crease_id,
+                MentionUri::File {
+                    abs_path: abs_path.clone(),
+                },
+                task,
+                None,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let estimate = |cx: &mut TestAppContext| {
+            mention_set
+                .read_with(cx, |mention_set, cx| {
+                    mention_set.attachment_estimate(&crease_id, cx)
+                })
+                .expect("the mention has resolved")
+        };
+        let auto = estimate(cx);
+        assert_eq!(auto.mode, AttachmentMode::Auto);
+        assert!(auto.switchable);
+        assert!(auto.bytes < 2 * 1024, "{}", auto.bytes);
+        assert!(!auto.reduced_for_budget);
+
+        mention_set.update(cx, |mention_set, cx| {
+            mention_set.set_mode(crease_id, AttachmentMode::Full, cx)
+        });
+        cx.run_until_parked();
+        let full = estimate(cx);
+        assert_eq!(full.mode, AttachmentMode::Full);
+        assert_eq!(full.bytes, large.len());
+        assert!(
+            !full.reduced_for_budget,
+            "an attachment set to be sent in full is over the budget but not reduced"
+        );
+
+        let contents = mention_set
+            .update(cx, |mention_set, cx| mention_set.contents(false, cx))
+            .await
+            .unwrap();
+        match &contents[&crease_id].1 {
+            Mention::Text { content, .. } => assert_eq!(content, &large),
+            other => panic!("expected a text mention, got {other:?}"),
+        }
+
+        mention_set.update(cx, |mention_set, cx| {
+            mention_set.set_mode(crease_id, AttachmentMode::Auto, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(estimate(cx).bytes, auto.bytes);
+    }
+
+    #[gpui::test]
+    async fn test_active_file_does_not_reduce_attachments_the_chips_show_as_full(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let attached = "a line of plain text\n".repeat(2_400);
+        let active = "a line of plain text\n".repeat(1_000);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            "/project",
+            json!({"attached.txt": attached.clone(), "active.txt": active.clone()}),
+        )
+        .await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    let limits = settings
+                        .agent
+                        .get_or_insert_default()
+                        .context_attachments
+                        .get_or_insert_default();
+                    limits.inline_max_bytes = Some(128 * 1024);
+                    limits.message_budget_bytes = Some(64 * 1024);
+                });
+            });
+        });
+        let mention_set = cx.new(|_cx| MentionSet::new(project.downgrade(), None));
+
+        let crease_id = CreaseId::default();
+        let abs_path = PathBuf::from(path!("/project/attached.txt"));
+        mention_set.update(cx, |mention_set, cx| {
+            let task = mention_set.confirm_mention_for_file(abs_path.clone(), false, cx);
+            let task = cx
+                .spawn(async move |_, _| task.await.map_err(|error| error.to_string()))
+                .shared();
+            mention_set.insert_mention(crease_id, MentionUri::File { abs_path }, task, None, cx);
+        });
+        cx.run_until_parked();
+
+        let estimate = mention_set
+            .read_with(cx, |mention_set, cx| {
+                mention_set.attachment_estimate(&crease_id, cx)
+            })
+            .expect("the mention has resolved");
+        assert!(!estimate.reduced_for_budget, "the chip shows it in full");
+
+        // The attachment alone fits the budget; with the active file it does
+        // not, and the active file (which has no chip) is what gives way.
+        let active_path = PathBuf::from(path!("/project/active.txt"));
+        let (contents, extra) = mention_set
+            .update(cx, |mention_set, cx| {
+                let task = mention_set.confirm_mention_for_file(active_path.clone(), false, cx);
+                mention_set.contents_within_budget(
+                    false,
+                    Some((
+                        MentionUri::File {
+                            abs_path: active_path.clone(),
+                        },
+                        task,
+                    )),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        match &contents[&crease_id].1 {
+            Mention::Text { content, .. } => assert_eq!(content, &attached),
+            other => panic!("expected a text mention, got {other:?}"),
+        }
+        match extra.expect("the active file is attached").1 {
+            Mention::Text { content, .. } => assert!(
+                content.contains("Its full content was not attached."),
+                "{content}"
+            ),
+            other => panic!("expected a text mention, got {other:?}"),
+        }
+    }
+
+    #[gpui::test]
+    async fn test_directory_expansion_falls_back_within_its_budget(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let alpha = format!("alpha\n{}", "a".repeat(2_000));
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            "/project",
+            json!({"dir": {"a.txt": alpha.clone(), "b.txt": "b".repeat(3_000)}}),
+        )
+        .await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+        cx.run_until_parked();
+
+        let expand = async |budget: usize, cx: &mut TestAppContext| {
+            let task = cx.update(|cx| {
+                full_mention_for_directory(
+                    &project,
+                    Path::new(path!("/project/dir")),
+                    AttachmentMode::Auto,
+                    budget,
+                    cx,
+                )
+            });
+            match task.await.unwrap() {
+                Mention::Text { content, .. } => content,
+                other => panic!("expected a text mention, got {other:?}"),
+            }
+        };
+
+        let roomy = expand(64 * 1024, cx).await;
+        assert!(roomy.starts_with("# Repository map"), "{roomy}");
+        assert!(roomy.contains(&alpha), "{roomy}");
+
+        let map_only = expand(1_024, cx).await;
+        assert!(map_only.starts_with("# Repository map"), "{map_only}");
+        assert!(!map_only.contains("alpha"), "{map_only}");
+        assert!(map_only.len() < 2 * 1_024, "{}", map_only.len());
+
+        let paths_only = expand(0, cx).await;
+        assert!(!paths_only.contains("# Repository map"), "{paths_only}");
+        assert!(!paths_only.contains("alpha"), "{paths_only}");
+        assert!(
+            paths_only.contains("Not included to keep the message small"),
+            "{paths_only}"
+        );
+        assert!(paths_only.contains("a.txt"), "{paths_only}");
+        assert!(paths_only.contains("b.txt"), "{paths_only}");
+
+        // a.txt alone is smaller than this, but not with the map before it.
+        let map_first = expand(alpha.len() + 100, cx).await;
+        assert!(map_first.starts_with("# Repository map"), "{map_first}");
+        assert!(!map_first.contains("alpha"), "{map_first}");
+    }
+
+    #[gpui::test]
+    async fn test_restored_mention_is_sent_as_it_is(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/project", json!({"notes.txt": "short\n"}))
+            .await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+        let mention_set = cx.new(|_cx| MentionSet::new(project.downgrade(), None));
+        let crease_id = CreaseId::default();
+        // Larger than the budget, and unlike what reading the file now would
+        // give, so that reducing it could not go unnoticed.
+        let review = "content sent with an earlier message\n".repeat(4_000);
+
+        mention_set.update(cx, |mention_set, cx| {
+            mention_set.insert_restored_mention(
+                crease_id,
+                MentionUri::File {
+                    abs_path: path!("/project/notes.txt").into(),
+                },
+                Mention::Text {
+                    content: review.clone(),
+                    tracked_buffers: Vec::new(),
+                },
+                None,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let estimate = mention_set
+            .read_with(cx, |mention_set, cx| {
+                mention_set.attachment_estimate(&crease_id, cx)
+            })
+            .unwrap();
+        assert!(estimate.bytes > 65_536);
+        assert!(!estimate.reduced_for_budget);
+        let contents = mention_set
+            .update(cx, |mention_set, cx| mention_set.contents(false, cx))
+            .await
+            .unwrap();
+        match &contents[&crease_id].1 {
+            Mention::Text { content, .. } => assert_eq!(content, &review),
+            other => panic!("expected a text mention, got {other:?}"),
+        }
+    }
+
+    #[gpui::test]
+    async fn test_directory_expansion_modes(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let big = "x".repeat(20_000);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            "/project",
+            json!({"dir": {"a.txt": "alpha\n", "b.txt": "beta\n", "big.txt": big.clone()}}),
+        )
+        .await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+        cx.run_until_parked();
+
+        let expand = async |mode: AttachmentMode, cx: &mut TestAppContext| {
+            let task = cx.update(|cx| {
+                full_mention_for_directory(
+                    &project,
+                    Path::new(path!("/project/dir")),
+                    mode,
+                    64 * 1024,
+                    cx,
+                )
+            });
+            match task.await.unwrap() {
+                Mention::Text { content, .. } => content,
+                other => panic!("expected a text mention, got {other:?}"),
+            }
+        };
+
+        let auto = expand(AttachmentMode::Auto, cx).await;
+        assert!(auto.starts_with("# Repository map"), "{auto}");
+        assert!(auto.contains("alpha") && auto.contains("beta"), "{auto}");
+        assert!(!auto.contains(&big[..100]), "{auto}");
+        assert!(
+            auto.contains("Not included to keep the message small"),
+            "{auto}"
+        );
+
+        let summary = expand(AttachmentMode::Summary, cx).await;
+        assert!(!summary.contains("alpha"), "{summary}");
+        assert!(summary.contains("a.txt"), "{summary}");
+
+        let full = expand(AttachmentMode::Full, cx).await;
+        assert!(full.contains("alpha") && full.contains(&big), "{full}");
+        assert!(!full.contains("Not included"), "{full}");
     }
 
     #[test]
@@ -1147,6 +2556,46 @@ pub(crate) fn insert_crease_for_mention(
     Some((crease_id, tx, Some(crease_entity)))
 }
 
+/// A mention crease for content that is already loaded, drawn by a
+/// [`LoadingContext`] so that it shows the attachment's size like the creases
+/// of [`insert_crease_for_mention`].
+pub(crate) fn crease_with_loading_context(
+    label: SharedString,
+    icon_path: SharedString,
+    tooltip: Option<SharedString>,
+    mention_uri: Option<MentionUri>,
+    workspace: Option<WeakEntity<Workspace>>,
+    range: Range<Anchor>,
+    editor_entity: WeakEntity<Editor>,
+    cx: &mut App,
+) -> (Crease<Anchor>, Entity<LoadingContext>) {
+    let (loaded, loading_finished) = postage::barrier::channel();
+    drop(loaded);
+    let (render, crease_entity) = render_mention_fold_button(
+        label.clone(),
+        icon_path.clone(),
+        tooltip,
+        mention_uri,
+        workspace,
+        range.clone(),
+        loading_finished,
+        None,
+        editor_entity,
+        cx,
+    );
+    let placeholder = FoldPlaceholder {
+        render,
+        merge_adjacent: false,
+        ..Default::default()
+    };
+
+    let render_trailer = move |_row, _unfold, _window: &mut Window, _cx: &mut App| Empty.into_any();
+
+    let crease = Crease::inline(range, placeholder, fold_toggle("mention"), render_trailer)
+        .with_metadata(CreaseMetadata { icon_path, label });
+    (crease, crease_entity)
+}
+
 pub(crate) fn crease_for_mention(
     label: SharedString,
     icon_path: SharedString,
@@ -1218,30 +2667,54 @@ fn fold_toggle(
     }
 }
 
+/// Expands a directory mention for an agent without tools. In `Auto` the
+/// expansion takes at most `budget` bytes, falling back step by step from the
+/// map plus the smallest files in full, to the map alone, to only the paths.
 fn full_mention_for_directory(
     project: &Entity<Project>,
     abs_path: &Path,
+    mode: AttachmentMode,
+    budget: usize,
     cx: &mut App,
 ) -> Task<Result<Mention>> {
-    fn collect_files_in_path(worktree: &Worktree, path: &RelPath) -> Vec<(Arc<RelPath>, String)> {
+    struct DirectoryFile {
+        worktree_path: Arc<RelPath>,
+        full_path: String,
+        size: u64,
+    }
+
+    fn collect_files_in_path(worktree: &Worktree, path: &RelPath) -> Vec<DirectoryFile> {
         let mut files = Vec::new();
 
         for entry in worktree.child_entries(path) {
             if entry.is_dir() {
                 files.extend(collect_files_in_path(worktree, &entry.path));
             } else if entry.is_file() {
-                files.push((
-                    entry.path.clone(),
-                    worktree
+                files.push(DirectoryFile {
+                    worktree_path: entry.path.clone(),
+                    full_path: worktree
                         .full_path(&entry.path)
                         .to_string_lossy()
                         .to_string(),
-                ));
+                    size: entry.size,
+                });
             }
         }
 
         files
     }
+
+    /// The directory map attached in place of the files that are not sent in
+    /// full; the same map the `repo_map` tool builds, so the agent can follow
+    /// up with its line numbers.
+    const DIRECTORY_MAP_BYTES: usize = 8 * 1024;
+    /// The smallest map `RepoMapTool::build_map` makes; with less budget left
+    /// there is no room for a map.
+    const MIN_DIRECTORY_MAP_BYTES: usize = 1024;
+    /// The fence and newlines around each file sent in full.
+    const FILE_FENCE_BYTES: usize = 16;
+    /// Paths listed after the map for the files that were not sent.
+    const MAX_LISTED_PATHS: usize = 100;
 
     let Some(project_path) = project
         .read(cx)
@@ -1259,56 +2732,141 @@ fn full_mention_for_directory(
     let Some(worktree) = project.read(cx).worktree_for_id(worktree_id, cx) else {
         return Task::ready(Err(anyhow!("worktree not found")));
     };
+    let settings = AgentSettings::get_global(cx).context_attachments;
+    let map_prefix = {
+        let snapshot = worktree.read(cx).snapshot();
+        snapshot
+            .root_name()
+            .join(&directory_path)
+            .display(snapshot.path_style())
+            .into_owned()
+    };
     let project = project.clone();
     cx.spawn(async move |cx| {
-        let file_paths = worktree.read_with(cx, |worktree, _cx| {
+        let mut files = worktree.read_with(cx, |worktree, _cx| {
             collect_files_in_path(worktree, &directory_path)
         });
+
+        let map_bytes = match mode {
+            AttachmentMode::Full => None,
+            AttachmentMode::Summary => Some(DIRECTORY_MAP_BYTES),
+            AttachmentMode::Auto => {
+                (budget >= MIN_DIRECTORY_MAP_BYTES).then(|| DIRECTORY_MAP_BYTES.min(budget))
+            }
+        };
+        let map = match map_bytes {
+            Some(max_bytes) => {
+                let map = RepoMapTool::build_map(
+                    project.clone(),
+                    RepoMapToolInput {
+                        path: Some(map_prefix.clone()),
+                        max_bytes: Some(max_bytes),
+                    },
+                    cx,
+                )
+                .await
+                .log_err()
+                .unwrap_or_default();
+                (mode != AttachmentMode::Auto || map.len() <= budget).then_some(map)
+            }
+            None => None,
+        };
+
+        // In `Auto`, the smallest files are sent in full while they fit what
+        // the message budget leaves after the map; the rest only by path.
+        let mut left_out = Vec::new();
+        match mode {
+            AttachmentMode::Full => {}
+            AttachmentMode::Summary => {
+                left_out = std::mem::take(&mut files);
+            }
+            AttachmentMode::Auto => {
+                files.sort_by(|left, right| {
+                    left.size
+                        .cmp(&right.size)
+                        .then_with(|| left.full_path.cmp(&right.full_path))
+                });
+                let mut remaining = budget.saturating_sub(map.as_ref().map_or(0, String::len));
+                let mut sent = Vec::new();
+                for file in files {
+                    let size = usize::try_from(file.size).unwrap_or(usize::MAX);
+                    let cost = size
+                        .saturating_add(file.full_path.len())
+                        .saturating_add(FILE_FENCE_BYTES);
+                    if size <= settings.inline_max_bytes && cost <= remaining {
+                        remaining -= cost;
+                        sent.push(file);
+                    } else {
+                        left_out.push(file);
+                    }
+                }
+                sent.sort_by(|left, right| left.full_path.cmp(&right.full_path));
+                left_out.sort_by(|left, right| left.full_path.cmp(&right.full_path));
+                files = sent;
+            }
+        }
+
         let descendants_future = cx.update(|cx| {
-            futures::future::join_all(file_paths.into_iter().map(
-                |(worktree_path, full_path): (Arc<RelPath>, String)| {
-                    let rel_path = worktree_path
-                        .strip_prefix(&directory_path)
-                        .map_or_else(|_| worktree_path.clone(), |rel_path| rel_path.into());
-
-                    let open_task = project.update(cx, |project, cx| {
-                        project.buffer_store().update(cx, |buffer_store, cx| {
-                            let project_path = ProjectPath {
-                                worktree_id,
-                                path: worktree_path,
-                            };
-                            buffer_store.open_buffer(project_path, cx)
-                        })
-                    });
-
-                    cx.spawn(async move |cx| {
-                        let buffer = open_task.await.log_err()?;
-                        let buffer_content = outline::get_buffer_content_or_outline(
-                            buffer.clone(),
-                            Some(&full_path),
-                            &cx,
-                        )
-                        .await
-                        .ok()?;
-
-                        Some((rel_path, full_path, buffer_content.text, buffer))
+            futures::future::join_all(files.into_iter().map(|file| {
+                let DirectoryFile {
+                    worktree_path,
+                    full_path,
+                    ..
+                } = file;
+                let open_task = project.update(cx, |project, cx| {
+                    project.buffer_store().update(cx, |buffer_store, cx| {
+                        let project_path = ProjectPath {
+                            worktree_id,
+                            path: worktree_path,
+                        };
+                        buffer_store.open_buffer(project_path, cx)
                     })
-                },
-            ))
+                });
+
+                cx.spawn(async move |cx| {
+                    let buffer = open_task.await.log_err()?;
+                    let text = buffer.read_with(cx, |buffer, _| buffer.text());
+                    Some((full_path, text, buffer))
+                })
+            }))
         });
 
+        let left_out = left_out
+            .into_iter()
+            .map(|file| file.full_path)
+            .collect::<Vec<_>>();
         let contents = cx
             .background_spawn(async move {
                 let (contents, tracked_buffers): (Vec<_>, Vec<_>) = descendants_future
                     .await
                     .into_iter()
                     .flatten()
-                    .map(|(rel_path, full_path, rope, buffer)| {
-                        ((rel_path, full_path, rope), buffer)
-                    })
+                    .map(|(full_path, text, buffer)| ((full_path, text), buffer))
                     .unzip();
+                let mut content = String::new();
+                if let Some(map) = &map {
+                    content.push_str(map);
+                }
+                content.push_str(&render_directory_contents(contents));
+                if !left_out.is_empty() {
+                    content.push_str(
+                        "\n\nNot included to keep the message small; read these if you need them:\n",
+                    );
+                    for path in left_out.iter().take(MAX_LISTED_PATHS) {
+                        content.push_str(path);
+                        content.push('\n');
+                    }
+                    if left_out.len() > MAX_LISTED_PATHS {
+                        writeln!(
+                            content,
+                            "… and {} more files",
+                            left_out.len() - MAX_LISTED_PATHS
+                        )
+                        .ok();
+                    }
+                }
                 Mention::Text {
-                    content: render_directory_contents(contents),
+                    content,
                     tracked_buffers,
                 }
             })
@@ -1317,11 +2875,11 @@ fn full_mention_for_directory(
     })
 }
 
-fn render_directory_contents(entries: Vec<(Arc<RelPath>, String, String)>) -> String {
+fn render_directory_contents(entries: Vec<(String, String)>) -> String {
     let mut output = String::new();
-    for (_relative_path, full_path, content) in entries {
+    for (full_path, content) in entries {
         let fence = codeblock_fence_for_path(Some(&full_path), None);
-        write!(output, "\n{fence}\n{content}\n```").unwrap();
+        write!(output, "\n{fence}\n{content}\n```").ok();
     }
     output
 }
@@ -1361,6 +2919,9 @@ fn render_mention_fold_button(
             editor,
             loading: Some(loading),
             image: image_task.clone(),
+            mention_set: None,
+            crease_id: None,
+            _mention_set_subscription: None,
         }
     });
     let loading_clone = loading.clone();
@@ -1380,6 +2941,27 @@ pub struct LoadingContext {
     editor: WeakEntity<Editor>,
     loading: Option<Task<()>>,
     image: Option<Shared<Task<Result<Arc<Image>, String>>>>,
+    mention_set: Option<WeakEntity<MentionSet>>,
+    crease_id: Option<CreaseId>,
+    _mention_set_subscription: Option<Subscription>,
+}
+
+impl LoadingContext {
+    /// Connects the chip to the mention it stands for, so that it can show
+    /// the attachment's size and switch its mode.
+    fn attach(
+        &mut self,
+        mention_set: WeakEntity<MentionSet>,
+        crease_id: CreaseId,
+        cx: &mut Context<Self>,
+    ) {
+        self._mention_set_subscription = mention_set
+            .upgrade()
+            .map(|mention_set| cx.observe(&mention_set, |_, _, cx| cx.notify()));
+        self.mention_set = Some(mention_set);
+        self.crease_id = Some(crease_id);
+        cx.notify();
+    }
 }
 
 impl Render for LoadingContext {
@@ -1391,11 +2973,37 @@ impl Render for LoadingContext {
 
         let id = ElementId::from(("loading_context", self.id));
 
+        let estimate = self
+            .mention_set
+            .as_ref()
+            .and_then(|mention_set| mention_set.upgrade())
+            .zip(self.crease_id)
+            .and_then(|(mention_set, crease_id)| {
+                mention_set.read(cx).attachment_estimate(&crease_id, cx)
+            });
+        let on_mode_change =
+            self.mention_set
+                .clone()
+                .zip(self.crease_id)
+                .map(|(mention_set, crease_id)| {
+                    Rc::new(move |mode: AttachmentMode, cx: &mut App| {
+                        mention_set
+                            .update(cx, |mention_set, cx| {
+                                mention_set.set_mode(crease_id, mode, cx)
+                            })
+                            .ok();
+                    }) as Rc<dyn Fn(AttachmentMode, &mut App)>
+                });
+
         MentionCrease::new(id, self.icon.clone(), self.label.clone())
             .mention_uri(self.mention_uri.clone())
             .workspace(self.workspace.clone())
             .is_toggled(is_in_text_selection)
             .is_loading(self.loading.is_some())
+            .estimate(estimate)
+            .when_some(on_mode_change, |this, on_mode_change| {
+                this.on_mode_change(on_mode_change)
+            })
             .when_some(self.tooltip.clone(), |this, tooltip_text| {
                 this.tooltip(tooltip_text)
             })

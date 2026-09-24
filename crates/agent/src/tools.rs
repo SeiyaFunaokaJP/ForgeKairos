@@ -14,8 +14,10 @@ mod fetch_tool;
 mod find_path_tool;
 mod find_references_tool;
 mod get_code_actions_tool;
+mod git_diff_tool;
 mod go_to_definition_tool;
 mod grep_tool;
+mod ide_tools;
 mod list_agents_and_models_tool;
 mod list_directory_tool;
 mod move_path_tool;
@@ -82,8 +84,10 @@ pub use fetch_tool::*;
 pub use find_path_tool::*;
 pub use find_references_tool::*;
 pub use get_code_actions_tool::*;
+pub use git_diff_tool::*;
 pub use go_to_definition_tool::*;
 pub use grep_tool::*;
+pub use ide_tools::*;
 pub use list_agents_and_models_tool::*;
 pub use list_directory_tool::*;
 pub use move_path_tool::*;
@@ -207,6 +211,7 @@ tools! {
     FindPathTool,
     FindReferencesTool,
     GetCodeActionsTool,
+    GitDiffTool,
     GoToDefinitionTool,
     GrepTool,
     ListAgentsAndModelsTool,
@@ -220,6 +225,12 @@ tools! {
     TerminalTool,
     WebSearchTool,
     WriteFileTool,
+    HoverTool,
+    SearchSymbolsTool,
+    HighlightCodeTool,
+    AnnotateCodeTool,
+    CodeTourTool,
+    ClearAnnotationsTool,
 }
 
 /// Some built-in tools are gated behind a feature flag and only become usable
