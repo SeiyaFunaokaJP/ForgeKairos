@@ -450,129 +450,6 @@ pub(crate) fn agent_panel_for_cli_tab(
     workspace::Panel::enabled(panel.read(cx), cx).then_some(panel)
 }
 
-/// CLI のタブを持っているペインの持ち主。前面化のしかたが持ち主ごとに違う。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum TerminalTabHost {
-    AgentPanel,
-    TerminalPanel,
-    /// 中央のペイン、またはほかのドックのパネル (タブは動かせる)。
-    Elsewhere,
-}
-
-/// このワークスペースで `terminal` を出しているタブ (持ち主・ペイン・並び順)。
-///
-/// ADR-F53 でセッションの端末はエージェントパネルのタブに置かれるようになり、
-/// タブはそこから中央や別のドックへ動かせるので、「二重起動です」と言うときの
-/// 前面化はどこにあっても効く必要がある。エージェントパネル → ターミナルパネル
-/// → それ以外の順に探すのは、前 2 つは畳まれていることがあり、先に開かないと
-/// タブを選んでも何も見えないから。
-pub(crate) fn terminal_tab_location(
-    workspace: &Workspace,
-    terminal: &Entity<Terminal>,
-    cx: &App,
-) -> Option<(TerminalTabHost, Entity<workspace::Pane>, usize)> {
-    let holds_terminal = |pane: &Entity<workspace::Pane>| {
-        pane.read(cx).items().position(|item| {
-            item.downcast::<TerminalView>()
-                .is_some_and(|view| view.read(cx).terminal() == terminal)
-        })
-    };
-    let in_panes = |panes: Vec<Entity<workspace::Pane>>| {
-        panes
-            .into_iter()
-            .find_map(|pane| holds_terminal(&pane).map(|index| (pane, index)))
-    };
-
-    if let Some((pane, index)) = workspace
-        .panel::<AgentPanel>(cx)
-        .and_then(|panel| in_panes(workspace::Panel::panes(panel.read(cx))))
-    {
-        return Some((TerminalTabHost::AgentPanel, pane, index));
-    }
-    if let Some((pane, index)) = workspace
-        .panel::<terminal_view::terminal_panel::TerminalPanel>(cx)
-        .and_then(|panel| in_panes(panel.read(cx).panes().into_iter().cloned().collect()))
-    {
-        return Some((TerminalTabHost::TerminalPanel, pane, index));
-    }
-    let (pane, index) = in_panes(workspace.all_panes(cx))?;
-    Some((TerminalTabHost::Elsewhere, pane, index))
-}
-
-/// 「すでに実行中です」でタブを前に出すところだけを、二重起動の作法
-/// (`RunningSessions` の登録) 抜きで試すための入口。
-#[cfg(test)]
-pub(crate) fn test_reveal_terminal_tab(
-    workspace: &mut Workspace,
-    terminal: &Entity<Terminal>,
-    window: &mut Window,
-    cx: &mut Context<Workspace>,
-) {
-    session::reveal_terminal(workspace, terminal, window, cx);
-}
-
-/// 「すでに実行中です」がどの `Workspace` に出たかを見るための目印。
-#[cfg(test)]
-pub(crate) fn test_already_running_notification_id() -> workspace::notifications::NotificationId {
-    session::already_running_id()
-}
-
-/// CLI のタブがほかのウィンドウで見つかったときの居場所。
-pub(crate) struct TerminalTabPlace {
-    /// 1 つのウィンドウは複数の `Workspace` を抱え、映しているのはその 1 つ
-    /// だけなので、前面化には窓の根 (`MultiWorkspace`) ごと要る。
-    pub window: gpui::WindowHandle<workspace::MultiWorkspace>,
-    pub workspace: Entity<Workspace>,
-    pub host: TerminalTabHost,
-    pub pane: Entity<workspace::Pane>,
-    pub index: usize,
-}
-
-/// `terminal` のタブを、`already_searched` 以外のすべての `Workspace` から探す。
-///
-/// タブは窓外へ引き出せるので、二重起動の前面化は起動したウィンドウの中だけでは
-/// 足りない。1 つのウィンドウが複数の `Workspace` を抱えることがある
-/// (`MultiWorkspace`) ので、ウィンドウではなくその中の `Workspace` を単位に見る。
-///
-/// `already_searched` は呼び手がもう調べた `Workspace`。二度見ないためと、
-/// 呼び手がそれを握ったまま呼んだときに `read` で落ちないため。
-pub(crate) fn terminal_tab_location_elsewhere(
-    terminal: &Entity<Terminal>,
-    already_searched: gpui::EntityId,
-    cx: &App,
-) -> Option<TerminalTabPlace> {
-    for window in cx.windows() {
-        let Some(multi_workspace) = window.downcast::<workspace::MultiWorkspace>() else {
-            continue;
-        };
-        // 更新中のウィンドウはここでは読めない。呼び手が自分のぶんは調べて
-        // いるので、読めなかったぶんは飛ばす。
-        let Ok(workspaces) = multi_workspace
-            .read(cx)
-            .map(|multi_workspace| multi_workspace.workspaces().cloned().collect::<Vec<_>>())
-        else {
-            continue;
-        };
-        for workspace in workspaces {
-            if workspace.entity_id() == already_searched {
-                continue;
-            }
-            if let Some((host, pane, index)) =
-                terminal_tab_location(workspace.read(cx), terminal, cx)
-            {
-                return Some(TerminalTabPlace {
-                    window: multi_workspace,
-                    workspace,
-                    host,
-                    pane,
-                    index,
-                });
-            }
-        }
-    }
-    None
-}
-
 /// セッションの端末の作り方。ADR-F53 で変えたのはタブの置き場だけなので、
 /// 経路ごとの実行のしかたはここで区別してそのまま保つ。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -799,7 +676,7 @@ mod session {
     use collections::HashMap;
     use gpui::{
         App, AsyncWindowContext, Context, Entity, Global, PromptButton, PromptLevel, SharedString,
-        Task, WeakEntity, Window,
+        Task, WeakEntity,
     };
     use project::agent_sandbox::is_project_key;
     pub(super) use project::agent_sandbox::project_key;
@@ -810,7 +687,6 @@ mod session {
     use util::ResultExt as _;
     use workspace::{Toast, Workspace, notifications::NotificationId};
 
-    use crate::AgentPanel;
     use crate::agent_registry_ui::{add_consented_hosts, allowlist_write_error, missing_hosts};
 
     /// The hosts the CLI itself talks to: the model API (with `/api/oauth/*`)
@@ -1117,58 +993,72 @@ exec "$0" "$@""#;
         )
     }
 
-    /// The projects whose sandboxed session starts or runs, by
-    /// [`session_key`], with the terminal once there is one.
+    /// The projects whose sandboxed session is still starting, by
+    /// [`session_key`]: from the launch until its terminal exists. Once it
+    /// does, the next launch starts another session on the same
+    /// configuration, as several CLIs sharing one `~/.claude` do.
     #[derive(Clone, Default)]
-    pub(super) struct RunningSessions(Rc<RefCell<HashMap<String, Option<WeakEntity<Terminal>>>>>);
+    pub(super) struct StartingSessions(Rc<RefCell<StartingSessionsState>>);
 
-    impl Global for RunningSessions {}
+    #[derive(Default)]
+    struct StartingSessionsState {
+        by_key: HashMap<String, u64>,
+        next_generation: u64,
+    }
 
-    impl RunningSessions {
-        /// The slot for `key`, or what already holds it: the session's
-        /// terminal, `None` while that session still starts.
-        pub(super) fn take(
-            &self,
-            key: String,
-        ) -> std::result::Result<SessionSlot, Option<WeakEntity<Terminal>>> {
-            {
-                let mut sessions = self.0.borrow_mut();
-                if let Some(existing) = sessions.get(&key) {
-                    return Err(existing.clone());
-                }
-                sessions.insert(key.clone(), None);
+    impl Global for StartingSessions {}
+
+    impl StartingSessions {
+        /// `None` while another launch for `key` is still starting.
+        pub(super) fn begin(&self, key: String) -> Option<StartingSession> {
+            let mut state = self.0.borrow_mut();
+            if state.by_key.contains_key(&key) {
+                return None;
             }
-            Ok(SessionSlot {
+            let generation = state.next_generation;
+            state.next_generation += 1;
+            state.by_key.insert(key.clone(), generation);
+            Some(StartingSession {
                 sessions: self.clone(),
                 key,
+                generation,
             })
         }
     }
 
-    /// A project's place among the running sessions. Dropping it frees it.
-    pub(super) struct SessionSlot {
-        sessions: RunningSessions,
+    /// A launch's hold on its key while it starts. Given back once the
+    /// session's terminal exists ([`Self::started`]), or when dropped.
+    pub(super) struct StartingSession {
+        sessions: StartingSessions,
         key: String,
+        generation: u64,
     }
 
-    impl SessionSlot {
-        pub(super) fn set_terminal(&self, terminal: WeakEntity<Terminal>) {
-            self.sessions
-                .0
-                .borrow_mut()
-                .insert(self.key.clone(), Some(terminal));
+    impl StartingSession {
+        pub(super) fn started(&mut self) {
+            self.release();
+        }
+
+        /// Only while the key is still this launch's: once released, a later
+        /// launch may have taken it, and removing that one's would let a
+        /// third launch start alongside it.
+        fn release(&self) {
+            let mut state = self.sessions.0.borrow_mut();
+            if state.by_key.get(&self.key) == Some(&self.generation) {
+                state.by_key.remove(&self.key);
+            }
         }
     }
 
-    impl Drop for SessionSlot {
+    impl Drop for StartingSession {
         fn drop(&mut self) {
-            self.sessions.0.borrow_mut().remove(&self.key);
+            self.release();
         }
     }
 
-    /// One configuration, hence at most one session: where it runs — the
-    /// distro by its registered name (WSL compares names without case), or the
-    /// host by its connection — and the project's key.
+    /// One configuration: where it runs — the distro by its registered name
+    /// (WSL compares names without case), or the host by its connection — and
+    /// the project's key.
     pub(super) fn session_key(where_it_runs: Option<&str>, project_key: &str) -> String {
         format!(
             "{}/{project_key}",
@@ -1336,139 +1226,50 @@ exec "$0" "$@""#;
         workspace.show_toast(Toast::new(progress_id(), message.to_string()), cx);
     }
 
-    pub(super) const ALREADY_RUNNING_MESSAGE: &str =
-        "このプロジェクトの Claude Code (サンドボックス) はすでに実行中です";
+    pub(super) const STILL_STARTING_MESSAGE: &str = "このプロジェクトの Claude Code (サンドボックス) を起動しています。\
+         起動が終わってからもう一度お試しください。";
 
-    struct AlreadyRunning;
+    struct StillStarting;
 
-    pub(super) fn already_running_id() -> NotificationId {
-        NotificationId::unique::<AlreadyRunning>()
+    pub(super) fn still_starting_id() -> NotificationId {
+        NotificationId::unique::<StillStarting>()
     }
 
-    pub(super) fn show_already_running(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
-        workspace.show_toast(
-            Toast::new(already_running_id(), ALREADY_RUNNING_MESSAGE.to_string()).autohide(),
-            cx,
-        );
+    /// A launch [`begin_session`] turned away. The progress notice on screen
+    /// belongs to the earlier launch that still starts, so the refused one
+    /// must not dismiss it.
+    #[derive(Debug)]
+    pub(super) struct LaunchStillStarting;
+
+    impl std::fmt::Display for LaunchStillStarting {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str(STILL_STARTING_MESSAGE)
+        }
     }
 
-    /// The project's slot, or `None` after saying that its session already
-    /// runs and showing that session's tab.
-    pub(super) fn take_session_slot(
+    impl std::error::Error for LaunchStillStarting {}
+
+    /// The launch's hold on `key` while it starts, or `None` after saying that
+    /// an earlier launch for it has not finished starting.
+    pub(super) fn begin_session(
         key: String,
         workspace: &WeakEntity<Workspace>,
-        window: &mut Window,
         cx: &mut App,
-    ) -> Option<SessionSlot> {
-        let running = cx.default_global::<RunningSessions>().clone();
-        let existing = match running.take(key) {
-            Ok(slot) => return Some(slot),
-            Err(existing) => existing,
-        };
-        let Some(terminal) = existing.and_then(|terminal| terminal.upgrade()) else {
-            // まだ端末の無いセッション (起動中)。見せる先が無いので説明だけ。
+    ) -> Option<StartingSession> {
+        let starting = cx.default_global::<StartingSessions>().clone();
+        let session = starting.begin(key);
+        if session.is_none() {
             workspace
-                .update(cx, |workspace, cx| show_already_running(workspace, cx))
-                .log_err();
-            return None;
-        };
-        workspace
-            .update(cx, |workspace, cx| {
-                reveal_terminal(workspace, &terminal, window, cx);
-            })
-            .log_err();
-        None
-    }
-
-    /// Brings the tab of `terminal` forward, wherever it is: the agent panel
-    /// (ADR-F53), the terminal panel, the center, or another dock — of this
-    /// workspace or of any other window. The panel that holds it is opened
-    /// first, since activating a tab in a hidden dock would leave the user
-    /// looking at nothing.
-    ///
-    /// 「すでに実行中です」の説明もここで出す。行き先は**タブが出るほうの**
-    /// `Workspace`: 別のウィンドウやプロジェクトへ切り替えて見せるので、呼び手
-    /// 側に出すと前面化した窓の裏に隠れてしまう。
-    pub(super) fn reveal_terminal(
-        workspace: &mut Workspace,
-        terminal: &Entity<Terminal>,
-        window: &mut Window,
-        cx: &mut Context<Workspace>,
-    ) {
-        if let Some((host, pane, index)) = super::terminal_tab_location(workspace, terminal, cx) {
-            show_already_running(workspace, cx);
-            open_tab_host(workspace, host, window, cx);
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(index, true, true, window, cx)
-            });
-            return;
-        }
-
-        // ほかのウィンドウ、または同じウィンドウが抱えている別の `Workspace`
-        // にあるタブ。いま握っている `Workspace` は貸し出し中でほかを読めない
-        // ので、探索ごと後に回す。
-        let this_workspace = cx.weak_entity();
-        let terminal = terminal.clone();
-        cx.defer(move |cx: &mut App| {
-            let Some(place) =
-                super::terminal_tab_location_elsewhere(&terminal, this_workspace.entity_id(), cx)
-            else {
-                // 端末は生きているのにタブがどこにも無い。見せる先が無いので
-                // 説明だけを呼び手に返す。
-                this_workspace
-                    .update(cx, |workspace, cx| show_already_running(workspace, cx))
-                    .log_err();
-                return;
-            };
-            let super::TerminalTabPlace {
-                window: target_window,
-                workspace,
-                host,
-                pane,
-                index,
-            } = place;
-            target_window
-                .update(cx, |multi_workspace, window, cx| {
-                    // ウィンドウは抱えている `Workspace` のうち 1 つしか
-                    // 映さない。タブがいま映っていないほうにあるなら、先に
-                    // そちらへ切り替えないとタブを選んでも何も見えない。
-                    if multi_workspace.workspace() != &workspace {
-                        multi_workspace.activate(workspace.clone(), None, window, cx);
-                    }
-                    workspace.update(cx, |workspace, cx| {
-                        show_already_running(workspace, cx);
-                        open_tab_host(workspace, host, window, cx);
-                    });
-                    pane.update(cx, |pane, cx| {
-                        pane.activate_item(index, true, true, window, cx)
-                    });
-                    // タブが呼び手の `Workspace` に無かったときだけここへ
-                    // 来る。ウィンドウごと前に出さないと「すでに実行中です」
-                    // の行き先が見えないまま終わる。
-                    window.activate_window();
+                .update(cx, |workspace, cx| {
+                    workspace.show_toast(
+                        Toast::new(still_starting_id(), STILL_STARTING_MESSAGE.to_string())
+                            .autohide(),
+                        cx,
+                    );
                 })
                 .log_err();
-        });
-    }
-
-    /// タブを選ぶ前に、それを抱えているドックを開く。
-    fn open_tab_host(
-        workspace: &mut Workspace,
-        host: super::TerminalTabHost,
-        window: &mut Window,
-        cx: &mut Context<Workspace>,
-    ) {
-        match host {
-            super::TerminalTabHost::AgentPanel => {
-                workspace.focus_panel::<AgentPanel>(window, cx);
-            }
-            super::TerminalTabHost::TerminalPanel => {
-                workspace.focus_panel::<TerminalPanel>(window, cx);
-            }
-            // 中央やほかのドックへ移されたタブ。`activate_item` の
-            // `activate_pane` がそのペインを前に出す。
-            super::TerminalTabHost::Elsewhere => {}
         }
+        session
     }
 
     pub(super) enum HostsConsent {
@@ -1750,12 +1551,11 @@ mod remote_launch {
     use workspace::Workspace;
 
     use super::session::{
-        CLAUDE_HOSTS, HostsConsent, IdeLink, LAUNCH_FAILED_PREFIX, PREPARING_MESSAGE,
-        PREPARING_SANDBOX_MESSAGE, PendingIdeSession, SessionLayout, SessionSlot,
-        already_running_id, config_paths, consent_to_claude_hosts, launch_invocation,
-        new_session_id, progress_id, project_key, register_session_writer,
-        remote_session_write_scope, rendezvous_path, session_environment, session_key,
-        show_already_running, show_progress, spawn_terminal, take_session_slot,
+        CLAUDE_HOSTS, HostsConsent, IdeLink, LAUNCH_FAILED_PREFIX, LaunchStillStarting,
+        PREPARING_MESSAGE, PREPARING_SANDBOX_MESSAGE, PendingIdeSession, SessionLayout,
+        begin_session, config_paths, consent_to_claude_hosts, launch_invocation, new_session_id,
+        progress_id, project_key, register_session_writer, remote_session_write_scope,
+        rendezvous_path, session_environment, session_key, show_progress, spawn_terminal,
     };
 
     /// Where the staged CLI and anything else this launcher leaves on the host
@@ -1814,23 +1614,22 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                 cx,
             )
             .await;
+            if outcome
+                .as_ref()
+                .is_err_and(|error| error.is::<LaunchStillStarting>())
+            {
+                return;
+            }
             workspace
                 .update(cx, |workspace, cx| {
                     workspace.dismiss_toast(&progress_id(), cx);
-                    match outcome {
-                        Ok(()) => {}
-                        // ADR-F53: another Zed's bridge holds this project's
-                        // configuration directory on the host, so its session —
-                        // not this one — is the one that runs.
-                        Err(error) if error.is::<sandbox::IdeBridgeSessionRunning>() => {
-                            show_already_running(workspace, cx)
-                        }
-                        Err(error) => super::show_launch_failure(
+                    if let Err(error) = outcome {
+                        super::show_launch_failure(
                             workspace,
                             format!("{LAUNCH_FAILED_PREFIX}{error:#}"),
                             effort,
                             cx,
-                        ),
+                        );
                     }
                 })
                 .log_err();
@@ -1871,12 +1670,11 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             "接続先のホストの Zed サーバーがまだ用意されていません。接続が終わるまで待ってから\
              もう一度お試しください。",
         )?;
-        // Held until the session ends: a second one on the same configuration
-        // would share its configuration directory and its login.
+        // Held only while this launch starts: a session that runs does not
+        // stop another from starting on the same configuration.
         let key = session_key(Some(&connection), &project_key);
-        let Some(slot) = cx.update(|window, cx| take_session_slot(key, &workspace, window, cx))?
-        else {
-            return Ok(());
+        let Some(mut starting) = cx.update(|_, cx| begin_session(key, &workspace, cx))? else {
+            return Err(LaunchStillStarting.into());
         };
         let HostsConsent::Granted { network_ceiling } = consent_to_claude_hosts(cx).await? else {
             return Ok(());
@@ -1913,9 +1711,8 @@ chmod 700 "$1" "$2" 2>/dev/null || true
 
         let session_id = new_session_id();
         // ADR-F53: the IDE channel. Everything of it that can fail does so
-        // before the CLI starts, and a failure that is not "another session
-        // already holds this configuration" leaves the session running without
-        // an IDE rather than not running at all.
+        // before the CLI starts, and a failure leaves the session running
+        // without an IDE rather than not running at all.
         let ide = match start_remote_ide_bridge(
             &workspace,
             &remote_client,
@@ -1928,7 +1725,6 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         .await
         {
             Ok(ide) => Some(ide),
-            Err(error) if error.is::<sandbox::IdeBridgeSessionRunning>() => return Err(error),
             Err(error) => {
                 log::warn!("[claude-sandbox] the IDE bridge did not start: {error:#}");
                 workspace
@@ -2009,7 +1805,6 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         let resources = SessionResources {
             ide,
             worktree_writer,
-            slot,
         };
         worktree_writer_resolved.await;
         let terminal = spawn_terminal(
@@ -2021,7 +1816,7 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             cx,
         )
         .await?;
-        resources.slot.set_terminal(terminal.downgrade());
+        starting.started();
         watch_session(terminal, resources, workspace, cx)
     }
 
@@ -2137,14 +1932,10 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             let helper = remote_client
                 .remote_server_binary_path()
                 .context("接続先のホストの Zed サーバーがまだ用意されていません (内部エラー)。")?;
-            // The exclusive directory is held by the bridge while it runs: a
-            // session another Zed started on this configuration turns this one
-            // away (`IdeBridgeSessionRunning`).
-            let arguments = sandbox::remote_ide_bridge_argv(
-                &rendezvous,
-                Some(&layout.lock_file),
-                Some(&layout.config_root),
-            )?;
+            // No exclusive directory: sessions on the same configuration run
+            // side by side, each with its own port and lock file.
+            let arguments =
+                sandbox::remote_ide_bridge_argv(&rendezvous, Some(&layout.lock_file), None)?;
             remote_client.build_command(
                 Some(helper.display(PathStyle::Unix).into_owned()),
                 &arguments,
@@ -2248,8 +2039,6 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         ide: Option<RemoteIdeChannel>,
         /// ADR-F50: the session's hold on the worktrees it can write.
         worktree_writer: SandboxedWriterGuard,
-        /// Freed last, once nothing else of the session is left.
-        slot: SessionSlot,
     }
 
     /// Frees the session's hold on the worktrees when the CLI exits or its
@@ -2268,14 +2057,12 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             let SessionResources {
                 ide,
                 worktree_writer,
-                slot,
             } = resources;
             // Ends the bridge's stdin: it removes its socket and its lock file
             // on the host and exits. Dropping the `ssh` stops it either way.
             drop(ide);
             // The CLI has exited, so nothing of its writes is still to come.
             drop(worktree_writer);
-            drop(slot);
             let exit_code = status
                 .and_then(|status| status.code())
                 .and_then(|code| u32::try_from(code).ok());
@@ -2288,14 +2075,10 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                 })
                 .ok()
                 .flatten();
-            if let Some(workspace) = workspace.upgrade() {
-                workspace.update(cx, |workspace, cx| {
-                    // Saying that the session runs is wrong once it has ended.
-                    workspace.dismiss_toast(&already_running_id(), cx);
-                    if let Some(message) = message {
-                        workspace.show_error(message, cx);
-                    }
-                });
+            if let Some(message) = message
+                && let Some(workspace) = workspace.upgrade()
+            {
+                workspace.update(cx, |workspace, cx| workspace.show_error(message, cx));
             }
         })
         .detach();
@@ -2324,11 +2107,11 @@ mod launch {
     use workspace::Workspace;
 
     use super::session::{
-        HostsConsent, IdeLink, LAUNCH_FAILED_PREFIX, PREPARING_MESSAGE, PREPARING_SANDBOX_MESSAGE,
-        PendingIdeSession, SessionLayout, SessionPlan, SessionSlot, already_running_id,
+        HostsConsent, IdeLink, LAUNCH_FAILED_PREFIX, LaunchStillStarting, PREPARING_MESSAGE,
+        PREPARING_SANDBOX_MESSAGE, PendingIdeSession, SessionLayout, SessionPlan, begin_session,
         consent_to_claude_hosts, helper_failure_message, new_session_id, plan_session, progress_id,
-        project_key, register_session_writer, session_key, session_write_scope,
-        show_already_running, show_progress, spawn_terminal, stale_entries, take_session_slot,
+        project_key, register_session_writer, session_key, session_write_scope, show_progress,
+        spawn_terminal, stale_entries,
     };
 
     /// One `wsl.exe` round trip, which a cold WSL can take this long to answer.
@@ -2431,20 +2214,22 @@ shift 3
                 cx,
             )
             .await;
+            if outcome
+                .as_ref()
+                .is_err_and(|error| error.is::<LaunchStillStarting>())
+            {
+                return;
+            }
             workspace
                 .update(cx, |workspace, cx| {
                     workspace.dismiss_toast(&progress_id(), cx);
-                    match outcome {
-                        Ok(()) => {}
-                        Err(error) if error.is::<sandbox::IdeBridgeSessionRunning>() => {
-                            show_already_running(workspace, cx)
-                        }
-                        Err(error) => super::show_launch_failure(
+                    if let Err(error) = outcome {
+                        super::show_launch_failure(
                             workspace,
                             format!("{LAUNCH_FAILED_PREFIX}{error:#}"),
                             effort,
                             cx,
-                        ),
+                        );
                     }
                 })
                 .log_err();
@@ -2478,18 +2263,17 @@ shift 3
         let canonical_roots = canonical_project_key_roots(&fs, key_roots).await;
         let project_key = project_key(&canonical_roots);
         // The default distro by its name, so that it and a path naming it share
-        // one slot, as they share one configuration. Without the registry's
+        // one key, as they share one configuration. Without the registry's
         // word, the name the project's paths give, if any.
         let distro_name = sandbox::registered_wsl_distro_name(distro.as_deref()).or_else(|| {
             log::warn!("[claude-sandbox] the registry does not name WSL distro {distro:?}");
             distro.clone()
         });
         let key = session_key(distro_name.as_deref(), &project_key);
-        // Held until the session ends: a second one on the same configuration
-        // would share its lock directory and its login.
-        let Some(slot) = cx.update(|window, cx| take_session_slot(key, &workspace, window, cx))?
-        else {
-            return Ok(());
+        // Held only while this launch starts: a session that runs does not
+        // stop another from starting on the same configuration.
+        let Some(mut starting) = cx.update(|_, cx| begin_session(key, &workspace, cx))? else {
+            return Err(LaunchStillStarting.into());
         };
         let HostsConsent::Granted { network_ceiling } = consent_to_claude_hosts(cx).await? else {
             return Ok(());
@@ -2558,15 +2342,14 @@ shift 3
             let distro = distro.clone();
             let rendezvous = rendezvous.clone();
             let lock_file = layout.lock_file.clone();
-            // Held by the bridge while it runs: a session another Zed
-            // started on this configuration turns this one away.
-            let config_root = layout.config_root.clone();
+            // No exclusive directory: sessions on the same configuration run
+            // side by side, each with its own port and lock file.
             async move {
                 sandbox::ide_bridge_invocation(
                     distro.as_deref(),
                     &rendezvous,
                     Some((&lock_file, &lock_content)),
-                    Some(&config_root),
+                    None,
                 )
                 .await
             }
@@ -2611,7 +2394,6 @@ shift 3
             sandbox: None,
             worktree_writer,
             bridge_slot,
-            slot,
         };
         worktree_writer_resolved.await;
         let (wrapped, sandbox) =
@@ -2626,7 +2408,7 @@ shift 3
             cx,
         )
         .await?;
-        resources.slot.set_terminal(terminal.downgrade());
+        starting.started();
         watch_session(terminal, resources, workspace, cx)
     }
 
@@ -2804,8 +2586,6 @@ shift 3
         /// [`sandbox::MAX_IDE_BRIDGES`], given back once its `wsl.exe` is gone
         /// so that the count never runs ahead of the bridges that exist.
         bridge_slot: sandbox::IdeBridgeSlot,
-        /// Freed last, once the bridge is gone.
-        slot: SessionSlot,
     }
 
     impl SessionResources {
@@ -2817,7 +2597,6 @@ shift 3
                 sandbox,
                 worktree_writer,
                 bridge_slot,
-                slot,
             } = self;
             // Ends the bridge's stdin: it removes its socket and lock and exits.
             drop(ide);
@@ -2836,12 +2615,11 @@ shift 3
                 // Dropping it stops `wsl.exe`; the next launch sweeps what is left.
                 Err(_) => log::warn!("[claude-sandbox] the IDE bridge did not exit; stopping it"),
             }
-            // Before the slot: a bridge that ran past the timeout is still
+            // The bridge first: one that ran past the timeout is still
             // there until this drop stops it, and handing its place on to the
             // next one first would let more `wsl.exe` run than the limit says.
             drop(bridge);
             drop(bridge_slot);
-            drop(slot);
         }
     }
 
@@ -2868,14 +2646,10 @@ shift 3
                 })
                 .ok()
                 .flatten();
-            if let Some(workspace) = workspace.upgrade() {
-                workspace.update(cx, |workspace, cx| {
-                    // Saying that the session runs is wrong once it has ended.
-                    workspace.dismiss_toast(&already_running_id(), cx);
-                    if let Some(message) = message {
-                        workspace.show_error(message, cx);
-                    }
-                });
+            if let Some(message) = message
+                && let Some(workspace) = workspace.upgrade()
+            {
+                workspace.update(cx, |workspace, cx| workspace.show_error(message, cx));
             }
         })
         .detach();
@@ -2907,7 +2681,7 @@ mod tests {
     use zed_actions::terminal::{LaunchClaudeCode, LaunchClaudeCodeOutsideSandbox};
 
     use super::session::{
-        CLAUDE_HOSTS, PendingIdeSession, RunningSessions, SessionLayout, StaleEntries,
+        CLAUDE_HOSTS, PendingIdeSession, SessionLayout, StaleEntries, StartingSessions,
         config_paths, helper_failure_message, hosts_detail, launch_invocation, plan_session,
         project_key, register_session_writer, remote_session_write_scope, rendezvous_path,
         session_environment, session_key, session_write_scope, stale_entries,
@@ -3364,37 +3138,74 @@ mod tests {
         );
     }
 
-    /// A second session on the same configuration is refused until the
-    /// first one ends; another project is not held up.
+    /// Only a launch still starting holds its configuration: once its
+    /// terminal exists, the next launch starts another session beside it.
     #[test]
-    fn one_session_per_project_configuration() {
-        let running = RunningSessions::default();
+    fn sessions_on_one_configuration_run_side_by_side_once_started() {
+        let starting = StartingSessions::default();
         let key = session_key(Some("Ubuntu"), PROJECT_KEY);
-        let slot = running.take(key.clone()).expect("the first session starts");
+        let mut first = starting
+            .begin(key.clone())
+            .expect("the first launch starts");
         assert!(
-            matches!(running.take(key.clone()), Err(None)),
-            "a session still starting holds the slot"
+            starting.begin(key.clone()).is_none(),
+            "a launch still starting holds its configuration"
         );
         assert!(
-            matches!(
-                running.take(session_key(Some("ubuntu"), PROJECT_KEY)),
-                Err(None)
-            ),
+            starting
+                .begin(session_key(Some("ubuntu"), PROJECT_KEY))
+                .is_none(),
             "the distro's name in another case is the same distro"
         );
         assert!(
-            running
-                .take(session_key(Some("Debian"), PROJECT_KEY))
-                .is_ok(),
+            starting
+                .begin(session_key(Some("Debian"), PROJECT_KEY))
+                .is_some(),
             "another distro's configuration is another"
         );
         assert!(
-            running
-                .take(session_key(Some("Ubuntu"), "fedcba9876543210"))
-                .is_ok()
+            starting
+                .begin(session_key(Some("Ubuntu"), "fedcba9876543210"))
+                .is_some()
         );
-        drop(slot);
-        assert!(running.take(key).is_ok(), "an ended session frees it");
+
+        first.started();
+        let mut second = starting
+            .begin(key.clone())
+            .expect("a second session starts while the first runs");
+        second.started();
+        let third = starting.begin(key.clone());
+        assert!(third.is_some(), "and a third, while both run");
+        drop(third);
+        drop(first);
+        drop(second);
+        assert!(starting.begin(key).is_some());
+    }
+
+    /// A launch that has started gives its key back; when it is dropped
+    /// later — its session's end, or the rest of the launch — it must not
+    /// take the key from a launch that has begun since.
+    #[test]
+    fn a_started_launch_does_not_free_the_key_of_a_later_one() {
+        let starting = StartingSessions::default();
+        let key = session_key(Some("Ubuntu"), PROJECT_KEY);
+        let mut first = starting
+            .begin(key.clone())
+            .expect("the first launch starts");
+        first.started();
+        let later = starting
+            .begin(key.clone())
+            .expect("the key is free once the first has started");
+        drop(first);
+        assert!(
+            starting.begin(key.clone()).is_none(),
+            "the later launch still starts, and still holds the key"
+        );
+        drop(later);
+        assert!(
+            starting.begin(key).is_some(),
+            "a launch that ends before its terminal exists frees the key"
+        );
     }
 
     #[test]
@@ -4056,31 +3867,50 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn saying_that_the_session_already_runs_goes_away_by_itself(cx: &mut TestAppContext) {
-        use super::session::{already_running_id, take_session_slot};
+    async fn a_launch_while_one_still_starts_says_so_and_goes_away_by_itself(
+        cx: &mut TestAppContext,
+    ) {
+        use super::session::{STILL_STARTING_MESSAGE, begin_session, still_starting_id};
 
         let (_project, workspace, mut cx) = open_workspace(&[path!("/test").as_ref()], cx).await;
         let weak_workspace = workspace.downgrade();
         let key = "ubuntu/0123456789abcdef".to_string();
-        let slot =
-            cx.update(|window, cx| take_session_slot(key.clone(), &weak_workspace, window, cx));
-        assert!(slot.is_some(), "the first launch takes the project's slot");
-        let second = cx.update(|window, cx| take_session_slot(key, &weak_workspace, window, cx));
-        assert!(second.is_none(), "the second launch finds it taken");
-        let says_already_running = |cx: &mut VisualTestContext| {
+        let says_still_starting = |cx: &mut VisualTestContext| {
             workspace.read_with(cx, |workspace, _| {
-                workspace.notification_ids().contains(&already_running_id())
+                workspace.notification_ids().contains(&still_starting_id())
             })
         };
-        assert!(says_already_running(&mut cx));
+
+        let mut first = cx
+            .update(|_, cx| begin_session(key.clone(), &weak_workspace, cx))
+            .expect("the first launch starts");
+        assert!(!says_still_starting(&mut cx));
+        let second = cx.update(|_, cx| begin_session(key.clone(), &weak_workspace, cx));
+        assert!(
+            second.is_none(),
+            "a launch while the first still starts does nothing"
+        );
+        assert!(says_still_starting(&mut cx));
+        assert_eq!(
+            STILL_STARTING_MESSAGE,
+            "このプロジェクトの Claude Code (サンドボックス) を起動しています。起動が終わってからもう一度お試しください。"
+        );
 
         cx.executor()
             .advance_clock(std::time::Duration::from_secs(6));
         cx.run_until_parked();
         assert!(
-            !says_already_running(&mut cx),
+            !says_still_starting(&mut cx),
             "the notice hides itself after a few seconds"
         );
+
+        first.started();
+        let third = cx.update(|_, cx| begin_session(key, &weak_workspace, cx));
+        assert!(
+            third.is_some(),
+            "once the first session's terminal exists, another one starts"
+        );
+        assert!(!says_still_starting(&mut cx));
     }
 
     #[gpui::test]

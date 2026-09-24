@@ -3201,14 +3201,11 @@ async fn restricted_ide_channel(
             async move {
                 // No lock file: an ACP agent is told where its IDE is through
                 // its session's `mcpServers`, not through the CLI's lock. And
-                // nothing held exclusively either: the 第 1 段 CLI's bridge
-                // claims the configuration folder — one project's and one
-                // agent's (決定 15) — because its lock file lives there and
-                // only one CLI session may serve it, while this channel
-                // shares nothing between connections. Claiming it here turned
-                // the second connection of one project and agent away with
-                // `session-running`, and that agent then ran with no
-                // diagnostics tool at all.
+                // nothing held exclusively either: the configuration folder —
+                // one project's and one agent's (決定 15) — is shared by every
+                // connection. Claiming it here turned the second connection of
+                // one project and agent away with `session-running`, and that
+                // agent then ran with no diagnostics tool at all.
                 sandbox::ide_bridge_invocation(distro.as_deref(), &rendezvous, None, None).await
             }
         })
