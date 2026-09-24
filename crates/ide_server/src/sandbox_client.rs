@@ -38,7 +38,7 @@ use gpui::{
 use ide_query::AssistSource;
 use project::{File as WorktreeFile, Project, ProjectPath};
 use serde_json::Value;
-use settings::Settings as _;
+use settings::{Settings as _, SettingsStore};
 use smol::lock::Semaphore;
 use workspace::Workspace;
 
@@ -479,6 +479,10 @@ pub struct SandboxIdeSession {
     last_selection: Option<Value>,
     selection_subscription: Option<Subscription>,
     workspace_subscription: Option<Subscription>,
+    /// `ide_server.share_active_file` の切り替えにすぐ追随するため。
+    _settings_subscription: Subscription,
+    /// 最後に反映した `ide_server.share_active_file`。
+    share_active_file: bool,
     /// 結び付いたプロジェクト。表示を消すのに使う (ワークスペースは解放の途中で読めないことがある)。
     project: Option<WeakEntity<Project>>,
     /// ADR-F56: このセッションの CLI が走るタブ ([`start_sandbox_session_for_tab`])。
@@ -499,6 +503,20 @@ impl SandboxIdeSession {
     ) -> Self {
         // ハンドルを落とされたときは `run_session` の後始末が走らないので、ここで畳む。
         cx.on_release(|this, cx| this.shut_down(cx)).detach();
+        let settings_subscription = cx.observe_global::<SettingsStore>(|this: &mut Self, cx| {
+            let share_active_file = IdeServerSettings::get_global(cx).share_active_file;
+            if std::mem::replace(&mut this.share_active_file, share_active_file)
+                != share_active_file
+                && this.workspace_subscription.is_some()
+            {
+                this.watch_active_editor(cx);
+            }
+        });
+        // 既定の true から始めると、切った状態で始まったセッションで入れ直しても変化として
+        // 拾えず、次に選択が動くまで CLI にファイルが出ない。設定の無いプロセス (制限セッションを
+        // 作る一部のテスト) でも落ちないように、ストアがあるときだけ読む。
+        let share_active_file = !cx.has_global::<SettingsStore>()
+            || IdeServerSettings::get_global(cx).share_active_file;
         Self {
             entity_id: cx.entity_id(),
             kind,
@@ -511,6 +529,8 @@ impl SandboxIdeSession {
             last_selection: None,
             selection_subscription: None,
             workspace_subscription: None,
+            _settings_subscription: settings_subscription,
+            share_active_file,
             project: None,
             tab_key,
             assist_label: kind.default_assist_label().into(),
@@ -652,7 +672,9 @@ impl SandboxIdeSession {
             .and_then(|workspace| workspace.read(cx).active_item(cx))
             .and_then(|item| item.act_as::<Editor>(cx));
         let Some(editor) = editor else {
+            // 全部閉じた・ターミナルやプレビューに移ったときも、CLI の「In <ファイル>」を消す。
             self.selection_subscription = None;
+            self.send_selection_params(SelectionSnapshot::cleared_notification_params());
             return;
         };
         self.selection_subscription = Some(cx.subscribe(
@@ -669,17 +691,33 @@ impl SandboxIdeSession {
     fn publish_selection(&mut self, editor: &Entity<Editor>, cx: &mut Context<Self>) {
         let params = match self.shareable_file_path(editor, cx) {
             Some(client_path) => match tools::selection_snapshot(editor, cx) {
-                Some(snapshot) => snapshot.notification_params(Some(&client_path)),
+                Some(snapshot) => snapshot.notification_params_for_cli(
+                    Some(&client_path),
+                    IdeServerSettings::get_global(cx).share_active_file,
+                ),
                 None => return,
             },
             // パスも本文も見せず、選択が無くなったことだけを伝える。
             None => SelectionSnapshot::cleared_notification_params(),
         };
+        self.send_selection_params(params);
+    }
+
+    fn send_selection_params(&mut self, params: Value) {
         if self.last_selection.as_ref() == Some(&params) {
             return;
         }
         self.last_selection = Some(params.clone());
         self.broadcast("selection_changed", params);
+    }
+
+    /// 今の状態を計算し直し (変わっていれば全員に送り)、新しく繋がった CLI に送る通知を返す。
+    fn current_selection_params(&mut self, cx: &mut Context<Self>) -> Option<Value> {
+        if self.workspace_subscription.is_none() {
+            return None;
+        }
+        self.watch_active_editor(cx);
+        self.last_selection.clone()
     }
 
     /// 選択の本文を CLI に見せてよいファイルの (CLI 側の) パス。1 つのバッファーだけを映す
@@ -762,8 +800,11 @@ impl ToolHost for SandboxIdeSession {
     }
 
     fn add_connection(&mut self, connection: Arc<Outbox>, cx: &mut Context<Self>) {
-        self.connections.push(connection);
+        self.connections.push(connection.clone());
         self.publish_connection_state(cx);
+        if self.kind.is_visible_to_the_user() {
+            crate::resend_selection_after_connect(connection, Self::current_selection_params, cx);
+        }
     }
 
     fn remove_connection(&mut self, connection: &Arc<Outbox>, cx: &mut Context<Self>) {

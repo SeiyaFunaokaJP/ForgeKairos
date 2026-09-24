@@ -6,6 +6,7 @@
 //! 開く操作を出す。
 
 use std::path::Path;
+use std::sync::Arc;
 
 use editor::Editor;
 use gpui::{Anchor, App, ClipboardItem, Empty, Entity, Subscription, WeakEntity};
@@ -117,6 +118,33 @@ fn send_selection_to_claude_code(workspace: &mut Workspace, cx: &mut Context<Wor
     }
 }
 
+/// 設定の「AI」ページの同じ項目と揃えた文言。
+const SHARE_ACTIVE_FILE_LABEL: &str = "開いているファイルを Claude Code に伝える";
+
+fn set_share_active_file(fs: Arc<dyn fs::Fs>, share_active_file: bool, cx: &App) {
+    update_settings_file(fs, cx, move |settings, _| {
+        settings
+            .ide_server
+            .get_or_insert_default()
+            .share_active_file = Some(share_active_file);
+    });
+}
+
+/// チェックの状態はメニューを開いたときの、切り替え先は押したときの設定から決める。描画のときに
+/// 読んだ値を持ち回ると、設定の AI ページで切り替えたあとに押しても何も変わらないことがある。
+fn share_active_file_entry(menu: ContextMenu, fs: Arc<dyn fs::Fs>, cx: &App) -> ContextMenu {
+    menu.toggleable_entry(
+        SHARE_ACTIVE_FILE_LABEL,
+        IdeServerSettings::get_global(cx).share_active_file,
+        IconPosition::Start,
+        None,
+        move |_window, cx| {
+            let share_active_file = IdeServerSettings::get_global(cx).share_active_file;
+            set_share_active_file(fs.clone(), !share_active_file, cx);
+        },
+    )
+}
+
 fn notify(workspace: &mut Workspace, message: impl Into<String>, cx: &mut Context<Workspace>) {
     workspace.show_toast(
         Toast::new(
@@ -129,6 +157,7 @@ fn notify(workspace: &mut Workspace, message: impl Into<String>, cx: &mut Contex
 
 pub struct IdeServerStatusItem {
     server: Option<Entity<IdeServer>>,
+    fs: Arc<dyn fs::Fs>,
     menu_handle: PopoverMenuHandle<ContextMenu>,
     subscriptions: Vec<Subscription>,
 }
@@ -155,6 +184,7 @@ impl IdeServerStatusItem {
         });
         Self {
             server: None,
+            fs: workspace.app_state().fs.clone(),
             menu_handle: PopoverMenuHandle::default(),
             subscriptions: Vec::new(),
         }
@@ -198,79 +228,67 @@ pub(crate) fn assist_tools_summary(cx: &App) -> &'static str {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Shown {
     /// ホストのサーバーと、その操作メニュー。
     HostServer,
     /// サーバーは無効だが、サンドボックスの中の CLI が繋がっている。サンドボックスの
-    /// セッションは `ide_server.enabled` と無関係に動くので (ADR-F49)、接続中であることだけは出す。
+    /// セッションは `ide_server.enabled` と無関係に動くので (ADR-F49)、接続中であることと、
+    /// 開いているファイルを伝えるかどうかの切り替えだけは出す。
     SandboxConnection,
 }
 
 impl Render for IdeServerStatusItem {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(shown) = self.shown(cx) else {
+            return Empty.into_any_element();
+        };
         let assist_summary = assist_tools_summary(cx);
         let connection_count = self.connection_count(cx);
-        match self.shown(cx) {
-            None => return Empty.into_any_element(),
-            Some(Shown::SandboxConnection) => {
+        let trigger = match shown {
+            Shown::SandboxConnection => {
                 let tooltip: SharedString = format!(
                     "サンドボックスの中の Claude Code がこのプロジェクトに接続しています \
-                     (接続 {connection_count})\n{assist_summary}"
+                     (接続 {connection_count})。クリックで操作メニューを開きます\n{assist_summary}"
                 )
                 .into();
-                return Button::new(
+                Button::new(
                     "ide-server-status-trigger",
                     "Claude Code (サンドボックス): 接続中",
                 )
                 .label_size(LabelSize::Small)
+                .tab_index(0isize)
                 .start_icon(
                     Icon::new(IconName::Server)
                         .size(IconSize::Small)
                         .color(Color::Accent),
                 )
                 .tooltip(Tooltip::text(tooltip))
-                .into_any_element();
             }
-            Some(Shown::HostServer) => {}
-        }
-        let claude_code_connected = self.claude_code_connected(cx);
-        let (port, connected_clients, has_lock_file) = match self.server.as_ref() {
-            Some(server) => {
-                let server = server.read(cx);
-                (
-                    server.port(),
-                    server.connected_client_count(),
-                    server.lock_file_path().is_some(),
-                )
-            }
-            None => (None, 0, false),
-        };
-        let label: SharedString = match port {
-            Some(port) if connected_clients > 0 => {
-                format!("IDE サーバー: {port} (接続中 {connected_clients})").into()
-            }
-            Some(port) => format!("IDE サーバー: {port}").into(),
-            None => "IDE サーバー: 起動中…".into(),
-        };
-        let tooltip: SharedString = match port {
-            Some(port) if !has_lock_file => format!(
-                "127.0.0.1:{port} で待ち受け中 (接続 {connection_count})。リモートのワークスペース\
-                 なので、CLI が自動で見つけるためのロックファイルは書いていません \
-                 (「MCP 設定をコピー」で貼れば繋がります)\n{assist_summary}"
-            )
-            .into(),
-            Some(port) => format!(
-                "127.0.0.1:{port} で待ち受け中 (接続 {connection_count})。\
-                 クリックで操作メニューを開きます\n{assist_summary}"
-            )
-            .into(),
-            None => "待ち受けポートの確保を待っています".into(),
-        };
-        let is_running = port.is_some();
-
-        PopoverMenu::new("ide-server-status")
-            .trigger(
+            Shown::HostServer => {
+                let claude_code_connected = self.claude_code_connected(cx);
+                let (port, connected_clients, has_lock_file) = self.host_server_state(cx);
+                let label: SharedString = match port {
+                    Some(port) if connected_clients > 0 => {
+                        format!("IDE サーバー: {port} (接続中 {connected_clients})").into()
+                    }
+                    Some(port) => format!("IDE サーバー: {port}").into(),
+                    None => "IDE サーバー: 起動中…".into(),
+                };
+                let tooltip: SharedString = match port {
+                    Some(port) if !has_lock_file => format!(
+                        "127.0.0.1:{port} で待ち受け中 (接続 {connection_count})。リモートのワークスペース\
+                         なので、CLI が自動で見つけるためのロックファイルは書いていません \
+                         (「MCP 設定をコピー」で貼れば繋がります)\n{assist_summary}"
+                    )
+                    .into(),
+                    Some(port) => format!(
+                        "127.0.0.1:{port} で待ち受け中 (接続 {connection_count})。\
+                         クリックで操作メニューを開きます\n{assist_summary}"
+                    )
+                    .into(),
+                    None => "待ち受けポートの確保を待っています".into(),
+                };
                 Button::new("ide-server-status-trigger", label)
                     .label_size(LabelSize::Small)
                     .tab_index(0isize)
@@ -281,13 +299,58 @@ impl Render for IdeServerStatusItem {
                             Color::Muted
                         },
                     ))
-                    .tooltip(Tooltip::text(tooltip)),
-            )
+                    .tooltip(Tooltip::text(tooltip))
+            }
+        };
+
+        PopoverMenu::new("ide-server-status")
+            .trigger(trigger)
             .anchor(Anchor::BottomRight)
             .with_handle(self.menu_handle.clone())
-            .menu(move |window, cx| {
-                Some(ContextMenu::build(window, cx, |menu, _window, _cx| {
-                    menu.header(format!("{assist_summary} (接続 {connection_count})"))
+            .menu(self.menu_builder(shown, cx))
+            .into_any_element()
+    }
+}
+
+impl IdeServerStatusItem {
+    /// ホストのサーバーの (IDE の口の待ち受けポート, 繋がっている CLI の数, ロックファイルを書いたか)。
+    fn host_server_state(&self, cx: &App) -> (Option<u16>, usize, bool) {
+        match self.server.as_ref() {
+            Some(server) => {
+                let server = server.read(cx);
+                (
+                    server.port(),
+                    server.connected_client_count(),
+                    server.lock_file_path().is_some(),
+                )
+            }
+            None => (None, 0, false),
+        }
+    }
+
+    /// 項目を押したときのメニュー。サンドボックスの CLI だけが繋がっているときも、開いている
+    /// ファイルを伝えるかどうかはここで切り替えられるようにする (サーバーの操作は出さない)。
+    pub(crate) fn menu_builder(
+        &self,
+        shown: Shown,
+        cx: &App,
+    ) -> impl Fn(&mut Window, &mut App) -> Option<Entity<ContextMenu>> + use<> {
+        let header: SharedString = format!(
+            "{} (接続 {})",
+            assist_tools_summary(cx),
+            self.connection_count(cx)
+        )
+        .into();
+        let (port, _, has_lock_file) = self.host_server_state(cx);
+        let is_running = port.is_some();
+        let fs = self.fs.clone();
+        move |window, cx| {
+            let header = header.clone();
+            let fs = fs.clone();
+            Some(ContextMenu::build(window, cx, move |menu, _window, cx| {
+                let menu = menu.header(header);
+                let menu = match shown {
+                    Shown::HostServer => menu
                         .action("無効にする", Box::new(ToggleIdeServer))
                         .action_disabled_when(
                             !is_running,
@@ -299,9 +362,12 @@ impl Render for IdeServerStatusItem {
                             "ロックファイルの場所を開く",
                             Box::new(RevealLockFile),
                         )
-                }))
-            })
-            .into_any_element()
+                        .separator(),
+                    Shown::SandboxConnection => menu,
+                };
+                share_active_file_entry(menu, fs, cx)
+            }))
+        }
     }
 }
 

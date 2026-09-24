@@ -8603,7 +8603,7 @@ fn collaboration_page() -> SettingsPage {
 }
 
 fn ai_page(cx: &App) -> SettingsPage {
-    fn general_section() -> [SettingsPageItem; 13] {
+    fn general_section() -> [SettingsPageItem; 14] {
         [
             SettingsPageItem::SectionHeader("全般"),
             // The only UI writer of `agent.enabled` (ADR-F13, `docs/jp-enhance/DESIGN.md`):
@@ -8834,6 +8834,25 @@ fn ai_page(cx: &App) -> SettingsPage {
                     },
                     write: |settings_content, value, _| {
                         settings_content.ide_server.get_or_insert_default().assist_tools = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "開いているファイルを Claude Code に伝える",
+                description: "何も選んでいないときも、開いているファイルを接続中の Claude Code に伝えます (入力欄の「In <ファイル名>」)。オフにすると、行を選んだときだけ送ります。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("ide_server.share_active_file"),
+                    pick: |settings_content| {
+                        settings_content.ide_server.as_ref()?.share_active_file.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .ide_server
+                            .get_or_insert_default()
+                            .share_active_file = value;
                     },
                 }),
                 metadata: None,

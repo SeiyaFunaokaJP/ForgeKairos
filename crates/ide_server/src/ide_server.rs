@@ -114,6 +114,8 @@ pub struct IdeServerSettings {
     pub enabled: bool,
     /// ADR-F56: エージェントにアシストのツール (MCP サーバー `zed`) を渡すか。
     pub assist_tools: bool,
+    /// 何も選んでいないときも、開いているファイルを CLI に伝えるか (CLI の「⧉ In <ファイル>」)。
+    pub share_active_file: bool,
 }
 
 impl Settings for IdeServerSettings {
@@ -122,8 +124,36 @@ impl Settings for IdeServerSettings {
         Self {
             enabled: ide_server.enabled.unwrap_or(false),
             assist_tools: ide_server.assist_tools.unwrap_or(true),
+            share_active_file: ide_server.share_active_file.unwrap_or(true),
         }
     }
+}
+
+/// 接続してから、最新の選択範囲を送り直すまでの待ち。CLI は IDE の MCP クライアントが繋がった
+/// あとで `selection_changed` の受け手を登録し、そのとき表示を空に戻す。握手の直後に送ると
+/// 受け手の登録前に届いて捨てられる (VSCode の拡張も接続の 500ms 後に送り直している)。
+const RESEND_SELECTION_AFTER_CONNECT: Duration = Duration::from_millis(500);
+
+/// 新しく繋がった CLI に、`RESEND_SELECTION_AFTER_CONNECT` のあとで最新の選択範囲を送る。
+/// `resend` は今の状態を計算し直し、その接続に送るべき通知を返す。
+fn resend_selection_after_connect<H: 'static>(
+    connection: Arc<transport::Outbox>,
+    resend: fn(&mut H, &mut gpui::Context<H>) -> Option<serde_json::Value>,
+    cx: &mut gpui::Context<H>,
+) {
+    cx.spawn(async move |this, cx| {
+        cx.background_executor()
+            .timer(RESEND_SELECTION_AFTER_CONNECT)
+            .await;
+        if connection.is_closed() {
+            return;
+        }
+        let Ok(Some(params)) = this.update(cx, |this, cx| resend(this, cx)) else {
+            return;
+        };
+        connection.send_selection(protocol::notification("selection_changed", params));
+    })
+    .detach();
 }
 
 /// ADR-F56: エージェントにアシストのツールを渡す設定か。IDE サーバーの設定が登録されていない
@@ -496,6 +526,12 @@ pub struct IdeServer {
     project_id: EntityId,
     running: Option<RunningServer>,
     latest_selection: Option<SelectionSnapshot>,
+    /// 最後に CLI へ送った `selection_changed`。同じものを撃ち直さない。`latest_selection`
+    /// (`getLatestSelection` が返す、最後に見たエディターの選択) とは別に持つ: エディターが
+    /// 無くなったときに送る消す通知は、選択を見たことにはしない。
+    last_sent: Option<serde_json::Value>,
+    /// 最後に反映した `ide_server.share_active_file`。変わったときだけ送り直す。
+    share_active_file: bool,
     selection_subscription: Option<Subscription>,
     open_diffs: tools::OpenDiffs,
     /// ADR-F56: このサーバーを使うアシストのクライアント (ID → 表示の枠に出す名前)。
@@ -540,6 +576,8 @@ impl IdeServer {
             project_id,
             running: None,
             latest_selection: None,
+            last_sent: None,
+            share_active_file: true,
             selection_subscription: None,
             open_diffs: tools::OpenDiffs::default(),
             assist_clients: HashMap::default(),
@@ -709,6 +747,9 @@ impl IdeServer {
     /// 持っているポートとトークンが、設定を切り替えたあとも使えるように。
     fn apply_settings(&mut self, cx: &mut gpui::Context<Self>) {
         let settings = IdeServerSettings::get_global(cx).clone();
+        let share_active_file_changed =
+            std::mem::replace(&mut self.share_active_file, settings.share_active_file)
+                != settings.share_active_file;
         let wanted = settings.enabled || (settings.assist_tools && !self.assist_clients.is_empty());
         if !wanted {
             if self.running.is_some() {
@@ -752,6 +793,16 @@ impl IdeServer {
             (true, false) => {
                 self.close_ide_endpoint();
                 self.publish_connection_state(cx);
+            }
+            (true, true) if share_active_file_changed => {
+                // `share_active_file` を切ったら、開いているだけのファイルの表示をすぐ消す
+                // (入れたらすぐ出す)。同じ通知は `send_selection_params` が撃ち直さない。
+                let this = cx.weak_entity();
+                cx.defer(move |cx| {
+                    if let Some(this) = this.upgrade() {
+                        this.update(cx, |this, cx| this.watch_active_editor(cx));
+                    }
+                });
             }
             _ => {}
         }
@@ -875,6 +926,7 @@ impl IdeServer {
         }
         self.selection_subscription = None;
         self.latest_selection = None;
+        self.last_sent = None;
         self.open_diffs = tools::OpenDiffs::default();
     }
 
@@ -885,6 +937,7 @@ impl IdeServer {
         };
         self.selection_subscription = None;
         self.latest_selection = None;
+        self.last_sent = None;
         self.open_diffs = tools::OpenDiffs::default();
         log::info!(
             "ide_server: stopped listening on 127.0.0.1:{}",
@@ -955,7 +1008,9 @@ impl IdeServer {
         let active_item = workspace.read(cx).active_item(cx);
         let editor = active_item.and_then(|item| item.act_as::<Editor>(cx));
         let Some(editor) = editor else {
+            // 全部閉じた・ターミナルやプレビューに移ったときも、CLI の「In <ファイル>」を消す。
             self.selection_subscription = None;
+            self.send_selection_params(tools::SelectionSnapshot::cleared_notification_params());
             return;
         };
         self.selection_subscription = Some(cx.subscribe(
@@ -973,12 +1028,27 @@ impl IdeServer {
         let Some(snapshot) = tools::selection_snapshot(editor, cx) else {
             return;
         };
-        if self.latest_selection.as_ref() == Some(&snapshot) {
+        let params =
+            snapshot.to_notification_params(IdeServerSettings::get_global(cx).share_active_file);
+        self.latest_selection = Some(snapshot);
+        self.send_selection_params(params);
+    }
+
+    fn send_selection_params(&mut self, params: serde_json::Value) {
+        if self.last_sent.as_ref() == Some(&params) {
             return;
         }
-        let params = snapshot.to_notification_params();
-        self.latest_selection = Some(snapshot);
+        self.last_sent = Some(params.clone());
         self.broadcast("selection_changed", params);
+    }
+
+    /// 今の状態を計算し直し (変わっていれば全員に送り)、新しく繋がった CLI に送る通知を返す。
+    fn current_selection_params(
+        &mut self,
+        cx: &mut gpui::Context<Self>,
+    ) -> Option<serde_json::Value> {
+        self.watch_active_editor(cx);
+        self.last_sent.clone()
     }
 }
 
@@ -1007,9 +1077,10 @@ impl ToolHost for IdeServer {
 
     fn add_connection(&mut self, connection: Arc<transport::Outbox>, cx: &mut gpui::Context<Self>) {
         if let Some(running) = self.running.as_mut() {
-            running.connections.push(connection);
+            running.connections.push(connection.clone());
         }
         self.publish_connection_state(cx);
+        resend_selection_after_connect(connection, Self::current_selection_params, cx);
     }
 
     fn remove_connection(

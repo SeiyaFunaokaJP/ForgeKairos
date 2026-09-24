@@ -13,7 +13,9 @@ use async_tungstenite::tungstenite::Error as WebSocketError;
 use editor::Editor;
 use futures::channel::mpsc::{self, UnboundedSender, unbounded};
 use futures::channel::oneshot;
-use futures::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _, StreamExt as _};
+use futures::{
+    AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _, FutureExt as _, StreamExt as _,
+};
 use gpui::{
     AppContext as _, Entity, Focusable as _, TestAppContext, UpdateGlobal as _, WindowHandle,
 };
@@ -2162,7 +2164,7 @@ async fn sandbox_session_sends_notifications_in_the_client_form(cx: &mut TestApp
     // ワークツリーの外のファイルに移ったら、パスも本文も見せずに選択を消す。
     open_path(&fixture, path!("/outside/secret.rs"), cx).await;
     let notification = client
-        .notification("selection_changed", |params| params["filePath"].is_null())
+        .notification("selection_changed", is_cleared_selection)
         .await;
     assert_eq!(notification["params"]["text"], json!(""));
 
@@ -3065,7 +3067,7 @@ async fn sandbox_session_hides_the_selection_in_a_file_that_links_outside(cx: &m
         .await;
     open_path(&fixture, path!("/test/link.rs"), cx).await;
     let notification = client
-        .notification("selection_changed", |params| params["filePath"].is_null())
+        .notification("selection_changed", is_cleared_selection)
         .await;
     assert_eq!(notification["params"]["text"], json!(""));
 }
@@ -4753,7 +4755,7 @@ async fn private_files_stay_out_of_the_sandboxed_cli(cx: &mut TestAppContext) {
 
     open_path(&fixture, path!("/test/.env"), cx).await;
     let notification = client
-        .notification("selection_changed", |params| params["filePath"].is_null())
+        .notification("selection_changed", is_cleared_selection)
         .await;
     assert_eq!(notification["params"]["text"], json!(""));
 
@@ -4858,4 +4860,508 @@ async fn the_frame_label_is_never_what_the_client_claims(cx: &mut TestAppContext
             .label;
         assert_eq!(label.as_ref(), "外部エージェント", "{forged:?}");
     }
+}
+
+// ---------------------------------------------------------------------------
+// CLI の「⧉ In <ファイル>」を消す (selection_changed の消す通知)
+// ---------------------------------------------------------------------------
+
+/// CLI (2.1.281) は `filePath` を `string().optional()` で検査するので、`null` を送ると通知ごと
+/// 捨てられる。消す通知はキーを省き、選択範囲 (CLI は無いと何もしない) は付ける。
+fn is_cleared_selection(params: &Value) -> bool {
+    params.get("filePath").is_none()
+        && params["selection"]["start"].is_object()
+        && params["selection"]["end"].is_object()
+        && params["text"] == json!("")
+}
+
+#[test]
+fn the_selection_notification_leaves_out_a_missing_path() {
+    assert!(is_cleared_selection(
+        &crate::SelectionSnapshot::cleared_notification_params()
+    ));
+    let snapshot = crate::SelectionSnapshot {
+        file_path: None,
+        text: "fn".to_string(),
+        start_line: 0,
+        start_character: 0,
+        end_line: 0,
+        end_character: 2,
+    };
+    let untitled = snapshot.notification_params(None);
+    assert!(untitled.get("filePath").is_none(), "{untitled}");
+    assert_eq!(untitled["text"], json!("fn"));
+    let with_path = snapshot.notification_params(Some("/p/main.rs"));
+    assert_eq!(with_path["filePath"], json!("/p/main.rs"));
+}
+
+#[test]
+fn a_bare_cursor_is_cleared_when_the_open_file_is_not_shared() {
+    let cursor = crate::SelectionSnapshot {
+        file_path: Some(PathBuf::from("/p/main.rs")),
+        text: String::new(),
+        start_line: 3,
+        start_character: 1,
+        end_line: 3,
+        end_character: 1,
+    };
+    assert_eq!(
+        cursor.notification_params_for_cli(Some("/p/main.rs"), true)["filePath"],
+        json!("/p/main.rs")
+    );
+    assert!(is_cleared_selection(
+        &cursor.notification_params_for_cli(Some("/p/main.rs"), false)
+    ));
+    let lines = crate::SelectionSnapshot {
+        text: "a\nb\n".to_string(),
+        end_line: 5,
+        end_character: 0,
+        ..cursor
+    };
+    let params = lines.notification_params_for_cli(Some("/p/main.rs"), false);
+    assert_eq!(params["filePath"], json!("/p/main.rs"));
+    assert_eq!(params["text"], json!("a\nb\n"));
+}
+
+fn set_ide_server_settings(
+    cx: &mut TestAppContext,
+    update: impl FnOnce(&mut settings::IdeServerSettingsContent),
+) {
+    cx.update(|cx| {
+        settings::SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                update(settings.ide_server.get_or_insert_default());
+            });
+        });
+    });
+    cx.run_until_parked();
+}
+
+/// ホストのサーバーを `enabled` にしたワークスペース。サンドボックスのセッションは落とす。
+async fn start_host_fixture(
+    cx: &mut TestAppContext,
+) -> (SandboxFixture, Entity<IdeServer>, tempfile::TempDir) {
+    let lock_directory = tempfile::tempdir().expect("a temporary lock directory");
+    let mut fixture = start_sandbox_fixture(cx).await;
+    drop(fixture.session.take());
+    cx.update(|cx| crate::set_lock_directory(lock_directory.path().to_path_buf(), cx));
+    let server = cx
+        .update(|cx| crate::server_for_project(&fixture.project, cx))
+        .expect("the workspace has a server");
+    set_ide_server_settings(cx, |settings| settings.enabled = Some(true));
+    assert!(server.read_with(cx, |server, _| server.port().is_some()));
+    (fixture, server, lock_directory)
+}
+
+/// ホストのサーバーに WebSocket の CLI が繋がったことにする。
+fn attach_host_cli(
+    server: &Entity<IdeServer>,
+    cx: &mut TestAppContext,
+) -> transport::OutboxReceiver {
+    let (outbox, receiver) = transport::outbox();
+    server.update(cx, |server, cx| server.add_connection(outbox, cx));
+    receiver
+}
+
+/// 届いている `selection_changed` の中身 (未読のうち最新の 1 件だけが残る)。
+fn received_selections(receiver: &mut transport::OutboxReceiver) -> Vec<Value> {
+    let mut selections = Vec::new();
+    while let Some(Some(text)) = receiver.next().now_or_never() {
+        let message: Value = serde_json::from_str(&text).expect("the notification is JSON");
+        if message["method"] == json!("selection_changed") {
+            selections.push(message["params"].clone());
+        }
+    }
+    selections
+}
+
+fn close_all_items(fixture: &SandboxFixture, cx: &mut TestAppContext) {
+    let workspace = fixture.workspace.clone();
+    let close = fixture
+        .window
+        .update(cx, |_, window, cx| {
+            workspace.update(cx, |workspace, cx| {
+                workspace.active_pane().update(cx, |pane, cx| {
+                    pane.close_all_items(&workspace::CloseAllItems::default(), window, cx)
+                })
+            })
+        })
+        .expect("the window is open");
+    cx.run_until_parked();
+    drop(close);
+    cx.run_until_parked();
+}
+
+fn open_non_editor_item(fixture: &SandboxFixture, cx: &mut TestAppContext) {
+    let workspace = fixture.workspace.clone();
+    fixture
+        .window
+        .update(cx, |_, window, cx| {
+            workspace.update(cx, |workspace, cx| {
+                let item = cx.new(workspace::item::test::TestItem::new);
+                workspace.add_item_to_active_pane(Box::new(item), None, true, window, cx);
+            })
+        })
+        .expect("the window is open");
+    cx.run_until_parked();
+}
+
+fn active_editor(fixture: &SandboxFixture, cx: &mut TestAppContext) -> Entity<Editor> {
+    fixture
+        .workspace
+        .read_with(cx, |workspace, cx| {
+            workspace
+                .active_item(cx)
+                .and_then(|item| item.act_as::<Editor>(cx))
+        })
+        .expect("an editor is active")
+}
+
+fn select(fixture: &SandboxFixture, range: std::ops::Range<PointUtf16>, cx: &mut TestAppContext) {
+    let editor = active_editor(fixture, cx);
+    fixture
+        .window
+        .update(cx, |_, window, cx| {
+            editor.update(cx, |editor, cx| {
+                editor.change_selections(Default::default(), window, cx, |selections| {
+                    selections.select_ranges([range])
+                });
+            })
+        })
+        .expect("the window is open");
+    cx.run_until_parked();
+}
+
+fn last_file_path(selections: &[Value]) -> Option<Value> {
+    selections.last().map(|params| params["filePath"].clone())
+}
+
+#[gpui::test]
+async fn closing_every_tab_clears_the_open_file_in_the_host_cli(cx: &mut TestAppContext) {
+    let (fixture, server, _lock_directory) = start_host_fixture(cx).await;
+    let mut cli = attach_host_cli(&server, cx);
+
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    let selections = received_selections(&mut cli);
+    assert_eq!(
+        last_file_path(&selections),
+        Some(json!(path!("/test/main.rs"))),
+        "{selections:?}"
+    );
+
+    close_all_items(&fixture, cx);
+    let selections = received_selections(&mut cli);
+    assert!(
+        selections.last().is_some_and(is_cleared_selection),
+        "closing every tab clears the CLI's `In main.rs`: {selections:?}"
+    );
+    assert!(
+        server.read_with(cx, |server, _| server.latest_selection().is_some()),
+        "getLatestSelection still answers with the last selection it saw"
+    );
+
+    // 同じ状態では撃ち直さない。
+    server.update(cx, |server, cx| server.watch_active_editor(cx));
+    cx.run_until_parked();
+    assert_eq!(received_selections(&mut cli), Vec::<Value>::new());
+
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    let selections = received_selections(&mut cli);
+    assert_eq!(
+        last_file_path(&selections),
+        Some(json!(path!("/test/main.rs"))),
+        "reopening the file shows it again: {selections:?}"
+    );
+
+    // エディターでない項目 (ターミナル・プレビューなど) に切り替えても消す。
+    open_non_editor_item(&fixture, cx);
+    let selections = received_selections(&mut cli);
+    assert!(
+        selections.last().is_some_and(is_cleared_selection),
+        "{selections:?}"
+    );
+}
+
+#[gpui::test]
+async fn a_newly_connected_host_cli_gets_the_latest_selection(cx: &mut TestAppContext) {
+    let (fixture, server, _lock_directory) = start_host_fixture(cx).await;
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+
+    let mut cli = attach_host_cli(&server, cx);
+    cx.run_until_parked();
+    assert_eq!(
+        received_selections(&mut cli),
+        Vec::<Value>::new(),
+        "nothing is sent before the CLI registers its handler"
+    );
+    cx.executor()
+        .advance_clock(crate::RESEND_SELECTION_AFTER_CONNECT);
+    cx.run_until_parked();
+    let selections = received_selections(&mut cli);
+    assert_eq!(
+        last_file_path(&selections),
+        Some(json!(path!("/test/main.rs"))),
+        "{selections:?}"
+    );
+}
+
+#[gpui::test]
+async fn the_host_shares_only_selected_lines_when_the_open_file_is_not_shared(
+    cx: &mut TestAppContext,
+) {
+    let (fixture, server, _lock_directory) = start_host_fixture(cx).await;
+    set_ide_server_settings(cx, |settings| settings.share_active_file = Some(false));
+    let mut cli = attach_host_cli(&server, cx);
+
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    let selections = received_selections(&mut cli);
+    assert!(
+        selections.iter().all(is_cleared_selection),
+        "a bare cursor does not name the file: {selections:?}"
+    );
+    assert!(server.read_with(cx, |server, _| {
+        server.last_sent.as_ref().is_some_and(is_cleared_selection)
+    }));
+
+    select(&fixture, PointUtf16::new(0, 0)..PointUtf16::new(1, 0), cx);
+    let selections = received_selections(&mut cli);
+    let last = selections.last().expect("the selected lines are sent");
+    assert_eq!(last["filePath"], json!(path!("/test/main.rs")));
+    assert_eq!(last["text"], json!("fn main() {\n"));
+
+    select(&fixture, PointUtf16::new(0, 0)..PointUtf16::new(0, 0), cx);
+    let selections = received_selections(&mut cli);
+    assert!(
+        selections.last().is_some_and(is_cleared_selection),
+        "{selections:?}"
+    );
+}
+
+#[gpui::test]
+async fn turning_off_sharing_clears_the_host_cli_at_once(cx: &mut TestAppContext) {
+    let (fixture, server, _lock_directory) = start_host_fixture(cx).await;
+    let mut cli = attach_host_cli(&server, cx);
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    let selections = received_selections(&mut cli);
+    assert_eq!(
+        last_file_path(&selections),
+        Some(json!(path!("/test/main.rs")))
+    );
+
+    set_ide_server_settings(cx, |settings| settings.share_active_file = Some(false));
+    let selections = received_selections(&mut cli);
+    assert!(
+        selections.last().is_some_and(is_cleared_selection),
+        "{selections:?}"
+    );
+
+    set_ide_server_settings(cx, |settings| settings.share_active_file = Some(true));
+    let selections = received_selections(&mut cli);
+    assert_eq!(
+        last_file_path(&selections),
+        Some(json!(path!("/test/main.rs"))),
+        "{selections:?}"
+    );
+}
+
+/// もう届いている `selection_changed` のうち `matches` に合うもの。待たない (届かないときに
+/// テストが止まらず、失敗として返るように)。
+fn arrived_selection(
+    client: &mut SandboxClient,
+    matches: impl Fn(&Value) -> bool,
+) -> Option<Value> {
+    client
+        .notification("selection_changed", matches)
+        .now_or_never()
+}
+
+#[gpui::test]
+async fn sandbox_session_clears_the_open_file_when_every_tab_closes(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut client = connect(&fixture, cx).await;
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    arrived_selection(&mut client, |params| params["filePath"] == json!(main_path))
+        .expect("opening the file names it");
+    client.unclaimed.clear();
+
+    close_all_items(&fixture, cx);
+    arrived_selection(&mut client, is_cleared_selection)
+        .expect("closing every tab clears the CLI's `In main.rs`");
+}
+
+#[gpui::test]
+async fn a_newly_connected_sandboxed_cli_gets_the_latest_selection(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+
+    let mut client = connect(&fixture, cx).await;
+    assert!(
+        arrived_selection(&mut client, |_| true).is_none(),
+        "nothing is sent before the CLI registers its handler"
+    );
+    cx.executor()
+        .advance_clock(crate::RESEND_SELECTION_AFTER_CONNECT);
+    cx.run_until_parked();
+    arrived_selection(&mut client, |params| params["filePath"] == json!(main_path))
+        .expect("the latest selection is sent again after the handshake");
+}
+
+#[gpui::test]
+async fn the_sandboxed_cli_gets_only_selected_lines_when_the_open_file_is_not_shared(
+    cx: &mut TestAppContext,
+) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut client = connect(&fixture, cx).await;
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    arrived_selection(&mut client, |params| params["filePath"] == json!(main_path))
+        .expect("opening the file names it");
+    client.unclaimed.clear();
+
+    set_ide_server_settings(cx, |settings| settings.share_active_file = Some(false));
+    arrived_selection(&mut client, is_cleared_selection)
+        .expect("turning sharing off clears the CLI at once");
+
+    select(&fixture, PointUtf16::new(0, 0)..PointUtf16::new(1, 0), cx);
+    let notification =
+        arrived_selection(&mut client, |params| params["filePath"] == json!(main_path))
+            .expect("selected lines are still sent");
+    assert_eq!(notification["params"]["text"], json!("fn main() {\n"));
+}
+
+/// 届いている `selection_changed` をすべて読む (待たない)。
+fn all_arrived_selections(client: &mut SandboxClient) -> Vec<Value> {
+    let mut selections = Vec::new();
+    while let Some(notification) = arrived_selection(client, |_| true) {
+        selections.push(notification["params"].clone());
+    }
+    selections
+}
+
+/// 接続直後の送り直しも、見せてはいけないファイルの検査を通った通知だけを送る。
+#[gpui::test]
+async fn a_newly_connected_sandboxed_cli_is_not_told_about_a_private_file(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    add_assist_files(&fixture, cx).await;
+    open_path(&fixture, path!("/test/.env"), cx).await;
+    select(&fixture, PointUtf16::new(0, 0)..PointUtf16::new(1, 0), cx);
+
+    let mut client = connect(&fixture, cx).await;
+    cx.executor()
+        .advance_clock(crate::RESEND_SELECTION_AFTER_CONNECT);
+    cx.run_until_parked();
+    let selections = all_arrived_selections(&mut client);
+    assert!(
+        !selections.is_empty() && selections.iter().all(is_cleared_selection),
+        "the resend clears the CLI instead of naming `.env`: {selections:?}"
+    );
+    assert!(
+        !format!("{selections:?}").contains("hunter2"),
+        "{selections:?}"
+    );
+}
+
+/// 共有を切った状態で始まったセッションでも、入れ直したらすぐファイルが CLI に出る。
+#[gpui::test]
+async fn a_sandboxed_session_started_with_sharing_off_follows_turning_it_on(
+    cx: &mut TestAppContext,
+) {
+    let mut fixture = start_sandbox_fixture(cx).await;
+    drop(fixture.session.take());
+    cx.run_until_parked();
+    set_ide_server_settings(cx, |settings| settings.share_active_file = Some(false));
+    let (connections, incoming_connections) = unbounded::<MemoryStream>();
+    let (session, info) = cx.update(|cx| {
+        crate::start_sandbox_session(
+            fixture.workspace.downgrade(),
+            incoming_connections,
+            sandbox_mapper(),
+            vec![PathBuf::from(path!("/test"))],
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    let fixture = SandboxFixture {
+        connections,
+        session: Some(session),
+        auth_token: info.auth_token,
+        ..fixture
+    };
+    let mut client = connect(&fixture, cx).await;
+    let main_path = format!("{CLIENT_ROOT}/main.rs");
+
+    open_path(&fixture, path!("/test/main.rs"), cx).await;
+    assert!(
+        arrived_selection(&mut client, |params| params.get("filePath").is_some()).is_none(),
+        "a bare cursor does not name the file while sharing is off"
+    );
+    client.unclaimed.clear();
+
+    set_ide_server_settings(cx, |settings| settings.share_active_file = Some(true));
+    arrived_selection(&mut client, |params| params["filePath"] == json!(main_path))
+        .expect("turning sharing on names the open file at once");
+}
+
+/// サンドボックスの CLI だけが繋がっているときの項目 (「Claude Code (サンドボックス): 接続中」)
+/// からも、開いているファイルを伝えるかどうかを切り替えられる。
+#[gpui::test]
+async fn the_sandbox_status_item_menu_turns_off_sharing_the_open_file(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let status_item = fixture.workspace.update(cx, |workspace, cx| {
+        cx.new(|cx| IdeServerStatusItem::new(workspace, cx))
+    });
+    let _client = connect(&fixture, cx).await;
+    let shown = status_item.read_with(cx, |item, cx| item.shown(cx));
+    assert_eq!(shown, Some(Shown::SandboxConnection));
+    let menu_builder = status_item.read_with(cx, |item, cx| {
+        item.menu_builder(Shown::SandboxConnection, cx)
+    });
+
+    let menu_window = cx
+        .update(|cx| {
+            cx.open_window(Default::default(), |window, cx| {
+                menu_builder(window, cx).expect("the menu builds")
+            })
+        })
+        .expect("the menu window opens");
+    cx.run_until_parked();
+    menu_window
+        .update(cx, |menu, window, cx| {
+            window.focus(&menu.focus_handle(cx), cx);
+            assert!(
+                menu.select_last(window, cx).is_some(),
+                "the menu has the sharing toggle"
+            );
+        })
+        .expect("the menu window is open");
+    cx.run_until_parked();
+    menu_window
+        .update(cx, |_, window, cx| {
+            let confirm = cx
+                .build_action("menu::Confirm", None)
+                .expect("the menu actions are registered");
+            window.dispatch_action(confirm, cx);
+        })
+        .expect("the menu window is open");
+    cx.run_until_parked();
+
+    let fs: Arc<dyn project::Fs> = fixture.fs.clone();
+    let settings_text = settings::SettingsStore::load_settings(&fs)
+        .await
+        .expect("the settings file is readable");
+    let settings =
+        <settings::SettingsContent as settings::RootUserSettings>::parse_json_with_comments(
+            &settings_text,
+        )
+        .expect("the settings file parses");
+    assert_eq!(
+        settings
+            .ide_server
+            .and_then(|ide_server| ide_server.share_active_file),
+        Some(false),
+        "{settings_text}"
+    );
 }

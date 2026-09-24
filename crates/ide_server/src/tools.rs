@@ -429,37 +429,60 @@ impl SelectionSnapshot {
         })
     }
 
-    /// CLI が受ける `selection_changed` 通知の形。
-    pub fn to_notification_params(&self) -> Value {
+    /// CLI が受ける `selection_changed` 通知の形 (ホストのパスのまま)。
+    pub fn to_notification_params(&self, share_active_file: bool) -> Value {
         let file_path = self
             .file_path
             .as_ref()
             .map(|path| path.to_string_lossy().into_owned());
-        self.notification_params(file_path.as_deref())
+        self.notification_params_for_cli(file_path.as_deref(), share_active_file)
     }
 
     /// パスだけを CLI 側の形に差し替えた `selection_changed` 通知。
+    ///
+    /// パスが無ければ `filePath` のキーごと省く。CLI (2.1.281) は `filePath` を
+    /// `string().optional()` で検査するので、`null` を入れると通知ごと捨てられ、前のファイルの
+    /// 「⧉ In <ファイル名>」が消えずに残る。
     pub fn notification_params(&self, file_path: Option<&str>) -> Value {
-        json!({
+        let mut params = json!({
             "selection": {
                 "start": { "line": self.start_line, "character": self.start_character },
                 "end": { "line": self.end_line, "character": self.end_character },
             },
             "text": self.text,
-            "filePath": file_path,
-        })
+        });
+        if let (Some(file_path), Some(object)) = (file_path, params.as_object_mut()) {
+            object.insert("filePath".to_string(), json!(file_path));
+        }
+        params
     }
 
-    /// CLI に見せてはいけないバッファーに移ったときの通知。選択が無くなったことだけを伝える。
+    /// CLI に見せるファイルが無くなったとき (見せてはいけないバッファー・エディター以外の項目・
+    /// 全部閉じた・共有を切った) の通知。選択が無くなったことだけを伝え、CLI の表示を消す。
     pub fn cleared_notification_params() -> Value {
-        json!({
-            "selection": {
-                "start": { "line": 0, "character": 0 },
-                "end": { "line": 0, "character": 0 },
-            },
-            "text": "",
-            "filePath": null,
-        })
+        SelectionSnapshot {
+            file_path: None,
+            text: String::new(),
+            start_line: 0,
+            start_character: 0,
+            end_line: 0,
+            end_character: 0,
+        }
+        .notification_params(None)
+    }
+
+    /// `selection_changed` で CLI に送る形。`share_active_file` が切れていれば、空の選択
+    /// (ファイルを開いているだけ) は消す通知にし、行を選んだときだけ送る。
+    pub fn notification_params_for_cli(
+        &self,
+        file_path: Option<&str>,
+        share_active_file: bool,
+    ) -> Value {
+        if !share_active_file && self.is_empty() {
+            Self::cleared_notification_params()
+        } else {
+            self.notification_params(file_path)
+        }
     }
 
     fn to_tool_result(&self) -> Value {

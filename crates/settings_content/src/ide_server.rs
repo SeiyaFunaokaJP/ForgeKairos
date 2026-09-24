@@ -22,4 +22,11 @@ pub struct IdeServerSettingsContent {
     ///
     /// Default: true
     pub assist_tools: Option<bool>,
+    /// Whether to tell a connected Claude Code CLI which file is open when
+    /// nothing is selected (the CLI shows it as "In <file>" and attaches the
+    /// file to the next message). When off, only a selection of one or more
+    /// lines is sent.
+    ///
+    /// Default: true
+    pub share_active_file: Option<bool>,
 }

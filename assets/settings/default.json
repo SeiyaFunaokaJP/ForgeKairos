@@ -1080,7 +1080,11 @@
     // エージェント (Claude Code のタブ・外部のエージェント) に Zed の IDE ツール
     // (ハイライト・注釈・ツアー・定義・参照・シンボル検索、MCP サーバー名 `zed`) を渡す。
     // `enabled` とは独立で、ロックファイルは書かない。
-    "assist_tools": true
+    "assist_tools": true,
+    // 何も選んでいないときも、開いているファイルを接続中の Claude Code CLI に伝える
+    // (CLI の入力欄に「In <ファイル名>」と出て、次の送信にそのファイルが添付される)。
+    // 無効にすると、行を選んだときの選択範囲だけを送る。
+    "share_active_file": true
   },
   "collaboration_panel": {
     // Whether to show the collaboration panel button in the status bar.

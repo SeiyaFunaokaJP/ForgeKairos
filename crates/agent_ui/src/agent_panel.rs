@@ -113,8 +113,6 @@ use workspace::{
 const AGENT_PANEL_KEY: &str = "agent_panel";
 const AGENT_PANEL_LAYOUT_KEY: &str = "agent_panel_layout";
 const MIN_PANEL_WIDTH: Pixels = px(300.);
-/// 閉じているスレッド履歴の代わりに出す帯の幅 (ADR-F53)。
-const THREAD_HISTORY_RAIL_WIDTH: Pixels = px(14.);
 const LAST_USED_AGENT_KEY: &str = "agent_panel__last_used_external_agent";
 const LAST_CREATED_ENTRY_KIND_KEY: &str = "agent_panel__last_created_entry_kind";
 const TERMINAL_AGENT_TELEMETRY_ID: &str = "terminal";
@@ -1770,7 +1768,7 @@ enum ThreadHistoryFit {
     Full,
     /// 題名 1 行だけの細い一覧。
     Slim,
-    /// 一覧の置き場が無い = 帯すら出さない。
+    /// 一覧の置き場が無い = 一覧を開くボタンも出さない。
     None,
 }
 
@@ -4501,10 +4499,10 @@ impl AgentPanel {
         self.thread_history_enabled(cx) && self.fits_thread_history()
     }
 
-    /// The thin strip that takes the list's place while the user has it closed.
-    /// A panel too narrow for the list is too narrow for the strip as well, and
-    /// there it would promise an expansion that would immediately hide itself.
-    fn thread_history_rail_visible(&self, cx: &App) -> bool {
+    /// Whether the toolbar offers the button that reopens the closed list. A
+    /// panel too narrow for the list does not offer it: there the button would
+    /// promise an expansion that would immediately hide itself.
+    fn thread_history_open_button_visible(&self, cx: &App) -> bool {
         !self.thread_history_enabled(cx) && self.has_open_project(cx) && self.fits_thread_history()
     }
 
@@ -4523,10 +4521,10 @@ impl AgentPanel {
         });
     }
 
-    /// 一覧そのものか、それを呼び戻す帯のどちらかが出ている = 開いている
-    /// タブへはそこから届く。
+    /// 一覧そのものか、それを呼び戻すツールバーのボタンのどちらかが出ている
+    /// = 開いているタブへはそこから届く。
     fn thread_history_reachable(&self, cx: &App) -> bool {
-        self.thread_history_visible(cx) || self.thread_history_rail_visible(cx)
+        self.thread_history_visible(cx) || self.thread_history_open_button_visible(cx)
     }
 
     /// Whether the panel's panes draw their tab bar. `auto` drops it while the
@@ -4535,8 +4533,9 @@ impl AgentPanel {
     fn tab_bar_visible(&self, cx: &App) -> bool {
         match AgentSettings::get_global(cx).panel_tab_bar {
             PanelTabBar::Always => true,
-            // 「表示しない」でも、一覧も帯も出せない幅では開いているタブへ
-            // 行く手段が一つも残らない。行き止まりを作らないぶんだけ戻す。
+            // 「表示しない」でも、一覧もそれを開くボタンも出せない幅では
+            // 開いているタブへ行く手段が一つも残らない。行き止まりを作らない
+            // ぶんだけ戻す。
             PanelTabBar::Never => !self.thread_history_reachable(cx),
             PanelTabBar::Auto => {
                 !(self.thread_history_visible(cx) && self.center.panes().len() == 1)
@@ -8335,13 +8334,40 @@ impl AgentPanel {
 
         let max_content_width = AgentSettings::get_global(cx).max_content_width;
 
+        // 閉じた一覧の戻り道は、開いていたときの « と同じ左上に置く
+        // (ADR-F53)。右側の同じトグルはそのあいだ隠して導線を 1 つにする。
+        // 中身を `max_content_width` で中央に寄せる枠の外に置くのは、広い
+        // パネルでもパネルの左端から動かさないため。
+        let show_thread_history_open_button = self.thread_history_open_button_visible(cx);
+        let thread_history_open_button = show_thread_history_open_button.then(|| {
+            div()
+                .debug_selector(|| "PANEL_THREAD_HISTORY_OPEN_BUTTON".into())
+                .flex_none()
+                .pl(DynamicSpacing::Base04.rems(cx))
+                .child(
+                    IconButton::new(
+                        "open-panel-thread-history",
+                        IconName::ThreadsSidebarLeftClosed,
+                    )
+                    .icon_size(IconSize::Small)
+                    .tooltip(|_window, cx| {
+                        Tooltip::for_action("スレッドの一覧を開く", &TogglePanelThreadHistory, cx)
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.toggle_panel_thread_history(&TogglePanelThreadHistory, window, cx);
+                    })),
+                )
+        });
+
         let base_container = h_flex()
-            .size_full()
+            .debug_selector(|| "AGENT_PANEL_TOOLBAR_CONTENT".into())
+            .h_full()
+            .flex_1()
+            .min_w_0()
             .when(
                 matches!(mode, ToolbarMode::EmptyThread | ToolbarMode::ActiveThread),
                 |this| this.when_some(max_content_width, |this, max_w| this.max_w(max_w).mx_auto()),
             )
-            .flex_none()
             .justify_between();
 
         let empty_thread_title = matches!(mode, ToolbarMode::EmptyThread).then(|| {
@@ -8427,9 +8453,17 @@ impl AgentPanel {
                         .flex_none()
                         .gap_1()
                         .children(sandbox_status)
-                        .when(can_create_entries, |this| {
-                            this.child(thread_history_button).child(new_thread_menu)
-                        })
+                        .when(
+                            can_create_entries && !show_thread_history_open_button,
+                            |this| {
+                                this.child(
+                                    div()
+                                        .debug_selector(|| "PANEL_THREAD_HISTORY_TOGGLE".into())
+                                        .child(thread_history_button),
+                                )
+                            },
+                        )
+                        .when(can_create_entries, |this| this.child(new_thread_menu))
                         .child(full_screen_button)
                         .child(self.render_panel_options_menu(window, cx)),
                 )
@@ -8438,12 +8472,14 @@ impl AgentPanel {
 
         h_flex()
             .id("agent-panel-toolbar")
+            .debug_selector(|| "AGENT_PANEL_TOOLBAR".into())
             .h(Tab::container_height(cx))
             .flex_shrink_0()
             .max_w_full()
             .bg(cx.theme().colors().tab_bar_background)
             .border_b_1()
             .border_color(cx.theme().colors().border)
+            .children(thread_history_open_button)
             .child(toolbar_content)
     }
 
@@ -8737,58 +8773,24 @@ impl AgentPanel {
     }
 
     /// Puts the thread history list to the left of whatever surface the panel
-    /// is showing. When the list is hidden the surface gets the thin strip that
-    /// brings it back, or — when the panel is too narrow for either — is
-    /// returned untouched, so the panel's element tree stays exactly as it was
-    /// without it.
+    /// is showing. When the list is hidden the surface is returned untouched,
+    /// so its left edge meets the dock's edge like any other panel's; the way
+    /// back is the button at the left end of the toolbar.
     fn render_surface_with_thread_history(
         &self,
         surface: AnyElement,
         show_thread_history: bool,
-        cx: &mut Context<Self>,
     ) -> AnyElement {
-        let left = if show_thread_history {
-            self.thread_history.clone().into_any_element()
-        } else if self.thread_history_rail_visible(cx) {
-            self.render_thread_history_rail(cx).into_any_element()
-        } else {
+        if !show_thread_history {
             return surface;
-        };
+        }
 
         h_flex()
             .size_full()
             .min_h_0()
-            .child(left)
+            .child(self.thread_history.clone())
             .child(v_flex().flex_1().min_w_0().size_full().child(surface))
             .into_any_element()
-    }
-
-    /// 閉じている一覧の置き場所を残す細い帯 (ADR-F53)。ツールバーのボタンを
-    /// 知らなくても、ここを押せば一覧が戻る。
-    fn render_thread_history_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .id("panel-thread-history-rail")
-            .debug_selector(|| "PANEL_THREAD_HISTORY_RAIL".into())
-            .flex_none()
-            .w(THREAD_HISTORY_RAIL_WIDTH)
-            .h_full()
-            .justify_center()
-            .overflow_hidden()
-            .border_r_1()
-            .border_color(cx.theme().colors().border)
-            .bg(cx.theme().colors().panel_background)
-            .hover(|this| this.bg(cx.theme().colors().element_hover))
-            .tooltip(move |_window, cx| {
-                Tooltip::for_action("スレッド履歴を表示", &TogglePanelThreadHistory, cx)
-            })
-            .child(
-                Icon::new(IconName::ChevronRight)
-                    .size(IconSize::XSmall)
-                    .color(Color::Muted),
-            )
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.toggle_panel_thread_history(&TogglePanelThreadHistory, window, cx);
-            }))
     }
 
     /// パネルの中のタブ列 (ADR-F36 Phase B)。ワークスペースが取れないときだけ
@@ -8932,7 +8934,7 @@ impl Render for AgentPanel {
                 // `conversation_view` 自体は `ThreadItem` の中にある。
                 VisibleSurface::AgentThread(_) => parent
                     .children(self.render_pane_group(window, cx).map(|pane_group| {
-                        self.render_surface_with_thread_history(pane_group, show_thread_history, cx)
+                        self.render_surface_with_thread_history(pane_group, show_thread_history)
                     }))
                     .child(self.render_drag_target(false, cx)),
                 // スレッドではないタブ (公式 CLI の端末など) も同じペイン
@@ -8940,7 +8942,7 @@ impl Render for AgentPanel {
                 // 自分でパスの貼り付けを受けるので、覆いを置くとそれを奪う。
                 VisibleSurface::PaneItem => {
                     parent.children(self.render_pane_group(window, cx).map(|pane_group| {
-                        self.render_surface_with_thread_history(pane_group, show_thread_history, cx)
+                        self.render_surface_with_thread_history(pane_group, show_thread_history)
                     }))
                 }
                 VisibleSurface::Terminal(terminal_view) => {
@@ -8949,6 +8951,7 @@ impl Render for AgentPanel {
                         .and_then(|terminal_id| self.terminals.get(&terminal_id))
                         .and_then(|terminal| terminal.search_bar.clone());
                     let terminal_content = v_flex()
+                        .debug_selector(|| "PANEL_TERMINAL_SURFACE".into())
                         .size_full()
                         .when_some(search_bar, |this, search_bar| {
                             this.when(!search_bar.read(cx).is_dismissed(), |this| {
@@ -8971,7 +8974,6 @@ impl Render for AgentPanel {
                         .child(self.render_surface_with_thread_history(
                             terminal_content.into_any_element(),
                             show_thread_history,
-                            cx,
                         ))
                         .child(self.render_drag_target(true, cx))
                 }
@@ -12209,8 +12211,8 @@ mod tests {
         });
     }
 
-    /// ADR-F53: 少し狭くなっただけで一覧ごと消さない。240px の一覧と 14px の
-    /// 帯のあいだに、題名 1 行だけの 160px の一覧を挟む。
+    /// ADR-F53: 少し狭くなっただけで一覧ごと消さない。240px の一覧と「一覧を
+    /// 出さない」のあいだに、題名 1 行だけの 160px の一覧を挟む。
     #[gpui::test]
     async fn test_a_narrow_panel_gets_a_slim_history_before_it_loses_it(cx: &mut TestAppContext) {
         let (panel, mut cx) = setup_visible_panel(cx).await;
@@ -12244,13 +12246,13 @@ mod tests {
         );
         assert_eq!(fit_at(px(479.), &mut cx), ThreadHistoryFit::None);
 
-        // 細い一覧も「一覧が出ている」: 帯にもタブバーにも落ちない。
+        // 細い一覧も「一覧が出ている」: 開くボタンにもタブバーにも落ちない。
         assert_eq!(fit_at(px(500.), &mut cx), ThreadHistoryFit::Slim);
         panel.read_with(&cx, |panel, cx| {
             assert!(panel.thread_history_visible(cx), "細くても一覧は出ている");
             assert!(
-                !panel.thread_history_rail_visible(cx),
-                "一覧が出ているあいだは帯を出さない"
+                !panel.thread_history_open_button_visible(cx),
+                "一覧が出ているあいだは開くボタンを出さない"
             );
             assert!(
                 !panel.tab_bar_visible(cx),
@@ -12261,10 +12263,10 @@ mod tests {
         assert_eq!(fit_at(px(479.), &mut cx), ThreadHistoryFit::None);
         panel.read_with(&cx, |panel, cx| {
             assert!(!panel.thread_history_visible(cx));
-            assert!(!panel.thread_history_rail_visible(cx));
+            assert!(!panel.thread_history_open_button_visible(cx));
             assert!(
                 panel.tab_bar_visible(cx),
-                "一覧も帯も出せない幅ではタブバーを戻す (行き止まりを作らない)"
+                "一覧も開くボタンも出せない幅ではタブバーを戻す (行き止まりを作らない)"
             );
         });
 
@@ -13697,7 +13699,7 @@ mod tests {
         override_agent_settings(&mut cx, |settings| settings.panel_thread_history = false);
         assert!(
             !pane_shows_tab_bar(&panel, &mut cx),
-            "never: 一覧を閉じていても、帯から呼び戻せるうちは出さない"
+            "never: 一覧を閉じていても、ツールバーのボタンで呼び戻せるうちは出さない"
         );
         override_agent_settings(&mut cx, |settings| settings.panel_thread_history = true);
         panel.update(&mut cx, |panel, _cx| {
@@ -13707,7 +13709,7 @@ mod tests {
         });
         assert!(
             pane_shows_tab_bar(&panel, &mut cx),
-            "never: 一覧も帯も出せない幅では、タブへ行く手段が他に無いので戻す"
+            "never: 一覧も開くボタンも出せない幅では、タブへ行く手段が他に無いので戻す"
         );
         panel.update(&mut cx, |panel, _cx| {
             panel.measured_panel_width.set(None);
@@ -14056,44 +14058,77 @@ mod tests {
         );
     }
 
-    /// 一覧を閉じているあいだは、細い帯だけが残って戻り道になる。
+    fn refreshed_bounds(
+        cx: &mut VisualTestContext,
+        selector: &'static str,
+    ) -> Option<Bounds<Pixels>> {
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        cx.debug_bounds(selector)
+    }
+
+    /// 一覧を閉じているあいだは、ツールバーの左端のボタンが戻り道になる
+    /// (ADR-F53)。右側の同じトグルはそのあいだ隠れて、導線は 1 つだけ。
     #[gpui::test]
-    async fn test_the_collapsed_history_leaves_a_rail_that_brings_it_back(cx: &mut TestAppContext) {
+    async fn test_the_collapsed_history_leaves_a_toolbar_button_that_brings_it_back(
+        cx: &mut TestAppContext,
+    ) {
         let (panel, mut cx) = setup_visible_panel(cx).await;
         cx.run_until_parked();
 
-        panel.read_with(&cx, |panel, cx| {
-            assert!(
-                !panel.thread_history_rail_visible(cx),
-                "一覧が出ているあいだは帯を出さない"
-            );
-        });
+        assert_eq!(
+            refreshed_bounds(&mut cx, "PANEL_THREAD_HISTORY_OPEN_BUTTON"),
+            None,
+            "一覧が出ているあいだは開くボタンを出さない"
+        );
+        assert!(
+            cx.debug_bounds("PANEL_THREAD_HISTORY_TOGGLE").is_some(),
+            "開いているあいだは右側のトグルがそのまま残る"
+        );
 
         override_agent_settings(&mut cx, |settings| settings.panel_thread_history = false);
-        cx.update(|window, _cx| window.refresh());
-        cx.run_until_parked();
-        let rail = cx
-            .debug_bounds("PANEL_THREAD_HISTORY_RAIL")
-            .expect("閉じたら帯が出る");
-        assert_eq!(rail.size.width, THREAD_HISTORY_RAIL_WIDTH);
+        let toolbar = refreshed_bounds(&mut cx, "AGENT_PANEL_TOOLBAR").expect("ツールバー");
+        let open_button = cx
+            .debug_bounds("PANEL_THREAD_HISTORY_OPEN_BUTTON")
+            .expect("閉じたらツールバーに開くボタンが出る");
+        assert!(
+            open_button.left() - toolbar.left() < px(16.),
+            "開くボタンはツールバーの左端 (« のあった側) に置く: {open_button:?} / {toolbar:?}"
+        );
+        assert!(
+            open_button.top() >= toolbar.top() && open_button.bottom() <= toolbar.bottom(),
+            "開くボタンはツールバーの行に収まる"
+        );
+        assert_eq!(
+            cx.debug_bounds("PANEL_THREAD_HISTORY_TOGGLE"),
+            None,
+            "閉じているあいだは右側のトグルを出さない (導線は左端の 1 つ)"
+        );
 
-        panel.update(&mut cx, |panel, _cx| {
-            panel.measured_panel_width.set(Some(
-                SLIM_PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
-            ));
-        });
+        cx.simulate_resize(size(
+            SLIM_PANEL_THREAD_HISTORY_WIDTH + MIN_THREAD_WIDTH_BESIDE_HISTORY - px(1.),
+            px(700.),
+        ));
+        assert_eq!(
+            refreshed_bounds(&mut cx, "PANEL_THREAD_HISTORY_OPEN_BUTTON"),
+            None,
+            "押しても一覧が出ない幅では開くボタンも出さない"
+        );
         panel.read_with(&cx, |panel, cx| {
-            assert!(
-                !panel.thread_history_rail_visible(cx),
-                "帯を押しても一覧が出ない幅では帯も出さない"
-            );
+            assert!(!panel.thread_history_open_button_visible(cx));
         });
+        assert!(
+            cx.debug_bounds("PANEL_THREAD_HISTORY_TOGGLE").is_some(),
+            "そのときは右側のトグルが設定の切り替え口として戻る"
+        );
     }
 
-    /// 一覧のヘッダーの « と、閉じたあとに残る帯は、ツールバーのボタンと同じ
-    /// 設定値を書いて往復する (ADR-F53)。
+    /// 一覧のヘッダーの « と、閉じたあとにツールバーの左端に出るボタンは、
+    /// 右側のトグルと同じ設定値を書いて往復する (ADR-F53)。
     #[gpui::test]
-    async fn test_the_collapse_button_and_the_rail_make_a_round_trip(cx: &mut TestAppContext) {
+    async fn test_the_collapse_button_and_the_open_button_make_a_round_trip(
+        cx: &mut TestAppContext,
+    ) {
         let (panel, mut cx) = setup_visible_panel(cx).await;
         cx.run_until_parked();
 
@@ -14102,7 +14137,7 @@ mod tests {
             .await
             .expect("設定ファイルの置き場を作れる");
         assert!(
-            cx.debug_bounds("PANEL_THREAD_HISTORY").is_some(),
+            refreshed_bounds(&mut cx, "PANEL_THREAD_HISTORY").is_some(),
             "はじめは一覧が出ている"
         );
 
@@ -14117,32 +14152,137 @@ mod tests {
                 "« はツールバーのボタンと同じ設定値を閉じる側に書く"
             );
         });
-        cx.update(|window, _cx| window.refresh());
-        cx.run_until_parked();
         assert_eq!(
-            cx.debug_bounds("PANEL_THREAD_HISTORY"),
+            refreshed_bounds(&mut cx, "PANEL_THREAD_HISTORY"),
             None,
             "一覧そのものは消える"
         );
-        let rail = cx
-            .debug_bounds("PANEL_THREAD_HISTORY_RAIL")
-            .expect("代わりに帯が残る");
+        let open_button = cx
+            .debug_bounds("PANEL_THREAD_HISTORY_OPEN_BUTTON")
+            .expect("代わりにツールバーの左端に開くボタンが出る");
 
-        cx.simulate_click(rail.center(), Modifiers::default());
+        cx.simulate_click(open_button.center(), Modifiers::default());
         cx.run_until_parked();
         cx.update(|_window, cx| {
             assert!(
                 AgentSettings::get_global(cx).panel_thread_history,
-                "帯を押すと一覧が戻る"
+                "開くボタンを押すと一覧が戻る"
             );
         });
-        cx.update(|window, _cx| window.refresh());
-        cx.run_until_parked();
-        assert!(cx.debug_bounds("PANEL_THREAD_HISTORY").is_some());
+        assert!(refreshed_bounds(&mut cx, "PANEL_THREAD_HISTORY").is_some());
         assert_eq!(
-            cx.debug_bounds("PANEL_THREAD_HISTORY_RAIL"),
+            cx.debug_bounds("PANEL_THREAD_HISTORY_OPEN_BUTTON"),
             None,
-            "戻ったら帯は引っ込む"
+            "戻ったら開くボタンは引っ込む"
+        );
+    }
+
+    /// 閉じた一覧の跡に帯を残さない: 本文の左端はドックの線 (= パネルの
+    /// 左端) に揃い、戻り道はどのサーフェスでもツールバーの左端に残る。
+    #[gpui::test]
+    async fn test_the_collapsed_history_leaves_no_gap_beside_any_surface(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.update(|_window, cx| {
+            cx.update_flags(true, vec!["agent-panel-terminal".to_string()]);
+        });
+        cx.run_until_parked();
+        override_agent_settings(&mut cx, |settings| settings.panel_thread_history = false);
+
+        assert!(
+            refreshed_bounds(&mut cx, "PANEL_THREAD_HISTORY_OPEN_BUTTON").is_some(),
+            "スレッド"
+        );
+
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.add_test_terminal_tab(true, window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            refreshed_bounds(&mut cx, "PANEL_THREAD_HISTORY_OPEN_BUTTON").is_some(),
+            "スレッド以外のタブ (公式 CLI)"
+        );
+
+        panel
+            .update_in(&mut cx, |panel, window, cx| {
+                panel.insert_test_terminal("パネルの端末", true, window, cx)
+            })
+            .expect("端末スレッドを作れる");
+        cx.run_until_parked();
+        assert!(
+            refreshed_bounds(&mut cx, "PANEL_THREAD_HISTORY_OPEN_BUTTON").is_some(),
+            "全面の端末スレッド"
+        );
+
+        let toolbar = cx.debug_bounds("AGENT_PANEL_TOOLBAR").expect("ツールバー");
+        let surface = cx
+            .debug_bounds("PANEL_TERMINAL_SURFACE")
+            .expect("全面の端末");
+        assert_eq!(
+            surface.left(),
+            toolbar.left(),
+            "閉じているあいだは本文がパネルの左端から始まる"
+        );
+        assert_eq!(surface.size.width, toolbar.size.width);
+
+        override_agent_settings(&mut cx, |settings| settings.panel_thread_history = true);
+        let surface = refreshed_bounds(&mut cx, "PANEL_TERMINAL_SURFACE").expect("全面の端末");
+        assert_eq!(
+            surface.left(),
+            toolbar.left() + PANEL_THREAD_HISTORY_WIDTH,
+            "開いているときは一覧のぶんだけ右にずれる (測り方の確認)"
+        );
+    }
+
+    /// 左端の開くボタンのぶん、残りの中身は縮んでツールバーからはみ出さない。
+    /// `max_content_width` の中央寄せは、ボタンを除いた残りの幅の中で効く。
+    #[gpui::test]
+    async fn test_the_open_button_keeps_the_toolbar_content_inside_the_toolbar(
+        cx: &mut TestAppContext,
+    ) {
+        let (_panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+        override_agent_settings(&mut cx, |settings| {
+            settings.panel_thread_history = false;
+            settings.max_content_width = None;
+        });
+
+        let toolbar = refreshed_bounds(&mut cx, "AGENT_PANEL_TOOLBAR").expect("ツールバー");
+        let open_button = cx
+            .debug_bounds("PANEL_THREAD_HISTORY_OPEN_BUTTON")
+            .expect("閉じたら開くボタンが出る");
+        let content = cx
+            .debug_bounds("AGENT_PANEL_TOOLBAR_CONTENT")
+            .expect("ツールバーの中身");
+        assert!(
+            content.left() >= open_button.right(),
+            "中身はボタンの右から始まる: {content:?} / {open_button:?}"
+        );
+        assert_eq!(
+            content.right(),
+            toolbar.right(),
+            "中身はボタンのぶん縮み、右端はツールバーの右端に揃う: {content:?} / {toolbar:?}"
+        );
+
+        let max_width = px(260.);
+        assert!(toolbar.size.width > max_width + open_button.size.width + px(40.));
+        override_agent_settings(&mut cx, |settings| {
+            settings.max_content_width = Some(max_width);
+        });
+        let open_button = refreshed_bounds(&mut cx, "PANEL_THREAD_HISTORY_OPEN_BUTTON")
+            .expect("中央寄せのときも開くボタンが出る");
+        let content = cx
+            .debug_bounds("AGENT_PANEL_TOOLBAR_CONTENT")
+            .expect("ツールバーの中身");
+        assert!(
+            open_button.left() - toolbar.left() < px(16.),
+            "中央寄せでも開くボタンはパネルの左端に残る: {open_button:?} / {toolbar:?}"
+        );
+        assert_eq!(content.size.width, max_width);
+        let left_margin = content.left() - open_button.right();
+        let right_margin = toolbar.right() - content.right();
+        assert!(
+            (left_margin - right_margin).abs() < px(1.),
+            "中身はボタンを除いた残りの幅の中央に寄る: {left_margin:?} / {right_margin:?}"
         );
     }
 
