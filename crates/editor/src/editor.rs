@@ -72,8 +72,8 @@ mod rewrap;
 mod selection;
 
 pub(crate) use actions::*;
-pub use clipboard::ClipboardSelection;
 use clipboard::KillRingYankPopState;
+pub use clipboard::{ClipboardSelection, ImagePasteHandler};
 pub use code_actions::CodeActionProvider;
 use collections::TypeIdHashMap;
 pub use completions::CompletionProvider;
@@ -118,7 +118,7 @@ use git::{DiffReviewDragState, DiffReviewOverlay, InlineBlamePopover};
 pub(crate) use git::{DisplayDiffHunk, PhantomDiffReviewIndicator};
 pub use hover_popover::hover_markdown_style;
 pub use inlays::Inlay;
-pub use items::MAX_TAB_TITLE_LEN;
+pub use items::{EditorDropHandler, MAX_TAB_TITLE_LEN};
 pub use linked_editing_ranges::LinkedEdits;
 pub use lsp::CompletionContext;
 pub use lsp_ext::lsp_tasks;
@@ -2807,6 +2807,27 @@ impl Editor {
 
     pub fn last_bounds(&self) -> Option<&Bounds<Pixels>> {
         self.last_bounds.as_ref()
+    }
+
+    /// The buffer position under `position` (in window coordinates) as last
+    /// laid out, or `None` when it is over neither the text nor the gutter.
+    /// A position over the gutter stands for the start of its line.
+    pub fn anchor_at_window_position(&self, position: gpui::Point<Pixels>) -> Option<Anchor> {
+        let position_map = self.last_position_map.as_ref()?;
+        let text_bounds = position_map.text_hitbox.bounds;
+        let position = if text_bounds.contains(&position) {
+            position
+        } else if position_map.gutter_hitbox.bounds.contains(&position) {
+            gpui::point(text_bounds.origin.x, position.y)
+        } else {
+            return None;
+        };
+        let display_point = position_map.point_for_position(position).previous_valid;
+        Some(
+            position_map
+                .snapshot
+                .display_point_to_anchor(display_point, Bias::Left),
+        )
     }
 
     pub(crate) fn last_right_margin(&self) -> Pixels {

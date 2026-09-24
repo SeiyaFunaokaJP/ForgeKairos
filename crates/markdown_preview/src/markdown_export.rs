@@ -488,10 +488,16 @@ fn render_body(
                 InlineHtmlStyle::Span(span_style) => {
                     output.push_str("<span style=\"");
                     if let Some(color) = span_style.color {
-                        output.push_str(&format!("color:#{color:06x};"));
+                        output.push_str(&format!(
+                            "color:{};",
+                            markdown::parser::inline_span_css_color(color)
+                        ));
                     }
                     if let Some(background) = span_style.background {
-                        output.push_str(&format!("background-color:#{background:06x};"));
+                        output.push_str(&format!(
+                            "background-color:{};",
+                            markdown::parser::inline_span_css_color(background)
+                        ));
                     }
                     if let Some(percent) = span_style.paragraph_scale_percent {
                         output.push_str(&format!("font-size:{percent}%;"));
@@ -833,6 +839,35 @@ mod tests {
         html
     }
 
+    /// The printed document is laid out by a browser, which puts the markdown
+    /// written between a table's blocks into the cell it lands in, the way
+    /// GitHub does, as long as it is printed between the cell's tags.
+    #[test]
+    fn test_markdown_between_table_blocks_is_printed_inside_its_cell() {
+        let html = render(
+            "<table>\n<tr>\n<td>\n\n**左の列** の本文\n\n- 項目\n\n</td>\n<td>\n\n![](right.png)\n\n</td>\n</tr>\n</table>\n\n後ろ\n",
+        );
+
+        let positions = [
+            "<table>",
+            "<td>",
+            "<strong>左の列</strong>",
+            "<li>項目</li>",
+            "</td>\n<td>",
+            "<img src=\"right.png\"",
+            "</td>\n</tr>\n</table>",
+            "<p>後ろ</p>",
+        ]
+        .map(|fragment| {
+            html.find(fragment)
+                .unwrap_or_else(|| panic!("{fragment:?} should be printed: {html}"))
+        });
+        assert!(
+            positions.is_sorted(),
+            "the cells' markdown should be printed inside them: {html}"
+        );
+    }
+
     #[test]
     fn test_headings_and_paragraphs() {
         assert_eq!(
@@ -1056,6 +1091,30 @@ mod tests {
         assert!(
             positions.is_sorted(),
             "the body should be printed inside the div: {html}"
+        );
+    }
+
+    /// The preview aligns a table column without an alignment of its own the
+    /// way an enclosing `<div align>` asks, which the printed document leaves
+    /// to the browser, so such a cell must not carry an alignment of its own.
+    #[test]
+    fn test_table_cells_without_alignment_are_left_to_an_enclosing_div() {
+        let html =
+            render("<div align=\"right\">\n\n| 列 | 中 |\n|---|:-:|\n| 値 | 真ん中 |\n\n</div>\n");
+
+        let positions = [
+            "<div align=\"right\">",
+            "<td>値</td>",
+            "<td style=\"text-align:center\">真ん中</td>",
+            "</div>",
+        ]
+        .map(|fragment| {
+            html.find(fragment)
+                .unwrap_or_else(|| panic!("{fragment:?} should be printed: {html}"))
+        });
+        assert!(
+            positions.is_sorted(),
+            "the table should be printed inside the div: {html}"
         );
     }
 

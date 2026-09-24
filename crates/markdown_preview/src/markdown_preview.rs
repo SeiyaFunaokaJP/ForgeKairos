@@ -3,6 +3,8 @@ use workspace::Workspace;
 
 pub mod fold_headings_selector;
 pub mod image_dialog;
+pub(crate) mod image_files;
+pub(crate) mod image_paste;
 pub mod markdown_export;
 pub mod markdown_preview_settings;
 pub mod markdown_preview_view;
@@ -55,6 +57,7 @@ actions!(
 
 pub fn init(cx: &mut App) {
     workspace::register_serializable_item::<MarkdownPreviewView>(cx);
+    image_paste::init(cx);
 
     cx.observe_new(|workspace: &mut Workspace, window, cx| {
         let Some(window) = window else {

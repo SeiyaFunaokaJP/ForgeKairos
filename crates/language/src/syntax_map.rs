@@ -1607,10 +1607,15 @@ fn get_injections(
         query_cursor.set_byte_range(query_range.start.saturating_sub(1)..query_range.end + 1);
         let mut matches = query_cursor.matches(&config.query, node, TextProvider(text.as_rope()));
         while let Some(mat) = matches.next() {
-            let content_ranges = mat
-                .nodes_for_capture_index(config.content_capture_ix)
-                .map(|node| node.range())
-                .collect::<Vec<_>>();
+            let content_ranges = if config.patterns[mat.pattern_index].exclude_children {
+                mat.nodes_for_capture_index(config.content_capture_ix)
+                    .flat_map(ranges_outside_children)
+                    .collect::<Vec<_>>()
+            } else {
+                mat.nodes_for_capture_index(config.content_capture_ix)
+                    .map(|node| node.range())
+                    .collect::<Vec<_>>()
+            };
             if content_ranges.is_empty() {
                 continue;
             }
@@ -1704,6 +1709,42 @@ fn get_injections(
             },
         })
     }
+}
+
+/// The parts of `node` that none of its named children cover. Anonymous
+/// children are the node's own tokens (Markdown lexes the `<` and `>` of an
+/// HTML block), and empty children would split the node into ranges that touch.
+fn ranges_outside_children(node: Node) -> Vec<tree_sitter::Range> {
+    let mut ranges = Vec::new();
+    let mut start_byte = node.start_byte();
+    let mut start_point = node.start_position();
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.start_byte() >= child.end_byte() {
+            continue;
+        }
+        if start_byte < child.start_byte() {
+            ranges.push(tree_sitter::Range {
+                start_byte,
+                end_byte: child.start_byte(),
+                start_point,
+                end_point: child.start_position(),
+            });
+        }
+        if start_byte < child.end_byte() {
+            start_byte = child.end_byte();
+            start_point = child.end_position();
+        }
+    }
+    if start_byte < node.end_byte() {
+        ranges.push(tree_sitter::Range {
+            start_byte,
+            end_byte: node.end_byte(),
+            start_point,
+            end_point: node.end_position(),
+        });
+    }
+    ranges
 }
 
 /// Updates the given list of included `ranges`, removing any ranges that intersect

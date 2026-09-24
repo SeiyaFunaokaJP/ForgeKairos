@@ -3,7 +3,7 @@ use fs::FakeFs;
 use gpui::{TestAppContext, VisualTestContext};
 use serde_json::json;
 use util::path;
-use util::rel_path::rel_path;
+use util::rel_path::{RelPath, rel_path};
 use util::test::marked_text_ranges;
 use workspace::MultiWorkspace;
 
@@ -378,11 +378,20 @@ fn reads_html_images_and_their_containers() {
             .is_some_and(|(_, markup)| markup.container.is_some())
     );
 
-    let one_line = parse_whole("<p align=\"right\"><img src=\"a.png\" alt=\"x\"></p>");
+    // A container written on one line is written back on one line.
+    let mut one_line = parse_whole("<p align=\"right\"><img src=\"a.png\" alt=\"x\"></p>");
     assert_eq!(one_line.alignment, Some(ImageAlignment::Right));
+    one_line.width = Some("40".into());
     assert_eq!(
-        one_line.render("").text,
-        "<p align=\"right\">\n  <img src=\"a.png\" alt=\"x\">\n</p>"
+        one_line.render("  ").text,
+        "<p align=\"right\"><img src=\"a.png\" alt=\"x\" width=\"40\"></p>"
+    );
+    let mut new_container = parse_whole("<img src=\"a.png\" alt=\"x\">");
+    new_container.alignment = Some(ImageAlignment::Right);
+    assert_eq!(
+        new_container.render("").text,
+        "<div align=\"right\">\n  <img src=\"a.png\" alt=\"x\">\n</div>",
+        "a container the image did not have starts out on lines of its own"
     );
 
     // A container that holds more than the image is not the image's.
@@ -430,18 +439,33 @@ fn keeps_the_attributes_it_has_no_field_for() {
     plain.width = None;
     assert_eq!(plain.render("").text, "![\"q\" A](a&b.png)");
 
-    // A width the field cannot hold stays as it was until one is typed.
+    // A width the field cannot hold stays as it was until one is typed, and
+    // an `alt` the tag never had is not added.
     let auto = parse_whole("<img src=\"a.png\" width=\"auto\">");
     assert_eq!(auto.width, None);
-    assert_eq!(
-        auto.render("").text,
-        "<img src=\"a.png\" width=\"auto\" alt=\"\">"
-    );
+    assert_eq!(auto.render("").text, "<img src=\"a.png\" width=\"auto\">");
     let mut typed = auto;
     typed.width = Some("300".into());
+    assert_eq!(typed.render("").text, "<img src=\"a.png\" width=\"300\">");
+    typed.alt = "説明".into();
     assert_eq!(
         typed.render("").text,
-        "<img src=\"a.png\" alt=\"\" width=\"300\">"
+        "<img src=\"a.png\" alt=\"説明\" width=\"300\">",
+        "an alt text the user typed in is added"
+    );
+    // An empty `alt` that was there, which marks decoration, stays.
+    assert_eq!(
+        parse_whole("<img src=\"a.png\" alt=\"\" width=\"1\">")
+            .render("")
+            .text,
+        "<img src=\"a.png\" alt=\"\" width=\"1\">"
+    );
+    // So does the empty one a Markdown image turned into HTML carries.
+    let mut from_markdown = parse_whole("![](a.png)");
+    from_markdown.width = Some("5".into());
+    assert_eq!(
+        from_markdown.render("").text,
+        "<img src=\"a.png\" alt=\"\" width=\"5\">"
     );
 }
 
@@ -676,74 +700,6 @@ fn recognises_image_files() {
     assert!(!has_image_extension("png"));
 }
 
-#[gpui::test]
-async fn copying_avoids_the_names_already_taken(cx: &mut TestAppContext) {
-    let fs = FakeFs::new(cx.executor());
-    fs.insert_tree(
-        path!("/project/docs"),
-        json!({"images": {"pic.png": "one", "pic-1.png": "two"}}),
-    )
-    .await;
-    fs.insert_tree(
-        path!("/outside"),
-        json!({"pic.png": "three", "README": "x"}),
-    )
-    .await;
-
-    let images = PathBuf::from(path!("/project/docs/images"));
-    assert_eq!(
-        unused_file_name(fs.as_ref(), &images, "pic.png")
-            .await
-            .ok()
-            .as_deref(),
-        Some("pic-2.png")
-    );
-    assert_eq!(
-        unused_file_name(fs.as_ref(), &images, "new.png")
-            .await
-            .ok()
-            .as_deref(),
-        Some("new.png")
-    );
-    assert_eq!(
-        unused_file_name(fs.as_ref(), Path::new(path!("/outside")), "README")
-            .await
-            .ok()
-            .as_deref(),
-        Some("README-1")
-    );
-
-    let copied = copy_into_images(
-        fs.clone(),
-        PathBuf::from(path!("/outside/pic.png")),
-        PathBuf::from(path!("/project/docs")),
-    )
-    .await
-    .unwrap_or_else(|error| panic!("the copy should succeed: {error:#}"));
-    assert_eq!(copied, "pic-2.png");
-    assert_eq!(
-        fs.load(Path::new(path!("/project/docs/images/pic-2.png")))
-            .await
-            .ok()
-            .as_deref(),
-        Some("three")
-    );
-
-    // A document with no `images` folder yet gets one.
-    let copied = copy_into_images(
-        fs.clone(),
-        PathBuf::from(path!("/outside/pic.png")),
-        PathBuf::from(path!("/project")),
-    )
-    .await
-    .unwrap_or_else(|error| panic!("the copy should succeed: {error:#}"));
-    assert_eq!(copied, "pic.png");
-    assert!(
-        fs.is_file(Path::new(path!("/project/images/pic.png")))
-            .await
-    );
-}
-
 fn init_test(cx: &mut TestAppContext) -> Arc<workspace::AppState> {
     cx.update(|cx| {
         let state = workspace::AppState::test(cx);
@@ -800,8 +756,28 @@ async fn open_markdown<'a>(
         .await;
     fs.insert_file(path!("/project/docs/images/real.png"), PNG_3_BY_2.to_vec())
         .await;
+    open_in_project(
+        app_state,
+        fs,
+        path!("/project"),
+        rel_path("docs/readme.md"),
+        selections,
+        cx,
+    )
+    .await
+}
 
-    let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+/// Opens `document` of a project on `root`, which may be the document itself,
+/// with `selections` made and the editor focused.
+async fn open_in_project<'a>(
+    app_state: Arc<workspace::AppState>,
+    fs: Arc<FakeFs>,
+    root: &str,
+    document: &RelPath,
+    selections: Vec<Range<usize>>,
+    cx: &'a mut TestAppContext,
+) -> (Opened, &'a mut VisualTestContext) {
+    let project = Project::test(fs.clone(), [root.as_ref()], cx).await;
     register_markdown_language(&project, cx);
     let (multi_workspace, cx) =
         cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
@@ -816,13 +792,7 @@ async fn open_markdown<'a>(
     });
     let item = workspace
         .update_in(cx, |workspace, window, cx| {
-            workspace.open_path(
-                (worktree_id, rel_path("docs/readme.md")),
-                None,
-                true,
-                window,
-                cx,
-            )
+            workspace.open_path((worktree_id, document), None, true, window, cx)
         })
         .await
         .unwrap_or_else(|error| panic!("the document should open: {error:#}"));
@@ -1011,6 +981,61 @@ async fn reports_the_size_of_the_picked_image(cx: &mut TestAppContext) {
         warnings,
         vec![SharedString::from("このパスにファイルが見つかりません。")]
     );
+
+    // An SVG's size is read from its `<svg>` tag.
+    opened
+        .fs
+        .insert_file(
+            path!("/project/assets/logo.svg"),
+            b"<?xml version=\"1.0\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"48\" viewBox=\"0 0 24 12\"/>".to_vec(),
+        )
+        .await;
+    set_field(
+        &dialog,
+        |dialog| dialog.path_field.clone(),
+        "../assets/logo.svg",
+        cx,
+    );
+    let details = dialog.read_with(cx, |dialog, _| dialog.details.clone());
+    let SourceDetails::Found { dimensions, .. } = details else {
+        panic!("the SVG exists, got {details:?}");
+    };
+    assert_eq!(dimensions, Some((48, 24)));
+}
+
+#[test]
+fn reads_the_size_of_an_svg_from_its_tag() {
+    assert_eq!(
+        svg_dimensions(b"<svg width=\"120\" height=\"80\"></svg>"),
+        Some((120, 80))
+    );
+    assert_eq!(
+        svg_dimensions(
+            b"<?xml version=\"1.0\"?>\n<!-- <svg width=\"1\" height=\"1\"> -->\n<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 150\">"
+        ),
+        Some((300, 150)),
+        "the tag inside a comment before it is not the drawing's"
+    );
+    assert_eq!(
+        svg_dimensions(b"<svg width=\"600\" viewBox=\"0,0,300,150\">"),
+        Some((600, 300))
+    );
+    assert_eq!(
+        svg_dimensions(b"<svg height=\"50px\" viewBox=\"0 0 300 150\">"),
+        Some((100, 50))
+    );
+    assert_eq!(
+        svg_dimensions(b"<svg width=\"100%\" height=\"100%\" viewBox=\"0 0 30 20\">"),
+        Some((30, 20)),
+        "a percentage says nothing about pixels, so the view box is used"
+    );
+    assert_eq!(
+        svg_dimensions(b"<svg width=\"12.6px\" height=\"7.4\">"),
+        Some((13, 7))
+    );
+    assert_eq!(svg_dimensions(b"<svg width=\"10cm\" height=\"5cm\">"), None);
+    assert_eq!(svg_dimensions(b"<svg/>"), None);
+    assert_eq!(svg_dimensions(b"not a picture"), None);
 }
 
 #[gpui::test]
@@ -1132,11 +1157,13 @@ async fn an_aligned_image_typed_mid_line_goes_after_the_paragraph(cx: &mut TestA
         format!("Intro text\nmore lines\n\n{CENTERED_PHOTO}\n\nNext\n")
     );
 
-    // A lazy line still belongs to the list item, whose indent the block keeps.
+    // A lazy line still belongs to the list item, whose indent the block
+    // keeps; in a tight list no blank line goes before it, which would
+    // loosen the list.
     let (text, _) = write_with_alignment(&opened, "- item\nlazy ˇtext\n- next\n", center, cx);
     assert_eq!(
         text,
-        "- item\nlazy text\n\n  <div align=\"center\">\n    <img src=\"images/photo.png\" alt=\"photo\">\n  </div>\n- next\n"
+        "- item\nlazy text\n  <div align=\"center\">\n    <img src=\"images/photo.png\" alt=\"photo\">\n  </div>\n- next\n"
     );
 
     // The line the block follows is read by itself, even when it is shorter
@@ -1144,7 +1171,14 @@ async fn an_aligned_image_typed_mid_line_goes_after_the_paragraph(cx: &mut TestA
     let (text, _) = write_with_alignment(&opened, "10. item\nab ˇc\n", center, cx);
     assert_eq!(
         text,
-        "10. item\nab c\n\n    <div align=\"center\">\n      <img src=\"images/photo.png\" alt=\"photo\">\n    </div>\n"
+        "10. item\nab c\n    <div align=\"center\">\n      <img src=\"images/photo.png\" alt=\"photo\">\n    </div>\n"
+    );
+
+    // A loose list has its blank lines already, and gets them here too.
+    let (text, _) = write_with_alignment(&opened, "- item ˇtext\n\n- next\n", center, cx);
+    assert_eq!(
+        text,
+        "- item text\n\n  <div align=\"center\">\n    <img src=\"images/photo.png\" alt=\"photo\">\n  </div>\n\n- next\n"
     );
 
     let (text, _) = write_with_alignment(&opened, "# 見出ˇし\nbody\n", center, cx);
@@ -1765,7 +1799,45 @@ async fn a_refused_write_copies_nothing(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-async fn a_remote_document_gets_no_file_picker_or_copy(cx: &mut TestAppContext) {
+async fn a_write_refused_after_copying_takes_the_copy_away(cx: &mut TestAppContext) {
+    let (opened, cx) = open_markdown("«写真ˇ»\n", cx).await;
+    let dialog = open_dialog(&opened, cx);
+    set_field(
+        &dialog,
+        |dialog| dialog.path_field.clone(),
+        path!("/outside/pic.png"),
+        cx,
+    );
+    dialog.update_in(cx, |dialog, window, cx| dialog.submit(window, cx));
+    assert!(dialog.read_with(cx, |dialog, _| dialog.copying));
+    opened.editor.update_in(cx, |editor, window, cx| {
+        editor.set_text("changed\n", window, cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(buffer_text(&opened, cx), "changed\n");
+    assert!(
+        dialog
+            .read_with(cx, |dialog, _| dialog.message.clone())
+            .is_some()
+    );
+    assert!(
+        !opened
+            .fs
+            .is_file(Path::new(path!("/project/docs/images/pic.png")))
+            .await,
+        "a copy nothing links to is taken away again"
+    );
+    assert!(
+        opened
+            .fs
+            .is_file(Path::new(path!("/project/docs/images/photo.png")))
+            .await
+    );
+}
+
+#[gpui::test]
+async fn a_path_typed_for_a_remote_document_is_not_copied(cx: &mut TestAppContext) {
     let (opened, cx) = open_markdown("ˇ\n", cx).await;
     let dialog = open_dialog(&opened, cx);
     dialog.update(cx, |dialog, _| dialog.location.is_local = false);
@@ -1788,4 +1860,721 @@ async fn a_remote_document_gets_no_file_picker_or_copy(cx: &mut TestAppContext) 
     cx.dispatch_action(menu::Confirm);
     cx.run_until_parked();
     assert_eq!(buffer_text(&opened, cx), "![pic](../../outside/pic.png)\n");
+}
+
+#[gpui::test]
+async fn a_file_picked_for_a_remote_document_is_always_copied(cx: &mut TestAppContext) {
+    let (opened, cx) = open_markdown("ˇ\n", cx).await;
+    let dialog = open_dialog(&opened, cx);
+    dialog.update(cx, |dialog, _| dialog.location.is_local = false);
+
+    let picked = PathBuf::from(path!("/outside/pic.png"));
+    dialog.update_in(cx, |dialog, window, cx| {
+        dialog.use_picked_file(&picked, window, cx)
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        field_text(&dialog, |dialog| dialog.path_field.clone(), cx),
+        path!("/outside/pic.png")
+    );
+    let (copies, details) = cx.update(|_window, cx| {
+        let dialog = dialog.read(cx);
+        let copies = dialog.validate(cx).is_ok_and(|plan| plan.copy.is_some());
+        (copies, dialog.details.clone())
+    });
+    assert!(
+        copies,
+        "the host cannot read this machine's file, so it is copied"
+    );
+    assert!(
+        matches!(
+            details,
+            SourceDetails::Found {
+                preview: Some(PreviewSource::Local(_)),
+                ..
+            }
+        ),
+        "the thumbnail comes from this machine, got {details:?}"
+    );
+
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    assert_eq!(buffer_text(&opened, cx), "![pic](images/pic.png)\n");
+    assert_eq!(
+        opened
+            .fs
+            .load(Path::new(path!("/project/docs/images/pic.png")))
+            .await
+            .ok()
+            .as_deref(),
+        Some("outside")
+    );
+}
+
+#[gpui::test]
+async fn editing_the_path_after_a_remote_pick_reads_it_as_a_remote_path(cx: &mut TestAppContext) {
+    let (opened, cx) = open_markdown("ˇ\n", cx).await;
+    let dialog = open_dialog(&opened, cx);
+    dialog.update(cx, |dialog, _| dialog.location.is_local = false);
+    let picked = PathBuf::from(path!("/outside/pic.png"));
+    dialog.update_in(cx, |dialog, window, cx| {
+        dialog.use_picked_file(&picked, window, cx)
+    });
+    set_field(
+        &dialog,
+        |dialog| dialog.path_field.clone(),
+        "images/photo.png",
+        cx,
+    );
+    let copies = cx.update(|_window, cx| {
+        let dialog = dialog.read(cx);
+        dialog.picked_local(cx).is_some()
+            || dialog.validate(cx).is_ok_and(|plan| plan.copy.is_some())
+    });
+    assert!(!copies);
+}
+
+#[gpui::test]
+async fn closing_the_dialog_while_copying_leaves_no_copy_behind(cx: &mut TestAppContext) {
+    let (opened, cx) = open_markdown("ˇ\n", cx).await;
+    let dialog = open_dialog(&opened, cx);
+    set_field(
+        &dialog,
+        |dialog| dialog.path_field.clone(),
+        path!("/outside/pic.png"),
+        cx,
+    );
+    dialog.update_in(cx, |dialog, window, cx| dialog.submit(window, cx));
+    assert!(dialog.read_with(cx, |dialog, _| dialog.copying));
+    cx.dispatch_action(menu::Cancel);
+    drop(dialog);
+    cx.run_until_parked();
+
+    assert!(!dialog_is_open(&opened, cx));
+    assert_eq!(buffer_text(&opened, cx), "\n");
+    assert!(
+        !opened
+            .fs
+            .is_file(Path::new(path!("/project/docs/images/pic.png")))
+            .await,
+        "a copy nothing links to is taken away again"
+    );
+}
+
+/// A document opened on its own copies a picture into the `images` folder
+/// beside it, as one in an open folder does.
+#[gpui::test]
+async fn a_document_opened_on_its_own_copies_beside_itself(cx: &mut TestAppContext) {
+    let app_state = init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/notes"),
+        json!({"memo.md": "", "images": {"pic.png": "taken"}}),
+    )
+    .await;
+    fs.insert_tree(path!("/outside"), json!({"pic.png": "outside"}))
+        .await;
+    let (opened, cx) = open_in_project(
+        app_state,
+        fs,
+        path!("/notes/memo.md"),
+        RelPath::empty(),
+        vec![0..0],
+        cx,
+    )
+    .await;
+    let dialog = open_dialog(&opened, cx);
+    set_field(
+        &dialog,
+        |dialog| dialog.path_field.clone(),
+        path!("/outside/pic.png"),
+        cx,
+    );
+    let (copy_shown, warnings) = cx.update(|_window, cx| {
+        let dialog = dialog.read(cx);
+        let copy_shown = match dialog.resolved(cx) {
+            ResolvedSource::File(file) => dialog.copy_offered(&file, cx),
+            _ => false,
+        };
+        (copy_shown, dialog.warnings(cx))
+    });
+    assert!(copy_shown);
+    assert_eq!(warnings, Vec::<SharedString>::new());
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+
+    assert!(!dialog_is_open(&opened, cx));
+    assert_eq!(buffer_text(&opened, cx), "![pic](images/pic-1.png)");
+    assert_eq!(
+        opened
+            .fs
+            .load(Path::new(path!("/notes/images/pic-1.png")))
+            .await
+            .ok()
+            .as_deref(),
+        Some("outside")
+    );
+    assert_eq!(
+        opened
+            .fs
+            .load(Path::new(path!("/notes/images/pic.png")))
+            .await
+            .ok()
+            .as_deref(),
+        Some("taken")
+    );
+}
+
+#[gpui::test]
+async fn images_in_code_and_comments_are_not_edited(cx: &mut TestAppContext) {
+    let (opened, cx) = open_markdown("ˇ\n", cx).await;
+    for marked in [
+        "`![a](images/phˇoto.png)`\n",
+        "```\n![a](images/phˇoto.png)\n```\n",
+        "~~~md\n<img src=\"images/phˇoto.png\">\n~~~\n",
+        "<!-- ![a](images/phˇoto.png) -->\n",
+        "Text <!-- a\n![a](images/phˇoto.png) --> more\n",
+    ] {
+        reset_document(&opened, marked, cx);
+        let dialog = open_dialog(&opened, cx);
+        assert!(
+            !dialog.read_with(cx, |dialog, _| dialog.is_editing()),
+            "{marked:?}"
+        );
+        cx.dispatch_action(menu::Cancel);
+        cx.run_until_parked();
+    }
+    reset_document(&opened, "`code` ![a](images/phˇoto.png)\n", cx);
+    let dialog = open_dialog(&opened, cx);
+    assert!(dialog.read_with(cx, |dialog, _| dialog.is_editing()));
+}
+
+#[gpui::test]
+async fn an_aligned_image_inside_emphasis_goes_after_the_paragraph(cx: &mut TestAppContext) {
+    let (opened, cx) = open_markdown("ˇ\n", cx).await;
+    let center = Some(ImageAlignment::Center);
+
+    // At the end of the line, but in the middle of the emphasis.
+    let (text, _) = write_with_alignment(&opened, "*強調の途中ˇ\nつづき*\n\nNext\n", center, cx);
+    assert_eq!(
+        text,
+        format!("*強調の途中\nつづき*\n\n{CENTERED_PHOTO}\n\nNext\n")
+    );
+    // At the start of a line, in the middle of a link's text.
+    let (text, _) = write_with_alignment(
+        &opened,
+        "[リンク\nˇ文字](https://example.com)\n",
+        center,
+        cx,
+    );
+    assert_eq!(
+        text,
+        format!("[リンク\n文字](https://example.com)\n\n{CENTERED_PHOTO}\n")
+    );
+    // After the emphasis has closed, the line ends where the cursor is.
+    let (text, _) = write_with_alignment(&opened, "**太字**ˇ\n\nNext\n", center, cx);
+    assert_eq!(text, format!("**太字**\n\n{CENTERED_PHOTO}\n\nNext\n"));
+}
+
+#[gpui::test]
+async fn a_one_line_container_stays_on_one_line(cx: &mut TestAppContext) {
+    let (opened, cx) = open_markdown(
+        "Text\n\n<p align=\"center\"><img src=\"images/photo.png\">ˇ</p>\n\nMore\n",
+        cx,
+    )
+    .await;
+    let dialog = open_dialog(&opened, cx);
+    set_field(&dialog, |dialog| dialog.width_field.clone(), "120", cx);
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    assert_eq!(
+        buffer_text(&opened, cx),
+        "Text\n\n<p align=\"center\"><img src=\"images/photo.png\" width=\"120\"></p>\n\nMore\n"
+    );
+}
+
+#[gpui::test]
+async fn a_reference_image_changes_its_definition(cx: &mut TestAppContext) {
+    let (opened, cx) =
+        open_markdown("![ロゴ][logo]ˇ\n\n[logo]: images/photo.png \"題\"\n", cx).await;
+    let dialog = open_dialog(&opened, cx);
+    assert!(dialog.read_with(cx, |dialog, _| dialog.is_editing()));
+    assert_eq!(
+        field_text(&dialog, |dialog| dialog.path_field.clone(), cx),
+        "images/photo.png"
+    );
+    assert_eq!(
+        field_text(&dialog, |dialog| dialog.alt_field.clone(), cx),
+        "ロゴ"
+    );
+    set_field(
+        &dialog,
+        |dialog| dialog.path_field.clone(),
+        "images/real.png",
+        cx,
+    );
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    assert_eq!(
+        buffer_text(&opened, cx),
+        "![ロゴ][logo]\n\n[logo]: images/real.png \"題\"\n"
+    );
+
+    // The definition may come first; an alt text alone leaves it as it is.
+    reset_document(&opened, "[logo]: <images/a b.png>\n\n![ロゴ][logo]ˇ\n", cx);
+    let dialog = open_dialog(&opened, cx);
+    assert_eq!(
+        field_text(&dialog, |dialog| dialog.path_field.clone(), cx),
+        "images/a b.png"
+    );
+    set_field(&dialog, |dialog| dialog.alt_field.clone(), "新しい", cx);
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    assert_eq!(
+        buffer_text(&opened, cx),
+        "[logo]: <images/a b.png>\n\n![新しい][logo]\n"
+    );
+
+    reset_document(&opened, "[logo]: images/photo.png\n\n![ロゴ][logo]ˇ\n", cx);
+    let dialog = open_dialog(&opened, cx);
+    set_field(
+        &dialog,
+        |dialog| dialog.path_field.clone(),
+        "images/new one.png",
+        cx,
+    );
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    assert_eq!(
+        buffer_text(&opened, cx),
+        "[logo]: images/new%20one.png\n\n![ロゴ][logo]\n"
+    );
+    let cursor = opened.editor.update(cx, |editor, cx| {
+        editor
+            .selections
+            .newest::<MultiBufferOffset>(&editor.display_snapshot(cx))
+            .head()
+            .0
+    });
+    assert_eq!(
+        cursor,
+        buffer_text(&opened, cx).len() - 1,
+        "the cursor ends up after the image, past the longer definition"
+    );
+}
+
+#[gpui::test]
+async fn a_shared_reference_definition_is_rewritten_only_when_asked(cx: &mut TestAppContext) {
+    let marked = "![ロゴ][logo]ˇ and [link][logo]\n\n[logo]: images/photo.png \"題\"\n";
+    let (opened, cx) = open_markdown(marked, cx).await;
+    let dialog = open_dialog(&opened, cx);
+    assert_eq!(
+        dialog.read_with(cx, |dialog, _| dialog.shared_definition_uses()),
+        Some(2)
+    );
+    set_field(
+        &dialog,
+        |dialog| dialog.path_field.clone(),
+        "images/real.png",
+        cx,
+    );
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    assert_eq!(
+        buffer_text(&opened, cx),
+        "![ロゴ](images/real.png \"題\") and [link][logo]\n\n[logo]: images/photo.png \"題\"\n",
+        "by default only this image changes, written inline"
+    );
+
+    reset_document(&opened, marked, cx);
+    let dialog = open_dialog(&opened, cx);
+    set_field(
+        &dialog,
+        |dialog| dialog.path_field.clone(),
+        "images/real.png",
+        cx,
+    );
+    dialog.update(cx, |dialog, cx| {
+        dialog.rewrite_shared_definition = true;
+        cx.notify();
+    });
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    assert_eq!(
+        buffer_text(&opened, cx),
+        "![ロゴ][logo] and [link][logo]\n\n[logo]: images/real.png \"題\"\n"
+    );
+}
+
+#[gpui::test]
+async fn short_reference_forms_keep_their_definition(cx: &mut TestAppContext) {
+    let (opened, cx) = open_markdown("![logo][]ˇ\n\n[logo]: images/photo.png\n", cx).await;
+    let dialog = open_dialog(&opened, cx);
+    set_field(&dialog, |dialog| dialog.alt_field.clone(), "新しい", cx);
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    assert_eq!(
+        buffer_text(&opened, cx),
+        "![新しい][logo]\n\n[logo]: images/photo.png\n",
+        "a new alt text would be a new label, so the label is written out"
+    );
+
+    // A size cannot be written in the reference form, so the image becomes
+    // an `<img>` and the definition stays for whatever else uses it.
+    reset_document(&opened, "![logo]ˇ\n\n[logo]: images/photo.png\n", cx);
+    let dialog = open_dialog(&opened, cx);
+    assert!(dialog.read_with(cx, |dialog, _| dialog.is_editing()));
+    set_field(&dialog, |dialog| dialog.width_field.clone(), "10", cx);
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    assert_eq!(
+        buffer_text(&opened, cx),
+        "<img src=\"images/photo.png\" alt=\"logo\" width=\"10\">\n\n[logo]: images/photo.png\n"
+    );
+}
+
+#[test]
+fn a_linux_host_is_read_with_its_own_path_rules() {
+    // A Windows client editing a document on a Linux host: the host's
+    // file names differ by case alone and its paths use `/`.
+    let host = DocumentLocation {
+        directory: Some("/home/u/docs".into()),
+        root: Some("/home/u/docs".into()),
+        path_style: PathStyle::Unix,
+        is_local: false,
+    };
+    let ResolvedSource::File(other_case) = resolve_source("/home/u/Docs/a.png", &host) else {
+        panic!("an absolute path on the host is a file");
+    };
+    assert_eq!(other_case.relative.as_deref(), Some("../Docs/a.png"));
+    assert!(
+        !other_case.inside_root,
+        "Docs is not docs on a case-sensitive host"
+    );
+    let ResolvedSource::File(typed) = resolve_source(r"images\a.png", &host) else {
+        panic!("a relative path is a file");
+    };
+    assert_eq!(
+        typed.relative.as_deref(),
+        Some(r"images\a.png"),
+        "a backslash is part of a file name on the host, not a separator"
+    );
+    assert!(!PathStyle::Unix.is_absolute(r"C:\Users\a.png"));
+    assert_eq!(
+        relative_path("/home/u/docs", "/home/u/docs/Images/A.png", PathStyle::Unix).as_deref(),
+        Some("Images/A.png")
+    );
+}
+
+#[gpui::test]
+async fn stores_a_picture_next_to_the_document_without_overwriting(cx: &mut TestAppContext) {
+    let (opened, cx) = open_markdown("ˇ\n", cx).await;
+    let project = opened
+        .workspace
+        .read_with(cx, |workspace, _| workspace.project().clone());
+    let document = cx
+        .update(|_window, cx| document_project_path(&opened.editor, cx))
+        .expect("the document is saved");
+    opened
+        .fs
+        .create_symlink(
+            Path::new(path!("/project/docs/images/shot.png")),
+            PathBuf::from(path!("/nowhere/shot.png")),
+        )
+        .await
+        .expect("the link is made");
+    cx.run_until_parked();
+
+    let store = |preferred: &str, bytes: &[u8], cx: &mut VisualTestContext| {
+        let task = cx.update(|_window, cx| {
+            image_files::store_image_next_to(
+                &project,
+                &document,
+                ImageData::Bytes {
+                    bytes: bytes.to_vec(),
+                    extension: "png".into(),
+                },
+                (!preferred.is_empty()).then(|| preferred.to_string()),
+                cx,
+            )
+        });
+        task
+    };
+    let stored_name = |stored: Result<ProjectPath>| {
+        stored
+            .map(|stored| stored.path.as_unix_str().to_string())
+            .unwrap_or_else(|error| panic!("the picture should be stored: {error:#}"))
+    };
+
+    assert_eq!(
+        stored_name(store("photo.png", b"first", cx).await),
+        "docs/images/photo-1.png"
+    );
+    assert_eq!(
+        stored_name(store("photo.png", b"second", cx).await),
+        "docs/images/photo-2.png"
+    );
+    let load = |path: &str| {
+        let fs = opened.fs.clone();
+        let path = PathBuf::from(path);
+        async move { fs.load(&path).await.ok() }
+    };
+    assert_eq!(
+        load(path!("/project/docs/images/photo.png"))
+            .await
+            .as_deref(),
+        Some("not really a png"),
+        "what was there is not overwritten"
+    );
+    assert_eq!(
+        load(path!("/project/docs/images/photo-2.png"))
+            .await
+            .as_deref(),
+        Some("second")
+    );
+
+    assert_eq!(
+        stored_name(store("shot.png", b"shot", cx).await),
+        "docs/images/shot-1.png",
+        "a link that leads nowhere takes its name"
+    );
+    assert!(
+        !opened
+            .fs
+            .is_file(Path::new(path!("/nowhere/shot.png")))
+            .await,
+        "nothing is written where the link points"
+    );
+
+    assert_eq!(
+        stored_name(store("", b"pasted", cx).await),
+        "docs/images/image.png"
+    );
+    assert_eq!(
+        stored_name(store("a/b:c?.PNG", b"x", cx).await),
+        "docs/images/a-b-c-.PNG"
+    );
+    assert_eq!(
+        stored_name(store("スクリーンショット", b"x", cx).await),
+        "docs/images/スクリーンショット.png",
+        "a name without an extension takes the picture's"
+    );
+
+    let too_large = store(
+        "large.png",
+        &vec![0; image_files::MAXIMUM_IMAGE_BYTES as usize + 1],
+        cx,
+    )
+    .await;
+    let error = too_large.expect_err("a picture over the limit is refused");
+    assert!(error.to_string().contains("大きすぎます"), "{error:#}");
+    assert!(
+        !opened
+            .fs
+            .is_file(Path::new(path!("/project/docs/images/large.png")))
+            .await
+    );
+
+    let local = cx.update(|_window, cx| {
+        image_files::store_image_next_to(
+            &project,
+            &document,
+            ImageData::LocalFile(PathBuf::from(path!("/outside/pic.png"))),
+            None,
+            cx,
+        )
+    });
+    assert_eq!(stored_name(local.await), "docs/images/pic.png");
+
+    let alone = cx.update(|_window, cx| {
+        image_files::store_image_next_to(
+            &project,
+            &ProjectPath {
+                worktree_id: document.worktree_id,
+                path: RelPath::empty_arc(),
+            },
+            ImageData::Bytes {
+                bytes: b"x".to_vec(),
+                extension: "png".into(),
+            },
+            None,
+            cx,
+        )
+    });
+    let error = alone
+        .await
+        .expect_err("a file opened on its own has no folder to store into");
+    assert!(error.to_string().contains("単独で開いた"), "{error:#}");
+}
+
+#[gpui::test]
+async fn a_dropped_store_takes_its_picture_away_again(cx: &mut TestAppContext) {
+    let (opened, cx) = open_markdown("ˇ\n", cx).await;
+    let project = opened
+        .workspace
+        .read_with(cx, |workspace, _| workspace.project().clone());
+    let document = cx
+        .update(|_window, cx| document_project_path(&opened.editor, cx))
+        .expect("the document is saved");
+    let task = cx.update(|_window, cx| {
+        image_files::store_image_next_to(
+            &project,
+            &document,
+            ImageData::Bytes {
+                bytes: b"abandoned".to_vec(),
+                extension: "png".into(),
+            },
+            Some("abandoned.png".into()),
+            cx,
+        )
+    });
+    drop(task);
+    cx.run_until_parked();
+    assert!(
+        !opened
+            .fs
+            .is_file(Path::new(path!("/project/docs/images/abandoned.png")))
+            .await
+    );
+    let names = opened
+        .fs
+        .files()
+        .into_iter()
+        .filter(|path| path.to_string_lossy().contains("abandoned"))
+        .collect::<Vec<_>>();
+    assert_eq!(names, Vec::<PathBuf>::new(), "no empty placeholder is left");
+}
+
+#[gpui::test]
+fn writes_links_from_the_document_to_a_stored_picture(cx: &mut App) {
+    let worktree_id = project::WorktreeId::from_usize(1);
+    let at = |path: &str| ProjectPath {
+        worktree_id,
+        path: RelPath::from_unix_str(path)
+            .expect("a relative path")
+            .into_arc(),
+    };
+    let document = at("docs/readme.md");
+    assert_eq!(
+        image_files::link_destination(&document, &at("docs/images/a b(1).png"), true, cx)
+            .as_deref(),
+        Some("images/a%20b%281%29.png")
+    );
+    assert_eq!(
+        image_files::link_destination(&document, &at("docs/images/a b(1).png"), false, cx)
+            .as_deref(),
+        Some("images/a%20b(1).png")
+    );
+    assert_eq!(
+        image_files::link_destination(&document, &at("assets/x&y #1.png"), false, cx).as_deref(),
+        Some("../assets/x&amp;y%20%231.png"),
+        "an attribute's text is escaped for its quotes"
+    );
+    assert_eq!(
+        image_files::link_destination(&document, &at("docs/images/say \"hi\".png"), false, cx)
+            .as_deref(),
+        Some("images/say%20%22hi%22.png")
+    );
+    assert_eq!(
+        image_files::link_destination(&document, &at("docs/images/say \"hi\".png"), true, cx)
+            .as_deref(),
+        Some("images/say%20\"hi\".png")
+    );
+    assert_eq!(
+        image_files::link_destination(&at("readme.md"), &at("images/写真.png"), true, cx)
+            .as_deref(),
+        Some("images/写真.png")
+    );
+    let elsewhere = ProjectPath {
+        worktree_id: project::WorktreeId::from_usize(2),
+        path: at("images/a.png").path,
+    };
+    assert_eq!(
+        image_files::link_destination(&document, &elsewhere, true, cx),
+        None
+    );
+    let alone = ProjectPath {
+        worktree_id,
+        path: RelPath::empty_arc(),
+    };
+    assert_eq!(
+        image_files::link_destination(&alone, &at("images/a.png"), true, cx).as_deref(),
+        Some("images/a.png"),
+        "a document opened on its own has its pictures stored beside it"
+    );
+    assert_eq!(
+        image_files::link_destination(&alone, &alone, true, cx),
+        None
+    );
+}
+
+/// The parser reads a definition across the markers of the quote or list it
+/// runs on in, as the dialog has to: the path on the line after the label is
+/// the definition's, and a title there is kept when the path changes.
+#[gpui::test]
+async fn a_reference_definition_on_several_lines_is_read_as_the_parser_reads_it(
+    cx: &mut TestAppContext,
+) {
+    let (opened, cx) = open_markdown("ˇ\n", cx).await;
+    for (marked, expected) in [
+        (
+            "> ![a][r]ˇ\n>\n> [r]: images/photo.png\n> \"題\"\n",
+            "> ![a][r]\n>\n> [r]: images/real.png \"題\"\n",
+        ),
+        (
+            "> ![a][x]ˇ\n>\n> [x]:\n> images/photo.png\n",
+            "> ![a][x]\n>\n> [x]: images/real.png\n",
+        ),
+        (
+            "> ![a][x]ˇ\n>\n> [x]: images/photo.png \"one\n> two\"\n",
+            "> ![a][x]\n>\n> [x]: images/real.png \"one two\"\n",
+        ),
+        (
+            "- ![a][r]ˇ\n\n  [r]: images/photo.png\n  'title'\n",
+            "- ![a][r]\n\n  [r]: images/real.png \"title\"\n",
+        ),
+        // Labels match regardless of case and runs of spaces, and the first
+        // of two definitions with one label is the one used.
+        (
+            "![a][My  LOGO]ˇ\n\n[my logo]: images/photo.png\n",
+            "![a][My  LOGO]\n\n[my logo]: images/real.png\n",
+        ),
+        (
+            "![a][x]ˇ\n\n[x]: images/photo.png\n[x]: images/other.png\n",
+            "![a][x]\n\n[x]: images/real.png\n[x]: images/other.png\n",
+        ),
+        (
+            "![図][図１]ˇ\n\n[図１]: images/photo.png (括弧)\n",
+            "![図][図１]\n\n[図１]: images/real.png \"括弧\"\n",
+        ),
+    ] {
+        reset_document(&opened, marked, cx);
+        let dialog = open_dialog(&opened, cx);
+        assert_eq!(
+            field_text(&dialog, |dialog| dialog.path_field.clone(), cx),
+            "images/photo.png",
+            "{marked:?}"
+        );
+        set_field(
+            &dialog,
+            |dialog| dialog.path_field.clone(),
+            "images/real.png",
+            cx,
+        );
+        cx.dispatch_action(menu::Confirm);
+        cx.run_until_parked();
+        assert_eq!(buffer_text(&opened, cx), expected, "{marked:?}");
+    }
+
+    // With the path left as it was, the image written as HTML takes the path
+    // the definition holds, not the marker of the line it is on.
+    reset_document(&opened, "> ![a][x]ˇ\n>\n> [x]:\n> images/photo.png\n", cx);
+    let dialog = open_dialog(&opened, cx);
+    set_field(&dialog, |dialog| dialog.width_field.clone(), "10", cx);
+    cx.dispatch_action(menu::Confirm);
+    cx.run_until_parked();
+    assert_eq!(
+        buffer_text(&opened, cx),
+        "> <img src=\"images/photo.png\" alt=\"a\" width=\"10\">\n>\n> [x]:\n> images/photo.png\n"
+    );
 }

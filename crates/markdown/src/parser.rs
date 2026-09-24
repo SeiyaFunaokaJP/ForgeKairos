@@ -730,9 +730,13 @@ pub(crate) fn parse_markdown_with_options(
 
     if parse_html {
         style_inline_html_tags(&mut state.events, text);
-        html::html_parser::assign_details_ordinals(&mut html_blocks);
         link_html_details_spans(&mut html_blocks, &state.events);
+        let table_layouts = link_html_table_spans(&mut html_blocks, &state.events, text);
         link_html_aligned_spans(&mut html_blocks, &state.events, text);
+        place_html_table_parts(&mut html_blocks, table_layouts);
+        // Numbered last, since aligning a block can parse it again, and the
+        // number is what a disclosure's open state is stored under.
+        html::html_parser::assign_details_ordinals(&mut html_blocks);
     }
 
     let heading_slugs = if parse_heading_slugs {
@@ -855,10 +859,11 @@ fn html_details_body_events(
 /// between are aligned by the renderer from the recorded event spans.
 ///
 /// Tags are matched the way a browser matches them, so `</div>` closes the
-/// innermost open `<div>` together with everything opened inside it. A
-/// container that is never closed aligns nothing instead of the rest of the
-/// document, and one opened inside a list item or a block quote is dropped when
-/// that ends, since a browser would close it there too.
+/// innermost open `<div>` together with everything opened inside it, even from
+/// inside a list item or a block quote the `<div>` encloses, and the end of a
+/// list item or a block quote closes whatever was opened inside it. A
+/// container that is never closed at all aligns nothing instead of the rest of
+/// the document.
 fn link_html_aligned_spans(
     html_blocks: &mut BTreeMap<usize, html::html_parser::ParsedHtmlBlock>,
     events: &[(Range<usize>, MarkdownEvent)],
@@ -871,8 +876,8 @@ fn link_html_aligned_spans(
         text_align: Option<gpui::TextAlign>,
         block_start: usize,
         body_start: usize,
-        /// How deep the opening block sits in lists and block quotes. A close
-        /// at another depth belongs to another container.
+        /// How deep the opening block sits in lists and block quotes, so the
+        /// container can be closed when the one it was opened in ends.
         depth: usize,
     }
 
@@ -914,9 +919,6 @@ fn link_html_aligned_spans(
                                 else {
                                     continue;
                                 };
-                                if open_containers[position].depth != depth {
-                                    continue;
-                                }
                                 for (offset, open) in open_containers.drain(position..).enumerate()
                                 {
                                     if open.block_start != range.start {
@@ -952,7 +954,22 @@ fn link_html_aligned_spans(
             }
             MarkdownEvent::End(_) => {
                 depth = depth.saturating_sub(1);
-                open_containers.retain(|open| open.depth <= depth);
+                // Containers are opened no shallower than the ones before
+                // them, so the ones this end closes are at the top.
+                while let Some(open) = open_containers.pop_if(|open| open.depth > depth) {
+                    if let Some(text_align) = open.text_align
+                        && open.body_start < index
+                    {
+                        spans.push((
+                            open.block_start,
+                            HtmlAlignedSpan {
+                                events: open.body_start..index,
+                                text_align,
+                                nesting: open_containers.len(),
+                            },
+                        ));
+                    }
+                }
             }
             _ => {}
         }
@@ -962,42 +979,34 @@ fn link_html_aligned_spans(
     // container, the way the rest of an opening block after its `<div align>`
     // does. The tree builder only knows where that part ends if it sees the
     // opening tags, so the block is parsed again behind them; the part after
-    // the close comes out as it did before. A disclosure is left alone, since
-    // parsing it again would lose the key its open state is stored under.
+    // the close comes out as it did before. A `<details>` among the containers
+    // has to be opened as one too, or its `</details>` would close nothing, and
+    // is then taken out again, leaving what it held in its place.
     for (block_range, mut containers) in closing_blocks {
         if containers
             .iter()
             .all(|(_, _, text_align)| text_align.is_none())
-            || containers
-                .iter()
-                .any(|(_, name, _)| *name == HtmlContainerName::Details)
         {
             continue;
         }
         let Some(block) = html_blocks.get_mut(&block_range.start) else {
             continue;
         };
-        if block.container_tags.iter().any(|tag| {
-            matches!(
-                tag,
-                HtmlContainerTag::Open {
-                    name: HtmlContainerName::Details,
-                    ..
-                } | HtmlContainerTag::Close(HtmlContainerName::Details)
-            )
-        }) {
-            continue;
-        }
         let Some(source) = text.get(block_range.clone()) else {
             continue;
         };
 
         containers.sort_by_key(|(position, _, _)| *position);
         let mut enclosed_source = String::new();
+        let mut enclosing_details = 0;
         for (_, name, text_align) in containers {
             let tag_name = match name {
                 HtmlContainerName::Center => "center",
-                HtmlContainerName::Div | HtmlContainerName::Details => "div",
+                HtmlContainerName::Div | HtmlContainerName::TableCell => "div",
+                HtmlContainerName::Details => {
+                    enclosing_details += 1;
+                    "details"
+                }
             };
             enclosed_source.push('<');
             enclosed_source.push_str(tag_name);
@@ -1009,12 +1018,17 @@ fn link_html_aligned_spans(
                 });
             }
             enclosed_source.push('>');
+            // The stand-in disclosure gets a summary of its own, or it would
+            // take a `<summary>` the block itself holds and drop its text.
+            if name == HtmlContainerName::Details {
+                enclosed_source.push_str("<summary>-</summary>");
+            }
         }
         enclosed_source.push_str(source);
         if let Some(enclosed) =
             html::html_parser::parse_html_block(&enclosed_source, block_range.clone())
         {
-            block.children = enclosed.children;
+            block.children = without_enclosing_details(enclosed.children, enclosing_details);
         }
     }
 
@@ -1041,6 +1055,856 @@ fn link_html_aligned_spans(
         };
         if let Some(block) = html_blocks.get_mut(&block_start) {
             html::html_parser::inherit_text_align(&mut block.children, innermost.text_align);
+        }
+    }
+}
+
+/// Takes out the `count` disclosures a closing block was parsed behind. They
+/// were opened in front of everything else, so each is the first element of
+/// the one before, and what follows its `</details>` comes after it.
+fn without_enclosing_details(
+    elements: Vec<html::html_parser::ParsedHtmlElement>,
+    count: usize,
+) -> Vec<html::html_parser::ParsedHtmlElement> {
+    use html::html_parser::ParsedHtmlElement;
+
+    let mut following = Vec::new();
+    let mut elements = elements;
+    for _ in 0..count {
+        if !matches!(elements.first(), Some(ParsedHtmlElement::Details(_))) {
+            break;
+        }
+        let ParsedHtmlElement::Details(details) = elements.remove(0) else {
+            break;
+        };
+        following.push(std::mem::replace(&mut elements, details.children));
+    }
+    for rest in following.into_iter().rev() {
+        elements.extend(rest);
+    }
+    elements
+}
+
+/// A `<table>` as the walk over the events finds it.
+struct HtmlTableRecord {
+    source_start: usize,
+    /// The table's own `align`, or what encloses it in the same block.
+    text_align: Option<gpui::TextAlign>,
+    closed: bool,
+    /// Set when the table cannot be drawn with its cells spanning blocks:
+    /// markdown outside a cell, a tag at another depth, a stray end.
+    broken: bool,
+    /// The blocks holding the table's own tags, in order.
+    block_starts: Vec<usize>,
+    row_count: usize,
+    row_has_cells: bool,
+    current_row: usize,
+    next_column: usize,
+    column_count: usize,
+    column_widths: Vec<Option<f32>>,
+}
+
+#[derive(Clone)]
+enum HtmlLayoutEntryKind {
+    Table,
+    Section,
+    Row {
+        text_align: Option<gpui::TextAlign>,
+        vertical_align: Option<html::html_parser::HtmlVerticalAlign>,
+    },
+    Cell {
+        text_align: Option<gpui::TextAlign>,
+    },
+    Container {
+        name: html::html_parser::HtmlContainerName,
+        text_align: Option<gpui::TextAlign>,
+    },
+}
+
+#[derive(Clone)]
+struct HtmlLayoutEntry {
+    kind: HtmlLayoutEntryKind,
+    /// The table a table, section, row or cell belongs to.
+    table: Option<usize>,
+    depth: usize,
+}
+
+enum HtmlTableOp {
+    OpenTable,
+    OpenCell(html::html_parser::HtmlSpanningCell),
+    CloseCell,
+    EndRow { row: usize, used_columns: usize },
+    CloseTable,
+}
+
+/// A table tag of a block, which cuts the block when its table spans blocks.
+struct HtmlTableSplit {
+    range: Range<usize>,
+    table: usize,
+    /// What the tag does, closing first whatever it closes by implication.
+    ops: Vec<HtmlTableOp>,
+    /// What is open right after the tag, which is what the HTML up to the next
+    /// cut sits in.
+    stack_after: Vec<HtmlLayoutEntry>,
+}
+
+enum HtmlTableBlockItem {
+    Container(html::html_parser::HtmlContainerTag),
+    Split(HtmlTableSplit),
+}
+
+struct ScannedHtmlTableBlock {
+    block_start: usize,
+    event_index: usize,
+    stack_before: Vec<HtmlLayoutEntry>,
+    items: Vec<HtmlTableBlockItem>,
+}
+
+/// How a block taking part in a table that spans blocks is drawn, worked out
+/// before the aligned containers are paired and put into the block after,
+/// since pairing them may parse a closing block's HTML again.
+struct HtmlTableBlockLayout {
+    block_start: usize,
+    event_index: usize,
+    children: Vec<html::html_parser::ParsedHtmlElement>,
+    parts: Vec<html::html_parser::HtmlTablePart>,
+    /// The children nothing in the table's blocks aligns, which take the
+    /// alignment of a container an earlier block opened.
+    unaligned: Vec<Range<usize>>,
+}
+
+/// Pairs each `<table>` with its rows and cells across blocks. README layouts
+/// leave blank lines inside `<td>` so its body is parsed as markdown, which
+/// ends the CommonMark HTML block right after the opening tags, so the table,
+/// its markdown body and `</td></tr></table>` arrive as separate blocks.
+///
+/// Tags are matched the way a browser matches them: `<td>` closes the cell
+/// before it, `</tr>` closes its cell, `</table>` everything inside it, and
+/// `</td>` the `<div>`s opened in the cell. A table that is never closed, that
+/// has markdown outside its cells, or whose tags end up at another list or
+/// block quote depth is left as it was drawn before, rather than risk losing
+/// what does not fit. The cells of the tables that pair are added to the
+/// blocks' container tags, so the aligned container pairing aligns their
+/// markdown bodies the way it aligns a `<div>`'s.
+fn link_html_table_spans(
+    html_blocks: &mut BTreeMap<usize, html::html_parser::ParsedHtmlBlock>,
+    events: &[(Range<usize>, MarkdownEvent)],
+    text: &str,
+) -> Vec<HtmlTableBlockLayout> {
+    use html::html_parser::{
+        HtmlContainerName, HtmlContainerTag, HtmlLayoutTagKind, HtmlSpanningTable, HtmlTablePart,
+        layout_tags,
+    };
+
+    let mut stack: Vec<HtmlLayoutEntry> = Vec::new();
+    let mut tables: Vec<HtmlTableRecord> = Vec::new();
+    let mut scanned_blocks: Vec<ScannedHtmlTableBlock> = Vec::new();
+    let mut depth = 0usize;
+
+    for (index, (range, event)) in events.iter().enumerate() {
+        match event {
+            MarkdownEvent::Start(MarkdownTag::HtmlBlock)
+                if html_blocks.contains_key(&range.start) =>
+            {
+                if let Some(source) = text.get(range.clone())
+                    && (!stack.is_empty() || may_hold_table_tags(source))
+                {
+                    let stack_before = stack.clone();
+                    let mut items = Vec::new();
+                    let mut gap_start = 0;
+                    for tag in layout_tags(source) {
+                        mark_html_outside_cells(
+                            &stack,
+                            source.get(gap_start..tag.range.start).unwrap_or_default(),
+                            &mut tables,
+                        );
+                        gap_start = tag.range.end;
+                        match tag.kind {
+                            HtmlLayoutTagKind::Container(container_tag) => {
+                                apply_html_container_tag(&mut stack, container_tag, depth);
+                                items.push(HtmlTableBlockItem::Container(container_tag));
+                            }
+                            kind => {
+                                let Some((table, ops)) = apply_html_table_tag(
+                                    &mut stack,
+                                    &mut tables,
+                                    kind,
+                                    depth,
+                                    range.start + tag.range.start,
+                                ) else {
+                                    continue;
+                                };
+                                if let Some(record) = tables.get_mut(table)
+                                    && record.block_starts.last() != Some(&range.start)
+                                {
+                                    record.block_starts.push(range.start);
+                                }
+                                items.push(HtmlTableBlockItem::Split(HtmlTableSplit {
+                                    range: tag.range,
+                                    table,
+                                    ops,
+                                    stack_after: stack.clone(),
+                                }));
+                            }
+                        }
+                    }
+                    mark_html_outside_cells(
+                        &stack,
+                        source.get(gap_start..).unwrap_or_default(),
+                        &mut tables,
+                    );
+                    if items
+                        .iter()
+                        .any(|item| matches!(item, HtmlTableBlockItem::Split(_)))
+                    {
+                        scanned_blocks.push(ScannedHtmlTableBlock {
+                            block_start: range.start,
+                            event_index: index,
+                            stack_before,
+                            items,
+                        });
+                    }
+                    // Containers outside every table are the aligned container
+                    // pairing's to follow.
+                    if !stack
+                        .iter()
+                        .any(|entry| matches!(entry.kind, HtmlLayoutEntryKind::Table))
+                    {
+                        stack.clear();
+                    }
+                }
+                depth += 1;
+            }
+            MarkdownEvent::Start(_) => {
+                mark_markdown_outside_cells(&stack, &mut tables);
+                depth += 1;
+            }
+            MarkdownEvent::Rule => mark_markdown_outside_cells(&stack, &mut tables),
+            MarkdownEvent::End(_) => {
+                depth = depth.saturating_sub(1);
+                while stack.last().is_some_and(|entry| entry.depth > depth) {
+                    if let Some(entry) = stack.pop()
+                        && matches!(entry.kind, HtmlLayoutEntryKind::Table)
+                        && let Some(record) = entry.table.and_then(|table| tables.get_mut(table))
+                    {
+                        record.broken = true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut valid = tables
+        .iter()
+        .map(|record| {
+            record.closed
+                && !record.broken
+                && record.block_starts.len() > 1
+                && record.column_count > 0
+        })
+        .collect::<Vec<_>>();
+    if !valid.contains(&true) {
+        return Vec::new();
+    }
+
+    // Collapsing a disclosure skips its body's events. One whose body holds
+    // some of a table's blocks but not all of them would skip the tags that
+    // close what the others open.
+    let event_indices = scanned_blocks
+        .iter()
+        .map(|block| (block.block_start, block.event_index))
+        .collect::<HashMap<_, _>>();
+    let hidden_ranges = html_blocks
+        .values()
+        .filter_map(|block| {
+            block
+                .details_span
+                .as_ref()
+                .map(|span| span.hidden_events.clone())
+        })
+        .collect::<Vec<_>>();
+    loop {
+        let mut changed = false;
+        for (table, record) in tables.iter().enumerate() {
+            if !valid.get(table).copied().unwrap_or(false) {
+                continue;
+            }
+            let block_events = record
+                .block_starts
+                .iter()
+                .filter_map(|block_start| event_indices.get(block_start))
+                .collect::<Vec<_>>();
+            let crosses = hidden_ranges.iter().any(|hidden| {
+                let inside = block_events
+                    .iter()
+                    .filter(|index| hidden.contains(**index))
+                    .count();
+                inside > 0 && inside < block_events.len()
+            });
+            if crosses && let Some(valid) = valid.get_mut(table) {
+                *valid = false;
+                changed = true;
+            }
+        }
+        // A disclosure whose body continues in later blocks has to be the last
+        // thing its block opens, or its body would reach past the cell.
+        for block in &scanned_blocks {
+            let Some(html_block) = html_blocks.get(&block.block_start) else {
+                continue;
+            };
+            if html_block.details_span.is_none() {
+                continue;
+            }
+            let Some(last_split_index) = block.items.iter().rposition(|item| {
+                matches!(
+                    item,
+                    HtmlTableBlockItem::Split(split)
+                        if valid.get(split.table).copied().unwrap_or(false)
+                )
+            }) else {
+                continue;
+            };
+            let Some(HtmlTableBlockItem::Split(last_split)) = block.items.get(last_split_index)
+            else {
+                continue;
+            };
+            let mut details_left_open = 0usize;
+            for item in block.items.iter().skip(last_split_index + 1) {
+                match item {
+                    HtmlTableBlockItem::Container(HtmlContainerTag::Open {
+                        name: HtmlContainerName::Details,
+                        ..
+                    }) => details_left_open += 1,
+                    HtmlTableBlockItem::Container(HtmlContainerTag::Close(
+                        HtmlContainerName::Details,
+                    )) => details_left_open = details_left_open.saturating_sub(1),
+                    _ => {}
+                }
+            }
+            if details_left_open == 0
+                && let Some(valid) = valid.get_mut(last_split.table)
+            {
+                *valid = false;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    let is_valid = |table: usize| valid.get(table).copied().unwrap_or(false);
+    let mut layouts = Vec::new();
+    for block in scanned_blocks {
+        if !block
+            .items
+            .iter()
+            .any(|item| matches!(item, HtmlTableBlockItem::Split(split) if is_valid(split.table)))
+        {
+            continue;
+        }
+        let Some(html_block) = html_blocks.get_mut(&block.block_start) else {
+            continue;
+        };
+        let source_range = html_block.source_range.clone();
+        let Some(source) = text.get(source_range.clone()) else {
+            continue;
+        };
+
+        let mut container_tags = Vec::new();
+        let mut segments = HtmlTableSegments::default();
+        let mut segment_start = 0;
+        let mut context = block.stack_before;
+        for item in block.items {
+            let split = match item {
+                HtmlTableBlockItem::Container(tag) => {
+                    container_tags.push(tag);
+                    continue;
+                }
+                HtmlTableBlockItem::Split(split) if is_valid(split.table) => split,
+                HtmlTableBlockItem::Split(_) => continue,
+            };
+            segments.push(
+                source,
+                source_range.start,
+                segment_start..split.range.start,
+                &context,
+                &valid,
+            );
+            for op in split.ops {
+                segments.parts.push(match op {
+                    HtmlTableOp::OpenTable => {
+                        let Some(record) = tables.get(split.table) else {
+                            continue;
+                        };
+                        let mut column_widths = record.column_widths.clone();
+                        column_widths.resize(record.column_count, None);
+                        HtmlTablePart::OpenTable(HtmlSpanningTable {
+                            source_start: record.source_start,
+                            column_count: record.column_count,
+                            text_align: record.text_align,
+                            column_widths,
+                        })
+                    }
+                    HtmlTableOp::OpenCell(cell) => {
+                        container_tags.push(HtmlContainerTag::Open {
+                            name: HtmlContainerName::TableCell,
+                            text_align: cell.text_align,
+                        });
+                        HtmlTablePart::OpenCell(cell)
+                    }
+                    HtmlTableOp::CloseCell => {
+                        container_tags.push(HtmlContainerTag::Close(HtmlContainerName::TableCell));
+                        HtmlTablePart::CloseCell
+                    }
+                    HtmlTableOp::EndRow { row, used_columns } => {
+                        HtmlTablePart::EndRow { row, used_columns }
+                    }
+                    HtmlTableOp::CloseTable => HtmlTablePart::CloseTable,
+                });
+            }
+            segment_start = split.range.end;
+            context = split.stack_after;
+        }
+        segments.push(
+            source,
+            source_range.start,
+            segment_start..source.len(),
+            &context,
+            &valid,
+        );
+
+        html_block.container_tags = container_tags;
+        layouts.push(HtmlTableBlockLayout {
+            block_start: block.block_start,
+            event_index: block.event_index,
+            children: segments.children,
+            parts: segments.parts,
+            unaligned: segments.unaligned,
+        });
+    }
+    layouts
+}
+
+/// Gives the blocks taking part in a table that spans blocks the parts they
+/// are drawn with, once the aligned containers are paired, and aligns their
+/// HTML that nothing in the table's own blocks aligns by the innermost
+/// container an earlier block opened around it.
+fn place_html_table_parts(
+    html_blocks: &mut BTreeMap<usize, html::html_parser::ParsedHtmlBlock>,
+    layouts: Vec<HtmlTableBlockLayout>,
+) {
+    if layouts.is_empty() {
+        return;
+    }
+
+    let spans = html_blocks
+        .values()
+        .flat_map(|block| block.aligned_spans.iter().cloned())
+        .collect::<Vec<_>>();
+    for mut layout in layouts {
+        let outer_text_align = spans
+            .iter()
+            .filter(|span| span.events.contains(&layout.event_index))
+            .max_by_key(|span| span.nesting)
+            .map(|span| span.text_align);
+        if let Some(text_align) = outer_text_align {
+            for range in &layout.unaligned {
+                if let Some(elements) = layout.children.get_mut(range.clone()) {
+                    html::html_parser::inherit_text_align(elements, text_align);
+                }
+            }
+        }
+        if let Some(block) = html_blocks.get_mut(&layout.block_start) {
+            block.children = layout.children;
+            block.table_parts = layout.parts;
+        }
+    }
+}
+
+#[derive(Default)]
+struct HtmlTableSegments {
+    children: Vec<html::html_parser::ParsedHtmlElement>,
+    parts: Vec<html::html_parser::HtmlTablePart>,
+    unaligned: Vec<Range<usize>>,
+}
+
+impl HtmlTableSegments {
+    /// Parses the HTML of a block between two of its table tags on its own,
+    /// giving it the alignment of whatever it sits in.
+    fn push(
+        &mut self,
+        source: &str,
+        block_offset: usize,
+        segment: Range<usize>,
+        context: &[HtmlLayoutEntry],
+        valid: &[bool],
+    ) {
+        let Some(fragment) = source.get(segment.clone()) else {
+            return;
+        };
+        if fragment.trim().is_empty() {
+            return;
+        }
+        // Between a table's rows and cells the walk only let through what
+        // draws nothing, such as a comment.
+        let innermost = context.iter().rev().find(|entry| {
+            entry
+                .table
+                .is_some_and(|table| valid.get(table).copied().unwrap_or(false))
+        });
+        if innermost.is_some_and(|entry| !matches!(entry.kind, HtmlLayoutEntryKind::Cell { .. })) {
+            return;
+        }
+        let Some(parsed) = html::html_parser::parse_html_block(
+            fragment,
+            block_offset + segment.start..block_offset + segment.end,
+        ) else {
+            return;
+        };
+        if parsed.children.is_empty() {
+            return;
+        }
+
+        let start = self.children.len();
+        let mut elements = parsed.children;
+        match html_layout_text_align(context, Some(valid)) {
+            Some(text_align) => html::html_parser::inherit_text_align(&mut elements, text_align),
+            None => self.unaligned.push(start..start + elements.len()),
+        }
+        self.children.extend(elements);
+        self.parts.push(html::html_parser::HtmlTablePart::Elements(
+            start..self.children.len(),
+        ));
+    }
+}
+
+/// Whether a block may hold a table's tags, to spare reading every other
+/// block's tags while no table is open.
+fn may_hold_table_tags(source: &str) -> bool {
+    let lowered = source.to_ascii_lowercase();
+    lowered.contains("<t") || lowered.contains("</t")
+}
+
+/// The alignment the innermost of `stack` asks for, skipping the tables that
+/// did not pair when `valid` says which did.
+fn html_layout_text_align(
+    stack: &[HtmlLayoutEntry],
+    valid: Option<&[bool]>,
+) -> Option<gpui::TextAlign> {
+    stack
+        .iter()
+        .rev()
+        .filter(|entry| {
+            entry.table.is_none_or(|table| {
+                valid.is_none_or(|valid| valid.get(table).copied().unwrap_or(false))
+            })
+        })
+        .find_map(|entry| match entry.kind {
+            HtmlLayoutEntryKind::Container { text_align, .. }
+            | HtmlLayoutEntryKind::Cell { text_align }
+            | HtmlLayoutEntryKind::Row { text_align, .. } => text_align,
+            HtmlLayoutEntryKind::Table | HtmlLayoutEntryKind::Section => None,
+        })
+}
+
+/// Markdown can only be drawn inside a cell; anywhere else in a table there is
+/// no place for it that would not lose it, so the table is drawn as before.
+fn mark_markdown_outside_cells(stack: &[HtmlLayoutEntry], tables: &mut [HtmlTableRecord]) {
+    if let Some(entry) = stack.iter().rev().find(|entry| entry.table.is_some())
+        && !matches!(entry.kind, HtmlLayoutEntryKind::Cell { .. })
+        && let Some(record) = entry.table.and_then(|table| tables.get_mut(table))
+    {
+        record.broken = true;
+    }
+}
+
+fn mark_html_outside_cells(
+    stack: &[HtmlLayoutEntry],
+    fragment: &str,
+    tables: &mut [HtmlTableRecord],
+) {
+    let outside_cells = stack
+        .iter()
+        .rev()
+        .find(|entry| entry.table.is_some())
+        .is_some_and(|entry| !matches!(entry.kind, HtmlLayoutEntryKind::Cell { .. }));
+    if outside_cells
+        && !fragment.trim().is_empty()
+        && html::html_parser::parse_html_block(fragment, 0..fragment.len())
+            .is_some_and(|block| !block.children.is_empty())
+    {
+        mark_markdown_outside_cells(stack, tables);
+    }
+}
+
+fn apply_html_container_tag(
+    stack: &mut Vec<HtmlLayoutEntry>,
+    tag: html::html_parser::HtmlContainerTag,
+    depth: usize,
+) {
+    use html::html_parser::HtmlContainerTag;
+
+    match tag {
+        HtmlContainerTag::Open { name, text_align } => stack.push(HtmlLayoutEntry {
+            kind: HtmlLayoutEntryKind::Container { name, text_align },
+            table: None,
+            depth,
+        }),
+        HtmlContainerTag::Close(name) => {
+            // A `</div>` does not reach past the cell or the table it is in.
+            let boundary = stack
+                .iter()
+                .rposition(|entry| entry.table.is_some())
+                .map_or(0, |position| position + 1);
+            let Some(offset) = stack.get(boundary..).and_then(|above| {
+                above.iter().rposition(|entry| {
+                    matches!(
+                        entry.kind,
+                        HtmlLayoutEntryKind::Container { name: open, .. } if open == name
+                    )
+                })
+            }) else {
+                return;
+            };
+            let position = boundary + offset;
+            if stack
+                .get(position)
+                .is_some_and(|entry| entry.depth == depth)
+            {
+                stack.truncate(position);
+            }
+        }
+    }
+}
+
+/// Applies one table tag to the stack of what is open, returning the table it
+/// belongs to and what it does, or `None` for a tag no open table can take.
+fn apply_html_table_tag(
+    stack: &mut Vec<HtmlLayoutEntry>,
+    tables: &mut Vec<HtmlTableRecord>,
+    kind: html::html_parser::HtmlLayoutTagKind,
+    depth: usize,
+    source_start: usize,
+) -> Option<(usize, Vec<HtmlTableOp>)> {
+    use html::html_parser::{HtmlLayoutTagKind, HtmlSpanningCell, MAX_SPANNING_TABLE_COLUMNS};
+
+    let mut ops = Vec::new();
+
+    if let HtmlLayoutTagKind::OpenTable { text_align } = kind {
+        // A table straight inside a row has nowhere to go but out of the
+        // enclosing table, which a browser moves it in front of.
+        mark_markdown_outside_cells(stack, tables);
+        let table = tables.len();
+        tables.push(HtmlTableRecord {
+            source_start,
+            text_align: text_align.or_else(|| html_layout_text_align(stack, None)),
+            closed: false,
+            broken: false,
+            block_starts: Vec::new(),
+            row_count: 0,
+            row_has_cells: false,
+            current_row: 0,
+            next_column: 0,
+            column_count: 0,
+            column_widths: Vec::new(),
+        });
+        stack.push(HtmlLayoutEntry {
+            kind: HtmlLayoutEntryKind::Table,
+            table: Some(table),
+            depth,
+        });
+        ops.push(HtmlTableOp::OpenTable);
+        return Some((table, ops));
+    }
+
+    let table_position = stack
+        .iter()
+        .rposition(|entry| matches!(entry.kind, HtmlLayoutEntryKind::Table))?;
+    let table_entry = stack.get(table_position)?;
+    let table = table_entry.table?;
+    let table_depth = table_entry.depth;
+    let record = tables.get_mut(table)?;
+    if table_depth != depth {
+        record.broken = true;
+        return None;
+    }
+
+    let above_table = table_position + 1;
+    let find_above = |stack: &[HtmlLayoutEntry], wanted: fn(&HtmlLayoutEntryKind) -> bool| {
+        stack
+            .get(above_table..)
+            .and_then(|above| above.iter().rposition(|entry| wanted(&entry.kind)))
+            .map(|offset| above_table + offset)
+    };
+    // Where a new row goes: right above the innermost section, or the table.
+    let row_anchor = find_above(stack, |kind| matches!(kind, HtmlLayoutEntryKind::Section))
+        .map_or(above_table, |position| position + 1);
+
+    match kind {
+        HtmlLayoutTagKind::CloseTable => {
+            pop_html_table_entries(stack, table_position, record, &mut ops);
+        }
+        HtmlLayoutTagKind::OpenSection => {
+            pop_html_table_entries(stack, above_table, record, &mut ops);
+            stack.push(HtmlLayoutEntry {
+                kind: HtmlLayoutEntryKind::Section,
+                table: Some(table),
+                depth,
+            });
+        }
+        HtmlLayoutTagKind::CloseSection => {
+            if let Some(position) =
+                find_above(stack, |kind| matches!(kind, HtmlLayoutEntryKind::Section))
+            {
+                pop_html_table_entries(stack, position, record, &mut ops);
+            }
+        }
+        HtmlLayoutTagKind::OpenRow {
+            text_align,
+            vertical_align,
+        } => {
+            pop_html_table_entries(stack, row_anchor, record, &mut ops);
+            stack.push(HtmlLayoutEntry {
+                kind: HtmlLayoutEntryKind::Row {
+                    text_align,
+                    vertical_align,
+                },
+                table: Some(table),
+                depth,
+            });
+        }
+        HtmlLayoutTagKind::CloseRow => {
+            if let Some(position) = find_above(stack, |kind| {
+                matches!(kind, HtmlLayoutEntryKind::Row { .. })
+            }) {
+                pop_html_table_entries(stack, position, record, &mut ops);
+            }
+        }
+        HtmlLayoutTagKind::OpenCell {
+            is_header,
+            text_align,
+            vertical_align,
+            col_span,
+            width,
+        } => {
+            let row_position = match find_above(stack, |kind| {
+                matches!(kind, HtmlLayoutEntryKind::Row { .. })
+            }) {
+                Some(position) => {
+                    pop_html_table_entries(stack, position + 1, record, &mut ops);
+                    position
+                }
+                // A cell with no row around it starts one, as in a browser.
+                None => {
+                    pop_html_table_entries(stack, row_anchor, record, &mut ops);
+                    stack.push(HtmlLayoutEntry {
+                        kind: HtmlLayoutEntryKind::Row {
+                            text_align: None,
+                            vertical_align: None,
+                        },
+                        table: Some(table),
+                        depth,
+                    });
+                    stack.len() - 1
+                }
+            };
+            let (row_text_align, row_vertical_align) = match stack.get(row_position) {
+                Some(HtmlLayoutEntry {
+                    kind:
+                        HtmlLayoutEntryKind::Row {
+                            text_align,
+                            vertical_align,
+                        },
+                    ..
+                }) => (*text_align, *vertical_align),
+                _ => (None, None),
+            };
+
+            if !record.row_has_cells {
+                record.current_row = record.row_count;
+                record.row_count += 1;
+                record.next_column = 0;
+                record.row_has_cells = true;
+            }
+            let column = record.next_column;
+            if column >= MAX_SPANNING_TABLE_COLUMNS {
+                record.broken = true;
+                return None;
+            }
+            let col_span = col_span.min(MAX_SPANNING_TABLE_COLUMNS - column);
+            record.next_column = column + col_span;
+            record.column_count = record.column_count.max(record.next_column);
+            if col_span == 1
+                && let Some(width) = width
+            {
+                if record.column_widths.len() <= column {
+                    record.column_widths.resize(column + 1, None);
+                }
+                if let Some(column_width) = record.column_widths.get_mut(column) {
+                    *column_width = Some(column_width.map_or(width, |known| known.max(width)));
+                }
+            }
+
+            let text_align = text_align
+                .or(row_text_align)
+                .or(is_header.then_some(gpui::TextAlign::Center));
+            stack.push(HtmlLayoutEntry {
+                kind: HtmlLayoutEntryKind::Cell { text_align },
+                table: Some(table),
+                depth,
+            });
+            ops.push(HtmlTableOp::OpenCell(HtmlSpanningCell {
+                row: record.current_row,
+                column,
+                col_span,
+                is_header,
+                text_align,
+                vertical_align: vertical_align.or(row_vertical_align).unwrap_or_default(),
+            }));
+        }
+        HtmlLayoutTagKind::CloseCell => {
+            if let Some(position) = find_above(stack, |kind| {
+                matches!(kind, HtmlLayoutEntryKind::Cell { .. })
+            }) {
+                pop_html_table_entries(stack, position, record, &mut ops);
+            }
+        }
+        HtmlLayoutTagKind::OpenTable { .. } | HtmlLayoutTagKind::Container(_) => {}
+    }
+
+    Some((table, ops))
+}
+
+/// Closes everything of the innermost table above `keep`, the way the tag
+/// that closes an outer part of the table closes its inner parts.
+fn pop_html_table_entries(
+    stack: &mut Vec<HtmlLayoutEntry>,
+    keep: usize,
+    record: &mut HtmlTableRecord,
+    ops: &mut Vec<HtmlTableOp>,
+) {
+    while stack.len() > keep {
+        let Some(entry) = stack.pop() else {
+            break;
+        };
+        match entry.kind {
+            HtmlLayoutEntryKind::Cell { .. } => ops.push(HtmlTableOp::CloseCell),
+            HtmlLayoutEntryKind::Row { .. } => {
+                if record.row_has_cells {
+                    ops.push(HtmlTableOp::EndRow {
+                        row: record.current_row,
+                        used_columns: record.next_column,
+                    });
+                }
+                record.row_has_cells = false;
+            }
+            HtmlLayoutEntryKind::Table => {
+                ops.push(HtmlTableOp::CloseTable);
+                record.closed = true;
+            }
+            HtmlLayoutEntryKind::Section | HtmlLayoutEntryKind::Container { .. } => {}
         }
     }
 }
@@ -1724,8 +2588,10 @@ pub enum InlineHtmlStyle {
 }
 
 /// What a `<span>`, `<mark>` or `<font>` asks the preview to draw. Colors are
-/// `0xRRGGBB`; a `<mark>` carries the yellow background and black text a
-/// browser gives it unless its `style` says otherwise.
+/// `0xRRGGBB`, a translucent one with its transparency in the top byte (write
+/// one out with [`inline_span_css_color`]); a `<mark>` carries the yellow
+/// background and black text a browser gives it unless its `style` says
+/// otherwise.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InlineSpanStyle {
     pub color: Option<u32>,
@@ -1734,6 +2600,18 @@ pub struct InlineSpanStyle {
     /// wraps a paragraph's whole content. A span over part of a paragraph
     /// leaves this unset: a line is laid out at a single font size.
     pub paragraph_scale_percent: Option<u16>,
+}
+
+/// A color of an [`InlineSpanStyle`] as CSS: `#rrggbb`, or `rgba()` for a
+/// translucent one.
+pub fn inline_span_css_color(color: u32) -> String {
+    match html::html_parser::css_color_channels(color) {
+        [red, green, blue, u8::MAX] => format!("#{red:02x}{green:02x}{blue:02x}"),
+        [red, green, blue, alpha] => {
+            let alpha = f32::from(alpha) / 255.0;
+            format!("rgba({red}, {green}, {blue}, {alpha:.3})")
+        }
+    }
 }
 
 /// Tags for elements that can contain other elements.
@@ -1922,6 +2800,531 @@ mod tests {
     use super::MarkdownTag::*;
     use super::*;
     use gpui::TextAlign;
+
+    /// Tables whose cells hold markdown written between the table's blocks.
+    mod table_spans {
+        use super::*;
+        use html::html_parser::{
+            HtmlContainerName, HtmlContainerTag, HtmlParagraphChunk, HtmlSpanningCell,
+            HtmlSpanningTable, HtmlTablePart, HtmlVerticalAlign, ParsedHtmlElement,
+            html_details_key, html_paragraph_text,
+        };
+
+        fn table_parts(source: &str, block_source: &str) -> Vec<HtmlTablePart> {
+            let block_start = source
+                .find(block_source)
+                .expect("the block is in the source");
+            parse_markdown_with_options(source, true, false, false)
+                .html_blocks
+                .get(&block_start)
+                .map(|block| block.table_parts.clone())
+                .expect("the block should be an HTML block")
+        }
+
+        fn has_table_parts(source: &str) -> bool {
+            parse_markdown_with_options(source, true, false, false)
+                .html_blocks
+                .values()
+                .any(|block| !block.table_parts.is_empty())
+        }
+
+        fn cell(row: usize, column: usize) -> HtmlSpanningCell {
+            HtmlSpanningCell {
+                row,
+                column,
+                col_span: 1,
+                is_header: false,
+                text_align: None,
+                vertical_align: HtmlVerticalAlign::Middle,
+            }
+        }
+
+        fn table(source_start: usize, column_count: usize) -> HtmlSpanningTable {
+            HtmlSpanningTable {
+                source_start,
+                column_count,
+                text_align: None,
+                column_widths: vec![None; column_count],
+            }
+        }
+
+        /// The README layout the change is for: a blank line after `<td>` ends
+        /// the HTML block, so each cell's body arrives as markdown between the
+        /// table's blocks.
+        #[test]
+        fn test_table_cells_hold_the_markdown_between_their_blocks() {
+            let source = "<table>\n<tr>\n<td>\n\n**左の列** の本文\n\n- 項目\n\n</td>\n<td>\n\n![](右.png)\n\n</td>\n</tr>\n</table>\n\n後ろ\n";
+
+            assert_eq!(
+                table_parts(source, "<table>"),
+                vec![
+                    HtmlTablePart::OpenTable(table(0, 2)),
+                    HtmlTablePart::OpenCell(cell(0, 0)),
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "</td>\n<td>"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::OpenCell(cell(0, 1))
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "</td>\n</tr>"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::EndRow {
+                        row: 0,
+                        used_columns: 2
+                    },
+                    HtmlTablePart::CloseTable,
+                ]
+            );
+        }
+
+        #[test]
+        fn test_table_rows_headers_and_cell_attributes_span_blocks() {
+            let source = "<table>\n<thead>\n<tr>\n<th colspan=\"2\">\n\n見出し\n\n</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td valign=\"top\" width=\"120\">\n\n左\n\n</td>\n<td align=\"right\">\n\n右\n\n</td>\n</tr>\n<tr>\n<td>\n\n下\n\n</td>\n</tr>\n</tbody>\n</table>\n";
+
+            assert_eq!(
+                table_parts(source, "<table>"),
+                vec![
+                    HtmlTablePart::OpenTable(HtmlSpanningTable {
+                        column_widths: vec![Some(120.0), None],
+                        ..table(0, 2)
+                    }),
+                    HtmlTablePart::OpenCell(HtmlSpanningCell {
+                        col_span: 2,
+                        is_header: true,
+                        text_align: Some(TextAlign::Center),
+                        ..cell(0, 0)
+                    }),
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "</th>"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::EndRow {
+                        row: 0,
+                        used_columns: 2
+                    },
+                    HtmlTablePart::OpenCell(HtmlSpanningCell {
+                        vertical_align: HtmlVerticalAlign::Top,
+                        ..cell(1, 0)
+                    }),
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "</td>\n<td align"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::OpenCell(HtmlSpanningCell {
+                        text_align: Some(TextAlign::Right),
+                        ..cell(1, 1)
+                    }),
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "</td>\n</tr>\n<tr>"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::EndRow {
+                        row: 1,
+                        used_columns: 2
+                    },
+                    HtmlTablePart::OpenCell(cell(2, 0)),
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "</td>\n</tr>\n</tbody>"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::EndRow {
+                        row: 2,
+                        used_columns: 1
+                    },
+                    HtmlTablePart::CloseTable,
+                ]
+            );
+        }
+
+        /// `<td>` closes the cell before it and `</tr>` its last cell, the way
+        /// a browser reads them, so leaving out `</td>` still pairs.
+        #[test]
+        fn test_cells_close_by_implication() {
+            let source = "<table>\n<tr>\n<td>\n\n左\n\n<td>\n\n右\n\n</tr>\n</table>\n";
+            assert_eq!(
+                table_parts(source, "<td>\n\n右"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::OpenCell(cell(0, 1))
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "</tr>"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::EndRow {
+                        row: 0,
+                        used_columns: 2
+                    },
+                    HtmlTablePart::CloseTable,
+                ]
+            );
+        }
+
+        /// A cell written whole in the opening block keeps its HTML, and sits
+        /// in the same table as the markdown cell after it.
+        #[test]
+        fn test_html_cells_and_markdown_cells_share_a_table() {
+            let source = "<table><tr><td align=\"center\">本文 <b>太字</b></td><td>\n\n**markdown**\n\n</td></tr></table>\n";
+            let block = parse_markdown_with_options(source, true, false, false)
+                .html_blocks
+                .get(&0)
+                .cloned()
+                .expect("the table block is an HTML block");
+
+            assert_eq!(
+                block.table_parts,
+                vec![
+                    HtmlTablePart::OpenTable(table(0, 2)),
+                    HtmlTablePart::OpenCell(HtmlSpanningCell {
+                        text_align: Some(TextAlign::Center),
+                        ..cell(0, 0)
+                    }),
+                    HtmlTablePart::Elements(0..1),
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::OpenCell(cell(0, 1)),
+                ]
+            );
+            match block.children.as_slice() {
+                [ParsedHtmlElement::Paragraph(paragraph)] => {
+                    assert_eq!(html_paragraph_text(&paragraph.contents), "本文 太字");
+                    assert_eq!(paragraph.text_align, Some(TextAlign::Center));
+                }
+                other => panic!("expected the cell's paragraph, got {other:?}"),
+            }
+
+            // A cell that does not say takes the alignment of a container an
+            // earlier block opened around the table.
+            let source = "<div align=\"right\">\n\n<table><tr><td>本文</td><td>\n\n**markdown**\n\n</td></tr></table>\n\n</div>\n";
+            let table_start = source.find("<table>").unwrap_or_default();
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            let children = parsed
+                .html_blocks
+                .get(&table_start)
+                .map(|block| block.children.clone())
+                .unwrap_or_default();
+            match children.as_slice() {
+                [ParsedHtmlElement::Paragraph(paragraph)] => {
+                    assert_eq!(paragraph.text_align, Some(TextAlign::Right));
+                }
+                other => panic!("expected the cell's paragraph, got {other:?}"),
+            }
+        }
+
+        /// The HTML around the table in its own blocks is still drawn, before
+        /// and after the table.
+        #[test]
+        fn test_html_around_the_table_stays_in_its_place() {
+            let source = "<p>前</p>\n<table><tr><td>\n\n中\n\n</td></tr></table>\n<p>後</p>\n";
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            let texts = |block_start: usize| {
+                let block = parsed.html_blocks.get(&block_start).expect("an HTML block");
+                block
+                    .table_parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        HtmlTablePart::Elements(range) => block.children.get(range.clone()),
+                        _ => None,
+                    })
+                    .flatten()
+                    .map(|element| match element {
+                        ParsedHtmlElement::Paragraph(paragraph) => {
+                            html_paragraph_text(&paragraph.contents)
+                        }
+                        other => panic!("unexpected element {other:?}"),
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(texts(0), vec!["前".to_string()]);
+            let closing = source.find("</td>").expect("the closing block");
+            assert_eq!(texts(closing), vec!["後".to_string()]);
+            assert!(matches!(
+                parsed
+                    .html_blocks
+                    .get(&0)
+                    .map(|block| block.table_parts.as_slice()),
+                Some([HtmlTablePart::Elements(_), HtmlTablePart::OpenTable(_), ..])
+            ));
+        }
+
+        /// What cannot be paired is drawn as it was before rather than losing
+        /// what does not fit in a cell.
+        #[test]
+        fn test_table_that_does_not_pair_is_drawn_as_before() {
+            for source in [
+                // Never closed.
+                "<table>\n<tr>\n<td>\n\n本文\n",
+                "<table>\n<tr>\n<td>\n\n本文\n\n</td>\n</tr>\n",
+                // Markdown between two cells has no cell to go in.
+                "<table>\n<tr>\n<td>\n\nA\n\n</td>\n\n外\n\n<td>\n\nB\n\n</td>\n</tr>\n</table>\n",
+                // Text between the table and its first row.
+                "<table>文字<tr><td>\n\nA\n\n</td></tr></table>\n",
+                // Opened in a list item, closed outside it.
+                "- <table><tr><td>\n\n  本文\n\n</td></tr></table>\n",
+                // The document ends in the middle of a nested table.
+                "<table><tr><td>\n\n<table><tr><td>\n\n中\n",
+                // `</td>` with no table.
+                "本文\n\n</td></tr></table>\n",
+                // Closed from inside a list in the cell.
+                "<table><tr><td>\n\n- </td></tr></table>\n",
+                // Whole in one block, which the HTML parser draws by itself.
+                "<table><tr><td>本文</td></tr></table>\n\n後ろ\n",
+                // A caption has no place among the cells, so it would be lost.
+                "<table>\n<caption>表題</caption>\n<tr>\n<td>\n\nA\n\n</td>\n</tr>\n</table>\n",
+            ] {
+                assert!(!has_table_parts(source), "{source:?}");
+                let parsed = parse_markdown_with_options(source, true, false, false);
+                for block in parsed.html_blocks.values() {
+                    assert!(
+                        !block.container_tags.iter().any(|tag| matches!(
+                            tag,
+                            HtmlContainerTag::Open {
+                                name: HtmlContainerName::TableCell,
+                                ..
+                            } | HtmlContainerTag::Close(HtmlContainerName::TableCell)
+                        )),
+                        "{source:?}"
+                    );
+                }
+            }
+        }
+
+        /// A `</div>` inside a cell cannot close a `<div>` around the table,
+        /// the way a browser ignores it, so the table still pairs.
+        #[test]
+        fn test_a_stray_div_close_in_a_cell_keeps_the_table() {
+            let source = "<div align=\"center\"><table><tr><td>\n\n中\n\n</div>\n\n</td><td>\n\n右\n\n</td></tr></table></div>\n";
+            assert_eq!(
+                table_parts(source, "</td><td>"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::OpenCell(cell(0, 1))
+                ]
+            );
+        }
+
+        #[test]
+        fn test_table_with_crlf_line_endings_pairs() {
+            let source = "<table>\r\n<tr>\r\n<td>\r\n\r\n**左** の本文\r\n\r\n</td>\r\n<td>\r\n\r\n右\r\n\r\n</td>\r\n</tr>\r\n</table>\r\n\r\n後ろ\r\n";
+            assert_eq!(
+                table_parts(source, "</td>\r\n<td>"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::OpenCell(cell(0, 1))
+                ]
+            );
+        }
+
+        #[test]
+        fn test_comments_and_row_groups_between_rows_still_pair() {
+            let source = "<table>\n<!-- 表 -->\n<tbody>\n<tr>\n<td>\n\nA\n\n</td>\n</tr>\n</tbody>\n</table>\n";
+            assert!(has_table_parts(source));
+        }
+
+        #[test]
+        fn test_markdown_in_an_aligned_cell_is_aligned() {
+            let source = "<table>\n<tr>\n<th>\n\n見出し\n\n</th>\n<td align=\"center\">\n\n中央\n\n</td>\n<td align=\"right\">\n\n右\n\n<div align=\"center\">\n\n中の中央\n\n</div>\n\n右2\n\n</td>\n<td>\n\n左\n\n</td>\n</tr>\n</table>\n\n後ろ\n";
+            assert_eq!(
+                aligned_texts(source),
+                vec![
+                    ("見出し", Some(TextAlign::Center)),
+                    ("中央", Some(TextAlign::Center)),
+                    ("右", Some(TextAlign::Right)),
+                    ("中の中央", Some(TextAlign::Center)),
+                    ("右2", Some(TextAlign::Right)),
+                    ("左", None),
+                    ("後ろ", None),
+                ]
+            );
+        }
+
+        /// A `<div>` written in the same block as the `<td>` sits inside the
+        /// cell or around the table by where it is written, and `</td>` closes
+        /// one the cell leaves open.
+        #[test]
+        fn test_a_div_in_the_cells_block_aligns_by_where_it_is_written() {
+            let source = "<table><tr><td align=\"right\"><div align=\"center\">\n\n中\n\n</div>\n\n右\n\n</td><td>\n\n左\n\n</td></tr></table>\n";
+            assert_eq!(
+                aligned_texts(source),
+                vec![
+                    ("中", Some(TextAlign::Center)),
+                    ("右", Some(TextAlign::Right)),
+                    ("左", None),
+                ]
+            );
+
+            let source = "<div align=\"center\"><table><tr><td align=\"left\">\n\n左\n\n</td><td>\n\n中\n\n</td></tr></table></div>\n\n後ろ\n";
+            assert_eq!(
+                aligned_texts(source),
+                vec![
+                    ("左", Some(TextAlign::Left)),
+                    ("中", Some(TextAlign::Center)),
+                    ("後ろ", None),
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "<div").first(),
+                Some(&HtmlTablePart::OpenTable(HtmlSpanningTable {
+                    text_align: Some(TextAlign::Center),
+                    ..table(source.find("<table").unwrap_or_default(), 2)
+                }))
+            );
+
+            let source = "<table><tr><td><div align=\"center\">\n\n中\n\n</td><td>\n\n左\n\n</td></tr></table>\n";
+            assert_eq!(
+                aligned_texts(source),
+                vec![("中", Some(TextAlign::Center)), ("左", None)]
+            );
+        }
+
+        #[test]
+        fn test_an_aligned_div_around_the_table_reaches_its_cells() {
+            let source = "<div align=\"center\">\n\n<table>\n<tr>\n<td>\n\n中\n\n</td>\n<td align=\"left\">\n\n左\n\n</td>\n</tr>\n</table>\n\n</div>\n\n後ろ\n";
+            assert_eq!(
+                aligned_texts(source),
+                vec![
+                    ("中", Some(TextAlign::Center)),
+                    ("左", Some(TextAlign::Left)),
+                    ("後ろ", None),
+                ]
+            );
+            // The renderer centers the table itself from the aligned span.
+            assert_eq!(
+                table_parts(source, "<table>").first(),
+                Some(&HtmlTablePart::OpenTable(table(
+                    source.find("<table>").unwrap_or_default(),
+                    2
+                )))
+            );
+        }
+
+        #[test]
+        fn test_details_and_tables_nest_within_each_other() {
+            let details_blocks = |source: &str| {
+                parse_markdown_with_options(source, true, false, false)
+                    .html_blocks
+                    .values()
+                    .filter(|block| block.details_span.is_some())
+                    .count()
+            };
+
+            // A disclosure inside a cell.
+            let source = "<table><tr><td>\n\n<details><summary>もっと</summary>\n\n隠れる\n\n</details>\n\n</td><td>\n\n右\n\n</td></tr></table>\n";
+            assert!(has_table_parts(source));
+            assert_eq!(details_blocks(source), 1);
+
+            // A disclosure opened by the table's own block, as the last thing
+            // in it, is still the one its body belongs to.
+            let source = "<table><tr><td><details><summary>もっと</summary>\n\n隠れる\n\n</details>\n\n</td></tr></table>\n\n<details><summary>もっと</summary>別</details>\n";
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            let table_block = parsed.html_blocks.get(&0).expect("the table block");
+            assert!(table_block.details_span.is_some());
+            let Some(HtmlTablePart::Elements(range)) = table_block.table_parts.last() else {
+                panic!("the disclosure should end the block: {table_block:?}");
+            };
+            let Some(ParsedHtmlElement::Details(details)) = table_block
+                .children
+                .get(range.clone())
+                .and_then(|elements| elements.last())
+            else {
+                panic!("the disclosure should end the block: {table_block:?}");
+            };
+            assert_eq!(details.key, html_details_key("もっと", 0));
+            let later =
+                parsed
+                    .html_blocks
+                    .values()
+                    .last()
+                    .and_then(|block| match block.children.first() {
+                        Some(ParsedHtmlElement::Details(details)) => Some(details.key),
+                        _ => None,
+                    });
+            assert_eq!(later, Some(html_details_key("もっと", 1)));
+
+            // A table inside a disclosure.
+            let source = "<details><summary>表</summary>\n\n<table><tr><td>\n\n中\n\n</td></tr></table>\n\n</details>\n";
+            assert!(has_table_parts(source));
+
+            // A disclosure that closes outside the cell it opened in would hide
+            // some of the table's tags and not others.
+            let source = "<details><summary>表</summary>\n\n<table><tr><td>\n\n中\n\n</details>\n\n</td></tr></table>\n";
+            assert!(!has_table_parts(source));
+            let source = "<table><tr><td><details><summary>表</summary>\n\n中\n\n</td></tr></table>\n\n</details>\n";
+            assert!(!has_table_parts(source));
+            // Opened in one cell with its body in the next.
+            let source = "<table><tr><td><details><summary>表</summary></td><td>\n\n中\n\n</details>\n\n</td></tr></table>\n";
+            assert!(!has_table_parts(source));
+            let source = "<table><tr><td><details><summary>表</summary></td><td><details><summary>別</summary>閉じた</details>\n\n中\n\n</details>\n\n</td></tr></table>\n";
+            assert!(!has_table_parts(source));
+        }
+
+        #[test]
+        fn test_a_table_spanning_blocks_inside_a_cell() {
+            let source = "<table><tr><td>\n\n<table><tr><td>\n\n内\n\n</td></tr></table>\n\n</td><td>\n\n外\n\n</td></tr></table>\n";
+            let inner_start = source.find("<table><tr><td>\n\n内").unwrap_or_default();
+            assert_eq!(
+                table_parts(source, "<table><tr><td>\n\n内"),
+                vec![
+                    HtmlTablePart::OpenTable(table(inner_start, 1)),
+                    HtmlTablePart::OpenCell(cell(0, 0)),
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "</td></tr></table>\n\n</td>"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::EndRow {
+                        row: 0,
+                        used_columns: 1
+                    },
+                    HtmlTablePart::CloseTable,
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "</td><td>"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::OpenCell(cell(0, 1))
+                ]
+            );
+        }
+
+        /// An image written as its own HTML block inside an aligned cell is
+        /// aligned like one written inside the cell's own block.
+        #[test]
+        fn test_an_html_image_block_in_an_aligned_cell_is_aligned() {
+            let source =
+                "<table><tr><td align=\"center\">\n\n<img src=\"a.png\">\n\n</td></tr></table>\n";
+            let image_paragraph_align =
+                html_block_children(source, "<img")
+                    .iter()
+                    .find_map(|element| match element {
+                        ParsedHtmlElement::Paragraph(paragraph)
+                            if matches!(
+                                paragraph.contents.as_slice(),
+                                [HtmlParagraphChunk::Image(_)]
+                            ) =>
+                        {
+                            paragraph.text_align
+                        }
+                        _ => None,
+                    });
+            assert_eq!(image_paragraph_align, Some(TextAlign::Center));
+        }
+    }
 
     const CONDITIONAL_OPTIONS: Options = Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
     const UNWANTED_OPTIONS: Options = Options::ENABLE_MATH
@@ -3824,13 +5227,252 @@ mod tests {
             );
         }
 
-        // Parsing a disclosure again would lose the key its open state is
-        // stored under, so a closing block holding one is left as it was.
+        // A closing block holding a disclosure is aligned too.
         let source = "<div align=\"center\">\n\n本文\n\n<details><summary>題</summary>中</details>\n<img src=\"a.png\">\n</div>\n";
         assert_eq!(
             html_block_alignments(source, "<details"),
-            vec![("details", None), ("image", None)]
+            vec![("details", None), ("image", Some(TextAlign::Center))]
         );
+    }
+
+    /// A closing block is parsed again behind the containers it closes, which
+    /// must neither renumber the disclosures in it nor keep aligning what
+    /// follows a `</details>` that closes the aligned `<div>` inside it.
+    #[test]
+    fn test_closing_block_with_details_keeps_their_keys() {
+        use html::html_parser::{ParsedHtmlElement, html_details_key};
+
+        let source = "<details><summary>題</summary>一</details>\n\n<div align=\"center\">\n\n本文\n\n<details><summary>題</summary>二</details>\n</div>\n";
+        let second = source
+            .rfind("<details")
+            .expect("the second disclosure is there");
+        let parsed = parse_markdown_with_options(source, true, false, false);
+        let block = parsed
+            .html_blocks
+            .get(&second)
+            .expect("the closing block is an HTML block");
+        let [ParsedHtmlElement::Details(details)] = block.children.as_slice() else {
+            panic!("expected only the disclosure, got {:?}", block.children);
+        };
+        assert_eq!(
+            details.key,
+            html_details_key("題", 1),
+            "the disclosure is still the second one with its summary"
+        );
+        let [ParsedHtmlElement::Paragraph(body)] = details.children.as_slice() else {
+            panic!("expected the disclosure body, got {:?}", details.children);
+        };
+        assert_eq!(body.text_align, Some(TextAlign::Center));
+
+        let source = "<details><summary>題</summary>\n\n<div align=\"center\">\n\n本文\n\n<img src=\"a.png\">\n</details>\n<p>後ろ</p>\n";
+        assert_eq!(
+            html_block_alignments(source, "<img"),
+            vec![("image", Some(TextAlign::Center)), ("text", None)],
+            "`</details>` closes the `<div>` opened inside it"
+        );
+        assert_eq!(
+            aligned_texts(source),
+            vec![("本文", Some(TextAlign::Center))]
+        );
+    }
+
+    #[test]
+    fn test_tags_inside_raw_text_and_pre_open_no_containers() {
+        for source in [
+            "<script>\nlet html = \"<div align='center'>\";\n</script>\n\n本文\n\n</div>\n\n後ろ\n",
+            "<style>\n/* <div align=\"center\"> */\n</style>\n\n本文\n\n</div>\n\n後ろ\n",
+            "<textarea>\n<div align=\"center\">\n</textarea>\n\n本文\n\n</div>\n\n後ろ\n",
+            "<pre>\n<div align=\"center\">\n</pre>\n\n本文\n\n</div>\n\n後ろ\n",
+        ] {
+            assert_eq!(
+                aligned_texts(source),
+                vec![("本文", None), ("後ろ", None)],
+                "{source:?}"
+            );
+        }
+
+        // Nor do their closing tags close anything.
+        let source =
+            "<div align=\"center\">\n\n本文\n\n<pre>\n</div>\n</pre>\n\n中\n\n</div>\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("本文", Some(TextAlign::Center)),
+                ("中", Some(TextAlign::Center)),
+                ("後ろ", None),
+            ]
+        );
+    }
+
+    /// A script left open reads the rest of its own block as text, but the
+    /// next block is read as markup again.
+    #[test]
+    fn test_unclosed_script_only_hides_the_tags_of_its_own_block() {
+        let source = "<div align=\"center\">\n<script>\n</div>\n\n本文\n\n</div>\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![("本文", Some(TextAlign::Center)), ("後ろ", None)]
+        );
+    }
+
+    /// The summary of a disclosure opened by an earlier block can sit in the
+    /// closing block, after a blank line; parsing that block again behind a
+    /// `<details>` must not take it as the stand-in disclosure's summary.
+    #[test]
+    fn test_closing_block_keeps_a_summary_of_its_own() {
+        use html::html_parser::{ParsedHtmlElement, html_paragraph_text};
+
+        let source = "<div align=\"center\">\n<details>\n\n<summary>題</summary>\n<p>本文</p>\n</details>\n</div>\n\n後ろ\n";
+        let texts = html_block_children(source, "<summary")
+            .iter()
+            .map(|element| match element {
+                ParsedHtmlElement::Paragraph(paragraph) => (
+                    html_paragraph_text(&paragraph.contents),
+                    paragraph.text_align,
+                ),
+                other => panic!("unexpected element {other:?}"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            texts,
+            vec![
+                ("題".to_string(), Some(TextAlign::Center)),
+                ("本文".to_string(), Some(TextAlign::Center)),
+            ]
+        );
+    }
+
+    /// The keys of every disclosure in the document, in order.
+    fn details_keys(source: &str) -> Vec<html::html_parser::HtmlDetailsKey> {
+        use html::html_parser::ParsedHtmlElement;
+
+        fn collect(
+            elements: &[ParsedHtmlElement],
+            keys: &mut Vec<html::html_parser::HtmlDetailsKey>,
+        ) {
+            for element in elements {
+                match element {
+                    ParsedHtmlElement::Details(details) => {
+                        keys.push(details.key);
+                        collect(&details.children, keys);
+                    }
+                    ParsedHtmlElement::BlockQuote(block_quote) => {
+                        collect(&block_quote.children, keys)
+                    }
+                    ParsedHtmlElement::List(list) => {
+                        for item in &list.items {
+                            collect(&item.content, keys);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let mut keys = Vec::new();
+        for block in parse_markdown_with_options(source, true, false, false)
+            .html_blocks
+            .values()
+        {
+            collect(&block.children, &mut keys);
+        }
+        keys
+    }
+
+    /// Aligning a closing block that also closes a disclosure must number the
+    /// disclosures exactly as the same document without the alignment does,
+    /// or their open states would move to other disclosures.
+    #[test]
+    fn test_closing_block_with_details_numbers_disclosures_as_without_alignment() {
+        use html::html_parser::html_details_key;
+
+        let aligned = "<details>\n<summary>題</summary>\n\n<div align=\"center\">\n\n本文\n\n<details><summary>題</summary>二</details>\n</div>\n</details>\n\n<details><summary>題</summary>三</details>\n";
+        let plain = aligned.replace(" align=\"center\"", "");
+        let expected = vec![
+            html_details_key("題", 0),
+            html_details_key("題", 1),
+            html_details_key("題", 2),
+        ];
+        assert_eq!(details_keys(&plain), expected);
+        assert_eq!(details_keys(aligned), expected);
+    }
+
+    #[test]
+    fn test_aligned_div_does_not_leak_out_of_lists_and_quotes() {
+        // Opened in an item of a list inside an aligned `<div>`.
+        let source = "<div align=\"center\">\n\n- 一\n\n  <div align=\"right\">\n\n  右\n\n- 二\n\n</div>\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("一", Some(TextAlign::Center)),
+                ("右", Some(TextAlign::Right)),
+                ("二", Some(TextAlign::Center)),
+                ("後ろ", None),
+            ]
+        );
+
+        // Opened in a nested item: the next nested item and the outer list's
+        // next item are outside it.
+        let source = "- 外\n\n  - <div align=\"right\">\n\n    内\n\n  - 次\n\n- 二\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("外", None),
+                ("内", Some(TextAlign::Right)),
+                ("次", None),
+                ("二", None),
+                ("後ろ", None),
+            ]
+        );
+
+        // Closed from inside a block quote, so the `</div>` after the quote
+        // closes nothing and the text between is outside.
+        let source = "<div align=\"center\">\n\n> 引用\n>\n> </div>\n\n外\n\n</div>\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("引用", Some(TextAlign::Center)),
+                ("外", None),
+                ("後ろ", None),
+            ]
+        );
+
+        // Never closed after a list: nothing is aligned.
+        let source = "<div align=\"center\">\n\n- 一\n\n- 二\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![("一", None), ("二", None), ("後ろ", None)]
+        );
+    }
+
+    /// The HTML table of the block starting with `block_source`, with the
+    /// alignment it moves by.
+    fn html_block_table_alignment(source: &str, block_source: &str) -> Option<TextAlign> {
+        use html::html_parser::ParsedHtmlElement;
+
+        match html_block_children(source, block_source).as_slice() {
+            [ParsedHtmlElement::Table(table)] => table.text_align,
+            other => panic!("expected a table, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_aligned_div_moves_html_tables_as_a_whole() {
+        let source = "<div align=\"center\">\n\n<table><tr><td>セル</td></tr></table>\n\n</div>\n";
+        assert_eq!(
+            html_block_table_alignment(source, "<table"),
+            Some(TextAlign::Center)
+        );
+
+        let source = "<div align=\"right\"><table><tr><td>セル</td></tr></table></div>\n";
+        assert_eq!(
+            html_block_table_alignment(source, "<div"),
+            Some(TextAlign::Right)
+        );
+
+        // The table's own `align` places it, which is not what this carries.
+        let source = "<table align=\"center\"><tr><td>セル</td></tr></table>\n";
+        assert_eq!(html_block_table_alignment(source, "<table"), None);
     }
 
     #[test]
@@ -3864,18 +5506,43 @@ mod tests {
 
     #[test]
     fn test_aligned_div_does_not_reach_across_a_list_item() {
-        // Opened in a list item and closed after the list, where a browser
-        // would already have closed it with the item.
+        // Opened in a list item and closed after the list: a browser closes it
+        // with the item, and the `</div>` after the list closes nothing.
         let source = "- <div align=\"center\">\n\n  中\n\n</div>\n\n後ろ\n";
-        assert_eq!(aligned_texts(source), vec![("中", None), ("後ろ", None)]);
+        assert_eq!(
+            aligned_texts(source),
+            vec![("中", Some(TextAlign::Center)), ("後ろ", None)]
+        );
 
-        // Opened outside the list and closed inside an item.
-        let source = "<div align=\"center\">\n\n- 項目\n\n  </div>\n\n後ろ\n";
-        assert_eq!(aligned_texts(source), vec![("項目", None), ("後ろ", None)]);
+        // Never closed at all: the item still bounds it.
+        let source = "- <div align=\"right\">\n\n  中\n\n  中2\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("中", Some(TextAlign::Right)),
+                ("中2", Some(TextAlign::Right)),
+                ("後ろ", None)
+            ]
+        );
 
-        // Opened in one item and closed in the next.
+        // Opened outside the list and closed inside an item, which closes the
+        // container from there, so the next item is outside it.
+        let source = "<div align=\"center\">\n\n- 項目\n\n  </div>\n\n- 次\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("項目", Some(TextAlign::Center)),
+                ("次", None),
+                ("後ろ", None)
+            ]
+        );
+
+        // Opened in one item and closed in the next, where it is already closed.
         let source = "- <div align=\"center\">\n\n  中\n\n- </div>\n\n  次\n";
-        assert_eq!(aligned_texts(source), vec![("中", None), ("次", None)]);
+        assert_eq!(
+            aligned_texts(source),
+            vec![("中", Some(TextAlign::Center)), ("次", None)]
+        );
 
         // Opened and closed inside the same item.
         let source = "- 項目\n\n  <div align=\"right\">\n\n  右\n\n  </div>\n\n後ろ\n";
@@ -3932,7 +5599,11 @@ mod tests {
             // Opened in a block quote, which a browser closes with the quote.
             (
                 "> <div align=\"center\">\n>\n> 中\n\n本文\n\n</div>\n\n後ろ\n",
-                vec![("中", None), ("本文", None), ("後ろ", None)],
+                vec![
+                    ("中", Some(TextAlign::Center)),
+                    ("本文", None),
+                    ("後ろ", None),
+                ],
             ),
             // A `</div>` inside a comment or inline code closes nothing.
             (
@@ -4082,7 +5753,7 @@ mod tests {
     fn test_colors_the_preview_cannot_read_leave_the_text_plain() {
         for source in [
             "a <span style=\"color: nonsense\">x</span> b",
-            "a <span style=\"color: rgba(1, 2, 3, 0.5)\">x</span> b",
+            "a <span style=\"color: color-mix(in srgb, red, blue)\">x</span> b",
             "a <span style=\"color: #12345\">x</span> b",
             "a <span class=\"note\">x</span> b",
             "a <font size=\"5\">x</font> b",
@@ -4097,6 +5768,23 @@ mod tests {
                 parsed.events
             );
         }
+    }
+
+    #[test]
+    fn test_translucent_span_colors_reach_the_renderer_and_the_export() {
+        let styles = span_styles(
+            "a <span style=\"color: rgba(255, 0, 16, 0.5); background: hsl(0 100% 50%)\">x</span> <mark style=\"background-color: transparent\">y</mark>",
+        );
+        let [(_, translucent), (_, clear)] = styles.as_slice() else {
+            panic!("expected two styled spans: {styles:?}");
+        };
+        let color = translucent.color.expect("the span has a color");
+        assert_eq!(inline_span_css_color(color), "rgba(255, 0, 16, 0.502)");
+        let background = translucent.background.expect("the span has a background");
+        assert_eq!(background, 0xff0000);
+        assert_eq!(inline_span_css_color(background), "#ff0000");
+        let clear = clear.background.expect("the mark has a background");
+        assert_eq!(inline_span_css_color(clear), "rgba(0, 0, 0, 0.000)");
     }
 
     #[test]

@@ -39,6 +39,7 @@ use std::{
     num::NonZeroU32,
     ops::Range,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
 };
 use text::{BufferId, BufferSnapshot, OffsetRangeExt, Selection, ToPoint as _};
@@ -67,6 +68,18 @@ use zed_actions::preview::{
 };
 
 pub const MAX_TAB_TITLE_LEN: usize = 24;
+
+/// Takes over a drop onto an editor (files from the OS or the project panel),
+/// for a crate the editor cannot depend on (the Markdown image drop). It runs
+/// while the editor is being updated, so it gets the editor to read and a weak
+/// handle to edit it through later. Returns whether it consumed the drop; when
+/// it did not, the pane handles it as usual.
+#[derive(Clone)]
+pub struct EditorDropHandler(
+    pub Rc<dyn Fn(&Editor, WeakEntity<Editor>, &Pane, &dyn Any, &mut Window, &mut App) -> bool>,
+);
+
+impl gpui::Global for EditorDropHandler {}
 
 impl FollowableItem for Editor {
     fn remote_id(&self) -> Option<ViewId> {
@@ -1148,6 +1161,27 @@ impl Item for Editor {
                 self.load_folds_from_db(workspace_id, file_path, window, cx);
             }
         }
+    }
+
+    fn handle_drop(
+        &self,
+        active_pane: &Pane,
+        dropped: &dyn Any,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> bool {
+        let Some(handler) = cx.try_global::<EditorDropHandler>().cloned() else {
+            return false;
+        };
+        // The pane only offers drops to its active item, which is this editor;
+        // the handler needs the handle to edit it once the editor is free.
+        let Some(this) = active_pane
+            .active_item()
+            .and_then(|item| item.downcast::<Editor>())
+        else {
+            return false;
+        };
+        (handler.0)(self, this.downgrade(), active_pane, dropped, window, cx)
     }
 
     fn pane_changed(&mut self, new_pane_id: EntityId, cx: &mut Context<Self>) {

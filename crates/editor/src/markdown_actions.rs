@@ -1124,10 +1124,15 @@ impl Editor {
         let plan = match plan {
             Ok(plan) => plan,
             Err(refusal) => {
-                self.show_markdown_style_refusal(refusal, window, cx);
+                self.show_markdown_style_refusal(refusal.message().into(), window, cx);
                 return;
             }
         };
+        // What was left alone is told even though the rest was styled: the
+        // part that stayed plain is easy to miss in a long selection.
+        if let Some(refusal) = plan.partial_refusal {
+            self.show_markdown_style_refusal(refusal.partial_message().into(), window, cx);
+        }
         if plan.edits.is_empty() {
             return;
         }
@@ -1162,11 +1167,12 @@ impl Editor {
         });
     }
 
-    /// Tells the user why a styling action changed nothing, since a format bar
-    /// button that silently does nothing reads as a broken one.
+    /// Tells the user why a styling action changed nothing, or only some of
+    /// what was selected, since a format bar button that silently does nothing
+    /// reads as a broken one.
     fn show_markdown_style_refusal(
         &self,
-        refusal: StyleRefusal,
+        message: Cow<'static, str>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1179,10 +1185,7 @@ impl Editor {
         window.defer(cx, move |_, cx| {
             workspace.update(cx, |workspace, cx| {
                 workspace.show_toast(
-                    Toast::new(
-                        NotificationId::unique::<MarkdownStyleRefused>(),
-                        refusal.message(),
-                    ),
+                    Toast::new(NotificationId::unique::<MarkdownStyleRefused>(), message),
                     cx,
                 );
             });
@@ -1208,6 +1211,9 @@ enum StyleRefusal {
     InsideTag,
     CrossesTags,
     CrossesTableCells,
+    CrossesLink,
+    InsideLink,
+    StartsHtmlBlock,
     NothingSelected,
     NoTextColor,
     NoMarker,
@@ -1224,6 +1230,13 @@ impl StyleRefusal {
                 "選択範囲が既存の HTML タグ (文字色・マーカーなど) をまたいでいるため、変更できません。"
             }
             Self::CrossesTableCells => "表のセルをまたぐ範囲には書式を付けられません。",
+            Self::CrossesLink => {
+                "選択範囲がリンクや画像の書き方 ([文字](URL) など) の一部だけにかかっているため、変更できません。リンク全体か、リンクの文字だけを選んでください。"
+            }
+            Self::InsideLink => "リンクの URL や画像の書き方の中には書式を付けられません。",
+            Self::StartsHtmlBlock => {
+                "HTML ブロックの先頭からタグで包むと HTML ブロックが段落に変わってしまうため、変更できません。要素の中の文字だけを選んでください。"
+            }
             Self::NothingSelected => "書式を付ける文字がありません。",
             Self::NoTextColor => "選択範囲に文字色の付いた部分がありません。",
             Self::NoMarker => "選択範囲にマーカーの付いた部分がありません。",
@@ -1232,6 +1245,24 @@ impl StyleRefusal {
             }
             Self::NoTextSize => "文字サイズの指定された段落がありません。",
         }
+    }
+
+    /// Why part of the selection was left as it was while the rest was styled.
+    fn partial_message(self) -> String {
+        format!(
+            "選択範囲の一部には書式を付けられませんでした: {}",
+            self.message()
+        )
+    }
+
+    /// Whether this refusal leaves part of what was asked for undone. There
+    /// being nothing to take off in one paragraph, while another has a color to
+    /// remove, is just how a removal over several paragraphs goes.
+    fn leaves_request_undone(self) -> bool {
+        !matches!(
+            self,
+            Self::NothingSelected | Self::NoTextColor | Self::NoMarker | Self::NoTextSize
+        )
     }
 }
 
@@ -1242,6 +1273,8 @@ struct StylePlan {
     edits: Vec<StyleEdit>,
     /// Offsets into the text as it reads once `edits` are applied.
     selections: Vec<Range<usize>>,
+    /// Why part of the selections was left alone while the rest was styled.
+    partial_refusal: Option<StyleRefusal>,
 }
 
 /// A replacement of one range of the source, together with where a selection
@@ -2187,6 +2220,7 @@ struct MarkdownTextLayout<'a> {
     code_rows: Vec<bool>,
     blocks: Vec<TextBlock>,
     block_of_row: Vec<Option<usize>>,
+    links: Vec<LinkSyntax>,
 }
 
 impl<'a> MarkdownTextLayout<'a> {
@@ -2429,6 +2463,7 @@ impl<'a> MarkdownTextLayout<'a> {
             code_rows,
             blocks,
             block_of_row,
+            links: markdown_link_syntax(text),
         }
     }
 
@@ -2484,11 +2519,12 @@ impl<'a> MarkdownTextLayout<'a> {
     }
 
     /// The pieces of `selection` an inline styling action wraps: one per block,
-    /// kept to the block's text, and leaving out code.
+    /// kept to the block's text, and leaving out code. Along with them comes
+    /// why a block the selection touches got no piece, if one did not.
     fn inline_segments(
         &self,
         selection: &Range<usize>,
-    ) -> Result<Vec<InlineSegment>, StyleRefusal> {
+    ) -> Result<(Vec<InlineSegment>, Option<StyleRefusal>), StyleRefusal> {
         if selection.is_empty() {
             let row = self.row_of(selection.start);
             if self.is_code_row(row) {
@@ -2517,10 +2553,14 @@ impl<'a> MarkdownTextLayout<'a> {
                     return Err(StyleRefusal::NothingSelected);
                 }
                 let offset = selection.start.max(line.start + text_start);
-                return Ok(vec![InlineSegment {
-                    range: offset..offset,
-                    elements: Vec::new(),
-                }]);
+                return Ok((
+                    vec![InlineSegment {
+                        range: offset..offset,
+                        elements: Vec::new(),
+                        wrap_refusal: None,
+                    }],
+                    None,
+                ));
             };
             let offset = selection
                 .start
@@ -2538,10 +2578,14 @@ impl<'a> MarkdownTextLayout<'a> {
             {
                 return Err(StyleRefusal::InsideTag);
             }
-            return Ok(vec![InlineSegment {
-                range: offset..offset,
-                elements: scan_styled_elements(self.text, block.content.clone(), &code_spans),
-            }]);
+            return Ok((
+                vec![InlineSegment {
+                    range: offset..offset,
+                    elements: scan_styled_elements(self.text, block.content.clone(), &code_spans),
+                    wrap_refusal: self.wrap_refusal(block, &(offset..offset)),
+                }],
+                None,
+            ));
         }
 
         let (block_indices, saw_code) = self.blocks_touched_by(selection);
@@ -2586,6 +2630,7 @@ impl<'a> MarkdownTextLayout<'a> {
                 continue;
             }
             segments.push(InlineSegment {
+                wrap_refusal: self.wrap_refusal(block, &(start..end)),
                 range: start..end,
                 elements: scan_styled_elements(self.text, block.content.clone(), &code_spans),
             });
@@ -2598,8 +2643,116 @@ impl<'a> MarkdownTextLayout<'a> {
                 StyleRefusal::NothingSelected
             }));
         }
-        Ok(segments)
+        Ok((segments, refusal))
     }
+
+    /// Why new tags around `segment` of `block` would change what the Markdown
+    /// around them means, if they would.
+    fn wrap_refusal(&self, block: &TextBlock, segment: &Range<usize>) -> Option<StyleRefusal> {
+        if self.links.iter().any(|link| link.is_cut_by(segment)) {
+            return Some(if segment.is_empty() {
+                StyleRefusal::InsideLink
+            } else {
+                StyleRefusal::CrossesLink
+            });
+        }
+        // An HTML block is one only while its first line starts with the tag it
+        // starts with: a `<span` in front of it turns the block into a
+        // paragraph, and its tags into inline HTML.
+        (block.kind == TextBlockKind::Html && segment.start == block.content.start)
+            .then_some(StyleRefusal::StartsHtmlBlock)
+    }
+}
+
+/// A Markdown link or image, whose syntax a new tag must not cut into:
+/// `[text](url)`, `[text][label]`, `![alt](src)`, `<https://…>` or a bare URL
+/// the preview turns into a link.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LinkSyntax {
+    outer: Range<usize>,
+    /// The text of a `[text](…)` link, where a tag is just more of the link's
+    /// text. An image's alt text and an autolink's address have none: a tag
+    /// there would be written into the alt text, or cut the address short.
+    /// An `<a>` element is no link here, since these events leave inline HTML
+    /// unparsed; its tags are kept whole the way every other tag is.
+    text: Option<Range<usize>>,
+}
+
+impl LinkSyntax {
+    /// Whether new tags around `segment` would land in the link's syntax
+    /// rather than around the whole link or inside its text.
+    fn is_cut_by(&self, segment: &Range<usize>) -> bool {
+        if self
+            .text
+            .as_ref()
+            .is_some_and(|text| text.start <= segment.start && segment.end <= text.end)
+        {
+            return false;
+        }
+        if segment.is_empty() {
+            return self.outer.start < segment.start && segment.start < self.outer.end;
+        }
+        let overlaps = segment.start < self.outer.end && self.outer.start < segment.end;
+        let contains = segment.start <= self.outer.start && self.outer.end <= segment.end;
+        overlaps && !contains
+    }
+}
+
+/// The links and images of `text`, found the way the preview finds them, so
+/// that reference links resolve against the document's definitions and bare
+/// URLs are the ones the preview links.
+fn markdown_link_syntax(text: &str) -> Vec<LinkSyntax> {
+    use markdown::parser::{MarkdownEvent, MarkdownTag, MarkdownTagEnd};
+
+    struct OpenLink {
+        outer: Range<usize>,
+        has_text: bool,
+        children: Option<Range<usize>>,
+    }
+
+    let mut links = Vec::new();
+    let mut open: Vec<OpenLink> = Vec::new();
+    for (range, event) in markdown::parser::parse_markdown_events(text) {
+        if matches!(
+            event,
+            MarkdownEvent::End(MarkdownTagEnd::Link | MarkdownTagEnd::Image)
+        ) && let Some(link) = open.pop()
+        {
+            let text_range = link.has_text.then(|| {
+                link.children.unwrap_or_else(|| {
+                    let after_bracket = link.outer.start + 1;
+                    after_bracket..after_bracket
+                })
+            });
+            links.push(LinkSyntax {
+                outer: link.outer,
+                text: text_range,
+            });
+        }
+        for link in &mut open {
+            link.children = Some(match link.children.take() {
+                Some(children) => children.start.min(range.start)..children.end.max(range.end),
+                None => range.clone(),
+            });
+        }
+        match event {
+            MarkdownEvent::Start(MarkdownTag::Link { .. }) => {
+                let source = text.get(range.clone()).unwrap_or_default();
+                open.push(OpenLink {
+                    has_text: source.starts_with('['),
+                    outer: range,
+                    children: None,
+                });
+            }
+            MarkdownEvent::Start(MarkdownTag::Image { .. }) => open.push(OpenLink {
+                outer: range,
+                has_text: false,
+                children: None,
+            }),
+            _ => {}
+        }
+    }
+    links
 }
 
 fn contains_unescaped_pipe(text: &str) -> bool {
@@ -2619,6 +2772,9 @@ fn contains_unescaped_pipe(text: &str) -> bool {
 struct InlineSegment {
     range: Range<usize>,
     elements: Vec<StyledElement>,
+    /// Why the segment cannot be wrapped in new tags. Rewriting an element
+    /// that is already there is still fine.
+    wrap_refusal: Option<StyleRefusal>,
 }
 
 impl InlineSegment {
@@ -2655,12 +2811,24 @@ fn plan_inline_style(
 ) -> Result<StylePlan, StyleRefusal> {
     let layout = MarkdownTextLayout::new(text);
     let mut refusal = None;
+    let mut partial_refusal = None;
+    let mut note_partial = |reason: StyleRefusal| {
+        if reason.leaves_request_undone() {
+            partial_refusal.get_or_insert(reason);
+        }
+    };
     let segments_per_selection = selections
         .iter()
         .map(|selection| match layout.inline_segments(selection) {
-            Ok(segments) => segments,
+            Ok((segments, skipped)) => {
+                if let Some(reason) = skipped {
+                    note_partial(reason);
+                }
+                segments
+            }
             Err(reason) => {
                 refusal.get_or_insert(reason);
+                note_partial(reason);
                 Vec::new()
             }
         })
@@ -2706,6 +2874,7 @@ fn plan_inline_style(
                 }
                 Err(reason) => {
                     refusal.get_or_insert(reason);
+                    note_partial(reason);
                 }
             }
         }
@@ -2732,7 +2901,10 @@ fn plan_inline_style(
         .zip(&cursor_positions)
         .map(|(selection, cursor)| cursor.map_or(selection.clone(), |cursor| cursor..cursor))
         .collect::<Vec<_>>();
-    Ok(style_plan(edits, &selections))
+    Ok(StylePlan {
+        partial_refusal,
+        ..style_plan(edits, &selections)
+    })
 }
 
 fn style_plan(mut edits: Vec<StyleEdit>, selections: &[Range<usize>]) -> StylePlan {
@@ -2745,7 +2917,11 @@ fn style_plan(mut edits: Vec<StyleEdit>, selections: &[Range<usize>]) -> StylePl
             start..end.max(start)
         })
         .collect();
-    StylePlan { edits, selections }
+    StylePlan {
+        edits,
+        selections,
+        partial_refusal: None,
+    }
 }
 
 /// The edits an inline styling action makes to one segment.
@@ -2797,6 +2973,9 @@ fn segment_style_edits(
                     edits.extend(inner_colored);
                 }
                 None => {
+                    if let Some(refusal) = segment.wrap_refusal {
+                        return Err(refusal);
+                    }
                     // `<mark>` paints its text black, so a color for a whole
                     // marker goes inside it, where it wins.
                     let range = segment
@@ -2869,6 +3048,9 @@ fn segment_style_edits(
                     Ok(edits)
                 }
                 None => {
+                    if let Some(refusal) = segment.wrap_refusal {
+                        return Err(refusal);
+                    }
                     // A marker over exactly the text of a span goes around the
                     // span: `<mark>` paints its text black, which would hide a
                     // color the span gives it from inside.
@@ -3009,7 +3191,17 @@ fn plan_paragraph_size(
     if !any_applied {
         return Err(refusal.unwrap_or(StyleRefusal::NoParagraph));
     }
-    Ok(style_plan(edits, selections))
+    // A reset has nothing to take off a heading or a table, so only a size
+    // that some block could not take is worth telling about.
+    let partial_refusal = size
+        .is_some()
+        .then_some(refusal)
+        .flatten()
+        .filter(|refusal| refusal.leaves_request_undone());
+    Ok(StylePlan {
+        partial_refusal,
+        ..style_plan(edits, selections)
+    })
 }
 
 #[cfg(test)]
@@ -3493,6 +3685,313 @@ mod style_tests {
         assert_eq!(
             inline("a < b > «c»", Request::SetTextColor(RED)),
             "a < b > <span style=\"color: #d44c47\">«c»</span>"
+        );
+    }
+
+    #[test]
+    fn test_inline_styles_leave_link_syntax_whole() {
+        const RED_SPAN: &str = "<span style=\"color: #d44c47\">";
+
+        // Half of a link, or its destination, would come apart around a tag.
+        for marked in [
+            "a «[li»nk](url) b",
+            "a [li«nk](url) b»",
+            "[link](u«r»l)",
+            "[link]«(url)»",
+            "[te«xt][r»ef]\n\n[ref]: https://example.com",
+            "![a«l»t](x.png)",
+            "[![«a](b.png)» x](url)",
+            "see https://exa«mple».com now",
+            "a [«b](c) [d»](e)",
+        ] {
+            assert_eq!(
+                inline(marked, Request::SetTextColor(RED)),
+                "refused: CrossesLink",
+                "{marked}"
+            );
+            assert_eq!(
+                inline(marked, Request::SetMarker(None)),
+                "refused: CrossesLink",
+                "{marked}"
+            );
+        }
+        assert_eq!(
+            inline("[link](urˇl)", Request::SetTextColor(RED)),
+            "refused: InsideLink"
+        );
+        assert_eq!(
+            inline("![alˇt](x.png)", Request::ToggleMarker),
+            "refused: InsideLink"
+        );
+        assert_eq!(
+            inline(
+                "[text][rˇef]\n\n[ref]: https://example.com",
+                Request::SetTextColor(RED)
+            ),
+            "refused: InsideLink"
+        );
+
+        // The whole link, or text inside its brackets, is fine.
+        assert_eq!(
+            inline("«[link](url)» b", Request::SetTextColor(RED)),
+            format!("{RED_SPAN}«[link](url)»</span> b")
+        );
+        assert_eq!(
+            inline("«a [link](url)» b", Request::SetTextColor(RED)),
+            format!("{RED_SPAN}«a [link](url)»</span> b")
+        );
+        assert_eq!(
+            inline("[l«in»k](url)", Request::SetTextColor(RED)),
+            format!("[l{RED_SPAN}«in»</span>k](url)")
+        );
+        assert_eq!(
+            inline("[«リンク»](url)", Request::SetMarker(None)),
+            "[<mark>«リンク»</mark>](url)"
+        );
+        assert_eq!(
+            inline(
+                "[日«本»語][ref]\n\n[ref]: https://example.com",
+                Request::SetTextColor(RED)
+            ),
+            format!("[日{RED_SPAN}«本»</span>語][ref]\n\n[ref]: https://example.com")
+        );
+        assert_eq!(
+            inline("[liˇnk](url)", Request::SetTextColor(RED)),
+            format!("[li{RED_SPAN}ˇ</span>nk](url)")
+        );
+        assert_eq!(
+            inline("«![alt](x.png)»", Request::SetTextColor(RED)),
+            format!("{RED_SPAN}«![alt](x.png)»</span>")
+        );
+        assert_eq!(
+            inline("[«![a](b.png)»](url)", Request::SetTextColor(RED)),
+            format!("[{RED_SPAN}«![a](b.png)»</span>](url)")
+        );
+        assert_eq!(
+            inline("see «https://example.com» now", Request::SetTextColor(RED)),
+            format!("see {RED_SPAN}«https://example.com»</span> now")
+        );
+        assert_eq!(
+            inline("<a href=\"x\">l«in»k</a>", Request::SetTextColor(RED)),
+            format!("<a href=\"x\">l{RED_SPAN}«in»</span>k</a>")
+        );
+        // Brackets that are no link are only text.
+        assert_eq!(
+            inline("[no«t a» link]", Request::SetTextColor(RED)),
+            format!("[no{RED_SPAN}«t a»</span> link]")
+        );
+
+        // Changing an element that is already there leaves the link as it is.
+        assert_eq!(
+            inline(
+                "<span style=\"color: #d44c47\">[li«nk](url) b»</span>",
+                Request::SetTextColor(BLUE)
+            ),
+            "<span style=\"color: #337ea9\">[li«nk](url) b»</span>"
+        );
+        assert_eq!(
+            inline("<mark>[li«nk](url) b»</mark>", Request::RemoveMarker),
+            "[li«nk](url) b»"
+        );
+    }
+
+    #[test]
+    fn test_link_syntax_in_containers_and_across_lines() {
+        const RED_SPAN: &str = "<span style=\"color: #d44c47\">";
+
+        for marked in [
+            "> 引用の [リ«ンク](url) 後»",
+            "- 項目の [リ«ンク](url) 後»",
+            "1. «前 [リ»ンク](url)",
+            "[一行目\n二«行目](url) 後»",
+            "> [一行目\n> 二«行目](url) 後»",
+        ] {
+            assert_eq!(
+                inline(marked, Request::SetTextColor(RED)),
+                "refused: CrossesLink",
+                "{marked}"
+            );
+        }
+        // The brackets of an autolink already read as a tag, and so does half
+        // of an `<a>` element.
+        for marked in [
+            "a <https://exa«mple».com> b",
+            "a <https://exaˇmple.com> b",
+            "«x <a href=\"u\">li»nk</a>",
+            "<a href=\"u\">li«nk</a> y»",
+        ] {
+            assert!(
+                inline(marked, Request::SetTextColor(RED)).starts_with("refused: "),
+                "{marked}"
+            );
+        }
+        assert_eq!(
+            inline("> 引用の [«リンク»](url) 後", Request::SetTextColor(RED)),
+            format!("> 引用の [{RED_SPAN}«リンク»</span>](url) 後")
+        );
+        assert_eq!(
+            inline("- «項目の [リンク](url)» 後", Request::SetMarker(None)),
+            "- <mark>«項目の [リンク](url)»</mark> 後"
+        );
+        assert_eq!(
+            inline("[一行目\n«二行目»](url)", Request::SetTextColor(RED)),
+            format!("[一行目\n{RED_SPAN}«二行目»</span>](url)")
+        );
+        // Like the other refusals, one paragraph's refusal leaves the others
+        // the selection covers to be styled.
+        assert_eq!(
+            inline("«a [b](c)\n\nd [e»](f)", Request::SetTextColor(RED)),
+            format!("{RED_SPAN}«a [b](c)</span>\n\nd [e»](f)")
+        );
+        assert_eq!(
+            inline("«a» [b](c)\n\n«d» [e](f)", Request::SetMarker(None)),
+            "<mark>«a»</mark> [b](c)\n\n<mark>«d»</mark> [e](f)"
+        );
+
+        // Existing elements are still changed and taken off inside a link.
+        assert_eq!(
+            inline(
+                "<span style=\"color: #d44c47\">[li«nk](url) b»</span>",
+                Request::RemoveTextColor
+            ),
+            "[li«nk](url) b»"
+        );
+        assert_eq!(
+            inline("<mark>[li«nk](url) b»</mark>", Request::ToggleMarker),
+            "[li«nk](url) b»"
+        );
+        assert_eq!(
+            inline(
+                "<mark>[li«nk](url) b»</mark>",
+                Request::SetMarker(Some(0xb7ebc6))
+            ),
+            "<mark style=\"background-color: #b7ebc6\">[li«nk](url) b»</mark>"
+        );
+    }
+
+    #[track_caller]
+    fn partial_inline(marked: &str, request: InlineStyleRequest) -> Option<StyleRefusal> {
+        let (text, selections) = marked_text_ranges(marked, false);
+        plan_inline_style(&text, &selections, request)
+            .expect("part of the selection is styled")
+            .partial_refusal
+    }
+
+    #[track_caller]
+    fn partial_sized(marked: &str, size: Option<&str>) -> Option<StyleRefusal> {
+        let (text, selections) = marked_text_ranges(marked, false);
+        plan_paragraph_size(&text, &selections, size)
+            .expect("part of the selection is sized")
+            .partial_refusal
+    }
+
+    #[test]
+    fn test_partly_refused_styles_tell_why() {
+        // A paragraph refused by the styling itself.
+        assert_eq!(
+            partial_inline("«a [b](c)\n\nd [e»](f)", Request::SetTextColor(RED)),
+            Some(StyleRefusal::CrossesLink)
+        );
+        assert_eq!(
+            partial_inline("«a\n\n<div>b</div>»", Request::SetMarker(None)),
+            Some(StyleRefusal::StartsHtmlBlock)
+        );
+        // A paragraph refused before any styling is worked out.
+        assert_eq!(
+            partial_inline(
+                "«a\n\n<span style=\"color: #d44c47\">b»c</span>",
+                Request::SetMarker(None)
+            ),
+            Some(StyleRefusal::CrossesTags)
+        );
+        // A cursor refused while another one is styled.
+        assert_eq!(
+            partial_inline("aˇb `coˇde`", Request::SetTextColor(RED)),
+            Some(StyleRefusal::InsideCode)
+        );
+        assert_eq!(
+            partial_inline("aˇb [link](urˇl)", Request::ToggleMarker),
+            Some(StyleRefusal::InsideLink)
+        );
+
+        // Everything styled, or nothing there to take off, is no refusal.
+        assert_eq!(
+            partial_inline("«a»\n\n«b»", Request::SetTextColor(RED)),
+            None
+        );
+        assert_eq!(
+            partial_inline(
+                "«<span style=\"color: #d44c47\">a</span>\n\nb»",
+                Request::RemoveTextColor
+            ),
+            None
+        );
+        assert_eq!(
+            partial_inline("«<mark>a</mark>\n\nb»", Request::RemoveMarker),
+            None
+        );
+
+        assert_eq!(
+            partial_sized("«# 見出し\n\n段落»", Some("1.25em")),
+            Some(StyleRefusal::NoParagraph)
+        );
+        assert_eq!(partial_sized("«一\n\n二»", Some("1.25em")), None);
+        assert_eq!(
+            partial_sized(
+                "«# 見出し\n\n<span style=\"font-size: 1.25em\">段落</span>\n\n並»",
+                None
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_inline_styles_keep_html_blocks_blocks() {
+        // A tag in front of an HTML block's first tag turns it into a
+        // paragraph.
+        for marked in [
+            "«<div align=\"center\">中央</div>»",
+            "ˇ<div>x</div>",
+            "a\n\n«<p>x</p>»\n\nb",
+            "- «<div>x</div>»",
+            "> «<details><summary>x</summary></details>»",
+        ] {
+            assert_eq!(
+                inline(marked, Request::SetTextColor(RED)),
+                "refused: StartsHtmlBlock",
+                "{marked}"
+            );
+            assert_eq!(
+                inline(marked, Request::SetMarker(None)),
+                "refused: StartsHtmlBlock",
+                "{marked}"
+            );
+        }
+
+        // Text inside the block is fine, and so is an element that starts a
+        // paragraph rather than a block.
+        assert_eq!(
+            inline(
+                "<div align=\"center\">«中央»</div>",
+                Request::SetTextColor(RED)
+            ),
+            "<div align=\"center\"><span style=\"color: #d44c47\">«中央»</span></div>"
+        );
+        assert_eq!(
+            inline("<div>\n«<b>a</b>»\n</div>", Request::SetTextColor(RED)),
+            "<div>\n<span style=\"color: #d44c47\">«<b>a</b>»</span>\n</div>"
+        );
+        assert_eq!(
+            inline("«<b>a</b> b»", Request::SetTextColor(RED)),
+            "<span style=\"color: #d44c47\">«<b>a</b> b»</span>"
+        );
+        // An element the block starts with may still be recolored in place.
+        assert_eq!(
+            inline(
+                "«<span style=\"color: #d44c47\">\nx\n</span>»",
+                Request::SetTextColor(BLUE)
+            ),
+            "«<span style=\"color: #337ea9\">\nx\n</span>»"
         );
     }
 

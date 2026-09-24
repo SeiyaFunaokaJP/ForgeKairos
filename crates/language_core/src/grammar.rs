@@ -230,6 +230,12 @@ pub struct OverrideEntry {
 pub struct InjectionPatternConfig {
     pub language: Option<Box<str>>,
     pub combined: bool,
+    /// Set by `injection.exclude-children`. Tree-sitter's own highlighter
+    /// leaves a content node's children out of the injected text unless the
+    /// pattern sets `injection.include-children`, but Zed has always injected
+    /// whole nodes and existing queries depend on that, so leaving children
+    /// out is opt-in.
+    pub exclude_children: bool,
 }
 
 #[derive(Debug)]
@@ -723,6 +729,9 @@ impl Grammar {
                             }
                             "combined" | "injection.combined" => {
                                 config.combined = true;
+                            }
+                            "injection.exclude-children" => {
+                                config.exclude_children = true;
                             }
                             _ => {}
                         }

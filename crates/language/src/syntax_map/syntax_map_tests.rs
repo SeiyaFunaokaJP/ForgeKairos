@@ -1305,7 +1305,78 @@ fn test_random_syntax_map_edits_with_markdown_html_blocks(rng: StdRng, cx: &mut 
     "#
     .unindent()
     .repeat(4);
+    check_random_markdown_edits_match_a_fresh_parse(text, rng, cx);
+}
 
+#[gpui::test(iterations = 50)]
+fn test_random_syntax_map_edits_with_markdown_html_blocks_in_quotes_and_lists(
+    rng: StdRng,
+    cx: &mut App,
+) {
+    // The quote markers and list indentation on the later lines of these
+    // blocks are left out of the HTML layer, which splits each block into
+    // several ranges.
+    let text = r#"
+        > <div align="right">
+        > <b>quoted</b>
+        > </div>
+
+        > quote *spans
+        > lines* and <b>tags
+        > </b> here
+
+        - item *spans
+          lines* <i>x
+          </i>
+
+          <div>
+          <p>nested</p>
+          </div>
+
+        </section>
+        <div align="right">
+
+        text
+    "#
+    .unindent()
+    .repeat(4);
+    check_random_markdown_edits_match_a_fresh_parse(text, rng, cx);
+}
+
+#[gpui::test]
+fn test_markdown_html_layer_leaves_out_quote_markers_only(cx: &mut App) {
+    // Every line after the first of the top-level block starts with an empty
+    // child, which must not split the block.
+    let text = "</div>\n<div align=\"right\">\n</div>\n\n> <div>one\n> two</div>\n";
+    let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+    let language = markdown_lang();
+    registry.add(language.clone());
+    registry.add(Arc::new(markdown_inline_lang()));
+    registry.add(Arc::new(html_lang()));
+    let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), text);
+    let mut syntax_map = SyntaxMap::new(&buffer);
+    syntax_map.set_language_registry(registry);
+    syntax_map.reparse(language, &buffer);
+
+    let html_ranges = syntax_map
+        .layers(&buffer)
+        .into_iter()
+        .filter(|layer| layer.language.name().as_ref() == "HTML")
+        .flat_map(|layer| layer.tree.included_ranges())
+        .filter(|range| range.start_byte < range.end_byte)
+        .map(|range| &text[range.start_byte..range.end_byte])
+        .collect::<Vec<_>>();
+    assert_eq!(
+        html_ranges,
+        [
+            "</div>\n<div align=\"right\">\n</div>\n\n",
+            "<div>one\n",
+            "two</div>\n"
+        ]
+    );
+}
+
+fn check_random_markdown_edits_match_a_fresh_parse(text: String, mut rng: StdRng, cx: &mut App) {
     let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
     let language = markdown_lang();
     registry.add(language.clone());
@@ -1315,7 +1386,6 @@ fn test_random_syntax_map_edits_with_markdown_html_blocks(rng: StdRng, cx: &mut 
     // Every HTML block of the document feeds one layer, so an edit anywhere
     // can shift what the layer holds; compare it with a fresh parse after
     // each edit rather than only at the end.
-    let mut rng = rng;
     let operations = env::var("OPERATIONS")
         .map(|i| i.parse().expect("invalid `OPERATIONS` variable"))
         .unwrap_or(10);

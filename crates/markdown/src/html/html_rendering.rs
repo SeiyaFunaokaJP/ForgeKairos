@@ -7,9 +7,10 @@ use pulldown_cmark::Alignment;
 use ui::{ScrollAxes, Scrollbars, WithScrollbar, prelude::*};
 
 use crate::html::html_parser::{
-    HtmlHighlightStyle, HtmlImage, HtmlParagraph, HtmlParagraphChunk, ParsedHtmlBlock,
-    ParsedHtmlDetails, ParsedHtmlElement, ParsedHtmlList, ParsedHtmlListItemType, ParsedHtmlTable,
-    ParsedHtmlTableRow, ParsedHtmlText, html_paragraph_text,
+    HtmlHighlightStyle, HtmlImage, HtmlParagraph, HtmlParagraphChunk, HtmlSpanningCell,
+    HtmlSpanningTable, HtmlTablePart, HtmlVerticalAlign, ParsedHtmlBlock, ParsedHtmlDetails,
+    ParsedHtmlElement, ParsedHtmlList, ParsedHtmlListItemType, ParsedHtmlTable, ParsedHtmlTableRow,
+    ParsedHtmlText, html_paragraph_text,
 };
 use crate::{MarkdownElement, MarkdownElementBuilder, TableColumnMinWidths};
 
@@ -51,6 +52,10 @@ impl MarkdownElement {
         window: &mut Window,
         cx: &mut App,
     ) -> bool {
+        if !block.table_parts.is_empty() {
+            return self.render_html_table_parts(block, builder, markdown_end, window, cx);
+        }
+
         let mut source_allocator = HtmlSourceAllocator::new(block.source_range.clone());
 
         let spanning_index = block.details_span.as_ref().and_then(|_| {
@@ -86,6 +91,242 @@ impl MarkdownElement {
         }
 
         collapsed
+    }
+
+    /// Draws a block that takes part in a table spanning blocks: the HTML
+    /// around and inside the table's cells, and the table's own boxes, which
+    /// stay open for the markdown of the following blocks to land in.
+    fn render_html_table_parts(
+        &self,
+        block: &ParsedHtmlBlock,
+        builder: &mut MarkdownElementBuilder,
+        markdown_end: usize,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> bool {
+        let spanning_index = block.details_span.as_ref().and_then(|_| {
+            block
+                .children
+                .iter()
+                .rposition(|element| matches!(element, ParsedHtmlElement::Details(_)))
+        });
+
+        let mut collapsed = false;
+        for part in &block.table_parts {
+            match part {
+                HtmlTablePart::Elements(range) => {
+                    let Some(elements) = block.children.get(range.clone()) else {
+                        continue;
+                    };
+                    let mut source_allocator = HtmlSourceAllocator::new(
+                        elements
+                            .first()
+                            .and_then(ParsedHtmlElement::source_range)
+                            .unwrap_or_else(|| block.source_range.clone()),
+                    );
+                    for (offset, element) in elements.iter().enumerate() {
+                        match element {
+                            ParsedHtmlElement::Details(details)
+                                if Some(range.start + offset) == spanning_index =>
+                            {
+                                collapsed = !self.render_html_details(
+                                    details,
+                                    true,
+                                    &mut source_allocator,
+                                    builder,
+                                    markdown_end,
+                                    window,
+                                    cx,
+                                );
+                            }
+                            _ => self.render_html_element(
+                                element,
+                                &mut source_allocator,
+                                builder,
+                                markdown_end,
+                                window,
+                                cx,
+                            ),
+                        }
+                    }
+                }
+                HtmlTablePart::OpenTable(table) => {
+                    self.push_html_spanning_table(
+                        table,
+                        &block.source_range,
+                        builder,
+                        markdown_end,
+                        window,
+                        cx,
+                    );
+                }
+                HtmlTablePart::OpenCell(cell) => {
+                    self.push_html_spanning_cell(
+                        cell,
+                        &block.source_range,
+                        builder,
+                        markdown_end,
+                        cx,
+                    );
+                }
+                HtmlTablePart::CloseCell => {
+                    builder.pop_div();
+                    builder.pop_div();
+                    builder.pop_text_style();
+                }
+                HtmlTablePart::EndRow { row, used_columns } => {
+                    let column_count = builder
+                        .spanning_table_columns
+                        .last()
+                        .copied()
+                        .unwrap_or_default();
+                    for column in *used_columns..column_count {
+                        builder.push_div(
+                            div()
+                                .when(column > 0, |this| this.border_l_1())
+                                .when(*row > 0, |this| this.border_t_1())
+                                .border_color(cx.theme().colors().border)
+                                .when(row % 2 == 1, |this| {
+                                    this.bg(cx.theme().colors().panel_background)
+                                }),
+                            &block.source_range,
+                            markdown_end,
+                        );
+                        builder.pop_div();
+                    }
+                }
+                HtmlTablePart::CloseTable => {
+                    builder.pop_div();
+                    builder.pop_div();
+                    builder.spanning_table_columns.pop();
+                }
+            }
+        }
+
+        collapsed
+    }
+
+    /// Opens the boxes of a table spanning blocks, drawn like an HTML table
+    /// that fits in one block. Its columns share the width the way a
+    /// browser's do, since a cell's markdown can be as long as a paragraph.
+    fn push_html_spanning_table(
+        &self,
+        table: &HtmlSpanningTable,
+        source_range: &Range<usize>,
+        builder: &mut MarkdownElementBuilder,
+        markdown_end: usize,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let table_row = match table.text_align.or_else(|| builder.inherited_text_align()) {
+            None | Some(TextAlign::Left) => div().flex(),
+            Some(TextAlign::Center) => div().flex().justify_center(),
+            Some(TextAlign::Right) => div().flex().justify_end(),
+        };
+        builder.push_div(table_row, source_range, markdown_end);
+
+        let column_count = table.column_count as u16;
+        let has_column_widths = table.column_widths.iter().any(Option::is_some);
+        builder.push_div(
+            div()
+                .id(("html-spanning-table", table.source_start))
+                .debug_selector(|| "markdown_html_spanning_table".into())
+                .min_w_0()
+                .grid()
+                .map(|this| {
+                    if self.style.table_columns_min_size {
+                        this.w_full().grid_cols_min_content(column_count)
+                    } else if has_column_widths {
+                        this.grid_cols_min_widths(
+                            table
+                                .column_widths
+                                .iter()
+                                .map(|width| px(width.unwrap_or_default()))
+                                .collect::<Vec<_>>(),
+                        )
+                    } else {
+                        this.grid_cols_max_content(column_count)
+                    }
+                })
+                .mb_2()
+                .border(px(1.5))
+                .border_color(cx.theme().colors().border)
+                .rounded_sm()
+                .when_else(
+                    self.style.table_overflow_x_scroll,
+                    |this| {
+                        this.restrict_scroll_to_axis().custom_scrollbars(
+                            Scrollbars::new(ScrollAxes::Horizontal)
+                                .id(("markdown-html-spanning-table-scrollbar", table.source_start))
+                                .notify_content(),
+                            window,
+                            cx,
+                        )
+                    },
+                    |this| this.overflow_hidden(),
+                ),
+            source_range,
+            markdown_end,
+        );
+        builder.spanning_table_columns.push(table.column_count);
+    }
+
+    fn push_html_spanning_cell(
+        &self,
+        cell: &HtmlSpanningCell,
+        source_range: &Range<usize>,
+        builder: &mut MarkdownElementBuilder,
+        markdown_end: usize,
+        cx: &App,
+    ) {
+        let column_count = builder.spanning_table_columns.last().copied().unwrap_or(1);
+        let col_span = cell
+            .col_span
+            .min(column_count.saturating_sub(cell.column))
+            .max(1);
+        let text_align = cell
+            .text_align
+            .unwrap_or(self.style.base_text_style.text_align);
+
+        builder.push_text_style(TextStyleRefinement {
+            text_align: cell.text_align,
+            ..Default::default()
+        });
+        builder.push_div(
+            div()
+                .col_span(col_span as u16)
+                .flex()
+                .flex_col()
+                .when(cell.column > 0, |this| this.border_l_1())
+                .when(cell.row > 0, |this| this.border_t_1())
+                .border_color(cx.theme().colors().border)
+                .px_2()
+                .py_1()
+                .h_full()
+                .when(cell.is_header, |this| {
+                    this.bg(cx.theme().colors().title_bar_background)
+                })
+                .when(!cell.is_header && cell.row % 2 == 1, |this| {
+                    this.bg(cx.theme().colors().panel_background)
+                }),
+            source_range,
+            markdown_end,
+        );
+        builder.push_div(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .w_full()
+                .map(|this| match cell.vertical_align {
+                    HtmlVerticalAlign::Top => this.justify_start(),
+                    HtmlVerticalAlign::Middle => this.justify_center(),
+                    HtmlVerticalAlign::Bottom => this.justify_end(),
+                })
+                .text_align(text_align),
+            source_range,
+            markdown_end,
+        );
     }
 
     fn render_html_elements(
@@ -179,7 +420,12 @@ impl MarkdownElement {
                 self.render_html_table(table, source_allocator, builder, markdown_end, window, cx);
             }
             ParsedHtmlElement::Image(image) => {
+                // Laying an image out turns the div it lands in into a row, so
+                // it gets one of its own rather than pulling the blocks drawn
+                // around it into the same row.
+                builder.push_div(div(), &image.source_range, markdown_end);
                 self.render_html_image(image, builder, cx);
+                builder.pop_div();
             }
             ParsedHtmlElement::Details(details) => {
                 self.render_html_details(
@@ -389,7 +635,12 @@ impl MarkdownElement {
             )
         });
 
-        builder.push_div(div().flex(), &table.source_range, markdown_end);
+        let table_row = match table.text_align {
+            None | Some(TextAlign::Left) => div().flex(),
+            Some(TextAlign::Center) => div().flex().justify_center(),
+            Some(TextAlign::Right) => div().flex().justify_end(),
+        };
+        builder.push_div(table_row, &table.source_range, markdown_end);
         builder.push_div(
             div()
                 .id(("html-table", table.source_range.start))
@@ -435,7 +686,13 @@ impl MarkdownElement {
                 };
 
                 let max_span = max_column_count.saturating_sub(column_index);
-                let text_align = match cell.alignment {
+                let alignment = match (cell.alignment, table.text_align) {
+                    (Alignment::None, Some(TextAlign::Left)) => Alignment::Left,
+                    (Alignment::None, Some(TextAlign::Center)) => Alignment::Center,
+                    (Alignment::None, Some(TextAlign::Right)) => Alignment::Right,
+                    (alignment, _) => alignment,
+                };
+                let text_align = match alignment {
                     Alignment::Left => TextAlign::Left,
                     Alignment::Center => TextAlign::Center,
                     Alignment::Right => TextAlign::Right,
@@ -460,7 +717,7 @@ impl MarkdownElement {
                         this.bg(cx.theme().colors().panel_background)
                     });
 
-                cell_div = match cell.alignment {
+                cell_div = match alignment {
                     Alignment::Center => cell_div.items_center(),
                     Alignment::Right => cell_div.items_end(),
                     _ => cell_div,
@@ -712,11 +969,12 @@ fn apply_html_highlight_style(refinement: &mut TextStyleRefinement, style: &Html
         refinement.color = None;
     }
     if let Some(color) = style.color {
-        refinement.color = Some(gpui::rgb(color).into());
+        refinement.color = Some(crate::html::html_parser::css_color_hsla(color));
     }
 
     if let Some(background_color) = style.background_color {
-        refinement.background_color = Some(gpui::rgb(background_color).into());
+        refinement.background_color =
+            Some(crate::html::html_parser::css_color_hsla(background_color));
     }
 }
 
@@ -1748,5 +2006,252 @@ mod tests {
         assert!(first_expanded.contains("本文A"), "got: {first_expanded:?}");
         assert!(!first_expanded.contains("本文B"), "got: {first_expanded:?}");
         assert!(first_expanded.contains('B'), "got: {first_expanded:?}");
+    }
+
+    /// Lays `source` out the way the preview does, root block markers and
+    /// HTML parsing on, in a pane `width` wide, and hands back what was laid
+    /// out along with where the table spanning blocks ended up.
+    fn render_spanning_table_preview(
+        source: &str,
+        width: Pixels,
+        cx: &mut TestAppContext,
+    ) -> (crate::RenderedText, Option<gpui::Bounds<Pixels>>) {
+        struct SpanningTableView {
+            markdown: Entity<Markdown>,
+            rendered_text: Rc<RefCell<Option<crate::RenderedText>>>,
+        }
+
+        impl Render for SpanningTableView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let rendered_text = self.rendered_text.clone();
+                div().size_full().child(
+                    MarkdownElement::new(self.markdown.clone(), MarkdownStyle::default())
+                        .show_root_block_markers()
+                        .on_render(move |text| *rendered_text.borrow_mut() = Some(text)),
+                )
+            }
+        }
+
+        ensure_theme_initialized(cx);
+        let rendered_text = Rc::new(RefCell::new(None));
+        let window = cx.open_window(size(width, px(1200.)), {
+            let source = source.to_string();
+            let rendered_text = rendered_text.clone();
+            move |_, cx| {
+                let markdown = cx.new(|cx| {
+                    Markdown::new_with_options(
+                        source.into(),
+                        None,
+                        None,
+                        MarkdownOptions {
+                            parse_html: true,
+                            ..Default::default()
+                        },
+                        cx,
+                    )
+                });
+                SpanningTableView {
+                    markdown,
+                    rendered_text,
+                }
+            }
+        });
+        cx.run_until_parked();
+
+        let table_bounds = gpui::VisualTestContext::from_window(window.into(), cx)
+            .debug_bounds("markdown_html_spanning_table");
+        let rendered_text = rendered_text
+            .borrow()
+            .clone()
+            .expect("markdown should be rendered in the test view");
+        (rendered_text, table_bounds)
+    }
+
+    fn text_bounds(
+        rendered: &crate::RenderedText,
+        source: &str,
+        needle: &str,
+    ) -> gpui::Bounds<Pixels> {
+        let start = source.find(needle).expect("the text is in the source");
+        rendered
+            .bounds_for_source_range(start..start + needle.len())
+            .first()
+            .copied()
+            .unwrap_or_else(|| panic!("{needle:?} should have been laid out"))
+    }
+
+    /// The README layout: each cell's markdown, written between the table's
+    /// blocks, is drawn inside the table, the cells side by side.
+    #[gpui::test]
+    fn test_markdown_between_table_blocks_is_drawn_in_its_cell(cx: &mut TestAppContext) {
+        let source = "<table>\n<tr>\n<td>\n\n**左の列** の本文\n\n- 項目\n\n</td>\n<td>\n\n右の列\n\n</td>\n</tr>\n</table>\n\n後ろ\n";
+        let (rendered, table) = render_spanning_table_preview(source, px(600.), cx);
+        let table = table.expect("the table should be drawn as one");
+
+        let left = text_bounds(&rendered, source, "左の列");
+        let item = text_bounds(&rendered, source, "項目");
+        let right = text_bounds(&rendered, source, "右の列");
+        let after = text_bounds(&rendered, source, "後ろ");
+
+        for (name, bounds) in [("左の列", left), ("項目", item), ("右の列", right)] {
+            assert!(
+                table.contains(&bounds.center()),
+                "{name} at {bounds:?} should be inside the table at {table:?}"
+            );
+        }
+        assert!(
+            right.left() > item.right() && right.left() > left.left(),
+            "the second cell should be to the right of the first: {left:?} {item:?} {right:?}"
+        );
+        assert!(
+            right.top() < item.bottom(),
+            "the cells should share a row: {right:?} {item:?}"
+        );
+        assert!(
+            after.top() >= table.bottom(),
+            "what follows the table should be drawn after it: {after:?} {table:?}"
+        );
+
+        // Copying keeps the cells' text in the order it was written.
+        let copied = rendered.text_for_range(0..source.len());
+        let positions = ["左の列", "項目", "右の列", "後ろ"].map(|needle| {
+            copied
+                .find(needle)
+                .unwrap_or_else(|| panic!("{needle:?} should be copied: {copied:?}"))
+        });
+        assert!(positions.is_sorted(), "copied: {copied:?}");
+    }
+
+    #[gpui::test]
+    fn test_rows_of_a_spanning_table_stack_and_align(cx: &mut TestAppContext) {
+        let source = "<table>\n<tr>\n<th>\n\n見出し\n\n</th>\n<td align=\"right\">\n\n右\n\n</td>\n</tr>\n<tr>\n<td colspan=\"2\" align=\"center\">\n\n下の段\n\n</td>\n</tr>\n<tr>\n<td>\n\n片側\n\n</td>\n</tr>\n<tr>\n<td>\n\n次の行\n\n</td>\n<td>\n\n次の右\n\n</td>\n</tr>\n</table>\n";
+        let (rendered, table) = render_spanning_table_preview(source, px(600.), cx);
+        let table = table.expect("the table should be drawn as one");
+
+        let heading = text_bounds(&rendered, source, "見出し");
+        let right = text_bounds(&rendered, source, "右");
+        let below = text_bounds(&rendered, source, "下の段");
+        assert!(table.contains(&below.center()), "{below:?} {table:?}");
+        assert!(
+            below.top() >= heading.bottom() && below.top() >= right.bottom(),
+            "the second row should be under the first: {heading:?} {right:?} {below:?}"
+        );
+
+        // A row with a column left over still takes the whole row, so the
+        // next row does not move up into its empty column.
+        let one_sided = text_bounds(&rendered, source, "片側");
+        let next_row = text_bounds(&rendered, source, "次の行");
+        assert!(
+            next_row.top() >= one_sided.bottom(),
+            "the next row should start under the short one: {one_sided:?} {next_row:?}"
+        );
+
+        let line_align = |needle: &str| {
+            rendered
+                .lines
+                .iter()
+                .find(|line| line.layout.wrapped_text().contains(needle))
+                .map(|line| line.text_align)
+                .unwrap_or_else(|| panic!("{needle:?} should be laid out"))
+        };
+        assert_eq!(line_align("見出し"), gpui::TextAlign::Center);
+        assert_eq!(line_align("右"), gpui::TextAlign::Right);
+        assert_eq!(line_align("下の段"), gpui::TextAlign::Center);
+    }
+
+    /// The cell's markdown lands inside the box that places it vertically,
+    /// not beside it.
+    #[gpui::test]
+    fn test_cell_vertical_alignment_reaches_its_markdown(cx: &mut TestAppContext) {
+        let source = "<table>\n<tr>\n<td valign=\"top\">\n\n上\n\n</td>\n<td valign=\"bottom\">\n\n下\n\n</td>\n<td>\n\n一\n\n二\n\n三\n\n</td>\n</tr>\n</table>\n";
+        let (rendered, _) = render_spanning_table_preview(source, px(600.), cx);
+        let top = text_bounds(&rendered, source, "上");
+        let bottom = text_bounds(&rendered, source, "下");
+        let first = text_bounds(&rendered, source, "一");
+        let second = text_bounds(&rendered, source, "二");
+        assert!(
+            bottom.top() > second.top() && bottom.top() > first.bottom(),
+            "a bottom-aligned cell should sit at the foot of its row: {bottom:?} {first:?} {second:?}"
+        );
+        assert!(
+            top.top() < second.top(),
+            "a top-aligned cell should sit at the head of its row: {top:?} {second:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn test_an_aligned_div_centers_a_spanning_table(cx: &mut TestAppContext) {
+        let source = "<div align=\"center\">\n\n<table>\n<tr>\n<td>\n\n中\n\n</td>\n</tr>\n</table>\n\n</div>\n";
+        let (_, table) = render_spanning_table_preview(source, px(600.), cx);
+        let table = table.expect("the table should be drawn as one");
+        assert!(
+            table.left() > px(200.) && table.right() < px(400.),
+            "a small table in a centered div should sit in the middle: {table:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn test_table_that_does_not_pair_keeps_its_markdown(cx: &mut TestAppContext) {
+        let source = "<table>\n<tr>\n<td>\n\n本文\n\n後ろ\n";
+        let (rendered, table) = render_spanning_table_preview(source, px(600.), cx);
+        assert_eq!(table, None);
+        text_bounds(&rendered, source, "本文");
+        text_bounds(&rendered, source, "後ろ");
+    }
+
+    #[gpui::test]
+    fn test_collapsed_details_in_a_table_cell_keeps_the_table_whole(cx: &mut TestAppContext) {
+        for source in [
+            "<table><tr><td>\n\n<details><summary>もっと</summary>\n\n隠れる\n\n</details>\n\n</td><td>\n\n右\n\n</td></tr></table>\n\n後ろ\n",
+            "<table><tr><td><details><summary>もっと</summary>\n\n隠れる\n\n</details>\n\n</td><td>\n\n右\n\n</td></tr></table>\n\n後ろ\n",
+            // The disclosure closes in the block that goes on to the next cell.
+            "<table><tr><td><details><summary>もっと</summary>\n\n隠れる\n\n</details></td><td>\n\n右\n\n</td></tr></table>\n\n後ろ\n",
+        ] {
+            let collapsed = render_html_preview(source, None, cx);
+            for needle in ["もっと", "右", "後ろ"] {
+                assert!(collapsed.contains(needle), "{needle:?} in {collapsed:?}");
+            }
+            assert!(!collapsed.contains("隠れる"), "got: {collapsed:?}");
+
+            let expanded = render_html_preview(source, Some(("もっと", 0)), cx);
+            assert!(expanded.contains("隠れる"), "got: {expanded:?}");
+
+            let (rendered, table) = render_spanning_table_preview(source, px(600.), cx);
+            let table = table.expect("the table should be drawn as one");
+            let right = text_bounds(&rendered, source, "右");
+            let after = text_bounds(&rendered, source, "後ろ");
+            assert!(table.contains(&right.center()), "{right:?} {table:?}");
+            assert!(after.top() >= table.bottom(), "{after:?} {table:?}");
+        }
+    }
+
+    /// A list item's text box asks for no width of its own, which in a column
+    /// sized to its content would wrap the text after every character.
+    #[gpui::test]
+    fn test_lists_in_a_spanning_cell_keep_their_width(cx: &mut TestAppContext) {
+        let long_item =
+            "これは長い項目の文章で、セルの幅には収まらないので折り返されます。".repeat(3);
+        let source = format!(
+            "<table>\n<tr>\n<td>\n\n- 項目\n- [ ] 作業\n- {long_item}\n\n<ul><li>HTMLの項目</li></ul>\n\n脚注[^1]\n\n[^1]: 脚注の本文\n\n</td>\n<td>\n\n右の列\n\n</td>\n</tr>\n</table>\n"
+        );
+        let (rendered, table) = render_spanning_table_preview(&source, px(600.), cx);
+        let table = table.expect("the table should be drawn as one");
+
+        let wrapped = |needle: &str| {
+            rendered
+                .lines
+                .iter()
+                .map(|line| line.layout.wrapped_text())
+                .find(|text| text.replace('\n', "").contains(needle))
+                .unwrap_or_else(|| panic!("{needle:?} should be laid out"))
+        };
+        for needle in ["項目", "作業", "HTMLの項目", "脚注の本文"] {
+            assert_eq!(wrapped(needle), needle, "{needle:?} should fit on one line");
+        }
+        let long = text_bounds(&rendered, &source, &long_item);
+        assert!(
+            wrapped(&long_item).contains('\n') && long.right() <= table.right(),
+            "a long item should wrap inside the table: {long:?} {table:?}"
+        );
     }
 }

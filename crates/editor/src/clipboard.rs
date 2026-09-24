@@ -56,6 +56,17 @@ impl ClipboardSelection {
     }
 }
 
+/// Takes over pasting a clipboard that holds an image, for a crate the editor
+/// cannot depend on (the Markdown image paste). The handler returns whether it
+/// consumed the paste; when it did not, the clipboard's text is pasted as usual.
+/// While it is set, it replaces the editor's own Markdown image paste.
+#[derive(Clone)]
+pub struct ImagePasteHandler(
+    pub Rc<dyn Fn(&mut Editor, &ClipboardItem, &mut Window, &mut Context<Editor>) -> bool>,
+);
+
+impl Global for ImagePasteHandler {}
+
 impl Editor {
     /// Returns the ranges the pasted text now occupies, one per selection that received a
     /// paste, in the same order as `self.selections`, or an empty vector when they can't be
@@ -298,7 +309,13 @@ impl Editor {
             _ => None,
         });
 
-        if let Some(image) = clipboard_image {
+        if clipboard_image.is_some()
+            && let Some(handler) = cx.try_global::<ImagePasteHandler>().cloned()
+        {
+            if (handler.0)(self, item, window, cx) {
+                return;
+            }
+        } else if let Some(image) = clipboard_image {
             let is_markdown = {
                 let display_map = self.display_snapshot(cx);
                 let selections = self.selections.all::<MultiBufferOffset>(&display_map);

@@ -18,7 +18,7 @@ use std::sync::atomic::AtomicBool;
 use anyhow::{Context as _, Result, anyhow};
 use editor::actions::{Backtab, MoveToEnd, Tab};
 use editor::{Editor, EditorEvent, MultiBufferOffset};
-use fs::{CopyOptions, Fs};
+use fs::Fs;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
     App, ClickEvent, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
@@ -39,6 +39,7 @@ use workspace::{ModalView, Workspace};
 use zed_actions::editor::{MoveDown, MoveUp};
 
 use crate::InsertImage;
+use crate::image_files::{self, ImageData};
 use crate::markdown_preview_view::MarkdownPreviewView;
 
 pub fn register(workspace: &mut Workspace) {
@@ -75,7 +76,7 @@ pub fn register(workspace: &mut Workspace) {
 }
 
 /// Extensions the file list offers and the file picker accepts.
-const IMAGE_EXTENSIONS: [&str; 9] = [
+pub(crate) const IMAGE_EXTENSIONS: [&str; 9] = [
     "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif",
 ];
 
@@ -87,7 +88,7 @@ const MAXIMUM_LISTED_CANDIDATES: usize = 200;
 /// leaves room for the header and the footer in a short window.
 const MAXIMUM_FORM_HEIGHT_FRACTION: f32 = 0.6;
 
-fn has_image_extension(path: &str) -> bool {
+pub(crate) fn has_image_extension(path: &str) -> bool {
     let file_name = path.rsplit(['/', '\\']).next().unwrap_or(path);
     file_name.rsplit_once('.').is_some_and(|(stem, extension)| {
         !stem.is_empty()
@@ -154,6 +155,8 @@ struct ImageContainer {
     /// The tag name as written, so `<DIV>` closes as `</DIV>`.
     tag: String,
     slots: Vec<AttributeSlot>,
+    /// Whether it was written on one line, as it is written back.
+    single_line: bool,
 }
 
 impl ImageContainer {
@@ -189,6 +192,9 @@ pub(crate) struct ImageMarkup {
     /// Whether the image sits inside an HTML block, where Markdown is not read
     /// and only an `<img>` shows as a picture.
     keep_html: bool,
+    /// The reference-style form the image is written back in, while its path
+    /// stays in its definition.
+    reference: Option<ImageReference>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -204,8 +210,12 @@ impl ImageMarkup {
     pub(crate) fn render(&self, indent: &str) -> RenderedImage {
         let in_container = self.is_written_in_a_container();
         if !in_container && !self.needs_html() {
+            let text = match &self.reference {
+                Some(reference) => reference.render(&self.alt),
+                None => self.markdown_image(),
+            };
             return RenderedImage {
-                text: self.markdown_image(),
+                text,
                 is_block: false,
             };
         }
@@ -219,11 +229,14 @@ impl ImageMarkup {
         }
         let container = self.container.as_ref();
         let tag = container.map_or("div", |container| container.tag.as_str());
+        let open = self.container_open_tag(tag, container);
+        let text = if container.is_some_and(|container| container.single_line) {
+            format!("{open}{image}</{tag}>")
+        } else {
+            format!("{open}\n{indent}  {image}\n{indent}</{tag}>")
+        };
         RenderedImage {
-            text: format!(
-                "{}\n{indent}  {image}\n{indent}</{tag}>",
-                self.container_open_tag(tag, container)
-            ),
+            text,
             is_block: true,
         }
     }
@@ -302,7 +315,11 @@ impl ImageMarkup {
             KnownAttribute::Title,
             KnownAttribute::Style,
         ] {
-            if !written.contains(&kind) {
+            // An `<img>` read without an `alt` is not given an empty one it
+            // never had; one the user typed in is added.
+            let read_without_it =
+                kind == KnownAttribute::Alt && !self.image_slots.is_empty() && self.alt.is_empty();
+            if !written.contains(&kind) && !read_without_it {
                 attributes.extend(self.image_attribute(kind));
             }
         }
@@ -363,7 +380,7 @@ impl ImageMarkup {
 
 /// Percent-encodes what a destination cannot hold as it is. A URL keeps its
 /// own escapes; a path is encoded from its decoded form, `%` included.
-fn encode_destination(destination: &str, in_markdown: bool) -> String {
+pub(crate) fn encode_destination(destination: &str, in_markdown: bool) -> String {
     if is_url(destination) {
         return encode_as_written(destination, in_markdown);
     }
@@ -440,7 +457,7 @@ fn is_url(destination: &str) -> bool {
         })
 }
 
-fn escape_attribute(value: &str) -> String {
+pub(crate) fn escape_attribute(value: &str) -> String {
     value.replace('&', "&amp;").replace('"', "&quot;")
 }
 
@@ -1020,6 +1037,10 @@ fn container_body(
     markup.container = Some(ImageContainer {
         tag: open.written_name.clone(),
         slots,
+        single_line: !text
+            .get(open.range.start..close_end)
+            .unwrap_or_default()
+            .contains('\n'),
     });
     Some((open.range.start..close_end, markup))
 }
@@ -1213,6 +1234,21 @@ fn document_location(
         path_style,
         is_local,
     }
+}
+
+fn document_project_path(editor: &Entity<Editor>, cx: &App) -> Option<ProjectPath> {
+    let file = editor
+        .read(cx)
+        .buffer()
+        .read(cx)
+        .as_singleton()?
+        .read(cx)
+        .file()?
+        .clone();
+    Some(ProjectPath {
+        worktree_id: file.worktree_id(cx),
+        path: file.path().clone(),
+    })
 }
 
 fn parent_directory(path: &str, style: PathStyle) -> Option<String> {
@@ -1437,49 +1473,6 @@ fn default_alt(input: &str) -> String {
     }
 }
 
-/// A name in `directory` that nothing occupies yet: `file_name` itself, or
-/// with `-1`, `-2`, … before its extension.
-pub(crate) async fn unused_file_name(
-    fs: &dyn Fs,
-    directory: &Path,
-    file_name: &str,
-) -> Result<String> {
-    let (stem, extension) = match file_name.rsplit_once('.') {
-        Some((stem, extension)) if !stem.is_empty() => (stem, format!(".{extension}")),
-        _ => (file_name, String::new()),
-    };
-    for attempt in 0..10_000 {
-        let candidate = if attempt == 0 {
-            file_name.to_string()
-        } else {
-            format!("{stem}-{attempt}{extension}")
-        };
-        if fs.metadata(&directory.join(&candidate)).await?.is_none() {
-            return Ok(candidate);
-        }
-    }
-    Err(anyhow!("コピー先に使える名前が見つかりません: {file_name}"))
-}
-
-/// Copies `source` into the `images` folder next to the document and returns
-/// the name it was given there.
-pub(crate) async fn copy_into_images(
-    fs: Arc<dyn Fs>,
-    source: PathBuf,
-    document_directory: PathBuf,
-) -> Result<String> {
-    let file_name = source
-        .file_name()
-        .and_then(|name| name.to_str())
-        .with_context(|| format!("ファイル名を読み取れません: {}", source.display()))?;
-    let images = document_directory.join("images");
-    fs.create_dir(&images).await?;
-    let name = unused_file_name(fs.as_ref(), &images, file_name).await?;
-    fs.copy_file(&source, &images.join(&name), CopyOptions::default())
-        .await?;
-    Ok(name)
-}
-
 /// Where the dialog writes, and what was there when it opened.
 pub(crate) struct ImageTarget {
     range: Range<Anchor>,
@@ -1500,6 +1493,17 @@ pub(crate) struct ImageTarget {
     /// goes after the paragraph instead of splitting the line and whatever
     /// formatting runs across the cursor.
     after_paragraph: bool,
+    /// The definition a reference-style image takes its path from.
+    definition: Option<DefinitionTarget>,
+}
+
+/// The definition of a reference-style image being edited.
+struct DefinitionTarget {
+    range: Range<Anchor>,
+    original_text: String,
+    definition: ReferenceDefinition,
+    /// How many links and images use the definition, the edited one included.
+    uses: usize,
 }
 
 /// How an HTML block ends: at the line that holds one of the markers, or
@@ -1872,6 +1876,7 @@ fn block_refusal(
     range: &Range<usize>,
     block: &str,
     inside_html: bool,
+    inside_link: bool,
     splits_the_line: bool,
 ) -> Option<&'static str> {
     const HTML_REFUSAL: &str =
@@ -1881,7 +1886,7 @@ fn block_refusal(
     }
     let (before, after) = text_around(snapshot, range);
     if splits_the_line {
-        if before.trim_end().ends_with('[') || after.trim_start().starts_with(']') {
+        if inside_link {
             return Some(
                 "リンクの中の画像には配置を指定できません。配置を「指定なし」にしてください。",
             );
@@ -1894,6 +1899,334 @@ fn block_refusal(
         return Some("表の中の画像には配置を指定できません。配置を「指定なし」にしてください。");
     }
     None
+}
+
+/// A reference-style image, `![alt][label]`, `![alt][]` or `![alt]`, as the
+/// parser found it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ReferenceImage {
+    range: Range<usize>,
+    /// Where its definition, `[label]: destination "title"`, is.
+    definition: Range<usize>,
+    /// The definition's destination and title as the parser read them, which
+    /// takes in the markers of a quote or a list the definition runs on in.
+    destination: String,
+    title: Option<String>,
+}
+
+/// A list item, and whether its list is loose: one whose items hold
+/// paragraphs, which a blank line inside any item makes it.
+#[derive(Clone, Debug)]
+struct ListItem {
+    range: Range<usize>,
+    loose: bool,
+}
+
+/// What the Markdown parser makes of the document, for the questions that
+/// looking at the characters around the cursor answers wrongly.
+#[derive(Debug, Default)]
+struct DocumentSyntax {
+    /// Code spans, code blocks and HTML comments, where an image is only text.
+    inert: Vec<Range<usize>>,
+    /// Emphasis, links and the like, which a block cannot be put inside.
+    inline_spans: Vec<Range<usize>>,
+    links: Vec<Range<usize>>,
+    list_items: Vec<ListItem>,
+    reference_images: Vec<ReferenceImage>,
+    /// For each reference definition, by the range it spans, how many links
+    /// and images use it.
+    definition_uses: Vec<(Range<usize>, usize)>,
+}
+
+impl DocumentSyntax {
+    fn parse(text: &str) -> Self {
+        use pulldown_cmark::{Event, LinkType, Parser, Tag, TagEnd};
+
+        fn is_reference(link_type: LinkType) -> bool {
+            matches!(
+                link_type,
+                LinkType::Reference | LinkType::Collapsed | LinkType::Shortcut
+            )
+        }
+
+        let mut syntax = Self::default();
+        let mut parser = Parser::new_ext(text, markdown::parser::PARSE_OPTIONS).into_offset_iter();
+        let mut open_items: Vec<ListItem> = Vec::new();
+        let mut references = Vec::new();
+        for (event, range) in parser.by_ref() {
+            match event {
+                Event::Code(_) => syntax.inert.push(range),
+                Event::Html(html) | Event::InlineHtml(html) if html.contains("<!--") => {
+                    let source = text.get(range.clone()).unwrap_or_default();
+                    for (start, _) in source.match_indices("<!--") {
+                        let comment_start = range.start + start;
+                        let comment_end = text
+                            .get(comment_start + 4..)
+                            .and_then(|rest| rest.find("-->"))
+                            .map_or(text.len(), |end| comment_start + 4 + end + 3);
+                        syntax.inert.push(comment_start..comment_end);
+                    }
+                }
+                Event::Start(Tag::CodeBlock(_)) => syntax.inert.push(range),
+                Event::Start(Tag::Item) => open_items.push(ListItem {
+                    range,
+                    loose: false,
+                }),
+                Event::End(TagEnd::Item) => syntax.list_items.extend(open_items.pop()),
+                Event::Start(Tag::Paragraph) => {
+                    if let Some(item) = open_items.last_mut() {
+                        item.loose = true;
+                    }
+                }
+                Event::Start(
+                    Tag::Emphasis
+                    | Tag::Strong
+                    | Tag::Strikethrough
+                    | Tag::Superscript
+                    | Tag::Subscript,
+                ) => syntax.inline_spans.push(range),
+                Event::Start(Tag::Link { link_type, id, .. }) => {
+                    syntax.inline_spans.push(range.clone());
+                    syntax.links.push(range.clone());
+                    if is_reference(link_type) {
+                        references.push((range, id.to_string(), false));
+                    }
+                }
+                Event::Start(Tag::Image { link_type, id, .. }) => {
+                    let mut range = range;
+                    // The parser's span of `![alt][]` stops before the `[]`,
+                    // which belongs to the image all the same.
+                    if link_type == LinkType::Collapsed
+                        && text
+                            .get(range.end..)
+                            .is_some_and(|rest| rest.starts_with("[]"))
+                    {
+                        range.end += 2;
+                    }
+                    syntax.inline_spans.push(range.clone());
+                    if is_reference(link_type) {
+                        references.push((range, id.to_string(), true));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let definitions = parser.reference_definitions();
+        for (range, label, is_image) in references {
+            let Some(definition) = definitions.get(&label) else {
+                continue;
+            };
+            let span = definition.span.clone();
+            match syntax
+                .definition_uses
+                .iter_mut()
+                .find(|(definition, _)| *definition == span)
+            {
+                Some((_, uses)) => *uses += 1,
+                None => syntax.definition_uses.push((span.clone(), 1)),
+            }
+            if is_image {
+                syntax.reference_images.push(ReferenceImage {
+                    range,
+                    definition: span,
+                    destination: definition.dest.to_string(),
+                    title: definition.title.as_ref().map(|title| title.to_string()),
+                });
+            }
+        }
+        syntax
+    }
+
+    fn is_inert(&self, offset: usize) -> bool {
+        self.inert
+            .iter()
+            .any(|range| range.start <= offset && offset < range.end)
+    }
+
+    /// Whether `offset` is strictly inside an inline span, where the text on
+    /// either side of it belongs together even across a line break.
+    fn is_inside_inline_span(&self, offset: usize) -> bool {
+        self.inline_spans
+            .iter()
+            .any(|span| span.start < offset && offset < span.end)
+    }
+
+    fn is_inside_link(&self, range: &Range<usize>) -> bool {
+        self.links
+            .iter()
+            .any(|link| link.start <= range.start && range.end <= link.end && link != range)
+    }
+
+    /// Whether `offset` is in a list item of a tight list, which a blank line
+    /// would loosen: every item of it would then show as a paragraph.
+    fn is_in_tight_list_item(&self, offset: usize) -> bool {
+        self.list_items
+            .iter()
+            .filter(|item| item.range.start <= offset && offset <= item.range.end)
+            .min_by_key(|item| item.range.len())
+            .is_some_and(|item| !item.loose)
+    }
+
+    fn reference_image_at(&self, selection: &Range<usize>, text: &str) -> Option<&ReferenceImage> {
+        self.reference_images
+            .iter()
+            .find(|image| covers(&image.range, selection, text))
+    }
+
+    fn definition_uses(&self, definition: &Range<usize>) -> usize {
+        self.definition_uses
+            .iter()
+            .find(|(range, _)| range == definition)
+            .map_or(0, |(_, uses)| *uses)
+    }
+}
+
+/// The form a reference-style image was written in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ReferenceForm {
+    /// `![alt][label]`
+    Full,
+    /// `![alt][]`, whose alt text is its label.
+    Collapsed,
+    /// `![alt]`, whose alt text is its label.
+    Shortcut,
+}
+
+/// A reference-style image, with what writing it back in the same form needs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ImageReference {
+    /// The label as written, backslashes and all.
+    label: String,
+    /// The alt text as written, which is the label of the two short forms.
+    written_alt: String,
+    form: ReferenceForm,
+}
+
+impl ImageReference {
+    fn render(&self, alt: &str) -> String {
+        let alt = escape_markdown(alt, &['[', ']']);
+        match self.form {
+            ReferenceForm::Collapsed if alt == self.written_alt => format!("![{alt}][]"),
+            ReferenceForm::Shortcut if alt == self.written_alt => format!("![{alt}]"),
+            // Changing the alt text of a short form would change its label
+            // too, and so lose the definition.
+            _ => format!("![{alt}][{}]", self.label),
+        }
+    }
+}
+
+/// The end of the bracketed text that starts at `open`, where `text[open]`
+/// is `[`, skipping backslash escapes and nested brackets.
+fn closing_bracket(text: &str, open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut characters = text.get(open..)?.char_indices();
+    while let Some((offset, character)) = characters.next() {
+        match character {
+            '\\' => {
+                characters.next();
+            }
+            '[' => depth += 1,
+            ']' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(open + offset);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Reads `![alt][label]` and its short forms from the whole of `source`,
+/// returning the form and the alt text.
+fn parse_reference_image(source: &str) -> Option<(ImageReference, String)> {
+    let rest = source.strip_prefix('!')?;
+    let alt_end = closing_bracket(rest, 0)?;
+    let written_alt = rest.get(1..alt_end)?.to_string();
+    let after = rest.get(alt_end + 1..)?;
+    let (form, label) = if after.is_empty() {
+        (ReferenceForm::Shortcut, written_alt.clone())
+    } else if after == "[]" {
+        (ReferenceForm::Collapsed, written_alt.clone())
+    } else {
+        let label_end = closing_bracket(after, 0)?;
+        if label_end + 1 != after.len() {
+            return None;
+        }
+        (ReferenceForm::Full, after.get(1..label_end)?.to_string())
+    };
+    let alt = unescape_markdown(&written_alt, &['[', ']']);
+    Some((
+        ImageReference {
+            label,
+            written_alt,
+            form,
+        },
+        alt,
+    ))
+}
+
+/// A reference definition, `[label]: destination "title"`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ReferenceDefinition {
+    /// `[label]:` as written.
+    head: String,
+    /// The destination with its backslash escapes undone, still encoded.
+    written_destination: String,
+    title: Option<String>,
+}
+
+impl ReferenceDefinition {
+    fn parse(source: &str) -> Option<Self> {
+        let open = source.find('[')?;
+        let label_end = closing_bracket(source, open)?;
+        let colon = label_end + 1;
+        if !source.get(colon..)?.starts_with(':') {
+            return None;
+        }
+        let head = source.get(open..colon + 1)?.to_string();
+        let rest = source.get(colon + 1..)?.trim_start();
+        let (destination, rest) = if let Some(inner) = rest.strip_prefix('<') {
+            let end = inner.find('>')?;
+            (inner.get(..end)?, inner.get(end + 1..)?)
+        } else {
+            let end = rest
+                .find(|character: char| character.is_ascii_whitespace())
+                .unwrap_or(rest.len());
+            (rest.get(..end)?, rest.get(end..)?)
+        };
+        let rest = rest.trim();
+        let title = rest.chars().next().and_then(|delimiter| {
+            let closing = match delimiter {
+                '"' | '\'' => delimiter,
+                '(' => ')',
+                _ => return None,
+            };
+            let inner = rest.get(1..)?.strip_suffix(closing)?;
+            Some(unescape_markdown(inner, &[delimiter, closing]))
+        });
+        Some(Self {
+            head,
+            written_destination: decode_entities(&unescape_destination(destination)),
+            title,
+        })
+    }
+
+    fn render(&self, destination: &str, title: Option<&str>) -> String {
+        let mut text = format!("{} {destination}", self.head);
+        if let Some(title) = title {
+            // The definition is written back on one line, where a line break
+            // of the title would lose the markers of a quote or a list it is
+            // in; the title reads the same with a space.
+            let title = title.replace("\r\n", " ").replace(['\r', '\n'], " ");
+            text.push_str(" \"");
+            text.push_str(&escape_markdown(&title, &['"']));
+            text.push('"');
+        }
+        text
+    }
 }
 
 /// The rows of non-blank lines around the selection, as text with the offset
@@ -1922,22 +2255,42 @@ fn image_target(editor: &mut Editor, cx: &mut Context<Editor>) -> Option<ImageTa
         .range();
     let buffer = editor.buffer().read(cx).as_singleton()?;
     let snapshot = buffer.read(cx).snapshot();
-    let selection = selection.start.0..selection.end.0;
+    Some(image_target_in(
+        &snapshot,
+        selection.start.0..selection.end.0,
+    ))
+}
 
-    let (block_start, block) = surrounding_block(&snapshot, &selection);
+fn image_target_in(snapshot: &BufferSnapshot, selection: Range<usize>) -> ImageTarget {
+    let text = snapshot.text();
+    let syntax = DocumentSyntax::parse(&text);
+    let (block_start, block) = surrounding_block(snapshot, &selection);
     let in_block =
         selection.start.saturating_sub(block_start)..selection.end.saturating_sub(block_start);
     let html_blocks = html_blocks(&block);
-    if let Some((range_in_block, markup)) = image_at(&block, in_block.clone()) {
+    // What code spans, code blocks and comments hold is text, not an image
+    // to edit.
+    let found = image_at(&block, in_block.clone())
+        .filter(|(range, _)| !syntax.is_inert(block_start + range.start));
+    if let Some((range_in_block, markup)) = found {
         let range = block_start + range_in_block.start..block_start + range_in_block.end;
         let inside_html = is_inside_html(&html_blocks, &block, &range_in_block);
         // A container is a block already, and is replaced as one.
         let block_refusal = markup
             .container
             .is_none()
-            .then(|| block_refusal(&snapshot, &range, &block, inside_html, true))
+            .then(|| {
+                block_refusal(
+                    snapshot,
+                    &range,
+                    &block,
+                    inside_html,
+                    syntax.is_inside_link(&range),
+                    true,
+                )
+            })
             .flatten();
-        return Some(ImageTarget {
+        return ImageTarget {
             original_text: snapshot.text_for_range(range.clone()).collect(),
             range: snapshot.anchor_before(range.start)..snapshot.anchor_after(range.end),
             existing: Some(markup),
@@ -1945,7 +2298,11 @@ fn image_target(editor: &mut Editor, cx: &mut Context<Editor>) -> Option<ImageTa
             block_refusal,
             inside_html,
             after_paragraph: false,
-        });
+            definition: None,
+        };
+    }
+    if let Some(target) = reference_image_target(snapshot, &text, &syntax, &selection, &block) {
+        return target;
     }
 
     let original_text: String = snapshot.text_for_range(selection.clone()).collect();
@@ -1954,19 +2311,88 @@ fn image_target(editor: &mut Editor, cx: &mut Context<Editor>) -> Option<ImageTa
         .collect::<Vec<_>>()
         .join(" ");
     let inside_html = is_inside_html(&html_blocks, &block, &in_block);
-    let (before, after) = text_around(&snapshot, &selection);
-    let after_paragraph = before
+    let (before, after) = text_around(snapshot, &selection);
+    let content_before = before
         .get(line_prefix(&before).length..)
-        .is_some_and(|content| !content.trim().is_empty())
-        && !after.trim().is_empty();
-    Some(ImageTarget {
+        .is_some_and(|content| !content.trim().is_empty());
+    // Emphasis or a link that runs on past the end of the line, or began on
+    // the line before, is split by a block as surely as one in mid-line.
+    let after_paragraph = (content_before && !after.trim().is_empty())
+        || syntax.is_inside_inline_span(selection.start)
+        || syntax.is_inside_inline_span(selection.end);
+    ImageTarget {
         range: snapshot.anchor_before(selection.start)..snapshot.anchor_after(selection.end),
         original_text,
         existing: None,
         selected_text: (!selected_text.is_empty()).then_some(selected_text),
-        block_refusal: block_refusal(&snapshot, &selection, &block, inside_html, !after_paragraph),
+        block_refusal: block_refusal(
+            snapshot,
+            &selection,
+            &block,
+            inside_html,
+            false,
+            !after_paragraph,
+        ),
         inside_html,
         after_paragraph,
+        definition: None,
+    }
+}
+
+/// The target for a reference-style image the selection is on, which is read
+/// with the destination and title of its definition.
+fn reference_image_target(
+    snapshot: &BufferSnapshot,
+    text: &str,
+    syntax: &DocumentSyntax,
+    selection: &Range<usize>,
+    block: &str,
+) -> Option<ImageTarget> {
+    let image = syntax.reference_image_at(selection, text)?;
+    let (reference, alt) = parse_reference_image(text.get(image.range.clone())?)?;
+    let definition_source = text.get(image.definition.clone())?;
+    let definition = ReferenceDefinition {
+        written_destination: image.destination.clone(),
+        title: image.title.clone(),
+        ..ReferenceDefinition::parse(definition_source)?
+    };
+    // The span can take in the line break after the definition, which stays
+    // where it is.
+    let definition_start = image.definition.start + definition_source.find('[')?;
+    let definition_end = image.definition.start + definition_source.trim_end().len();
+    let definition_range = definition_start..definition_end;
+
+    let markup = ImageMarkup {
+        destination: decode_destination(&definition.written_destination),
+        written_destination: Some(definition.written_destination.clone()),
+        alt,
+        title: definition.title.clone(),
+        reference: Some(reference),
+        ..ImageMarkup::default()
+    };
+    let block_refusal = block_refusal(
+        snapshot,
+        &image.range,
+        block,
+        false,
+        syntax.is_inside_link(&image.range),
+        true,
+    );
+    Some(ImageTarget {
+        original_text: snapshot.text_for_range(image.range.clone()).collect(),
+        range: snapshot.anchor_before(image.range.start)..snapshot.anchor_after(image.range.end),
+        existing: Some(markup),
+        selected_text: None,
+        block_refusal,
+        inside_html: false,
+        after_paragraph: false,
+        definition: Some(DefinitionTarget {
+            original_text: snapshot.text_for_range(definition_range.clone()).collect(),
+            range: snapshot.anchor_before(definition_range.start)
+                ..snapshot.anchor_after(definition_range.end),
+            definition,
+            uses: syntax.definition_uses(&image.definition),
+        }),
     })
 }
 
@@ -1979,6 +2405,7 @@ fn block_padding(
     snapshot: &BufferSnapshot,
     range: &Range<usize>,
     prefix: &LinePrefix,
+    in_tight_list_item: bool,
 ) -> (String, String) {
     let continuation = prefix.continuation.as_str();
     let blank = continuation.trim_end();
@@ -1991,7 +2418,14 @@ fn block_padding(
     let content_before = before.get(before_prefix.length..).unwrap_or_default();
 
     let leading = if !content_before.trim().is_empty() {
-        format!("\n{blank}\n{continuation}")
+        // A `<div>` or `<p>` starts an HTML block even in the middle of a
+        // paragraph, so in a tight list the blank line, which would loosen
+        // the list, can be left out.
+        if in_tight_list_item {
+            format!("\n{continuation}")
+        } else {
+            format!("\n{blank}\n{continuation}")
+        }
     } else if before_prefix.list_marker_column.is_some() {
         // An HTML block may start a list item, which leaves the item and the
         // list as they were; only a marker typed without its space needs one.
@@ -2048,7 +2482,27 @@ fn check_target(editor: &Editor, target: &ImageTarget, cx: &App) -> Result<()> {
         .read(cx)
         .as_singleton()
         .context("Markdown のバッファーが見つかりません。")?;
-    intact_target_range(&buffer.read(cx).snapshot(), target).map(|_| ())
+    let snapshot = buffer.read(cx).snapshot();
+    intact_target_range(&snapshot, target)?;
+    if let Some(definition) = &target.definition {
+        intact_definition_range(&snapshot, definition)?;
+    }
+    Ok(())
+}
+
+fn intact_definition_range(
+    snapshot: &BufferSnapshot,
+    definition: &DefinitionTarget,
+) -> Result<Range<usize>> {
+    let range =
+        definition.range.start.to_offset(snapshot)..definition.range.end.to_offset(snapshot);
+    let current: String = snapshot.text_for_range(range.clone()).collect();
+    if current != definition.original_text {
+        return Err(anyhow!(
+            "ダイアログを開いた後に、画像の参照定義が変更されました。ダイアログを開き直してください。"
+        ));
+    }
+    Ok(range)
 }
 
 /// Replaces the target's range with `markup`, leaving the cursor after it.
@@ -2056,6 +2510,7 @@ fn write_image(
     editor: &mut Editor,
     target: &ImageTarget,
     markup: &ImageMarkup,
+    definition: Option<&str>,
     window: &mut Window,
     cx: &mut Context<Editor>,
 ) -> Result<()> {
@@ -2066,6 +2521,12 @@ fn write_image(
         .context("Markdown のバッファーが見つかりません。")?;
     let snapshot = buffer.read(cx).snapshot();
     let range = intact_target_range(&snapshot, target)?;
+    let definition_edit = match (definition, &target.definition) {
+        (Some(text), Some(definition)) => {
+            Some((intact_definition_range(&snapshot, definition)?, text))
+        }
+        _ => None,
+    };
     let start_row = snapshot.offset_to_point(range.start).row;
     // What the cursor sat in is left as it was, selection included.
     let (range, first_row) = if target.after_paragraph && markup.is_written_in_a_container() {
@@ -2081,20 +2542,29 @@ fn write_image(
     // Inside an HTML block a blank line would end it, so a container there is
     // written back in place as it stood.
     let (prefix, suffix) = if rendered.is_block && !target.inside_html {
-        block_padding(&snapshot, &range, &line_prefix)
+        let in_tight_list_item =
+            DocumentSyntax::parse(&snapshot.text()).is_in_tight_list_item(range.start);
+        block_padding(&snapshot, &range, &line_prefix, in_tight_list_item)
     } else {
         (String::new(), String::new())
     };
-    let cursor = range.start + prefix.len() + rendered.text.len();
+    let mut cursor = range.start + prefix.len() + rendered.text.len();
     let text = format!("{prefix}{}{suffix}", rendered.text);
+    let mut edits = vec![(
+        MultiBufferOffset(range.start)..MultiBufferOffset(range.end),
+        text,
+    )];
+    if let Some((definition_range, definition_text)) = definition_edit {
+        if definition_range.end <= range.start {
+            cursor = cursor + definition_text.len() - definition_range.len();
+        }
+        edits.push((
+            MultiBufferOffset(definition_range.start)..MultiBufferOffset(definition_range.end),
+            definition_text.to_string(),
+        ));
+    }
     editor.transact(window, cx, |editor, window, cx| {
-        editor.edit(
-            [(
-                MultiBufferOffset(range.start)..MultiBufferOffset(range.end),
-                text,
-            )],
-            cx,
-        );
+        editor.edit(edits, cx);
         editor.change_selections(Default::default(), window, cx, |selections| {
             selections.select_ranges([MultiBufferOffset(cursor)..MultiBufferOffset(cursor)]);
         });
@@ -2130,14 +2600,27 @@ enum PreviewSource {
     Project(ProjectPath),
 }
 
+/// A file on this machine that is to be copied next to the document.
 struct CopyRequest {
     source: PathBuf,
-    directory: PathBuf,
+    document: ProjectPath,
 }
 
 struct Plan {
     markup: ImageMarkup,
     copy: Option<CopyRequest>,
+    /// The new text of the reference definition the image takes its path
+    /// from, when that is what changes.
+    definition: Option<String>,
+}
+
+/// A file picked with the OS dialog for a document on a remote host, which
+/// names a file on this machine rather than one the host could read.
+struct PickedLocalFile {
+    /// What the path field was set to, which the pick holds for as long as
+    /// the field still does.
+    text: String,
+    path: PathBuf,
 }
 
 pub struct ImageDialog {
@@ -2145,7 +2628,14 @@ pub struct ImageDialog {
     project: WeakEntity<Project>,
     fs: Arc<dyn Fs>,
     location: DocumentLocation,
+    /// The document as a project path, which is what a copy is stored next
+    /// to. `None` for a buffer never saved.
+    document: Option<ProjectPath>,
     target: ImageTarget,
+    picked_local_file: Option<PickedLocalFile>,
+    /// Whether a changed path is written into a reference definition that
+    /// other links and images use too, instead of into this image alone.
+    rewrite_shared_definition: bool,
     path_field: Entity<Editor>,
     alt_field: Entity<Editor>,
     width_field: Entity<Editor>,
@@ -2227,13 +2717,19 @@ impl ImageDialog {
 
         let fs = project.read(cx).fs().clone();
         let candidates_task = Self::collect_candidates(&project, &location, cx);
+        let document = editor
+            .upgrade()
+            .and_then(|editor| document_project_path(&editor, cx));
         let mut this = Self {
             editor,
             project: project.downgrade(),
             fs,
             location,
+            document,
             alignment: existing.as_ref().and_then(|markup| markup.alignment),
             target,
+            picked_local_file: None,
+            rewrite_shared_definition: false,
             path_field,
             alt_field,
             width_field,
@@ -2343,7 +2839,10 @@ impl ImageDialog {
         self.highlighted = None;
         let path = self.path_text(cx);
         let alt = self.alt_field.read(cx).text(cx);
-        if alt.is_empty() || self.automatic_alt.as_deref() == Some(alt.as_str()) {
+        // An image read without alt text keeps going without it until
+        // another file is picked.
+        let suggests_alt = !self.path_is_unchanged(cx);
+        if suggests_alt && (alt.is_empty() || self.automatic_alt.as_deref() == Some(alt.as_str())) {
             let default = default_alt(&path);
             self.automatic_alt = Some(default.clone());
             if default != alt {
@@ -2361,7 +2860,9 @@ impl ImageDialog {
     fn path_is_outside_the_list(&self, cx: &App) -> bool {
         let path = self.path_text(cx);
         let path = path.trim();
-        is_url(path) || self.location.path_style.is_absolute(path)
+        is_url(path)
+            || self.location.path_style.is_absolute(path)
+            || self.picked_local(cx).is_some()
     }
 
     fn update_matches(&mut self, cx: &mut Context<Self>) {
@@ -2406,6 +2907,16 @@ impl ImageDialog {
         resolve_source(&self.path_text(cx), &self.location)
     }
 
+    /// The file on this machine the path field names, when it holds what the
+    /// OS dialog picked for a remote document.
+    fn picked_local(&self, cx: &App) -> Option<&PathBuf> {
+        let text = self.path_text(cx);
+        self.picked_local_file
+            .as_ref()
+            .filter(|picked| picked.text == text.trim())
+            .map(|picked| &picked.path)
+    }
+
     /// Whether the path is the one the image already had, which is written
     /// back as it was: an edit that only changes the size must not start
     /// copying files or rewriting a path the author chose.
@@ -2416,65 +2927,94 @@ impl ImageDialog {
             .is_some_and(|existing| existing.destination == self.path_text(cx))
     }
 
+    /// Why a picture cannot be copied next to the document, if it cannot.
+    fn storing_refusal(&self, cx: &App) -> Option<String> {
+        let Some(document) = &self.document else {
+            return Some(
+                "Markdown が未保存のため、画像をコピーできません。先に保存してください。"
+                    .to_string(),
+            );
+        };
+        let Some(project) = self.project.upgrade() else {
+            return Some("プロジェクトが閉じられました。".to_string());
+        };
+        image_files::storing_refusal(&project, document, cx)
+    }
+
     fn copy_offered(&self, file: &ResolvedFile, cx: &App) -> bool {
         self.location.is_local
             && self.location.directory.is_some()
             && file.absolute.is_some()
             && !file.inside_root
             && !self.path_is_unchanged(cx)
+            && self.storing_refusal(cx).is_none()
+    }
+
+    /// The reference definition a changed path would be written into, when
+    /// the image is written back in its reference form.
+    fn shared_definition_uses(&self) -> Option<usize> {
+        self.target
+            .definition
+            .as_ref()
+            .map(|definition| definition.uses)
+            .filter(|uses| *uses > 1)
     }
 
     /// Looks the file up again when the path field points somewhere new.
     fn refresh_details(&mut self, cx: &mut Context<Self>) {
-        let ResolvedSource::File(file) = self.resolved(cx) else {
+        let lookup = if let Some(path) = self.picked_local(cx) {
+            Some((path.to_string_lossy().into_owned(), true))
+        } else {
+            match self.resolved(cx) {
+                ResolvedSource::File(ResolvedFile {
+                    absolute: Some(absolute),
+                    ..
+                }) => Some((absolute, self.location.is_local)),
+                _ => None,
+            }
+        };
+        let Some((absolute, on_this_machine)) = lookup else {
             self.details = SourceDetails::None;
             self.details_for = None;
             self._details_task = Task::ready(());
             return;
         };
-        let Some(absolute) = file.absolute else {
-            self.details = SourceDetails::None;
-            self.details_for = None;
-            self._details_task = Task::ready(());
-            return;
-        };
-        if self.details_for.as_deref() == Some(absolute.as_str()) {
+        let key = format!("{on_this_machine}:{absolute}");
+        if self.details_for.as_deref() == Some(key.as_str()) {
             return;
         }
-        self.details_for = Some(absolute.clone());
+        self.details_for = Some(key);
         self.details = SourceDetails::Checking;
         let is_svg = absolute.to_ascii_lowercase().ends_with(".svg");
 
-        if self.location.is_local {
+        if on_this_machine {
             let fs = self.fs.clone();
             let path = PathBuf::from(&absolute);
             self._details_task = cx.spawn(async move |this, cx| {
-                let is_file = fs
-                    .metadata(&path)
-                    .await
-                    .ok()
-                    .flatten()
-                    .is_some_and(|metadata| !metadata.is_dir);
-                let details = if is_file {
-                    // The picture decoders cannot read an SVG's size, and its
-                    // drawing has no pixel size of its own to report.
-                    let dimensions = if is_svg {
-                        None
-                    } else {
-                        match fs.load_bytes(&path).await {
-                            Ok(bytes) => {
-                                cx.background_spawn(async move { image_dimensions(&bytes) })
+                let metadata = fs.metadata(&path).await.ok().flatten();
+                let details = match metadata {
+                    Some(metadata) if !metadata.is_dir => {
+                        // A file too large to store is not read just for its
+                        // size either.
+                        let dimensions = if metadata.len > image_files::MAXIMUM_IMAGE_BYTES {
+                            None
+                        } else {
+                            match fs.load_bytes(&path).await {
+                                Ok(bytes) => {
+                                    cx.background_spawn(async move {
+                                        picture_dimensions(&bytes, is_svg)
+                                    })
                                     .await
+                                }
+                                Err(_) => None,
                             }
-                            Err(_) => None,
+                        };
+                        SourceDetails::Found {
+                            preview: Some(PreviewSource::Local(path)),
+                            dimensions,
                         }
-                    };
-                    SourceDetails::Found {
-                        preview: Some(PreviewSource::Local(path)),
-                        dimensions,
                     }
-                } else {
-                    SourceDetails::Missing
+                    _ => SourceDetails::Missing,
                 };
                 this.update(cx, |this, cx| {
                     this.details = details;
@@ -2510,24 +3050,19 @@ impl ImageDialog {
         };
         let project = project.downgrade();
         self._details_task = cx.spawn(async move |this, cx| {
-            let dimensions = if is_svg {
-                None
-            } else {
-                let open = project.update(cx, |project, cx| {
-                    project.open_image(project_path.clone(), cx)
-                });
-                match open {
-                    Ok(open) => match open.await {
-                        Ok(image) => {
-                            let bytes =
-                                image.read_with(cx, |image, _| image.image.bytes().to_vec());
-                            cx.background_spawn(async move { image_dimensions(&bytes) })
-                                .await
-                        }
-                        Err(_) => None,
-                    },
+            let open = project.update(cx, |project, cx| {
+                project.open_image(project_path.clone(), cx)
+            });
+            let dimensions = match open {
+                Ok(open) => match open.await {
+                    Ok(image) => {
+                        let bytes = image.read_with(cx, |image, _| image.image.bytes().to_vec());
+                        cx.background_spawn(async move { picture_dimensions(&bytes, is_svg) })
+                            .await
+                    }
                     Err(_) => None,
-                }
+                },
+                Err(_) => None,
             };
             this.update(cx, |this, cx| {
                 this.details = SourceDetails::Found {
@@ -2565,6 +3100,22 @@ impl ImageDialog {
         let mut copy = None;
         let destination = if self.path_is_unchanged(cx) {
             self.path_text(cx)
+        } else if let Some(source) = self.picked_local(cx) {
+            // The host cannot read a file on this machine, so it is copied
+            // over or not used at all.
+            if let Some(refusal) = self.storing_refusal(cx) {
+                return Err(refusal.into());
+            }
+            let document = self
+                .document
+                .clone()
+                .ok_or_else(|| SharedString::from("Markdown が未保存です。"))?;
+            copy = Some(CopyRequest {
+                source: source.clone(),
+                document,
+            });
+            // Filled in once the copy has a name.
+            String::new()
         } else {
             match self.resolved(cx) {
                 ResolvedSource::Empty => return Err("画像ファイルを指定してください。".into()),
@@ -2572,12 +3123,12 @@ impl ImageDialog {
                 ResolvedSource::File(file) => {
                     if self.copy_offered(&file, cx)
                         && self.copy_into_images
-                        && let (Some(source), Some(directory)) =
-                            (file.absolute.as_ref(), self.location.directory.as_ref())
+                        && let (Some(source), Some(document)) =
+                            (file.absolute.as_ref(), self.document.clone())
                     {
                         copy = Some(CopyRequest {
                             source: PathBuf::from(source),
-                            directory: PathBuf::from(directory),
+                            document,
                         });
                         // Filled in once the copy has a name.
                         String::new()
@@ -2590,7 +3141,8 @@ impl ImageDialog {
         };
 
         let mut markup = self.target.existing.clone().unwrap_or_default();
-        if markup.destination != destination {
+        let path_changed = markup.destination != destination;
+        if path_changed {
             markup.written_destination = None;
         }
         markup.destination = destination;
@@ -2604,7 +3156,29 @@ impl ImageDialog {
         {
             return Err(refusal.into());
         }
-        Ok(Plan { markup, copy })
+
+        let mut definition = None;
+        if markup.reference.is_some() {
+            let stays_a_reference = !markup.is_written_in_a_container() && !markup.needs_html();
+            let definition_may_change =
+                self.shared_definition_uses().is_none() || self.rewrite_shared_definition;
+            if !stays_a_reference || (path_changed && !definition_may_change) {
+                // Written inline, the image carries its own path and leaves
+                // the definition to whatever else uses it.
+                markup.reference = None;
+            } else if path_changed || copy.is_some() {
+                definition = self
+                    .target
+                    .definition
+                    .as_ref()
+                    .map(|definition| definition.definition.head.clone());
+            }
+        }
+        Ok(Plan {
+            markup,
+            copy,
+            definition,
+        })
     }
 
     /// Notes that do not stop the image from being written.
@@ -2613,11 +3187,20 @@ impl ImageDialog {
         if matches!(self.details, SourceDetails::Missing) {
             warnings.push("このパスにファイルが見つかりません。".into());
         }
-        if self.path_is_unchanged(cx) {
+        if self.path_is_unchanged(cx) || self.picked_local(cx).is_some() {
             return warnings;
         }
         if let ResolvedSource::File(file) = self.resolved(cx) {
             let copying = self.copy_offered(&file, cx) && self.copy_into_images;
+            if !copying
+                && self.location.is_local
+                && self.location.directory.is_some()
+                && file.absolute.is_some()
+                && !file.inside_root
+                && let Some(refusal) = self.storing_refusal(cx)
+            {
+                warnings.push(format!("{refusal} 画像はコピーせずに参照します。").into());
+            }
             if !copying && file.relative.is_none() {
                 warnings.push(
                     "Markdown からの相対パスにできないため、絶対パスで書き込みます。他の環境では表示されません。"
@@ -2668,7 +3251,10 @@ impl ImageDialog {
             }
         };
         let Some(copy) = plan.copy else {
-            self.write(plan.markup, window, cx);
+            let definition = plan
+                .definition
+                .map(|head| self.definition_text(&head, &plan.markup));
+            self.write(plan.markup, definition, window, cx);
             return;
         };
         let target = &self.target;
@@ -2687,19 +3273,43 @@ impl ImageDialog {
                 return;
             }
         }
+        let Some(project) = self.project.upgrade() else {
+            cx.emit(DismissEvent);
+            return;
+        };
 
         self.copying = true;
         cx.notify();
-        let fs = self.fs.clone();
+        let stored = image_files::store_image_next_to(
+            &project,
+            &copy.document,
+            ImageData::LocalFile(copy.source),
+            None,
+            cx,
+        );
+        let document = copy.document;
         let mut markup = plan.markup;
+        let definition = plan.definition;
         self._copy_task = cx.spawn_in(window, async move |this, cx| {
-            let copied = copy_into_images(fs, copy.source, copy.directory).await;
+            let stored = stored.await;
             this.update_in(cx, |this, window, cx| {
                 this.copying = false;
-                match copied {
-                    Ok(file_name) => {
-                        markup.destination = format!("images/{file_name}");
-                        this.write(markup, window, cx);
+                let stored = stored.and_then(|stored| {
+                    let link = image_files::relative_link(&document, &stored)
+                        .context("コピーした画像へのパスを作れません。")?;
+                    Ok((stored, link))
+                });
+                match stored {
+                    Ok((stored, link)) => {
+                        markup.destination = link;
+                        let definition =
+                            definition.map(|head| this.definition_text(&head, &markup));
+                        if !this.write(markup, definition, window, cx) {
+                            // Nothing links to the copy once the write has
+                            // been refused, so it is taken away again.
+                            image_files::remove_stored_image(&project, &document, &stored, cx)
+                                .detach_and_log_err(cx);
+                        }
                     }
                     Err(error) => {
                         this.message =
@@ -2712,20 +3322,53 @@ impl ImageDialog {
         });
     }
 
-    fn write(&mut self, markup: ImageMarkup, window: &mut Window, cx: &mut Context<Self>) {
+    /// The reference definition written with the markup's path, keeping its
+    /// label and title.
+    fn definition_text(&self, head: &str, markup: &ImageMarkup) -> String {
+        let definition = self
+            .target
+            .definition
+            .as_ref()
+            .map(|definition| &definition.definition);
+        let rendered = ReferenceDefinition {
+            head: head.to_string(),
+            written_destination: String::new(),
+            title: None,
+        };
+        rendered.render(
+            &markup.encoded_destination(true),
+            definition.and_then(|definition| definition.title.as_deref()),
+        )
+    }
+
+    /// Writes the image, returning whether it was written.
+    fn write(
+        &mut self,
+        markup: ImageMarkup,
+        definition: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let target = &self.target;
         let written = self.editor.update(cx, |editor, cx| {
-            write_image(editor, target, &markup, window, cx)
+            write_image(editor, target, &markup, definition.as_deref(), window, cx)
         });
         match written {
-            Ok(Ok(())) => cx.emit(DismissEvent),
+            Ok(Ok(())) => {
+                cx.emit(DismissEvent);
+                true
+            }
             Ok(Err(error)) => {
                 self.message = Some(format!("{error:#}").into());
                 cx.notify();
+                false
             }
             // The editor was closed underneath the dialog; there is nothing
             // left to write into.
-            Err(_) => cx.emit(DismissEvent),
+            Err(_) => {
+                cx.emit(DismissEvent);
+                false
+            }
         }
     }
 
@@ -2751,13 +3394,20 @@ impl ImageDialog {
     }
 
     fn browse(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // A remote document's folder is on the host; the dialog opens where
+        // the OS last left it instead.
+        let starting_directory = self
+            .location
+            .is_local
+            .then(|| self.location.directory.as_ref().map(PathBuf::from))
+            .flatten();
         let receiver = window.prompt_for_paths(
             PathPromptOptions {
                 files: true,
                 directories: false,
                 multiple: false,
                 prompt: Some("画像を選択".into()),
-                starting_directory: self.location.directory.as_ref().map(PathBuf::from),
+                starting_directory,
             },
             cx,
         );
@@ -2804,6 +3454,22 @@ impl ImageDialog {
                 .into(),
             );
             cx.notify();
+            return;
+        }
+        if !self.location.is_local {
+            if let Some(refusal) = self.storing_refusal(cx) {
+                self.message = Some(refusal.into());
+                cx.notify();
+                return;
+            }
+            self.picked_local_file = Some(PickedLocalFile {
+                text: text.to_string(),
+                path: path.to_path_buf(),
+            });
+            self.path_field.update(cx, |field, cx| {
+                field.set_text(text, window, cx);
+                field.move_to_end(&MoveToEnd, window, cx);
+            });
             return;
         }
         let text = match resolve_source(text, &self.location) {
@@ -2907,17 +3573,19 @@ impl ImageDialog {
                     .min_w_0()
                     .child(self.path_field.clone()),
             )
-            .when(self.location.is_local, |row| {
-                row.child(
-                    Button::new("markdown-image-browse", "参照…")
-                        .style(ButtonStyle::Outlined)
-                        .size(ButtonSize::Medium)
-                        .tooltip(Tooltip::text("OS のダイアログで画像ファイルを選びます。"))
-                        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                            this.browse(window, cx);
-                        })),
-                )
-            })
+            .child(
+                Button::new("markdown-image-browse", "参照…")
+                    .style(ButtonStyle::Outlined)
+                    .size(ButtonSize::Medium)
+                    .tooltip(Tooltip::text(if self.location.is_local {
+                        "OS のダイアログで画像ファイルを選びます。"
+                    } else {
+                        "このマシンの画像ファイルを OS のダイアログで選び、リモートの images/ にコピーします。"
+                    }))
+                    .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                        this.browse(window, cx);
+                    })),
+            )
             .into_any_element()
     }
 
@@ -3147,7 +3815,75 @@ impl ImageDialog {
             .into_any_element()
     }
 
+    /// Says what happens to the reference definition of a reference-style
+    /// image, and asks before rewriting one that other links use too.
+    fn render_reference_option(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let definition = self.target.definition.as_ref()?;
+        let head = definition.definition.head.as_str();
+        let note = |text: String| {
+            Label::new(text)
+                .size(LabelSize::Small)
+                .color(Color::Muted)
+                .into_any_element()
+        };
+        let plan = self.validate(cx).ok();
+        let stays_a_reference = plan
+            .as_ref()
+            .is_some_and(|plan| plan.markup.reference.is_some());
+        let layout_needs_html = self.alignment.is_some()
+            || !self.width_field.read(cx).text(cx).trim().is_empty()
+            || !self.height_field.read(cx).text(cx).trim().is_empty();
+        if layout_needs_html {
+            return Some(note(format!(
+                "サイズや配置は参照の形 ![…][…] では書けないため、この画像は HTML で書き込みます。参照定義 {head} はそのまま残ります。"
+            )));
+        }
+        if self.path_is_unchanged(cx) {
+            return None;
+        }
+        let Some(uses) = self.shared_definition_uses() else {
+            return stays_a_reference
+                .then(|| note(format!("参照定義 {head} のパスを書き換えます。")));
+        };
+        let others = uses - 1;
+        Some(
+            v_flex()
+                .gap_1()
+                .child(
+                    Checkbox::new(
+                        "markdown-image-rewrite-definition",
+                        self.rewrite_shared_definition.into(),
+                    )
+                    .label(format!(
+                        "参照定義 {head} を書き換える (ほかの {others} か所も変わります)"
+                    ))
+                    .label_size(LabelSize::Small)
+                    .on_click(cx.listener(|this, state: &ToggleState, _window, cx| {
+                        this.rewrite_shared_definition = state.selected();
+                        this.message = None;
+                        cx.notify();
+                    })),
+                )
+                .when(!self.rewrite_shared_definition, |column| {
+                    column.child(note(format!(
+                        "参照定義 {head} はほかの {others} か所でも使われているため、この画像だけをインラインの形 ![…](…) で書き換えます。"
+                    )))
+                })
+                .into_any_element(),
+        )
+    }
+
     fn render_copy_option(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.picked_local(cx).is_some() && !self.path_is_unchanged(cx) {
+            return Some(
+                Label::new(
+                    "このマシンのファイルは、リモートの Markdown と同じフォルダーの images/ にコピーします。リモートからはこのマシンのファイルを参照できないためです。",
+                )
+                .size(LabelSize::Small)
+                .color(Color::Muted)
+                .into_any_element(),
+            );
+        }
         let ResolvedSource::File(file) = self.resolved(cx) else {
             return None;
         };
@@ -3216,11 +3952,94 @@ impl ImageDialog {
     }
 }
 
+/// The pixel size of a picture, read from its `<svg>` tag for an SVG, which
+/// the picture decoders cannot read.
+fn picture_dimensions(bytes: &[u8], is_svg: bool) -> Option<(u32, u32)> {
+    if is_svg {
+        svg_dimensions(bytes)
+    } else {
+        image_dimensions(bytes)
+    }
+}
+
 /// The pixel size of an encoded picture, when the decoders can read it.
 fn image_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     ImageItem::compute_metadata_from_bytes(bytes)
         .ok()
         .map(|metadata| (metadata.width, metadata.height))
+}
+
+/// How much of an SVG is searched for its `<svg>` tag, which comes after at
+/// most an XML declaration, a doctype and some comments.
+const SVG_HEAD_BYTES: usize = 64 * 1024;
+
+/// The size an SVG is drawn at: its `width` and `height` in pixels, the one
+/// missing worked out from the `viewBox`, or the `viewBox` itself when
+/// neither is given. A length in any other unit, or a percentage, says
+/// nothing about pixels, and is treated as missing.
+pub(crate) fn svg_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    let head = String::from_utf8_lossy(bytes.get(..bytes.len().min(SVG_HEAD_BYTES))?);
+    let mut position = 0;
+    let tag = loop {
+        let rest = head.get(position..)?;
+        let next = rest.find('<')?;
+        position += next;
+        if head.get(position..)?.starts_with("<!--") {
+            // A drawing that was commented out is not the one drawn.
+            let end = head.get(position + 4..)?.find("-->")?;
+            position += 4 + end + 3;
+            continue;
+        }
+        if let Some(tag) = parse_start_tag(&head, position).filter(|tag| tag.name == "svg") {
+            break tag;
+        }
+        position += 1;
+    };
+    let attribute = |name: &str| {
+        tag.attributes
+            .iter()
+            .find(|attribute| attribute.name == name)
+            .and_then(|attribute| attribute.value.as_deref())
+    };
+    let width = attribute("width").and_then(svg_pixels);
+    let height = attribute("height").and_then(svg_pixels);
+    let view_box = attribute("viewbox").and_then(|view_box| {
+        let numbers = view_box
+            .split(|character: char| character.is_whitespace() || character == ',')
+            .filter(|part| !part.is_empty())
+            .map(|part| part.parse::<f64>().ok())
+            .collect::<Option<Vec<_>>>()?;
+        match numbers.as_slice() {
+            [_, _, width, height] if *width > 0.0 && *height > 0.0 => Some((*width, *height)),
+            _ => None,
+        }
+    });
+    let (width, height) = match (width, height, view_box) {
+        (Some(width), Some(height), _) => (width, height),
+        (Some(width), None, Some((box_width, box_height))) => {
+            (width, width * box_height / box_width)
+        }
+        (None, Some(height), Some((box_width, box_height))) => {
+            (height * box_width / box_height, height)
+        }
+        (None, None, Some(view_box)) => view_box,
+        _ => return None,
+    };
+    Some((whole_pixels(width)?, whole_pixels(height)?))
+}
+
+fn svg_pixels(value: &str) -> Option<f64> {
+    let value = value.trim();
+    let number = value.strip_suffix("px").unwrap_or(value).trim_end();
+    number
+        .parse::<f64>()
+        .ok()
+        .filter(|number| number.is_finite() && *number > 0.0)
+}
+
+fn whole_pixels(value: f64) -> Option<u32> {
+    let rounded = value.round();
+    (rounded >= 1.0 && rounded <= f64::from(u32::MAX)).then_some(rounded as u32)
 }
 
 fn new_field(text: &str, placeholder: &str, window: &mut Window, cx: &mut App) -> Entity<Editor> {
@@ -3282,6 +4101,7 @@ impl Render for ImageDialog {
         let alignment = self.render_alignment(cx);
         let size = self.render_size(window, cx);
         let copy_option = self.render_copy_option(cx);
+        let reference_option = self.render_reference_option(cx);
         let alt_focused = self.alt_field.focus_handle(cx).contains_focused(window, cx);
         let footer = self.render_footer(problem, cx);
 
@@ -3316,6 +4136,7 @@ impl Render for ImageDialog {
                                 .child(path_row)
                                 .children(candidates)
                                 .children(copy_option)
+                                .children(reference_option)
                                 .child(details)
                                 .child(section_label("代替テキスト"))
                                 .child(
@@ -3346,6 +4167,20 @@ impl Focusable for ImageDialog {
 impl EventEmitter<DismissEvent> for ImageDialog {}
 
 impl ModalView for ImageDialog {
+    fn on_before_dismiss(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> workspace::DismissDecision {
+        // Dropping the copy lets the store take away what it has already
+        // written, which nothing would link to once the dialog is gone.
+        if self.copying {
+            self.copying = false;
+            self._copy_task = Task::ready(());
+        }
+        workspace::DismissDecision::Dismiss(true)
+    }
+
     /// The modal holds anchors into the buffer it will write to; reviving a
     /// stale copy later would write against text that has moved on.
     fn stash_when_dismissed(&self) -> bool {

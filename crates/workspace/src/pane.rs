@@ -4528,9 +4528,11 @@ impl Render for Pane {
             return div().track_focus(&self.focus_handle(cx));
         };
         // WSL remotes accept dropped host files too, since their paths can be translated with `wslpath`; see `Pane::handle_external_paths_drop`.
+        // SSH and Docker remotes accept them so that the active item can take the drop (a Markdown
+        // editor uploads dropped images); anything it declines is refused there with a reason.
         let accepts_external_paths = {
             let project = project.read(cx);
-            project.is_local() || project.is_via_wsl(cx)
+            project.is_local() || project.is_via_remote_server()
         };
 
         v_flex()

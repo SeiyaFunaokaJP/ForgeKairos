@@ -5340,6 +5340,11 @@ fn html_extension_language() -> Arc<Language> {
 /// The syntax keys the default dark theme styles. A capture changes the color on
 /// screen only when it resolves to one of them.
 fn default_theme_syntax() -> SyntaxTheme {
+    default_theme_syntax_with_keys(&[])
+}
+
+/// The default theme's syntax keys plus `extra_keys`, as a user theme might add.
+fn default_theme_syntax_with_keys(extra_keys: &[&str]) -> SyntaxTheme {
     let themes: serde_json::Value =
         serde_json::from_str(include_str!("../../../assets/themes/one/one.json")).unwrap();
     let one_dark = themes["themes"]
@@ -5353,7 +5358,9 @@ fn default_theme_syntax() -> SyntaxTheme {
             .as_object()
             .unwrap()
             .keys()
-            .map(|key| (key.clone(), HighlightStyle::default())),
+            .cloned()
+            .chain(extra_keys.iter().map(|key| key.to_string()))
+            .map(|key| (key, HighlightStyle::default())),
     )
 }
 
@@ -5375,12 +5382,19 @@ fn markdown_with_html_registry(
 /// The theme key that paints each byte of `text` as Markdown, the way the editor
 /// would draw it.
 fn markdown_theme_keys(text: &str, cx: &mut TestAppContext) -> Vec<Option<String>> {
-    let theme = default_theme_syntax();
-    let (registry, markdown) = markdown_with_html_registry(&theme, cx.background_executor.clone());
+    markdown_theme_keys_in_theme(text, &default_theme_syntax(), cx)
+}
+
+fn markdown_theme_keys_in_theme(
+    text: &str,
+    theme: &SyntaxTheme,
+    cx: &mut TestAppContext,
+) -> Vec<Option<String>> {
+    let (registry, markdown) = markdown_with_html_registry(theme, cx.background_executor.clone());
     let snapshot = cx.update(|cx| {
         Buffer::build_snapshot_sync(text::Rope::from(text), Some(markdown), Some(registry), cx)
     });
-    theme_keys(&snapshot, &theme)
+    theme_keys(&snapshot, theme)
 }
 
 fn theme_keys(snapshot: &BufferSnapshot, theme: &SyntaxTheme) -> Vec<Option<String>> {
@@ -5868,4 +5882,261 @@ async fn test_markdown_closing_tag_fallback_leaves_other_text_alone(cx: &mut Tes
     assert_eq!(key("</span>\n続きの行", "続きの行"), None);
     assert_eq!(key("> </div>", "div"), Some("tag"));
     assert_eq!(key("> </section>", "section"), Some("tag"));
+}
+
+#[gpui::test]
+async fn test_markdown_html_blocks_in_quotes_and_lists_leave_their_markers_to_markdown(
+    cx: &mut TestAppContext,
+) {
+    let text = indoc! {r#"
+        > <div>
+        > 本文
+        > </div>
+
+        > 引用
+
+        - 項目
+
+          <div>
+          <p>入れ子</p>
+          </div>
+    "#};
+    let keys = markdown_theme_keys(text, cx);
+    let key = |context, needle| theme_key_at(text, &keys, context, needle);
+
+    assert_eq!(key("> <div>", ">"), Some("punctuation.markup"));
+    assert_eq!(key("> <div>", "div"), Some("tag"));
+    assert_eq!(key("> 本文", ">"), Some("punctuation.markup"));
+    assert_eq!(key("> 本文", "本文"), None);
+    assert_eq!(key("> </div>", ">"), Some("punctuation.markup"));
+    assert_eq!(key("> </div>", "</"), Some("punctuation.bracket"));
+    assert_eq!(key("> </div>", "div"), Some("tag"));
+    assert_eq!(key("> 引用", ">"), Some("punctuation.markup"));
+    assert_eq!(key("  <p>入れ子</p>", "p"), Some("tag"));
+    assert_eq!(key("  <p>入れ子</p>", "入れ子"), None);
+    assert_eq!(key("  </div>", "div"), Some("tag"));
+}
+
+#[gpui::test]
+async fn test_markdown_unopened_closing_tag_before_other_tags_is_highlighted(
+    cx: &mut TestAppContext,
+) {
+    let text = indoc! {r#"
+        </div>
+        <div align="right">
+
+        右寄せの本文
+
+        </div>
+
+        </span>
+        <p>テキスト</p>
+    "#};
+    let keys = markdown_theme_keys(text, cx);
+    let key = |context, needle| theme_key_at(text, &keys, context, needle);
+
+    assert_eq!(key("</div>\n<div align", "div"), Some("tag"));
+    assert_eq!(key("</div>\n<div align", "</"), Some("punctuation.bracket"));
+    assert_eq!(key("<div align=\"right\">", "align"), Some("attribute"));
+    assert_eq!(key("<div align=\"right\">", "\"right\""), Some("string"));
+    assert_eq!(key("右寄せの本文", "右寄せの本文"), None);
+    // Text between the tags keeps the whole block out of the fallback.
+    assert_eq!(key("<p>テキスト</p>", "テキスト"), None);
+}
+
+#[gpui::test]
+async fn test_markdown_footnotes_are_highlighted_as_labels(cx: &mut TestAppContext) {
+    let text = indoc! {r#"
+        本文に脚注[^1]と[^note]、リンク[参照]。
+
+        [^1]: 一語
+        [参照]: https://example.com
+
+        [^long]: 空白を 含む 脚注
+    "#};
+    let keys = markdown_theme_keys(text, cx);
+    let key = |context, needle| theme_key_at(text, &keys, context, needle);
+
+    assert_eq!(key("脚注[^1]と", "[^1]"), Some("label"));
+    assert_eq!(key("と[^note]、", "[^note]"), Some("label"));
+    assert_eq!(key("リンク[参照]", "[参照]"), Some("link_text"));
+    assert_eq!(key("[^1]: 一語", "[^1]"), Some("label"));
+    // A one-word footnote reads as a link definition to that word.
+    assert_eq!(key("[^1]: 一語", ": 一語"), None);
+    assert_eq!(key("[^long]: 空白", "[^long]"), Some("label"));
+    assert_eq!(key("[^long]: 空白を 含む 脚注", "空白を 含む 脚注"), None);
+    let definition = "[参照]: https://example.com";
+    assert_eq!(key(definition, "[参照]: "), Some("link_text"));
+    assert_eq!(key(definition, "https://example.com"), Some("link_uri"));
+}
+
+#[gpui::test]
+async fn test_markdown_strikethrough_is_dimmed_unless_the_theme_styles_it(cx: &mut TestAppContext) {
+    let text = "前 ~~取り消し~~ 後\n";
+    let keys = markdown_theme_keys(text, cx);
+    assert_eq!(
+        theme_key_at(text, &keys, "~~取り消し~~", "~~取り消し~~"),
+        Some("comment")
+    );
+    assert_eq!(theme_key_at(text, &keys, "前 ", "前 "), None);
+
+    let theme = default_theme_syntax_with_keys(&["strikethrough"]);
+    let keys = markdown_theme_keys_in_theme(text, &theme, cx);
+    assert_eq!(
+        theme_key_at(text, &keys, "~~取り消し~~", "~~取り消し~~"),
+        Some("strikethrough")
+    );
+}
+
+#[gpui::test]
+async fn test_markdown_inline_math_is_highlighted_but_prices_are_not(cx: &mut TestAppContext) {
+    let text = indoc! {r#"
+        数式 $x^2$ と $a + b$。
+
+        価格は $5 と $10 です。
+
+        価格は$5と$10です。
+
+        空白入り $ x $ です。
+
+        数字から $1$ です。
+    "#};
+    let keys = markdown_theme_keys(text, cx);
+    let key = |context, needle| theme_key_at(text, &keys, context, needle);
+
+    assert_eq!(key("$x^2$", "$x^2$"), Some("text.literal"));
+    assert_eq!(key("$a + b$", "$a + b$"), Some("text.literal"));
+    assert_eq!(key("は $5 と $10", "$5 と $10"), None);
+    assert_eq!(key("は$5と$10", "$5と$10"), None);
+    assert_eq!(key("$ x $", "$ x $"), None);
+    assert_eq!(key("$1$", "$1$"), None);
+}
+
+#[gpui::test]
+async fn test_markdown_inline_markup_across_quote_and_list_lines_keeps_its_colors(
+    cx: &mut TestAppContext,
+) {
+    let text = indoc! {r#"
+        > 前の *強調が
+        > 続く* と **太字
+        > 終わり** と [リンク
+        > 先](https://example.com) と `コード
+        > スパン` と <b>太
+        > </b> と <span
+        > title="t">中</span> 後
+
+        - 項目 *強調
+          続く* と <i>斜
+          体</i>
+    "#};
+    let theme = default_theme_syntax();
+    let (registry, markdown) = markdown_with_html_registry(&theme, cx.background_executor.clone());
+    let snapshot = cx.update(|cx| {
+        Buffer::build_snapshot_sync(text::Rope::from(text), Some(markdown), Some(registry), cx)
+    });
+    let keys = theme_keys(&snapshot, &theme);
+    let key = |context, needle| theme_key_at(text, &keys, context, needle);
+
+    for line in ["> 続く*", "> 終わり**", "> 先]", "> スパン`", "> </b>"] {
+        assert_eq!(key(line, ">"), Some("punctuation.markup"), "{line}");
+    }
+    assert_eq!(key("*強調が", "*強調が"), Some("emphasis"));
+    assert_eq!(key("続く* と **", "続く*"), Some("emphasis"));
+    assert_eq!(key("**太字", "**太字"), Some("emphasis.strong"));
+    assert_eq!(key("終わり**", "終わり**"), Some("emphasis.strong"));
+    assert_eq!(key("[リンク", "[リンク"), Some("link_text"));
+    assert_eq!(key("先](", "先]"), Some("link_text"));
+    assert_eq!(
+        key("(https://example.com)", "https://example.com"),
+        Some("link_uri")
+    );
+    assert_eq!(key("`コード", "`コード"), Some("text.literal"));
+    assert_eq!(key("スパン`", "スパン`"), Some("text.literal"));
+    assert_eq!(key("<b>太", "b"), Some("tag"));
+    assert_eq!(key("> </b>", "</"), Some("punctuation.bracket"));
+    assert_eq!(key("> </b>", "b"), Some("tag"));
+    assert_eq!(key("項目 *強調", "*強調"), Some("emphasis"));
+    assert_eq!(key("  続く* と <i>", "続く*"), Some("emphasis"));
+    assert_eq!(key("<i>斜", "i"), Some("tag"));
+    assert_eq!(key("  体</i>", "i"), Some("tag"));
+    assert_eq!(key("  体</i>", "体"), None);
+
+    let language_name = |context: &str, needle: &str| {
+        let offset = text.find(context).unwrap() + context.find(needle).unwrap();
+        let scope = snapshot.language_scope_at(offset).unwrap().language_name();
+        let language = snapshot.language_at(offset).unwrap().name();
+        (scope.as_ref().to_string(), language.as_ref().to_string())
+    };
+    let markdown = ("Markdown".to_string(), "Markdown".to_string());
+    let html = ("HTML".to_string(), "HTML".to_string());
+    assert_eq!(language_name("> 続く*", ">"), markdown);
+    assert_eq!(language_name("> 続く*", "続く"), markdown);
+    assert_eq!(language_name("> 先](", "先"), markdown);
+    assert_eq!(language_name("> スパン`", "スパン"), markdown);
+    assert_eq!(language_name("> </b>", ">"), markdown);
+    assert_eq!(language_name("> </b>", "b"), html);
+    assert_eq!(language_name("  続く*", "続く"), markdown);
+    // The inline grammar reads the tag across the quote marker only when the
+    // marker is left out of the paragraph's text.
+    assert_eq!(language_name("> title=", "title"), html);
+}
+
+#[gpui::test]
+async fn test_markdown_inline_math_is_injected_only_where_it_is_highlighted(
+    cx: &mut TestAppContext,
+) {
+    let text = indoc! {r#"
+        数式 $x^2$ と $$a + b$$。
+
+        価格は $5 と $10 です。
+
+        空白入り $ x $ と数字から $1$ です。
+    "#};
+    let theme = default_theme_syntax();
+    let (registry, markdown) = markdown_with_html_registry(&theme, cx.background_executor.clone());
+    registry.add(Arc::new(Language::new(
+        LanguageConfig {
+            name: "latex".into(),
+            ..Default::default()
+        },
+        Some(tree_sitter_json::LANGUAGE.into()),
+    )));
+    let snapshot = cx.update(|cx| {
+        Buffer::build_snapshot_sync(text::Rope::from(text), Some(markdown), Some(registry), cx)
+    });
+    let latex_texts = snapshot
+        .syntax_layers()
+        .filter(|layer| layer.language.name().as_ref() == "latex")
+        .map(|layer| &text[layer.node().byte_range()])
+        .collect::<Vec<_>>();
+    assert_eq!(latex_texts, ["$x^2$", "$$a + b$$"]);
+}
+
+#[gpui::test]
+async fn test_markdown_footnote_math_and_closing_tag_rules_hold_for_japanese_and_long_lines(
+    cx: &mut TestAppContext,
+) {
+    let long_tags = "<span title=\"長い属性\">".repeat(2000);
+    let long_dollars = "$ 価格 ".repeat(3000);
+    let text = format!(
+        "数式 $数式$ と価格は$5です。脚注[^注]。\n\n[^注]: 定義\n\n</div>\n{long_tags}\n\n{long_dollars}\n"
+    );
+    let keys = markdown_theme_keys(&text, cx);
+    let key = |context, needle| theme_key_at(&text, &keys, context, needle);
+
+    assert_eq!(key("$数式$", "$数式$"), Some("text.literal"));
+    assert_eq!(key("は$5です", "$5です"), None);
+    assert_eq!(key("脚注[^注]", "[^注]"), Some("label"));
+    assert_eq!(key("[^注]: 定義", "[^注]"), Some("label"));
+    assert_eq!(key("</div>\n<span", "div"), Some("tag"));
+    assert_eq!(key("<span title", "span"), Some("tag"));
+    assert_eq!(key("<span title", "title"), Some("attribute"));
+    let dollars_start = text.find(&long_dollars).unwrap();
+    assert!(
+        text[dollars_start..]
+            .char_indices()
+            .filter(|(_, character)| !character.is_whitespace())
+            .all(|(offset, _)| keys[dollars_start + offset].is_none()),
+        "prices on a long line are painted as math"
+    );
 }

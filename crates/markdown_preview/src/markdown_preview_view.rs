@@ -1884,6 +1884,14 @@ fn resolve_preview_image(
     let decoded = urlencoding::decode(dest_url)
         .map(|decoded| decoded.into_owned())
         .unwrap_or_else(|_| dest_url.to_string());
+    let is_remote = project.is_some_and(|project| project.read(cx).is_remote());
+    if !is_remote && let Some(unc) = windows_unc_path(&decoded, client_path_style) {
+        // Whether the file is there is left to the loading: asking now would
+        // wait on the network, and on an unreachable server for a long time.
+        return Some(ImageSource::Resource(Resource::Path(Arc::from(
+            unc.as_path(),
+        ))));
+    }
     let workspace_relative_path = ['/', '\\']
         .iter()
         .find_map(|prefix| decoded.strip_prefix(*prefix));
@@ -1928,6 +1936,27 @@ fn resolve_preview_image(
 
     path.exists()
         .then(|| ImageSource::Resource(Resource::Path(Arc::from(path.as_path()))))
+}
+
+/// `//server/share/…` (or with backslashes) on Windows, which names a file on
+/// another machine rather than one under the root of the workspace, as a
+/// single leading slash would.
+fn windows_unc_path(path: &str, style: PathStyle) -> Option<PathBuf> {
+    if !style.is_windows() {
+        return None;
+    }
+    let rest = path
+        .strip_prefix("//")
+        .or_else(|| path.strip_prefix(r"\\"))?;
+    let mut parts = rest.splitn(3, ['/', '\\']);
+    let server = parts.next().filter(|server| !server.is_empty())?;
+    let share = parts.next().filter(|share| !share.is_empty())?;
+    let mut unc = format!(r"\\{server}\{share}");
+    if let Some(rest) = parts.next() {
+        unc.push('\\');
+        unc.push_str(&rest.replace('/', r"\"));
+    }
+    Some(PathBuf::from(unc))
 }
 
 fn resolve_project_path_for_preview_image(
@@ -2653,6 +2682,7 @@ mod tests {
     use crate::markdown_preview_view::Resource;
     use crate::markdown_preview_view::resolve_preview_image;
     use crate::markdown_preview_view::resolve_project_path_for_preview_image;
+    use crate::markdown_preview_view::windows_unc_path;
     use buffer_diff::BufferDiff;
     use editor::{Editor, MultiBufferOffset};
     use fs::FakeFs;
@@ -2808,6 +2838,54 @@ mod tests {
             cx,
         );
         assert!(missing.is_none());
+    }
+
+    #[test]
+    fn reads_a_windows_unc_path_as_another_machine() {
+        assert_eq!(
+            windows_unc_path("//server/share/images/a.png", PathStyle::Windows),
+            Some(PathBuf::from(r"\\server\share\images\a.png"))
+        );
+        assert_eq!(
+            windows_unc_path(r"\\server\share\a.png", PathStyle::Windows),
+            Some(PathBuf::from(r"\\server\share\a.png"))
+        );
+        assert_eq!(
+            windows_unc_path("//server/share", PathStyle::Windows),
+            Some(PathBuf::from(r"\\server\share"))
+        );
+        assert_eq!(windows_unc_path("//server", PathStyle::Windows), None);
+        assert_eq!(windows_unc_path("///a.png", PathStyle::Windows), None);
+        assert_eq!(windows_unc_path("/images/a.png", PathStyle::Windows), None);
+        assert_eq!(
+            windows_unc_path("//server/share/a.png", PathStyle::Unix),
+            None,
+            "elsewhere a doubled slash is only a slash"
+        );
+    }
+
+    /// `//server/share/a.png` was read as `/server/share/a.png` from the root
+    /// of the workspace.
+    #[gpui::test]
+    fn a_unc_path_is_not_looked_up_under_the_workspace(cx: &mut App) {
+        let tree = TempTree::new(json!({
+            "docs": {},
+            "server": { "share": { "a b.png": "mock data" } },
+        }));
+        let base_directory = markdown_fixture_directory(&tree);
+        let resolved = resolve_preview_image(
+            "//server/share/a%20b.png",
+            Some(&base_directory),
+            Some(tree.path()),
+            None,
+            None,
+            PathStyle::Windows,
+            cx,
+        );
+        assert_resolved_preview_image_path(
+            resolved,
+            std::path::Path::new(r"\\server\share\a b.png"),
+        );
     }
 
     /// The image dialog percent-encodes what Markdown cannot hold as it is and
@@ -4663,6 +4741,14 @@ mod tests {
     fn init_test(cx: &mut TestAppContext) -> Arc<AppState> {
         cx.update(|cx| {
             let state = AppState::test(cx);
+            // Without a per-App database, `AppDatabase::global` falls back to a single
+            // process-wide in-memory database shared by every test in this binary. Tests
+            // in this file open workspaces at the same fixture paths (e.g. "/dir"), and
+            // `WorkspaceDb::save_workspace` deletes other `workspaces` rows that share its
+            // paths, so a concurrently running test can delete another test's workspace
+            // row (cascading away its `markdown_previews` row, or tripping the FOREIGN KEY
+            // on a save still in flight).
+            cx.set_global(db::AppDatabase::test_new());
             editor::init(cx);
             crate::init(cx);
             state

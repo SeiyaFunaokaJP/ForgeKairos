@@ -5,13 +5,13 @@ use std::{
     ops::Range,
 };
 
-use gpui::{DefiniteLength, FontWeight, SharedString, TextAlign, px, relative};
+use gpui::{DefiniteLength, FontWeight, Hsla, SharedString, TextAlign, px, relative};
 use html5ever::{
     Attribute, LocalName, ParseOpts, local_name, parse_document,
     tendril::{StrTendril, TendrilSink},
     tokenizer::{
         BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
-        TokenizerResult,
+        TokenizerResult, states::RawKind,
     },
 };
 use markup5ever_rcdom::{Handle, Node, NodeData, RcDom};
@@ -47,6 +47,100 @@ pub(crate) struct ParsedHtmlBlock {
     /// opens and a later block closes, so the renderer can align the markdown
     /// in between the way the container asks.
     pub aligned_spans: Vec<HtmlAlignedSpan>,
+    /// Filled in by the markdown parser when the block holds tags of a
+    /// `<table>` whose cells continue in later blocks, the README layout that
+    /// leaves blank lines inside `<td>` so its body is parsed as markdown. The
+    /// renderer then draws these parts in order instead of the block's own
+    /// parse, and the markdown between the blocks lands in the open cell.
+    pub table_parts: Vec<HtmlTablePart>,
+}
+
+/// One step of drawing a block that takes part in a `<table>` spanning
+/// several blocks.
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+pub(crate) enum HtmlTablePart {
+    /// These of the block's `children`, drawn where they stand: the HTML
+    /// around the table, or the part of a cell written in this block.
+    Elements(Range<usize>),
+    OpenTable(HtmlSpanningTable),
+    OpenCell(HtmlSpanningCell),
+    CloseCell,
+    /// A row ended after taking this many columns; the rest of the table's
+    /// columns still need a box each, or the grid would pull the next row up.
+    EndRow {
+        row: usize,
+        used_columns: usize,
+    },
+    CloseTable,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+pub(crate) struct HtmlSpanningTable {
+    /// Where the `<table>` tag starts in the document, to tell tables apart.
+    pub source_start: usize,
+    pub column_count: usize,
+    /// The table's own `align`, or the alignment of what encloses it in the
+    /// same block. One from an earlier block is the renderer's to find.
+    pub text_align: Option<TextAlign>,
+    /// Each column's `width` in pixels, when a cell of it asks for one.
+    pub column_widths: Vec<Option<f32>>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+pub(crate) struct HtmlSpanningCell {
+    pub row: usize,
+    pub column: usize,
+    pub col_span: usize,
+    pub is_header: bool,
+    /// The cell's own alignment, its row's, or the centering a `<th>` gets.
+    pub text_align: Option<TextAlign>,
+    pub vertical_align: HtmlVerticalAlign,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum HtmlVerticalAlign {
+    Top,
+    /// What a browser gives a cell that does not say.
+    #[default]
+    Middle,
+    Bottom,
+}
+
+/// A tag the markdown parser follows to pair a `<table>` with its cells across
+/// blocks, with where it sits in the block's source.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct HtmlLayoutTag {
+    pub range: Range<usize>,
+    pub kind: HtmlLayoutTagKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum HtmlLayoutTagKind {
+    /// A `<div>`, `<center>` or `<details>`, as [`container_tags`] lists them.
+    Container(HtmlContainerTag),
+    OpenTable {
+        text_align: Option<TextAlign>,
+    },
+    CloseTable,
+    /// `<thead>`, `<tbody>` or `<tfoot>`, which only group rows.
+    OpenSection,
+    CloseSection,
+    OpenRow {
+        text_align: Option<TextAlign>,
+        vertical_align: Option<HtmlVerticalAlign>,
+    },
+    CloseRow,
+    OpenCell {
+        is_header: bool,
+        text_align: Option<TextAlign>,
+        vertical_align: Option<HtmlVerticalAlign>,
+        col_span: usize,
+        width: Option<f32>,
+    },
+    CloseCell,
 }
 
 /// The tags that can hold later blocks in their body. `<details>` is followed
@@ -57,6 +151,11 @@ pub(crate) enum HtmlContainerName {
     Div,
     Center,
     Details,
+    /// A `<td>` or `<th>` of a table spanning several blocks. Never listed by
+    /// [`container_tags`]: the markdown parser adds it once it has paired the
+    /// table, so an aligned cell aligns its markdown body the way a `<div>`
+    /// does, and `</td>` closes the `<div>`s opened inside the cell.
+    TableCell,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -222,6 +321,10 @@ pub(crate) struct ParsedHtmlTable {
     pub header: Vec<ParsedHtmlTableRow>,
     pub body: Vec<ParsedHtmlTableRow>,
     pub caption: Option<HtmlParagraph>,
+    /// The alignment of an enclosing `<div align>`, which moves the table as a
+    /// whole and reaches the cells that ask for no alignment of their own, the
+    /// way it reaches a markdown table's cells.
+    pub text_align: Option<TextAlign>,
 }
 
 #[derive(Debug, Clone)]
@@ -351,7 +454,8 @@ pub(crate) fn parse_html_block(
 
     assign_details_keys(&mut children, &mut HashMap::new());
 
-    let (unclosed_details, unmatched_details_closes) = count_details_tags(source);
+    let container_tags = container_tags(source);
+    let (unclosed_details, unmatched_details_closes) = count_details_tags(&container_tags);
 
     Some(ParsedHtmlBlock {
         source_range,
@@ -359,8 +463,9 @@ pub(crate) fn parse_html_block(
         unclosed_details,
         unmatched_details_closes,
         details_span: None,
-        container_tags: container_tags(source),
+        container_tags,
         aligned_spans: Vec::new(),
+        table_parts: Vec::new(),
     })
 }
 
@@ -368,52 +473,300 @@ pub(crate) fn parse_html_block(
 /// order, with the alignment each opening tag asks for. html5ever's tree
 /// builder silently closes whatever the block left open, so the tags are read
 /// with its tokenizer instead, which still skips comments and quoted `>`.
+///
+/// The tree builder is also what tells the tokenizer that a script, a style
+/// sheet or a text area holds text rather than markup, so the sink does that
+/// here. A `<pre>` holds markup, but the tags in it are code the document
+/// shows rather than containers around what follows, and a browser closes
+/// whatever was opened in it with the `</pre>` anyway.
 fn container_tags(source: &str) -> Vec<HtmlContainerTag> {
-    struct ContainerTagSink(Vec<HtmlContainerTag>);
+    #[derive(Default)]
+    struct ContainerTagSink {
+        tags: Vec<HtmlContainerTag>,
+        pre_depth: usize,
+    }
 
     impl TokenSink for ContainerTagSink {
         type Handle = ();
 
         fn process_token(&mut self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
-            if let Token::TagToken(tag) = token {
-                let name = match tag.name.as_ref() {
-                    "div" => Some(HtmlContainerName::Div),
-                    "center" => Some(HtmlContainerName::Center),
-                    "details" => Some(HtmlContainerName::Details),
+            let Token::TagToken(tag) = token else {
+                return TokenSinkResult::Continue;
+            };
+            let tag_name = tag.name.as_ref();
+            if tag.kind == TagKind::StartTag {
+                let raw_kind = match tag_name {
+                    "script" => Some(RawKind::ScriptData),
+                    "style" => Some(RawKind::Rawtext),
+                    "textarea" | "title" => Some(RawKind::Rcdata),
                     _ => None,
                 };
-                if let Some(name) = name {
-                    self.0.push(match tag.kind {
-                        TagKind::StartTag => {
-                            let attrs = RefCell::new(tag.attrs);
-                            let styles = extract_styles_from_attributes(&attrs);
-                            let text_align = text_align_from_attributes(&attrs, &styles)
-                                .or((name == HtmlContainerName::Center)
-                                    .then_some(TextAlign::Center));
-                            HtmlContainerTag::Open { name, text_align }
-                        }
-                        TagKind::EndTag => HtmlContainerTag::Close(name),
-                    });
+                if let Some(raw_kind) = raw_kind {
+                    return TokenSinkResult::RawData(raw_kind);
                 }
             }
+            if tag_name == "pre" {
+                match tag.kind {
+                    TagKind::StartTag => self.pre_depth += 1,
+                    TagKind::EndTag => self.pre_depth = self.pre_depth.saturating_sub(1),
+                }
+                return TokenSinkResult::Continue;
+            }
+            if self.pre_depth > 0 {
+                return TokenSinkResult::Continue;
+            }
+
+            let name = match tag_name {
+                "div" => HtmlContainerName::Div,
+                "center" => HtmlContainerName::Center,
+                "details" => HtmlContainerName::Details,
+                _ => return TokenSinkResult::Continue,
+            };
+            self.tags.push(match tag.kind {
+                TagKind::StartTag => {
+                    let attrs = RefCell::new(tag.attrs);
+                    let styles = extract_styles_from_attributes(&attrs);
+                    let text_align = text_align_from_attributes(&attrs, &styles)
+                        .or((name == HtmlContainerName::Center).then_some(TextAlign::Center));
+                    HtmlContainerTag::Open { name, text_align }
+                }
+                TagKind::EndTag => HtmlContainerTag::Close(name),
+            });
             TokenSinkResult::Continue
         }
     }
 
-    let mut tokenizer = Tokenizer::new(ContainerTagSink(Vec::new()), TokenizerOpts::default());
+    let mut tokenizer = Tokenizer::new(ContainerTagSink::default(), TokenizerOpts::default());
     let mut input = BufferQueue::default();
     input.push_back(StrTendril::from(source));
     // The sink never asks to run a script, so this finishes in one pass; the
     // loop is how the tokenizer expects to be resumed if it ever pauses.
     while let TokenizerResult::Script(()) = tokenizer.feed(&mut input) {}
     tokenizer.end();
-    tokenizer.sink.0
+    tokenizer.sink.tags
+}
+
+/// The widest `colspan` a cell of a table spanning blocks is given, the same
+/// ceiling the HTML table renderer puts on its grid.
+pub(crate) const MAX_SPANNING_TABLE_COLUMNS: usize = 512;
+
+/// Lists the tags that lay out a `<table>`, together with the `<div>`,
+/// `<center>` and `<details>` tags around and inside its cells, each with its
+/// byte range in `source`. The markdown parser cuts a block at these tags when
+/// the table's cells continue in later blocks, so unlike [`container_tags`]
+/// this has to know where each tag is, which html5ever's tokenizer does not
+/// say. Comments and the text of `<script>`, `<style>`, `<textarea>`, `<title>`
+/// and `<pre>` are skipped, the way [`container_tags`] skips them.
+pub(crate) fn layout_tags(source: &str) -> Vec<HtmlLayoutTag> {
+    // Lowercasing ASCII keeps every byte offset, so the ranges fit `source`.
+    let lowered = source.to_ascii_lowercase();
+    let mut tags = Vec::new();
+    let mut index = 0;
+
+    while let Some(offset) = lowered.get(index..).and_then(|rest| rest.find('<')) {
+        let start = index + offset;
+        let rest = &lowered[start..];
+
+        if rest.starts_with("<!--") {
+            index = match rest.find("-->") {
+                Some(end) => start + end + "-->".len(),
+                None => lowered.len(),
+            };
+            continue;
+        }
+
+        let closing = rest.starts_with("</");
+        let name_start = start + if closing { "</".len() } else { "<".len() };
+        let name_len = lowered[name_start..]
+            .bytes()
+            .take_while(|byte| byte.is_ascii_alphanumeric())
+            .count();
+        let name_end = name_start + name_len;
+        if name_len == 0 || !tag_name_ends_here(&lowered[name_end..]) {
+            index = start + 1;
+            continue;
+        }
+        let name = &lowered[name_start..name_end];
+        let Some(end) = html_tag_end(&lowered, name_end) else {
+            break;
+        };
+        index = end;
+
+        if !closing && matches!(name, "script" | "style" | "textarea" | "title" | "pre") {
+            let close = format!("</{name}");
+            index = lowered[end..]
+                .find(&close)
+                .map_or(lowered.len(), |position| end + position);
+            continue;
+        }
+
+        let range = start..end;
+        let kind = if closing {
+            match name {
+                "div" => {
+                    HtmlLayoutTagKind::Container(HtmlContainerTag::Close(HtmlContainerName::Div))
+                }
+                "center" => {
+                    HtmlLayoutTagKind::Container(HtmlContainerTag::Close(HtmlContainerName::Center))
+                }
+                "details" => HtmlLayoutTagKind::Container(HtmlContainerTag::Close(
+                    HtmlContainerName::Details,
+                )),
+                "table" => HtmlLayoutTagKind::CloseTable,
+                "thead" | "tbody" | "tfoot" => HtmlLayoutTagKind::CloseSection,
+                "tr" => HtmlLayoutTagKind::CloseRow,
+                "td" | "th" => HtmlLayoutTagKind::CloseCell,
+                _ => continue,
+            }
+        } else {
+            let container_name = match name {
+                "div" => Some(HtmlContainerName::Div),
+                "center" => Some(HtmlContainerName::Center),
+                "details" => Some(HtmlContainerName::Details),
+                _ => None,
+            };
+            if !matches!(
+                name,
+                "div"
+                    | "center"
+                    | "details"
+                    | "table"
+                    | "thead"
+                    | "tbody"
+                    | "tfoot"
+                    | "tr"
+                    | "td"
+                    | "th"
+            ) {
+                continue;
+            }
+            let attrs = tag_attributes(source.get(range.clone()).unwrap_or_default());
+            let styles = extract_styles_from_attributes(&attrs);
+            let text_align = text_align_from_attributes(&attrs, &styles);
+            if let Some(name) = container_name {
+                HtmlLayoutTagKind::Container(HtmlContainerTag::Open {
+                    name,
+                    text_align: text_align
+                        .or((name == HtmlContainerName::Center).then_some(TextAlign::Center)),
+                })
+            } else {
+                match name {
+                    "table" => HtmlLayoutTagKind::OpenTable { text_align },
+                    "tr" => HtmlLayoutTagKind::OpenRow {
+                        text_align,
+                        vertical_align: vertical_align_from_attributes(&attrs, &styles),
+                    },
+                    "td" | "th" => HtmlLayoutTagKind::OpenCell {
+                        is_header: name == "th",
+                        text_align,
+                        vertical_align: vertical_align_from_attributes(&attrs, &styles),
+                        col_span: attr_value(&attrs, local_name!("colspan"))
+                            .and_then(|span| span.trim().parse::<usize>().ok())
+                            .unwrap_or(1)
+                            .clamp(1, MAX_SPANNING_TABLE_COLUMNS),
+                        width: attr_value(&attrs, local_name!("width"))
+                            .or_else(|| styles.get("width").cloned())
+                            .and_then(|width| parse_pixel_width(&width)),
+                    },
+                    _ => HtmlLayoutTagKind::OpenSection,
+                }
+            }
+        };
+        tags.push(HtmlLayoutTag { range, kind });
+    }
+
+    tags
+}
+
+fn tag_name_ends_here(after_name: &str) -> bool {
+    match after_name.chars().next() {
+        None => true,
+        Some(character) => character == '>' || character == '/' || character.is_whitespace(),
+    }
+}
+
+/// Where the tag whose name ends at `from` ends, just past its `>`, stepping
+/// over a `>` inside a quoted attribute value.
+fn html_tag_end(source: &str, from: usize) -> Option<usize> {
+    let mut quote = None;
+    let mut after_equals = false;
+    for (offset, byte) in source.as_bytes().get(from..)?.iter().copied().enumerate() {
+        if let Some(open_quote) = quote {
+            if byte == open_quote {
+                quote = None;
+            }
+            continue;
+        }
+        match byte {
+            b'>' => return Some(from + offset + 1),
+            b'"' | b'\'' if after_equals => {
+                quote = Some(byte);
+                after_equals = false;
+            }
+            b'=' => after_equals = true,
+            byte if byte.is_ascii_whitespace() => {}
+            _ => after_equals = false,
+        }
+    }
+    None
+}
+
+/// The attributes of the one tag `tag_source` holds.
+fn tag_attributes(tag_source: &str) -> RefCell<Vec<Attribute>> {
+    struct FirstTagSink(Option<Vec<Attribute>>);
+
+    impl TokenSink for FirstTagSink {
+        type Handle = ();
+
+        fn process_token(&mut self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
+            if let Token::TagToken(tag) = token
+                && self.0.is_none()
+            {
+                self.0 = Some(tag.attrs);
+            }
+            TokenSinkResult::Continue
+        }
+    }
+
+    let mut tokenizer = Tokenizer::new(FirstTagSink(None), TokenizerOpts::default());
+    let mut input = BufferQueue::default();
+    input.push_back(StrTendril::from(tag_source));
+    while let TokenizerResult::Script(()) = tokenizer.feed(&mut input) {}
+    tokenizer.end();
+    RefCell::new(tokenizer.sink.0.take().unwrap_or_default())
+}
+
+fn vertical_align_from_attributes(
+    attrs: &RefCell<Vec<Attribute>>,
+    styles: &HashMap<String, String>,
+) -> Option<HtmlVerticalAlign> {
+    let value = styles
+        .get("vertical-align")
+        .cloned()
+        .or_else(|| attr_value(attrs, local_name!("valign")))?;
+    match value.trim().to_ascii_lowercase().as_str() {
+        "top" | "baseline" | "text-top" => Some(HtmlVerticalAlign::Top),
+        "middle" => Some(HtmlVerticalAlign::Middle),
+        "bottom" | "text-bottom" => Some(HtmlVerticalAlign::Bottom),
+        _ => None,
+    }
+}
+
+/// A `width` in pixels, as `300` or `300px`. A percentage is left out: the
+/// grid the table is drawn with only takes a floor in pixels for a column.
+fn parse_pixel_width(value: &str) -> Option<f32> {
+    let value = value.trim().to_ascii_lowercase();
+    let number = value.strip_suffix("px").unwrap_or(&value).trim();
+    number
+        .parse::<f32>()
+        .ok()
+        .filter(|width| width.is_finite() && *width > 0.0)
 }
 
 /// Gives the elements of a block that sits inside an aligned container opened
 /// by an earlier block the alignment they would have inherited had the
 /// container been written in the same block, where an element's own alignment
-/// still wins. Tables are left alone there too.
+/// still wins.
 #[stacksafe]
 pub(crate) fn inherit_text_align(elements: &mut [ParsedHtmlElement], text_align: TextAlign) {
     for element in elements {
@@ -442,62 +795,43 @@ pub(crate) fn inherit_text_align(elements: &mut [ParsedHtmlElement], text_align:
                     contents: vec![HtmlParagraphChunk::Image(image.clone())],
                 });
             }
-            ParsedHtmlElement::Table(_) | ParsedHtmlElement::Rule(_) => {}
+            ParsedHtmlElement::Table(table) => {
+                table.text_align.get_or_insert(text_align);
+            }
+            ParsedHtmlElement::Rule(_) => {}
         }
     }
 }
 
-/// Walks the `<details>` and `</details>` tags of a raw HTML block in order,
-/// ignoring the ones inside comments, and returns how many disclosures the block
-/// leaves open and how many it closes that an earlier block opened. html5ever
-/// silently closes whatever the block left open, so this is the only way to tell
-/// a self-contained disclosure from one whose body continues in later blocks.
-/// Matching them in order matters: a block spelled `</details>` followed by the
-/// next `<details>` both closes and opens one, and the two must not cancel out.
-fn count_details_tags(source: &str) -> (usize, usize) {
-    // Lowercasing ASCII keeps every byte offset, so slicing stays valid.
-    let lowered = source.to_ascii_lowercase();
+/// Walks the `<details>` and `</details>` tags of a raw HTML block in order and
+/// returns how many disclosures the block leaves open and how many it closes
+/// that an earlier block opened. html5ever silently closes whatever the block
+/// left open, so this is the only way to tell a self-contained disclosure from
+/// one whose body continues in later blocks. Matching them in order matters: a
+/// block spelled `</details>` followed by the next `<details>` both closes and
+/// opens one, and the two must not cancel out.
+fn count_details_tags(container_tags: &[HtmlContainerTag]) -> (usize, usize) {
     let mut unclosed = 0;
     let mut unmatched_closes = 0;
-    let mut index = 0;
 
-    while let Some(offset) = lowered[index..].find('<') {
-        let start = index + offset;
-        let rest = &lowered[start..];
-
-        if rest.starts_with("<!--") {
-            index = match rest.find("-->") {
-                Some(end) => start + end + "-->".len(),
-                None => lowered.len(),
-            };
-            continue;
-        }
-
-        if let Some(after) = rest.strip_prefix("</details") {
-            if tag_name_ends_here(after) {
+    for container_tag in container_tags {
+        match container_tag {
+            HtmlContainerTag::Open {
+                name: HtmlContainerName::Details,
+                ..
+            } => unclosed += 1,
+            HtmlContainerTag::Close(HtmlContainerName::Details) => {
                 if unclosed > 0 {
                     unclosed -= 1;
                 } else {
                     unmatched_closes += 1;
                 }
             }
-        } else if let Some(after) = rest.strip_prefix("<details")
-            && tag_name_ends_here(after)
-        {
-            unclosed += 1;
+            HtmlContainerTag::Open { .. } | HtmlContainerTag::Close(_) => {}
         }
-
-        index = start + 1;
     }
 
     (unclosed, unmatched_closes)
-}
-
-fn tag_name_ends_here(after_name: &str) -> bool {
-    match after_name.chars().next() {
-        None => true,
-        Some(character) => character == '>' || character == '/' || character.is_whitespace(),
-    }
 }
 
 /// Numbers the disclosures of every block in document order, so two disclosures
@@ -598,6 +932,7 @@ fn parse_html_node(
         NodeData::Comment { .. } => {}
         NodeData::Element { name, attrs, .. } => {
             let styles_map = extract_styles_from_attributes(attrs);
+            let style_text_align = text_align_from_styles(&styles_map);
             let text_align = text_align_from_attributes(attrs, &styles_map)
                 .or(if name.local.as_ref() == "center" {
                     Some(TextAlign::Center)
@@ -688,6 +1023,9 @@ fn parse_html_node(
                     source_range,
                 ) {
                     let mut list = ParsedHtmlElement::List(list);
+                    // A browser gives `align` on a list no meaning, unlike on a
+                    // `<div>`, so only a `text-align` style of its own counts.
+                    let text_align = style_text_align.or(context.text_align);
                     // The items start from a fresh context, so an enclosing
                     // `<div align>` reaches their text the same way it reaches a
                     // list written as markdown after the `<div>`'s blank line.
@@ -705,7 +1043,10 @@ fn parse_html_node(
                     elements.push(blockquote);
                 }
             } else if name.local == local_name!("table") {
-                if let Some(table) = extract_html_table(node, source_range) {
+                if let Some(mut table) = extract_html_table(node, source_range) {
+                    // The table's own `align` places it rather than its text,
+                    // so only the container's alignment is carried.
+                    table.text_align = context.text_align;
                     elements.push(ParsedHtmlElement::Table(table));
                 }
             } else if name.local == local_name!("hr") {
@@ -796,10 +1137,15 @@ fn is_inline_tag(name: &LocalName) -> bool {
     )
 }
 
+/// Whether the node flows in a line with the text around it. An image does,
+/// so images in a row, or beside text, share one paragraph the way a browser
+/// lines them up, instead of each becoming a block of its own.
 fn is_inline_node(node: &Node) -> bool {
     match &node.data {
         NodeData::Text { .. } => true,
-        NodeData::Element { name, .. } => is_inline_tag(&name.local),
+        NodeData::Element { name, .. } => {
+            is_inline_tag(&name.local) || name.local == local_name!("img")
+        }
         _ => false,
     }
 }
@@ -1483,12 +1829,32 @@ fn consume_nodes(
             index += 1;
         }
 
-        if paragraph_has_content(&paragraph) {
-            elements.push(ParsedHtmlElement::Paragraph(ParsedHtmlParagraph {
+        // Text only ends up in a chunk of its own next to an image, so this
+        // drops the line breaks around the images, not the text's spaces.
+        let is_blank = |chunk: &HtmlParagraphChunk| match chunk {
+            HtmlParagraphChunk::Text(text) => text.contents.trim().is_empty(),
+            HtmlParagraphChunk::Image(_) => false,
+        };
+        while paragraph.last().is_some_and(is_blank) {
+            paragraph.pop();
+        }
+        let leading_blanks = paragraph.iter().take_while(|chunk| is_blank(chunk)).count();
+        paragraph.drain(..leading_blanks);
+
+        if !paragraph_has_content(&paragraph) {
+            continue;
+        }
+        match (paragraph.as_slice(), context.text_align) {
+            // A lone image with nothing to align it stays a block of its own,
+            // without the spacing a paragraph adds below itself.
+            ([HtmlParagraphChunk::Image(image)], None) => {
+                elements.push(ParsedHtmlElement::Image(image.clone()));
+            }
+            _ => elements.push(ParsedHtmlElement::Paragraph(ParsedHtmlParagraph {
                 text_align: context.text_align,
                 font_scale_percent: context.font_scale_percent,
                 contents: paragraph,
-            }));
+            })),
         }
     }
 }
@@ -1650,91 +2016,410 @@ fn style_colors(styles: &HashMap<String, String>) -> (Option<u32>, Option<u32>) 
     (color, background)
 }
 
-/// A CSS color as `0xRRGGBB`: `#rgb`, `#rrggbb`, `rgb(r, g, b)` or one of the
-/// basic color names. Anything else, a color with transparency included, is
-/// not understood, and the caller leaves the text in its usual color.
+/// The transparency of a translucent color read from HTML sits in the top
+/// byte (255 minus its alpha), so an opaque color stays the plain `0xRRGGBB`
+/// every caller has always handled.
+const CSS_TRANSPARENCY_SHIFT: u32 = 24;
+
+/// The red, green, blue and alpha of a color [`parse_css_color`] read, alpha
+/// being `0xff` for an opaque one.
+pub(crate) fn css_color_channels(color: u32) -> [u8; 4] {
+    let [transparency, red, green, blue] = color.to_be_bytes();
+    [red, green, blue, u8::MAX - transparency]
+}
+
+/// A color [`parse_css_color`] read, as GPUI draws it.
+pub(crate) fn css_color_hsla(color: u32) -> Hsla {
+    let [red, green, blue, alpha] = css_color_channels(color);
+    gpui::rgba(u32::from_be_bytes([red, green, blue, alpha])).into()
+}
+
+/// Packs color channels the way [`parse_css_color`] hands them back. Every
+/// channel is clamped the way a browser clamps an out-of-range value.
+fn css_color_from_channels(red: f32, green: f32, blue: f32, alpha: f32) -> u32 {
+    let channel = |value: f32| value.round().clamp(0.0, 255.0) as u32;
+    let transparency = 255 - channel(alpha.clamp(0.0, 1.0) * 255.0);
+    transparency << CSS_TRANSPARENCY_SHIFT
+        | channel(red) << 16
+        | channel(green) << 8
+        | channel(blue)
+}
+
+/// A CSS color: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()` / `rgba()`
+/// and `hsl()` / `hsla()` in both the comma and the space separated syntax,
+/// `transparent`, or one of the 148 named colors. An opaque color comes back
+/// as `0xRRGGBB`; a translucent one also carries its transparency in the top
+/// byte, which [`css_color_hsla`] draws. Anything else is not understood, and
+/// the caller leaves the text in its usual color.
 pub(crate) fn parse_css_color(value: &str) -> Option<u32> {
     let value = value.trim().to_ascii_lowercase();
+    let value = value
+        .strip_suffix("!important")
+        .map_or(value.as_str(), str::trim_end);
 
     if let Some(hex) = value.strip_prefix('#') {
-        if !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return None;
-        }
-        return match hex.len() {
-            6 => u32::from_str_radix(hex, 16).ok(),
-            3 => {
-                let expanded = hex
-                    .chars()
-                    .flat_map(|digit| [digit, digit])
-                    .collect::<String>();
-                u32::from_str_radix(&expanded, 16).ok()
+        return parse_hex_color(hex);
+    }
+
+    if let Some((function, arguments)) = value
+        .strip_suffix(')')
+        .and_then(|rest| rest.split_once('('))
+    {
+        let (channels, alpha) = css_color_function_arguments(arguments)?;
+        let [first, second, third] = channels;
+        let alpha = alpha.map_or(Some(1.0), parse_css_alpha)?;
+        return match function.trim_end() {
+            "rgb" | "rgba" => {
+                let channel =
+                    |argument: &str| parse_css_number_or_percentage(argument, 255.0 / 100.0);
+                Some(css_color_from_channels(
+                    channel(first)?,
+                    channel(second)?,
+                    channel(third)?,
+                    alpha,
+                ))
+            }
+            "hsl" | "hsla" => {
+                // Saturation and lightness are percentages; the space separated
+                // syntax also takes them as bare numbers.
+                let fraction = |argument: &str| {
+                    Some(parse_css_number_or_percentage(argument, 1.0)?.clamp(0.0, 100.0) / 100.0)
+                };
+                let [red, green, blue] =
+                    hsl_to_rgb(parse_css_hue(first)?, fraction(second)?, fraction(third)?);
+                Some(css_color_from_channels(
+                    red * 255.0,
+                    green * 255.0,
+                    blue * 255.0,
+                    alpha,
+                ))
             }
             _ => None,
         };
     }
 
-    if let Some(components) = value
-        .strip_prefix("rgb(")
-        .and_then(|rest| rest.strip_suffix(')'))
-    {
-        let components = components
-            .split([',', ' '])
-            .filter(|component| !component.is_empty())
-            .map(|component| component.parse::<u8>().ok())
-            .collect::<Option<Vec<_>>>()?;
-        let [red, green, blue] = components.as_slice() else {
+    if value == "transparent" {
+        return Some(css_color_from_channels(0.0, 0.0, 0.0, 0.0));
+    }
+    named_css_color(value)
+}
+
+fn parse_hex_color(hex: &str) -> Option<u32> {
+    if !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let digits = match hex.len() {
+        3 | 4 => hex
+            .chars()
+            .flat_map(|digit| [digit, digit])
+            .collect::<String>(),
+        6 | 8 => hex.to_string(),
+        _ => return None,
+    };
+    let channel = |index: usize| {
+        digits
+            .get(index * 2..index * 2 + 2)
+            .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+    };
+    let alpha = if digits.len() == 8 {
+        channel(3)?
+    } else {
+        u8::MAX
+    };
+    Some(css_color_from_channels(
+        f32::from(channel(0)?),
+        f32::from(channel(1)?),
+        f32::from(channel(2)?),
+        f32::from(alpha) / 255.0,
+    ))
+}
+
+/// The three channels of a color function and its alpha, if it has one:
+/// `r, g, b`, `r, g, b, a`, `r g b` or `r g b / a`.
+fn css_color_function_arguments(arguments: &str) -> Option<([&str; 3], Option<&str>)> {
+    if arguments.contains(',') {
+        if arguments.contains('/') {
             return None;
+        }
+        let arguments = arguments.split(',').map(str::trim).collect::<Vec<_>>();
+        return match arguments.as_slice() {
+            [first, second, third] => Some(([first, second, third], None)),
+            [first, second, third, alpha] => Some(([first, second, third], Some(alpha))),
+            _ => None,
         };
-        return Some(u32::from(*red) << 16 | u32::from(*green) << 8 | u32::from(*blue));
     }
 
-    Some(match value.as_str() {
-        "black" => 0x000000,
-        "white" => 0xffffff,
-        "red" => 0xff0000,
-        "green" => 0x008000,
-        "blue" => 0x0000ff,
-        "yellow" => 0xffff00,
-        "orange" => 0xffa500,
-        "purple" => 0x800080,
-        "pink" => 0xffc0cb,
-        "gray" | "grey" => 0x808080,
-        "brown" => 0xa52a2a,
-        "navy" => 0x000080,
-        "teal" => 0x008080,
-        "maroon" => 0x800000,
-        "olive" => 0x808000,
-        "lime" => 0x00ff00,
+    let (channels, alpha) = match arguments.split_once('/') {
+        Some((channels, alpha)) => (channels, Some(alpha.trim())),
+        None => (arguments, None),
+    };
+    let channels = channels.split_whitespace().collect::<Vec<_>>();
+    let [first, second, third] = channels.as_slice() else {
+        return None;
+    };
+    Some(([first, second, third], alpha))
+}
+
+/// A bare number, or a percentage multiplied by `percent_scale`. The `none`
+/// of the space separated syntax is a zero.
+fn parse_css_number_or_percentage(argument: &str, percent_scale: f32) -> Option<f32> {
+    if argument == "none" {
+        return Some(0.0);
+    }
+    let (number, scale) = match argument.strip_suffix('%') {
+        Some(number) => (number, percent_scale),
+        None => (argument, 1.0),
+    };
+    let number = number
+        .parse::<f32>()
+        .ok()
+        .filter(|number| number.is_finite())?;
+    Some(number * scale)
+}
+
+/// An alpha from 0 to 1, written as a number or a percentage.
+fn parse_css_alpha(argument: &str) -> Option<f32> {
+    Some(parse_css_number_or_percentage(argument, 1.0 / 100.0)?.clamp(0.0, 1.0))
+}
+
+/// A hue in degrees, from a bare number or one with an angle unit.
+fn parse_css_hue(argument: &str) -> Option<f32> {
+    if argument == "none" {
+        return Some(0.0);
+    }
+    let (number, degrees_per_unit) = if let Some(number) = argument.strip_suffix("deg") {
+        (number, 1.0)
+    } else if let Some(number) = argument.strip_suffix("grad") {
+        (number, 360.0 / 400.0)
+    } else if let Some(number) = argument.strip_suffix("rad") {
+        (number, 180.0 / std::f32::consts::PI)
+    } else if let Some(number) = argument.strip_suffix("turn") {
+        (number, 360.0)
+    } else {
+        (argument, 1.0)
+    };
+    let number = number
+        .parse::<f32>()
+        .ok()
+        .filter(|number| number.is_finite())?;
+    Some((number * degrees_per_unit).rem_euclid(360.0))
+}
+
+/// The red, green and blue, from 0 to 1, of a hue in degrees and a saturation
+/// and lightness from 0 to 1, by the conversion CSS Color 4 gives.
+fn hsl_to_rgb(hue: f32, saturation: f32, lightness: f32) -> [f32; 3] {
+    let channel = |offset: f32| {
+        let position = (offset + hue / 30.0).rem_euclid(12.0);
+        let amount = saturation * lightness.min(1.0 - lightness);
+        lightness - amount * (position - 3.0).min(9.0 - position).clamp(-1.0, 1.0)
+    };
+    [channel(0.0), channel(8.0), channel(4.0)]
+}
+
+/// The CSS named colors (CSS Color Module Level 4).
+fn named_css_color(name: &str) -> Option<u32> {
+    Some(match name {
+        "aliceblue" => 0xf0f8ff,
+        "antiquewhite" => 0xfaebd7,
         "aqua" | "cyan" => 0x00ffff,
+        "aquamarine" => 0x7fffd4,
+        "azure" => 0xf0ffff,
+        "beige" => 0xf5f5dc,
+        "bisque" => 0xffe4c4,
+        "black" => 0x000000,
+        "blanchedalmond" => 0xffebcd,
+        "blue" => 0x0000ff,
+        "blueviolet" => 0x8a2be2,
+        "brown" => 0xa52a2a,
+        "burlywood" => 0xdeb887,
+        "cadetblue" => 0x5f9ea0,
+        "chartreuse" => 0x7fff00,
+        "chocolate" => 0xd2691e,
+        "coral" => 0xff7f50,
+        "cornflowerblue" => 0x6495ed,
+        "cornsilk" => 0xfff8dc,
+        "crimson" => 0xdc143c,
+        "darkblue" => 0x00008b,
+        "darkcyan" => 0x008b8b,
+        "darkgoldenrod" => 0xb8860b,
+        "darkgray" | "darkgrey" => 0xa9a9a9,
+        "darkgreen" => 0x006400,
+        "darkkhaki" => 0xbdb76b,
+        "darkmagenta" => 0x8b008b,
+        "darkolivegreen" => 0x556b2f,
+        "darkorange" => 0xff8c00,
+        "darkorchid" => 0x9932cc,
+        "darkred" => 0x8b0000,
+        "darksalmon" => 0xe9967a,
+        "darkseagreen" => 0x8fbc8f,
+        "darkslateblue" => 0x483d8b,
+        "darkslategray" | "darkslategrey" => 0x2f4f4f,
+        "darkturquoise" => 0x00ced1,
+        "darkviolet" => 0x9400d3,
+        "deeppink" => 0xff1493,
+        "deepskyblue" => 0x00bfff,
+        "dimgray" | "dimgrey" => 0x696969,
+        "dodgerblue" => 0x1e90ff,
+        "firebrick" => 0xb22222,
+        "floralwhite" => 0xfffaf0,
+        "forestgreen" => 0x228b22,
         "fuchsia" | "magenta" => 0xff00ff,
+        "gainsboro" => 0xdcdcdc,
+        "ghostwhite" => 0xf8f8ff,
+        "gold" => 0xffd700,
+        "goldenrod" => 0xdaa520,
+        "gray" | "grey" => 0x808080,
+        "green" => 0x008000,
+        "greenyellow" => 0xadff2f,
+        "honeydew" => 0xf0fff0,
+        "hotpink" => 0xff69b4,
+        "indianred" => 0xcd5c5c,
+        "indigo" => 0x4b0082,
+        "ivory" => 0xfffff0,
+        "khaki" => 0xf0e68c,
+        "lavender" => 0xe6e6fa,
+        "lavenderblush" => 0xfff0f5,
+        "lawngreen" => 0x7cfc00,
+        "lemonchiffon" => 0xfffacd,
+        "lightblue" => 0xadd8e6,
+        "lightcoral" => 0xf08080,
+        "lightcyan" => 0xe0ffff,
+        "lightgoldenrodyellow" => 0xfafad2,
+        "lightgray" | "lightgrey" => 0xd3d3d3,
+        "lightgreen" => 0x90ee90,
+        "lightpink" => 0xffb6c1,
+        "lightsalmon" => 0xffa07a,
+        "lightseagreen" => 0x20b2aa,
+        "lightskyblue" => 0x87cefa,
+        "lightslategray" | "lightslategrey" => 0x778899,
+        "lightsteelblue" => 0xb0c4de,
+        "lightyellow" => 0xffffe0,
+        "lime" => 0x00ff00,
+        "limegreen" => 0x32cd32,
+        "linen" => 0xfaf0e6,
+        "maroon" => 0x800000,
+        "mediumaquamarine" => 0x66cdaa,
+        "mediumblue" => 0x0000cd,
+        "mediumorchid" => 0xba55d3,
+        "mediumpurple" => 0x9370db,
+        "mediumseagreen" => 0x3cb371,
+        "mediumslateblue" => 0x7b68ee,
+        "mediumspringgreen" => 0x00fa9a,
+        "mediumturquoise" => 0x48d1cc,
+        "mediumvioletred" => 0xc71585,
+        "midnightblue" => 0x191970,
+        "mintcream" => 0xf5fffa,
+        "mistyrose" => 0xffe4e1,
+        "moccasin" => 0xffe4b5,
+        "navajowhite" => 0xffdead,
+        "navy" => 0x000080,
+        "oldlace" => 0xfdf5e6,
+        "olive" => 0x808000,
+        "olivedrab" => 0x6b8e23,
+        "orange" => 0xffa500,
+        "orangered" => 0xff4500,
+        "orchid" => 0xda70d6,
+        "palegoldenrod" => 0xeee8aa,
+        "palegreen" => 0x98fb98,
+        "paleturquoise" => 0xafeeee,
+        "palevioletred" => 0xdb7093,
+        "papayawhip" => 0xffefd5,
+        "peachpuff" => 0xffdab9,
+        "peru" => 0xcd853f,
+        "pink" => 0xffc0cb,
+        "plum" => 0xdda0dd,
+        "powderblue" => 0xb0e0e6,
+        "purple" => 0x800080,
+        "rebeccapurple" => 0x663399,
+        "red" => 0xff0000,
+        "rosybrown" => 0xbc8f8f,
+        "royalblue" => 0x4169e1,
+        "saddlebrown" => 0x8b4513,
+        "salmon" => 0xfa8072,
+        "sandybrown" => 0xf4a460,
+        "seagreen" => 0x2e8b57,
+        "seashell" => 0xfff5ee,
+        "sienna" => 0xa0522d,
         "silver" => 0xc0c0c0,
+        "skyblue" => 0x87ceeb,
+        "slateblue" => 0x6a5acd,
+        "slategray" | "slategrey" => 0x708090,
+        "snow" => 0xfffafa,
+        "springgreen" => 0x00ff7f,
+        "steelblue" => 0x4682b4,
+        "tan" => 0xd2b48c,
+        "teal" => 0x008080,
+        "thistle" => 0xd8bfd8,
+        "tomato" => 0xff6347,
+        "turquoise" => 0x40e0d0,
+        "violet" => 0xee82ee,
+        "wheat" => 0xf5deb3,
+        "white" => 0xffffff,
+        "whitesmoke" => 0xf5f5f5,
+        "yellow" => 0xffff00,
+        "yellowgreen" => 0x9acd32,
         _ => return None,
     })
 }
 
-/// The largest `font-size` the preview draws, relative to the surrounding
-/// text. A paragraph written at ten times the size would push everything
-/// else out of the preview.
+/// The largest and smallest `font-size` the preview draws, relative to the
+/// surrounding text. A paragraph written at ten times the size would push
+/// everything else out of the preview, and one at a tenth could not be read.
 const MAX_FONT_SCALE_PERCENT: f32 = 400.0;
-const MIN_FONT_SCALE_PERCENT: f32 = 25.0;
+const MIN_FONT_SCALE_PERCENT: f32 = 50.0;
+
+/// The size a browser gives body text when nothing says otherwise, which is
+/// what the preview's body text stands for when a size is given in pixels.
+const BROWSER_BODY_FONT_SIZE_PX: f32 = 16.0;
+const PIXELS_PER_POINT: f32 = 96.0 / 72.0;
 
 /// A CSS `font-size` relative to the surrounding text, as a percentage:
-/// `1.25em`, `125%`, or `1.25rem`, which the preview treats like `em` since its
-/// body text is close to the root size. Absolute sizes and keywords are not
-/// understood.
+/// `1.25em`, `125%`, `1.25rem` (the preview's body text is its root size),
+/// `20px` and `15pt` (against the 16px a browser's body text is), and the
+/// size keywords at the factors browsers use. The result is kept between
+/// half and four times the size.
 pub(crate) fn parse_css_font_scale(value: &str) -> Option<u16> {
     let value = value.trim().to_ascii_lowercase();
-    let percent = if let Some(number) = value
-        .strip_suffix("rem")
-        .or_else(|| value.strip_suffix("em"))
-    {
-        number.trim().parse::<f32>().ok()? * 100.0
-    } else if let Some(number) = value.strip_suffix('%') {
-        number.trim().parse::<f32>().ok()?
-    } else {
-        return None;
+    let value = value
+        .strip_suffix("!important")
+        .map_or(value.as_str(), str::trim_end);
+    let number = |number: &str| {
+        number
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|number| number.is_finite())
     };
-    if !percent.is_finite() || percent <= 0.0 {
+
+    let percent = match value {
+        "xx-small" => 60.0,
+        "x-small" => 75.0,
+        "small" => 100.0 * 8.0 / 9.0,
+        "medium" => 100.0,
+        "large" => 120.0,
+        "x-large" => 150.0,
+        "xx-large" => 200.0,
+        "xxx-large" => 300.0,
+        "smaller" => 100.0 / 1.2,
+        "larger" => 120.0,
+        _ => {
+            if let Some(size) = value
+                .strip_suffix("rem")
+                .or_else(|| value.strip_suffix("em"))
+            {
+                number(size)? * 100.0
+            } else if let Some(size) = value.strip_suffix("px") {
+                number(size)? / BROWSER_BODY_FONT_SIZE_PX * 100.0
+            } else if let Some(size) = value.strip_suffix("pt") {
+                number(size)? * PIXELS_PER_POINT / BROWSER_BODY_FONT_SIZE_PX * 100.0
+            } else if let Some(size) = value.strip_suffix('%') {
+                number(size)?
+            } else {
+                return None;
+            }
+        }
+    };
+    if percent <= 0.0 {
         return None;
     }
     Some(
@@ -1902,6 +2587,7 @@ fn extract_html_table(node: &Node, source_range: Range<usize>) -> Option<ParsedH
             body: body_rows,
             header: header_rows,
             caption,
+            text_align: None,
         })
     } else {
         None
@@ -1912,6 +2598,85 @@ fn extract_html_table(node: &Node, source_range: Range<usize>) -> Option<ParsedH
 mod tests {
     use super::*;
     use gpui::TextAlign;
+
+    #[test]
+    fn lists_layout_tags_with_where_they_are() {
+        let source = "<div align=\"center\"><!-- <td> --><table title=\"a>b\">\n<TR VALIGN=\"bottom\"><TD ALIGN=right colspan=2 width=\"80px\">x</td><pre><td></pre><th style=\"text-align: left; vertical-align: top\" width=\"50%\"></tr></table></div><table-like>";
+        let tags = layout_tags(source);
+
+        assert_eq!(
+            tags.iter()
+                .map(|tag| &source[tag.range.clone()])
+                .collect::<Vec<_>>(),
+            vec![
+                "<div align=\"center\">",
+                "<table title=\"a>b\">",
+                "<TR VALIGN=\"bottom\">",
+                "<TD ALIGN=right colspan=2 width=\"80px\">",
+                "</td>",
+                "<th style=\"text-align: left; vertical-align: top\" width=\"50%\">",
+                "</tr>",
+                "</table>",
+                "</div>",
+            ]
+        );
+        assert_eq!(
+            tags.into_iter().map(|tag| tag.kind).collect::<Vec<_>>(),
+            vec![
+                HtmlLayoutTagKind::Container(HtmlContainerTag::Open {
+                    name: HtmlContainerName::Div,
+                    text_align: Some(TextAlign::Center),
+                }),
+                HtmlLayoutTagKind::OpenTable { text_align: None },
+                HtmlLayoutTagKind::OpenRow {
+                    text_align: None,
+                    vertical_align: Some(HtmlVerticalAlign::Bottom),
+                },
+                HtmlLayoutTagKind::OpenCell {
+                    is_header: false,
+                    text_align: Some(TextAlign::Right),
+                    vertical_align: None,
+                    col_span: 2,
+                    width: Some(80.0),
+                },
+                HtmlLayoutTagKind::CloseCell,
+                HtmlLayoutTagKind::OpenCell {
+                    is_header: true,
+                    text_align: Some(TextAlign::Left),
+                    vertical_align: Some(HtmlVerticalAlign::Top),
+                    col_span: 1,
+                    width: None,
+                },
+                HtmlLayoutTagKind::CloseRow,
+                HtmlLayoutTagKind::CloseTable,
+                HtmlLayoutTagKind::Container(HtmlContainerTag::Close(HtmlContainerName::Div)),
+            ]
+        );
+    }
+
+    #[test]
+    fn layout_tags_stop_at_a_tag_that_never_ends() {
+        let source = "<td>本文</td><td title=\"開いたまま";
+        assert_eq!(
+            layout_tags(source)
+                .iter()
+                .map(|tag| &source[tag.range.clone()])
+                .collect::<Vec<_>>(),
+            vec!["<td>", "</td>"]
+        );
+        assert_eq!(
+            layout_tags("<td colspan=\"99999\">")
+                .first()
+                .map(|tag| tag.kind.clone()),
+            Some(HtmlLayoutTagKind::OpenCell {
+                is_header: false,
+                text_align: None,
+                vertical_align: None,
+                col_span: MAX_SPANNING_TABLE_COLUMNS,
+                width: None,
+            })
+        );
+    }
 
     #[test]
     fn parses_html_styled_text() {
@@ -2331,7 +3096,7 @@ mod tests {
                     ParsedHtmlElement::Heading(heading) => ("details heading", heading.text_align),
                     other => panic!("expected heading, got {other:?}"),
                 },
-                ParsedHtmlElement::Table(_) => ("table", None),
+                ParsedHtmlElement::Table(table) => ("table", table.text_align),
                 other => panic!("unexpected element {other:?}"),
             })
             .collect::<Vec<_>>();
@@ -2343,8 +3108,210 @@ mod tests {
                 ("paragraph", Some(TextAlign::Left)),
                 ("image", Some(TextAlign::Right)),
                 ("details heading", Some(TextAlign::Right)),
-                ("table", None),
+                ("table", Some(TextAlign::Right)),
             ]
+        );
+    }
+
+    #[test]
+    fn skips_the_tags_inside_raw_text_and_pre() {
+        use HtmlContainerName::{Details, Div};
+
+        let open_div = HtmlContainerTag::Open {
+            name: Div,
+            text_align: Some(TextAlign::Center),
+        };
+        for source in [
+            "<script>let s = \"<div align='right'></div>\";</script><div align=\"center\">",
+            "<style>/* </div><details> */</style><div align=\"center\">",
+            "<textarea><details></div></textarea><div align=\"center\">",
+            "<title></div></title><div align=\"center\">",
+            "<pre><details>\n<div align=\"right\"></div>\n</pre><div align=\"center\">",
+            "<PRE></DIV></PRE><div align=\"center\">",
+        ] {
+            let parsed = parse(source);
+            assert_eq!(parsed.container_tags, vec![open_div], "{source:?}");
+            assert_eq!(parsed.unclosed_details, 0, "{source:?}");
+            assert_eq!(parsed.unmatched_details_closes, 0, "{source:?}");
+        }
+
+        // What follows the raw text is read as markup again.
+        let parsed = parse("<script></script></details><details>");
+        assert_eq!(
+            parsed.container_tags,
+            vec![
+                HtmlContainerTag::Close(Details),
+                HtmlContainerTag::Open {
+                    name: Details,
+                    text_align: None,
+                },
+            ]
+        );
+        assert_eq!(parsed.unclosed_details, 1);
+        assert_eq!(parsed.unmatched_details_closes, 1);
+    }
+
+    #[test]
+    fn a_list_ignores_its_own_align_attribute() {
+        let item_alignment = |source: &str| {
+            let parsed = parse(source);
+            let [ParsedHtmlElement::List(list)] = parsed.children.as_slice() else {
+                panic!("expected a list, got {:?}", parsed.children);
+            };
+            match list.items[0].content.as_slice() {
+                [ParsedHtmlElement::Paragraph(paragraph)] => paragraph.text_align,
+                other => panic!("expected the item's text, got {other:?}"),
+            }
+        };
+
+        assert_eq!(
+            item_alignment("<ul align=\"center\"><li>項目</li></ul>"),
+            None
+        );
+        assert_eq!(
+            item_alignment("<ol align=\"right\"><li>項目</li></ol>"),
+            None
+        );
+        assert_eq!(
+            item_alignment("<ul style=\"text-align: right\"><li>項目</li></ul>"),
+            Some(TextAlign::Right)
+        );
+        assert_eq!(
+            item_alignment("<div align=\"center\"><ul align=\"right\"><li>項目</li></ul></div>"),
+            Some(TextAlign::Center),
+            "the container's alignment still reaches the items"
+        );
+    }
+
+    /// Each element as a kind and the images it lays out, so a row of images
+    /// shows up as one paragraph holding all of them.
+    fn image_layout(source: &str) -> Vec<(&'static str, usize, Option<TextAlign>)> {
+        parse(source)
+            .children
+            .iter()
+            .map(|element| match element {
+                ParsedHtmlElement::Image(_) => ("image", 1, None),
+                ParsedHtmlElement::Paragraph(paragraph) => {
+                    let images = paragraph
+                        .contents
+                        .iter()
+                        .filter(|chunk| matches!(chunk, HtmlParagraphChunk::Image(_)))
+                        .count();
+                    ("paragraph", images, paragraph.text_align)
+                }
+                other => panic!("unexpected element {other:?}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn images_in_a_row_share_one_paragraph() {
+        assert_eq!(
+            image_layout("<img src=\"a.png\">"),
+            vec![("image", 1, None)],
+            "a lone image is a block of its own as before"
+        );
+        assert_eq!(
+            image_layout("<a name=\"top\"></a>\n<img src=\"a.png\">\n"),
+            vec![("image", 1, None)],
+            "the line breaks around it are not text that would make it a paragraph"
+        );
+        assert_eq!(
+            image_layout("<img src=\"a.png\">\n<br>\n"),
+            vec![("image", 1, None)]
+        );
+        assert_eq!(
+            image_layout("<img src=\"a.png\">\n<img src=\"b.png\">"),
+            vec![("paragraph", 2, None)]
+        );
+        assert_eq!(
+            image_layout("<p>段落</p>\n<img src=\"a.png\"> <img src=\"b.png\">\n<p>次</p>"),
+            vec![
+                ("paragraph", 0, None),
+                ("paragraph", 2, None),
+                ("paragraph", 0, None),
+            ],
+            "the paragraphs around the images stay blocks of their own"
+        );
+        assert_eq!(
+            image_layout(
+                "<div align=\"center\">\n<img src=\"a.png\">\n<img src=\"b.png\">\n</div>"
+            ),
+            vec![("paragraph", 2, Some(TextAlign::Center))]
+        );
+        assert_eq!(
+            image_layout("<div><img src=\"a.png\"></div><img src=\"b.png\">"),
+            vec![("image", 1, None), ("image", 1, None)],
+            "a `<div>` still ends the row"
+        );
+
+        // The line breaks around a row of images are not text of its own.
+        let parsed =
+            parse("<div align=\"center\">\n  <img src=\"a.png\">\n  <img src=\"b.png\">\n</div>");
+        let [ParsedHtmlElement::Paragraph(paragraph)] = parsed.children.as_slice() else {
+            panic!("expected one paragraph, got {:?}", parsed.children);
+        };
+        assert!(
+            matches!(
+                paragraph.contents.first(),
+                Some(HtmlParagraphChunk::Image(_))
+            ),
+            "{:?}",
+            paragraph.contents
+        );
+        assert!(
+            matches!(
+                paragraph.contents.last(),
+                Some(HtmlParagraphChunk::Image(_))
+            ),
+            "{:?}",
+            paragraph.contents
+        );
+    }
+
+    /// Images outside a container's own run of inline nodes are laid out as
+    /// they were before images joined those runs.
+    #[test]
+    fn images_keep_their_place_in_paragraphs_cells_and_disclosures() {
+        assert_eq!(
+            image_layout("<p align=\"center\"><img src=\"a.png\" width=\"50%\"></p>"),
+            vec![("paragraph", 1, Some(TextAlign::Center))]
+        );
+        assert_eq!(
+            image_layout("<div align=\"right\"><a href=\"x\"><img src=\"a.png\"></a></div>"),
+            vec![("paragraph", 1, Some(TextAlign::Right))]
+        );
+        assert_eq!(
+            image_layout("<div>前 <img src=\"a.png\"> 後</div>"),
+            vec![("paragraph", 1, None)],
+            "an image beside text shares its line"
+        );
+
+        let parsed = parse(
+            "<table><tr><td><a href=\"x\"><img src=\"a.png\"></a></td><td>文字</td></tr></table>",
+        );
+        let [ParsedHtmlElement::Table(table)] = parsed.children.as_slice() else {
+            panic!("expected a table, got {:?}", parsed.children);
+        };
+        assert!(matches!(
+            table.body[0].columns[0].children.as_slice(),
+            [HtmlParagraphChunk::Image(_)]
+        ));
+
+        let parsed = parse(
+            "<details><summary><img src=\"s.png\"> 題</summary>\n<img src=\"a.png\">\n</details>",
+        );
+        let [ParsedHtmlElement::Details(details)] = parsed.children.as_slice() else {
+            panic!("expected a disclosure, got {:?}", parsed.children);
+        };
+        assert!(matches!(
+            details.summary.first(),
+            Some(HtmlParagraphChunk::Image(_))
+        ));
+        assert!(
+            matches!(details.children.as_slice(), [ParsedHtmlElement::Image(_)]),
+            "{:?}",
+            details.children
         );
     }
 
@@ -2745,19 +3712,89 @@ mod tests {
         assert_eq!(parse_css_color("rgb(255 0 16)"), Some(0xff0010));
         assert_eq!(parse_css_color("Red"), Some(0xff0000));
         assert_eq!(parse_css_color("grey"), Some(0x808080));
+        assert_eq!(parse_css_color("red !important"), Some(0xff0000));
         for unreadable in [
             "",
             "#12",
-            "#1234",
+            "#12345",
             "#gggggg",
-            "rgb(256, 0, 0)",
             "rgb(1, 2)",
-            "rgba(1, 2, 3, 0.5)",
-            "hsl(0, 100%, 50%)",
+            "rgb(1, 2, 3, 4, 5)",
+            "rgb(1 2 3 4)",
+            "rgb(1, 2, 3 / 0.5)",
+            "rgb(a, b, c)",
+            "rgb(1, 2, 3",
+            "hsl(red, 100%, 50%)",
+            "lab(50% 40 59)",
+            "url(x.png)",
             "reddish",
+            "currentcolor",
         ] {
             assert_eq!(parse_css_color(unreadable), None, "{unreadable:?}");
         }
+    }
+
+    #[test]
+    fn parses_css_color_functions_and_names() {
+        // Out-of-range channels are clamped, the way a browser does.
+        assert_eq!(parse_css_color("rgb(300, -5, 16)"), Some(0xff0010));
+        assert_eq!(parse_css_color("rgb(100%, 0%, 50%)"), Some(0xff0080));
+        assert_eq!(parse_css_color("rgb(100% 0% 50%)"), Some(0xff0080));
+        assert_eq!(parse_css_color("RGB( 255 , 0 , 16 )"), Some(0xff0010));
+        assert_eq!(parse_css_color("rgb(255 none 16)"), Some(0xff0010));
+
+        assert_eq!(parse_css_color("hsl(0, 100%, 50%)"), Some(0xff0000));
+        assert_eq!(parse_css_color("hsl(120 100% 25%)"), Some(0x008000));
+        assert_eq!(parse_css_color("hsl(240deg 100 50)"), Some(0x0000ff));
+        assert_eq!(parse_css_color("hsl(0.5turn, 100%, 50%)"), Some(0x00ffff));
+        assert_eq!(parse_css_color("hsl(-60, 100%, 50%)"), Some(0xff00ff));
+        assert_eq!(parse_css_color("hsl(200grad 100% 50%)"), Some(0x00ffff));
+        assert_eq!(parse_css_color("hsl(3.14159rad 100% 50%)"), Some(0x00ffff));
+        assert_eq!(parse_css_color("hsl(30, 0%, 60%)"), Some(0x999999));
+        assert_eq!(parse_css_color("hsla(0, 100%, 50%, 1)"), Some(0xff0000));
+        // Hues between the primaries, against what a browser draws for them.
+        assert_eq!(parse_css_color("hsl(210, 60%, 40%)"), Some(0x2966a3));
+        assert_eq!(parse_css_color("hsl(33 80% 70%)"), Some(0xf0b975));
+        assert_eq!(parse_css_color("hsl(300deg 25% 90%)"), Some(0xecdfec));
+        assert_eq!(parse_css_color("hsl(359, 50%, 50%)"), Some(0xbf4042));
+
+        assert_eq!(parse_css_color("rebeccapurple"), Some(0x663399));
+        assert_eq!(parse_css_color("LightGoldenrodYellow"), Some(0xfafad2));
+        assert_eq!(parse_css_color("darkslategrey"), Some(0x2f4f4f));
+        assert_eq!(parse_css_color("tomato"), Some(0xff6347));
+        assert_eq!(parse_css_color("yellowgreen"), Some(0x9acd32));
+    }
+
+    #[test]
+    fn parses_translucent_css_colors() {
+        let channels = |value: &str| parse_css_color(value).map(css_color_channels);
+
+        // An opaque color stays the plain `0xRRGGBB` whatever it is written as.
+        assert_eq!(parse_css_color("rgba(255, 0, 16, 1)"), Some(0xff0010));
+        assert_eq!(parse_css_color("rgb(255 0 16 / 100%)"), Some(0xff0010));
+        assert_eq!(parse_css_color("#ff0010ff"), Some(0xff0010));
+        assert_eq!(parse_css_color("#f01f"), Some(0xff0011));
+
+        assert_eq!(channels("rgba(255, 0, 16, 0.5)"), Some([255, 0, 16, 128]));
+        assert_eq!(channels("rgba(255,0,16,.5)"), Some([255, 0, 16, 128]));
+        assert_eq!(channels("rgb(255 0 16 / 25%)"), Some([255, 0, 16, 64]));
+        assert_eq!(channels("rgb(255 0 16 / 2)"), Some([255, 0, 16, 255]));
+        assert_eq!(channels("hsla(120, 100%, 25%, 0.2)"), Some([0, 128, 0, 51]));
+        assert_eq!(channels("hsl(120 100% 25% / 0.2)"), Some([0, 128, 0, 51]));
+        assert_eq!(channels("#ff001080"), Some([255, 0, 16, 128]));
+        assert_eq!(channels("#f018"), Some([255, 0, 17, 136]));
+        assert_eq!(channels("transparent"), Some([0, 0, 0, 0]));
+        assert_eq!(channels("rgba(0, 0, 0, 0)"), Some([0, 0, 0, 0]));
+
+        // The preview draws the transparency, rather than the color at full
+        // strength.
+        let drawn = css_color_hsla(parse_css_color("rgba(255, 0, 0, 0.5)").unwrap());
+        assert!((drawn.a - 128.0 / 255.0).abs() < 0.001, "{drawn:?}");
+        assert_eq!(css_color_hsla(0xff0000), gpui::rgb(0xff0000).into());
+        assert_eq!(
+            css_color_hsla(parse_css_color("transparent").unwrap()).a,
+            0.0
+        );
     }
 
     #[test]
@@ -2767,9 +3804,54 @@ mod tests {
         assert_eq!(parse_css_font_scale(" 1.5rem "), Some(150));
         assert_eq!(parse_css_font_scale("120%"), Some(120));
         assert_eq!(parse_css_font_scale("20em"), Some(400));
-        for unreadable in ["", "16px", "large", "-1em", "0em", "em", "NaNem"] {
+        assert_eq!(parse_css_font_scale("1.5em !important"), Some(150));
+        for unreadable in [
+            "",
+            "-1em",
+            "0em",
+            "em",
+            "NaNem",
+            "0px",
+            "-12px",
+            "px",
+            "infpx",
+            "1.5",
+            "2vw",
+            "calc(1em + 2px)",
+            "big",
+            "inherit",
+        ] {
             assert_eq!(parse_css_font_scale(unreadable), None, "{unreadable:?}");
         }
+    }
+
+    #[test]
+    fn parses_absolute_css_font_sizes_against_the_body_text() {
+        // Pixels and points stand against the 16px of a browser's body text,
+        // which the preview's body text plays the part of.
+        assert_eq!(parse_css_font_scale("16px"), Some(100));
+        assert_eq!(parse_css_font_scale("20px"), Some(125));
+        assert_eq!(parse_css_font_scale("24PX"), Some(150));
+        assert_eq!(parse_css_font_scale("12pt"), Some(100));
+        assert_eq!(parse_css_font_scale("18pt"), Some(150));
+
+        // The keywords scale the way browsers scale them.
+        assert_eq!(parse_css_font_scale("medium"), Some(100));
+        assert_eq!(parse_css_font_scale("small"), Some(89));
+        assert_eq!(parse_css_font_scale("x-small"), Some(75));
+        assert_eq!(parse_css_font_scale("xx-small"), Some(60));
+        assert_eq!(parse_css_font_scale("large"), Some(120));
+        assert_eq!(parse_css_font_scale("X-Large"), Some(150));
+        assert_eq!(parse_css_font_scale("xx-large"), Some(200));
+        assert_eq!(parse_css_font_scale("xxx-large"), Some(300));
+        assert_eq!(parse_css_font_scale("smaller"), Some(83));
+        assert_eq!(parse_css_font_scale("larger"), Some(120));
+
+        // Between half and four times the size, whatever is written.
+        assert_eq!(parse_css_font_scale("200px"), Some(400));
+        assert_eq!(parse_css_font_scale("4px"), Some(50));
+        assert_eq!(parse_css_font_scale("0.1em"), Some(50));
+        assert_eq!(parse_css_font_scale("30%"), Some(50));
     }
 
     #[test]

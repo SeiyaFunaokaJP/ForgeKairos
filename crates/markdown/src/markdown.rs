@@ -69,8 +69,8 @@ const PARAGRAPH_LINE_HEIGHT_REMS: f32 = 1.3;
 /// contents are drawn with.
 fn inline_span_text_style(span_style: &parser::InlineSpanStyle) -> TextStyleRefinement {
     TextStyleRefinement {
-        color: span_style.color.map(|color| gpui::rgb(color).into()),
-        background_color: span_style.background.map(|color| gpui::rgb(color).into()),
+        color: span_style.color.map(html::html_parser::css_color_hsla),
+        background_color: span_style.background.map(html::html_parser::css_color_hsla),
         ..Default::default()
     }
 }
@@ -2344,8 +2344,31 @@ impl MarkdownElement {
             range,
             markdown_end,
         );
-        // Without `w_0`, text doesn't wrap to the width of the container.
-        builder.push_div(div().flex_1().w_0(), range, markdown_end);
+        builder.push_div(list_item_body(builder), range, markdown_end);
+    }
+
+    /// Keeps an item's bullet on its first line when a `font-size` span draws
+    /// that line larger: a browser sets the marker on the line's baseline,
+    /// while a bullet left at the usual line height would sit near its top.
+    fn bullet_on_first_line(
+        &self,
+        bullet: AnyElement,
+        first_line_scale_percent: Option<u16>,
+        range: &Range<usize>,
+    ) -> AnyElement {
+        match first_line_scale_percent {
+            Some(percent) if !self.style.height_is_multiple_of_line_height => {
+                let scale = f32::from(percent) / 100.0;
+                div()
+                    .h(rems(PARAGRAPH_LINE_HEIGHT_REMS * scale))
+                    .flex()
+                    .items_center()
+                    .debug_selector(|| format!("markdown-list-bullet-{}", range.start))
+                    .child(bullet)
+                    .into_any_element()
+            }
+            _ => bullet,
+        }
     }
 
     fn pop_markdown_list_item(&self, builder: &mut MarkdownElementBuilder) {
@@ -2723,6 +2746,13 @@ impl Element for MarkdownElement {
         // collapsed: the parser picked a balanced run of events for the body, so
         // dropping them leaves the div stack where it was.
         let mut collapsed_details_events: Option<Range<usize>> = None;
+        // An HTML block that opens or closes a table spanning blocks is drawn
+        // without a wrapper of its own, since the table's divs stay open past
+        // the block's end.
+        let mut unwrapped_html_block = false;
+        // The first root block of a table spanning root blocks, whose marker
+        // is held open until the table closes and then covers all of them.
+        let mut held_root_block: Option<usize> = None;
         for (index, (range, event)) in parsed_markdown.events.iter().enumerate() {
             builder
                 .inherited_alignments
@@ -2768,17 +2798,25 @@ impl Element for MarkdownElement {
 
             match event {
                 MarkdownEvent::RootStart => {
-                    if self.show_root_block_markers {
+                    if self.show_root_block_markers && held_root_block.is_none() {
                         builder.push_root_block(range, markdown_end);
                     }
                 }
                 MarkdownEvent::RootEnd(root_block_index) => {
                     if self.show_root_block_markers {
-                        builder.pop_root_block(
-                            active_root_block == Some(*root_block_index),
-                            cx.theme().colors().border,
-                            cx.theme().colors().border_variant,
-                        );
+                        if !builder.spanning_table_columns.is_empty() {
+                            held_root_block.get_or_insert(*root_block_index);
+                        } else {
+                            let first_root_block =
+                                held_root_block.take().unwrap_or(*root_block_index);
+                            builder.pop_root_block(
+                                active_root_block.is_some_and(|active| {
+                                    (first_root_block..=*root_block_index).contains(&active)
+                                }),
+                                cx.theme().colors().border,
+                                cx.theme().colors().border_variant,
+                            );
+                        }
                     }
                 }
                 MarkdownEvent::Start(tag) => {
@@ -2986,8 +3024,13 @@ impl Element for MarkdownElement {
                             }
                         }
                         MarkdownTag::HtmlBlock => {
-                            builder.push_div(div(), range, markdown_end);
-                            if let Some(block) = parsed_markdown.html_blocks.get(&range.start) {
+                            let block = parsed_markdown.html_blocks.get(&range.start);
+                            unwrapped_html_block =
+                                block.is_some_and(|block| !block.table_parts.is_empty());
+                            if !unwrapped_html_block {
+                                builder.push_div(div(), range, markdown_end);
+                            }
+                            if let Some(block) = block {
                                 let collapsed = self.render_html_block(
                                     block,
                                     &mut builder,
@@ -3042,6 +3085,11 @@ impl Element for MarkdownElement {
                             } else {
                                 div().child("•").into_any_element()
                             };
+                            let bullet = self.bullet_on_first_line(
+                                bullet,
+                                list_item_first_line_scale(&parsed_markdown.events, index),
+                                range,
+                            );
                             self.push_markdown_list_item(&mut builder, bullet, range, markdown_end);
                             // A tight item's text sits directly in the item, with
                             // no paragraph to carry the alignment. The bullet
@@ -3117,7 +3165,7 @@ impl Element for MarkdownElement {
                                 range,
                                 markdown_end,
                             );
-                            builder.push_div(div().flex_1().w_0(), range, markdown_end);
+                            builder.push_div(list_item_body(&builder), range, markdown_end);
                         }
                         MarkdownTag::MetadataBlock(_) => {
                             if let Some(metadata_block) =
@@ -3204,7 +3252,19 @@ impl Element for MarkdownElement {
                             let is_header = builder.table.in_head;
                             let row_index = builder.table.row_index;
                             let col_index = builder.table.col_index;
-                            let alignment = builder.table.current_cell_alignment();
+                            // A column that asks for no alignment follows an
+                            // enclosing `<div align>`, as it does on GitHub.
+                            let alignment = match builder.table.current_cell_alignment() {
+                                Some(Alignment::None) => builder
+                                    .inherited_text_align()
+                                    .map(|text_align| match text_align {
+                                        TextAlign::Left => Alignment::Left,
+                                        TextAlign::Center => Alignment::Center,
+                                        TextAlign::Right => Alignment::Right,
+                                    })
+                                    .or(Some(Alignment::None)),
+                                alignment => alignment,
+                            };
                             let text_align = alignment
                                 .and_then(alignment_to_text_align)
                                 .unwrap_or(self.style.base_text_style.text_align);
@@ -3344,7 +3404,11 @@ impl Element for MarkdownElement {
                         // Pop the parent container.
                         builder.pop_div();
                     }
-                    MarkdownTagEnd::HtmlBlock => builder.pop_div(),
+                    MarkdownTagEnd::HtmlBlock => {
+                        if !std::mem::take(&mut unwrapped_html_block) {
+                            builder.pop_div();
+                        }
+                    }
                     MarkdownTagEnd::List(_) => {
                         builder.pop_list();
                         builder.pop_div();
@@ -3601,6 +3665,20 @@ fn collect_image_alt_text(
         None
     } else {
         Some(alt_text.into())
+    }
+}
+
+/// The box beside a list item's bullet or a footnote's label that holds its
+/// text. Without `w_0`, text doesn't wrap to the width of the container. A
+/// column of an HTML table spanning blocks is as wide as its content asks
+/// for, though, and a box that asks for no width at all would wrap its text
+/// after every character, so there the box only gives up its automatic
+/// minimum width, which lets it wrap too.
+fn list_item_body(builder: &MarkdownElementBuilder) -> Div {
+    if builder.spanning_table_columns.is_empty() {
+        div().flex_1().w_0()
+    } else {
+        div().flex_1().min_w_0()
     }
 }
 
@@ -3983,6 +4061,30 @@ fn task_list_marker_for_item(
     }
 }
 
+/// The size, as a percentage, a list item's first line is drawn at when a
+/// `font-size` span wraps all of the text the item starts with.
+fn list_item_first_line_scale(
+    events: &[(Range<usize>, MarkdownEvent)],
+    item_index: usize,
+) -> Option<u16> {
+    let (_, first_content) =
+        events
+            .get(item_index.checked_add(1)?..)?
+            .iter()
+            .find(|(_, event)| {
+                !matches!(
+                    event,
+                    MarkdownEvent::Start(MarkdownTag::Paragraph) | MarkdownEvent::TaskListMarker(_)
+                )
+            })?;
+    match first_content {
+        MarkdownEvent::InlineHtmlStyleStart(InlineHtmlStyle::Span(span_style)) => {
+            span_style.paragraph_scale_percent
+        }
+        _ => None,
+    }
+}
+
 struct MetadataCellStyle {
     row_index: usize,
     is_key: bool,
@@ -4012,6 +4114,9 @@ struct MarkdownElementBuilder {
     /// The aligned HTML containers whose body, written as markdown in later
     /// blocks, the events being rendered belong to.
     inherited_alignments: Vec<html::html_parser::HtmlAlignedSpan>,
+    /// The column counts of the HTML tables whose cells are open across
+    /// blocks, innermost last.
+    spanning_table_columns: Vec<usize>,
 }
 
 struct MarkdownHighlights {
@@ -4130,6 +4235,7 @@ impl MarkdownElementBuilder {
             syntax_theme,
             highlights,
             inherited_alignments: Vec::new(),
+            spanning_table_columns: Vec::new(),
         }
     }
 
@@ -6420,6 +6526,130 @@ mod tests {
         assert_eq!(line_text_align(&rendered, "後ろ"), TextAlign::Left);
     }
 
+    /// Laying an image out turns the div it lands in into a row, which used to
+    /// be the whole HTML block: the blocks next to the image joined its row
+    /// and whatever was centered before it was pushed off the middle. The
+    /// images of one block share a debug selector, the last one drawn winning,
+    /// so each case measures the image drawn last.
+    #[gpui::test]
+    fn test_images_after_blocks_get_a_row_of_their_own(cx: &mut TestAppContext) {
+        let source = "<div align=\"center\">\n\n本文\n\n<p>中央</p>\n</div>\n<img src=\"b.png\" width=\"100\">\n";
+        let (rendered, cx) = draw_html_preview(source, &[], cx);
+        let text_start = source.find("中央").expect("the text is in the source");
+        let text = rendered.bounds_for_source_range(text_start..text_start + "中央".len());
+        let text = text.first().expect("the text should be drawn");
+        assert!(
+            (text.center().x - px(300.)).abs() < px(20.),
+            "the paragraph before `</div>` stays in the middle: {text:?}"
+        );
+        let image = drawn_image_bounds(cx, source, "<p>中央");
+        assert!(image.left() < px(10.), "{image:?}");
+        assert!(image.top() >= text.bottom(), "{text:?} {image:?}");
+
+        let source = "<div align=\"center\">\n\n本文\n\n<img src=\"a.png\" width=\"100\">\n</div>\n<img src=\"b.png\" width=\"100\">\n";
+        let (_, cx) = draw_html_preview(source, &[], cx);
+        let after = drawn_image_bounds(cx, source, "<img src=\"a.png\"");
+        assert!(
+            after.left() < px(10.),
+            "the image after `</div>` starts a row of its own at the left: {after:?}"
+        );
+
+        let source = "<p>段落</p>\n<img src=\"c.png\" width=\"100\">\n";
+        let (rendered, cx) = draw_html_preview(source, &[], cx);
+        let image = drawn_image_bounds(cx, source, "<p>段落");
+        let text_start = source.find("段落").expect("the text is in the source");
+        let text = rendered.bounds_for_source_range(text_start..text_start + "段落".len());
+        let text = text.first().expect("the text should be drawn");
+        assert!(image.left() < px(10.), "{image:?}");
+        assert!(
+            image.top() >= text.bottom(),
+            "the image sits below the paragraph, not beside it: {text:?} {image:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn test_images_in_a_row_stay_side_by_side(cx: &mut TestAppContext) {
+        let source = "前\n\n<div align=\"center\">\n<img src=\"a.png\" width=\"100\" height=\"100\">\n<img src=\"b.png\" width=\"100\" height=\"100\">\n</div>\n";
+        let (rendered, cx) = draw_html_preview(source, &[], cx);
+        let second = drawn_image_bounds(cx, source, "<div");
+        let above = rendered.bounds_for_source_range(0.."前".len());
+        let above = above.first().expect("the text should be drawn");
+        assert!(
+            second.top() - above.bottom() < px(50.),
+            "the second image is beside the first, not below it: {above:?} {second:?}"
+        );
+        assert!(
+            second.left() > px(295.) && second.right() < px(420.),
+            "the row as a whole sits in the middle: {second:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_moves_html_tables_and_their_cells(cx: &mut TestAppContext) {
+        let source = "<div align=\"center\">\n\n<table><tr><td>セル</td><td align=\"left\">左</td></tr><tr><td>長い長い長い行</td><td>x</td></tr></table>\n\n</div>\n";
+        let (rendered, cx) = draw_html_preview(source, &[], cx);
+        let table = cx
+            .debug_bounds("markdown_html_table")
+            .expect("the table should be drawn");
+        assert!(
+            table.size.width < px(400.) && (table.center().x - px(300.)).abs() < px(10.),
+            "the table as a whole sits in the middle: {table:?}"
+        );
+        assert_eq!(line_text_align(&rendered, "セル"), TextAlign::Center);
+        assert_eq!(
+            line_text_align(&rendered, "左"),
+            TextAlign::Left,
+            "a cell's own alignment wins"
+        );
+
+        let source = "<table><tr><td>セル</td></tr></table>\n";
+        let (rendered, cx) = draw_html_preview(source, &[], cx);
+        let table = cx
+            .debug_bounds("markdown_html_table")
+            .expect("the table should be drawn");
+        assert!(table.left() < px(10.), "{table:?}");
+        assert_eq!(line_text_align(&rendered, "セル"), TextAlign::Left);
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_reaches_markdown_table_cells(cx: &mut TestAppContext) {
+        let source = "<div align=\"right\">\n\n| 列 | 中 |\n|---|:-:|\n| 値 | 真ん中 |\n\n</div>\n\n| 外 |\n|---|\n| 外の値 |\n";
+        let (rendered, _) = draw_html_preview(source, &[], cx);
+        assert_eq!(line_text_align(&rendered, "値"), TextAlign::Right);
+        assert_eq!(
+            line_text_align(&rendered, "真ん中"),
+            TextAlign::Center,
+            "a column's own alignment wins"
+        );
+        assert_eq!(line_text_align(&rendered, "外の値"), TextAlign::Left);
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_opened_in_a_list_item_aligns_up_to_its_end(cx: &mut TestAppContext) {
+        let source = "- <div align=\"center\">\n\n  中\n\n- 次\n\n後ろ\n";
+        let (rendered, _) = draw_html_preview(source, &[], cx);
+        assert_eq!(line_text_align(&rendered, "中"), TextAlign::Center);
+        assert_eq!(line_text_align(&rendered, "次"), TextAlign::Left);
+        assert_eq!(line_text_align(&rendered, "後ろ"), TextAlign::Left);
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_closed_after_a_details_block_toggles_it(cx: &mut TestAppContext) {
+        let source = "<div align=\"center\">\n\n本文\n\n<details><summary>題</summary>中身</details>\n</div>\n\n後ろ\n";
+        let (collapsed, _) = draw_html_preview(source, &[], cx);
+        assert!(
+            !collapsed
+                .lines
+                .iter()
+                .any(|line| line.layout.wrapped_text().contains("中身")),
+            "the disclosure starts collapsed"
+        );
+
+        let (expanded, _) = draw_html_preview(source, &["題"], cx);
+        assert_eq!(line_text_align(&expanded, "中身"), TextAlign::Center);
+        assert_eq!(line_text_align(&expanded, "後ろ"), TextAlign::Left);
+    }
+
     const REVIEW_TABLE: &str = concat!(
         "| ID | Sev | File | Line | Summary |\n",
         "|---|---|---|---|---|\n",
@@ -7475,6 +7705,137 @@ mod tests {
                 style.container_style.text.font_size
             );
         });
+    }
+
+    fn drawn_line<'a>(rendered: &'a RenderedText, text: &str) -> &'a RenderedLine {
+        rendered
+            .lines
+            .iter()
+            .find(|line| line.layout.wrapped_text().contains(text))
+            .unwrap_or_else(|| panic!("{text:?} should be drawn"))
+    }
+
+    fn drawn_font_size(rendered: &RenderedText, text: &str) -> Pixels {
+        drawn_line(rendered, text)
+            .layout
+            .line_layouts()
+            .first()
+            .expect("the line was laid out")
+            .unwrapped_layout
+            .font_size
+    }
+
+    /// A tight list item's text runs straight into its nested list. The span
+    /// around the text sizes all of the item's lines, and the nested list
+    /// keeps its own size, as a browser draws it.
+    #[gpui::test]
+    fn test_font_size_of_a_tight_item_with_a_nested_list(cx: &mut TestAppContext) {
+        let source = "並の段落\n\n- <span style=\"font-size: 1.5em\">大きい項目\n  二行目</span>\n  - 入れ子\n- 並の項目\n";
+        let (rendered, cx) = draw_html_preview(source, &[], cx);
+        let normal = drawn_font_size(&rendered, "並の段落");
+
+        let large = drawn_line(&rendered, "大きい項目");
+        assert!(
+            large.layout.wrapped_text().contains("二行目"),
+            "both lines of the item's text are one paragraph: {:?}",
+            large.layout.wrapped_text()
+        );
+        assert!(
+            drawn_font_size(&rendered, "大きい項目") > normal * 1.4,
+            "{:?} against {normal:?}",
+            drawn_font_size(&rendered, "大きい項目")
+        );
+        assert!(
+            large.layout.line_height()
+                > drawn_line(&rendered, "並の項目").layout.line_height() * 1.4,
+            "the item's lines are spaced for the larger text"
+        );
+        assert_eq!(drawn_font_size(&rendered, "入れ子"), normal);
+        assert_eq!(drawn_font_size(&rendered, "並の項目"), normal);
+        assert_bullet_on_first_line(&rendered, cx, source, "- <span", "大きい項目");
+
+        // A loose task item's text is a paragraph, and its bullet a checkbox.
+        let source = "- [x] <span style=\"font-size: 2em\">済み</span>\n\n- 次\n";
+        let (rendered, cx) = draw_html_preview(source, &[], cx);
+        assert_bullet_on_first_line(&rendered, cx, source, "- [x]", "済み");
+    }
+
+    #[track_caller]
+    fn assert_bullet_on_first_line(
+        rendered: &RenderedText,
+        cx: &mut VisualTestContext,
+        source: &str,
+        item: &str,
+        text: &str,
+    ) {
+        let item_start = source.find(item).expect("the item is in the source");
+        let bullet = cx
+            .debug_bounds(format!("markdown-list-bullet-{item_start}").leak())
+            .expect("the bullet of the larger item should be drawn");
+        let text_start = source.find(text).expect("the text is in the source");
+        let first_line = rendered
+            .bounds_for_source_range(text_start..text_start + text.len())
+            .first()
+            .copied()
+            .expect("the text should be drawn");
+        assert!(
+            (bullet.center().y - first_line.center().y).abs() < px(1.),
+            "the bullet {bullet:?} sits on the first line {first_line:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn test_font_sizes_in_pixels_points_and_keywords(cx: &mut TestAppContext) {
+        let source = "並\n\n<span style=\"font-size: 24px\">画素</span>\n\n<span style=\"font-size: 18pt\">ポイント</span>\n\n<span style=\"font-size: x-large\">キーワード</span>\n\n<p style=\"font-size: xx-large\">HTML</p>\n\n<span style=\"font-size: 1000px\">上限</span>\n";
+        let (rendered, _) = draw_html_preview(source, &[], cx);
+        let normal = drawn_font_size(&rendered, "並");
+        for text in ["画素", "ポイント", "キーワード"] {
+            let ratio = drawn_font_size(&rendered, text) / normal;
+            assert!((ratio - 1.5).abs() < 0.05, "{text}: {ratio}");
+        }
+        let ratio = drawn_font_size(&rendered, "HTML") / normal;
+        assert!((ratio - 2.0).abs() < 0.05, "HTML: {ratio}");
+        let ratio = drawn_font_size(&rendered, "上限") / normal;
+        assert!((ratio - 4.0).abs() < 0.05, "上限: {ratio}");
+    }
+
+    #[gpui::test]
+    fn test_translucent_colors_are_drawn_translucent(cx: &mut TestAppContext) {
+        let source = "前 <span style=\"color: rgba(255, 0, 0, 0.5)\">半透明</span> <mark style=\"background: transparent\">無地</mark> <span style=\"color: hsl(120 100% 25%)\">緑</span> 後\n\n<p><span style=\"background-color: rgb(0 0 255 / 25%)\">青地</span></p>\n";
+        let (rendered, _) = draw_html_preview(source, &[], cx);
+        let run_at = |line: &RenderedLine, needle: &str| {
+            let text = line.layout.wrapped_text();
+            let offset = text
+                .find(needle)
+                .unwrap_or_else(|| panic!("{needle:?} is not in {text:?}"));
+            let mut run_end = 0;
+            line.runs
+                .iter()
+                .find(|run| {
+                    run_end += run.len;
+                    offset < run_end
+                })
+                .cloned()
+                .unwrap_or_else(|| panic!("no run covers {needle:?}"))
+        };
+
+        let line = drawn_line(&rendered, "半透明");
+        let translucent = run_at(line, "半透明").color;
+        let red: Hsla = gpui::rgb(0xff0000).into();
+        assert_eq!(
+            (translucent.h, translucent.s, translucent.l),
+            (red.h, red.s, red.l)
+        );
+        assert!((translucent.a - 0.5).abs() < 0.01, "{translucent:?}");
+        let clear = run_at(line, "無地").background_color;
+        assert_eq!(clear.map(|background| background.a), Some(0.0));
+        assert_eq!(run_at(line, "緑").color, gpui::rgb(0x008000).into());
+
+        let line = drawn_line(&rendered, "青地");
+        let background = run_at(line, "青地")
+            .background_color
+            .expect("the text has a background");
+        assert!((background.a - 0.25).abs() < 0.01, "{background:?}");
     }
 
     #[gpui::test]
