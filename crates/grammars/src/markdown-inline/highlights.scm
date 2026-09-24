@@ -33,3 +33,20 @@
   (uri_autolink)
   (email_autolink)
 ] @link_uri.markup
+
+(link_title) @string.markup
+
+[
+  (backslash_escape)
+  (hard_line_break)
+] @string.escape
+
+[
+  (entity_reference)
+  (numeric_character_reference)
+] @string.special
+
+; Display math only: the grammar also reads `$5 and $10` as inline math, which
+; would paint prices as formulas.
+((latex_block) @text.literal.markup
+  (#match? @text.literal.markup "^\\$\\$"))

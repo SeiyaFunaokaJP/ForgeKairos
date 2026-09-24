@@ -44972,6 +44972,160 @@ async fn test_toggle_markdown_inline_wraps(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+async fn test_markdown_text_color_and_marker_actions(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    let red = SetTextColor {
+        color: MarkdownTextColor::Red,
+    };
+    let blue = SetTextColor {
+        color: MarkdownTextColor::Blue,
+    };
+
+    // No-op outside Markdown
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(rust_lang()), cx));
+    cx.set_state("«helloˇ» world");
+    cx.update_editor(|e, window, cx| e.set_markdown_text_color(&red, window, cx));
+    cx.assert_editor_state("«helloˇ» world");
+
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // The selected text stays selected inside the new span
+    cx.set_state("«日本語ˇ» です");
+    cx.update_editor(|e, window, cx| e.set_markdown_text_color(&red, window, cx));
+    cx.assert_editor_state("<span style=\"color: #d44c47\">«日本語ˇ»</span> です");
+
+    // Another color replaces the span's rather than nesting a second one
+    cx.update_editor(|e, window, cx| e.set_markdown_text_color(&blue, window, cx));
+    cx.assert_editor_state("<span style=\"color: #337ea9\">«日本語ˇ»</span> です");
+
+    // One undo takes the whole change back
+    cx.update_editor(|e, window, cx| e.undo(&Undo, window, cx));
+    cx.assert_editor_state("<span style=\"color: #d44c47\">«日本語ˇ»</span> です");
+
+    cx.update_editor(|e, window, cx| e.remove_markdown_text_color(&RemoveTextColor, window, cx));
+    cx.assert_editor_state("«日本語ˇ» です");
+
+    // Every cursor gets a pair of its own
+    cx.set_state(indoc! {"
+        - ˇone
+        - ˇtwo
+    "});
+    cx.update_editor(|e, window, cx| e.set_markdown_text_color(&red, window, cx));
+    cx.assert_editor_state(indoc! {"
+        - <span style=\"color: #d44c47\">ˇ</span>one
+        - <span style=\"color: #d44c47\">ˇ</span>two
+    "});
+
+    // Nothing happens inside code
+    cx.set_state("`coˇde`");
+    cx.update_editor(|e, window, cx| e.set_markdown_text_color(&red, window, cx));
+    cx.assert_editor_state("`coˇde`");
+
+    // The marker toggles a bare `<mark>`, and the menu's colors restyle it
+    cx.set_state("a «bˇ» c");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_marker(&ToggleMarker, window, cx));
+    cx.assert_editor_state("a <mark>«bˇ»</mark> c");
+    cx.update_editor(|e, window, cx| {
+        e.set_markdown_marker(
+            &SetMarker {
+                color: MarkdownMarkerColor::Green,
+            },
+            window,
+            cx,
+        )
+    });
+    cx.assert_editor_state("a <mark style=\"background-color: #b7ebc6\">«bˇ»</mark> c");
+    cx.update_editor(|e, window, cx| e.toggle_markdown_marker(&ToggleMarker, window, cx));
+    cx.assert_editor_state("a «bˇ» c");
+    cx.update_editor(|e, window, cx| e.remove_markdown_marker(&RemoveMarker, window, cx));
+    cx.assert_editor_state("a «bˇ» c");
+}
+
+#[gpui::test]
+async fn test_markdown_text_size_actions(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    let large = SetTextSize {
+        size: MarkdownTextSize::Large,
+    };
+
+    // No-op outside Markdown
+    cx.set_state("paraˇgraph");
+    cx.update_editor(|e, window, cx| e.set_markdown_text_size(&large, window, cx));
+    cx.assert_editor_state("paraˇgraph");
+
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+
+    // The whole paragraph is wrapped, and the cursor stays in its text
+    cx.set_state(indoc! {"
+        # 見出し
+
+        一行目ˇ
+        二行目
+
+        > 引用
+    "});
+    cx.update_editor(|e, window, cx| e.set_markdown_text_size(&large, window, cx));
+    cx.assert_editor_state(indoc! {"
+        # 見出し
+
+        <span style=\"font-size: 1.25em\">一行目ˇ
+        二行目</span>
+
+        > 引用
+    "});
+
+    // Another size replaces it, and resetting drops the span
+    cx.update_editor(|e, window, cx| {
+        e.set_markdown_text_size(
+            &SetTextSize {
+                size: MarkdownTextSize::Small,
+            },
+            window,
+            cx,
+        )
+    });
+    cx.assert_editor_state(indoc! {"
+        # 見出し
+
+        <span style=\"font-size: 0.85em\">一行目ˇ
+        二行目</span>
+
+        > 引用
+    "});
+    cx.update_editor(|e, window, cx| e.reset_markdown_text_size(&ResetTextSize, window, cx));
+    cx.assert_editor_state(indoc! {"
+        # 見出し
+
+        一行目ˇ
+        二行目
+
+        > 引用
+    "});
+
+    // A selection over a heading and a quote sizes only the quoted paragraph
+    cx.set_state(indoc! {"
+        «# 見出し
+
+        > 引用ˇ»
+    "});
+    cx.update_editor(|e, window, cx| e.set_markdown_text_size(&large, window, cx));
+    cx.assert_editor_state(indoc! {"
+        «# 見出し
+
+        > <span style=\"font-size: 1.25em\">引用ˇ»</span>
+    "});
+
+    // A heading alone is left as it is
+    cx.set_state("# 見ˇ出し");
+    cx.update_editor(|e, window, cx| e.set_markdown_text_size(&large, window, cx));
+    cx.assert_editor_state("# 見ˇ出し");
+}
+
+#[gpui::test]
 async fn test_toggle_markdown_headings(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
 

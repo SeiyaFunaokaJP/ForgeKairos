@@ -1780,6 +1780,26 @@ pub(crate) fn splice_included_ranges(
                 break;
             }
         }
+        // A non-empty range that only touches a non-empty removed range keeps
+        // its content. Markdown's HTML blocks take in the blank line that ends
+        // them, so consecutive blocks touch, and dropping the neighbor here
+        // would leave it out of the combined layer until a full reparse.
+        if remove.start < remove.end {
+            while let Some(range) = ranges.get(start_ix)
+                && start_ix < end_ix
+                && range.start_byte < range.end_byte
+                && range.end_byte == remove.start
+            {
+                start_ix += 1;
+            }
+            while let Some(range) = end_ix.checked_sub(1).and_then(|ix| ranges.get(ix))
+                && end_ix > start_ix
+                && range.start_byte < range.end_byte
+                && range.start_byte == remove.end
+            {
+                end_ix -= 1;
+            }
+        }
         let changed_start = changed_portion
             .as_ref()
             .map_or(usize::MAX, |range| range.start)

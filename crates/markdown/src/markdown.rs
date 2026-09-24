@@ -60,6 +60,20 @@ use crate::html::html_parser::HtmlDetailsKey;
 use crate::parser::CodeBlockKind;
 
 const MERMAID_MAX_ZOOM: f32 = 2.0;
+
+/// The line height of a paragraph, which a resized paragraph scales along
+/// with its text.
+const PARAGRAPH_LINE_HEIGHT_REMS: f32 = 1.3;
+
+/// The colors a `<span>`, `<mark>` or `<font>` asks for, as the text style its
+/// contents are drawn with.
+fn inline_span_text_style(span_style: &parser::InlineSpanStyle) -> TextStyleRefinement {
+    TextStyleRefinement {
+        color: span_style.color.map(|color| gpui::rgb(color).into()),
+        background_color: span_style.background.map(|color| gpui::rgb(color).into()),
+        ..Default::default()
+    }
+}
 /// Zoom levels within this distance of 1.0 snap back to exactly 1.0 so users
 /// can easily return to the default size.
 const MERMAID_ZOOM_SNAP_TOLERANCE: f32 = 0.05;
@@ -2036,6 +2050,7 @@ impl MarkdownElement {
             wrapper.child(
                 img(source)
                     .id(("markdown-image", range.start))
+                    .debug_selector(|| format!("markdown-image-{}", range.start))
                     .min_w_0()
                     .max_w_full()
                     .rounded_md()
@@ -2065,7 +2080,7 @@ impl MarkdownElement {
     ) {
         let align = text_align_override.unwrap_or(self.style.base_text_style.text_align);
         let mut paragraph = div().when(!self.style.height_is_multiple_of_line_height, |el| {
-            el.mb_2().line_height(rems(1.3))
+            el.mb_2().line_height(rems(PARAGRAPH_LINE_HEIGHT_REMS))
         });
 
         paragraph = match align {
@@ -2084,6 +2099,32 @@ impl MarkdownElement {
     fn pop_markdown_paragraph(&self, builder: &mut MarkdownElementBuilder) {
         builder.pop_div();
         builder.pop_text_style();
+    }
+
+    /// Sizes the lines laid out until the matching `pop_div`, which must wrap a
+    /// paragraph's whole text: GPUI takes a line's font size from the element
+    /// it is laid out in, so only a whole run of lines can change size.
+    fn push_paragraph_scale(
+        &self,
+        builder: &mut MarkdownElementBuilder,
+        percent: u16,
+        range: &Range<usize>,
+        markdown_end: usize,
+    ) {
+        let scale = f32::from(percent) / 100.0;
+        let font_size = match builder.text_style().font_size {
+            AbsoluteLength::Pixels(size) => AbsoluteLength::Pixels(size * scale),
+            AbsoluteLength::Rems(size) => AbsoluteLength::Rems(rems(size.0 * scale)),
+        };
+        builder.push_div(
+            div()
+                .text_size(font_size)
+                .when(!self.style.height_is_multiple_of_line_height, |this| {
+                    this.line_height(rems(PARAGRAPH_LINE_HEIGHT_REMS * scale))
+                }),
+            range,
+            markdown_end,
+        );
     }
 
     fn push_markdown_heading(
@@ -2683,6 +2724,10 @@ impl Element for MarkdownElement {
         // dropping them leaves the div stack where it was.
         let mut collapsed_details_events: Option<Range<usize>> = None;
         for (index, (range, event)) in parsed_markdown.events.iter().enumerate() {
+            builder
+                .inherited_alignments
+                .retain(|span| span.events.end > index);
+
             if let Some(hidden) = collapsed_details_events.clone() {
                 if hidden.contains(&index) {
                     continue;
@@ -2775,7 +2820,8 @@ impl Element for MarkdownElement {
                             let text_align_override = builder
                                 .table
                                 .current_cell_alignment()
-                                .and_then(alignment_to_text_align);
+                                .and_then(alignment_to_text_align)
+                                .or_else(|| builder.inherited_text_align());
                             self.push_markdown_paragraph(
                                 &mut builder,
                                 range,
@@ -2787,7 +2833,8 @@ impl Element for MarkdownElement {
                             let text_align_override = builder
                                 .table
                                 .current_cell_alignment()
-                                .and_then(alignment_to_text_align);
+                                .and_then(alignment_to_text_align)
+                                .or_else(|| builder.inherited_text_align());
                             self.push_markdown_heading(
                                 &mut builder,
                                 *level,
@@ -2922,7 +2969,16 @@ impl Element for MarkdownElement {
                                             }
                                         });
 
-                                    builder.push_text_style(self.style.code_block.text.to_owned());
+                                    let mut code_text_style = self.style.code_block.text.to_owned();
+                                    // A list item inside an aligned `<div>` pushes the
+                                    // alignment for its tight text; code keeps its own
+                                    // layout there, as it does outside a list.
+                                    if builder.inherited_text_align().is_some() {
+                                        code_text_style
+                                            .text_align
+                                            .get_or_insert(self.style.base_text_style.text_align);
+                                    }
+                                    builder.push_text_style(code_text_style);
                                     builder.push_code_block(language);
                                     builder.push_div(code_block, range, markdown_end);
                                 }
@@ -2946,6 +3002,9 @@ impl Element for MarkdownElement {
                                         .as_ref()
                                         .map(|span| span.hidden_events.clone());
                                 }
+                                builder
+                                    .inherited_alignments
+                                    .extend(block.aligned_spans.iter().cloned());
                             }
                         }
                         MarkdownTag::List(bullet_index) => {
@@ -2984,6 +3043,17 @@ impl Element for MarkdownElement {
                                 div().child("•").into_any_element()
                             };
                             self.push_markdown_list_item(&mut builder, bullet, range, markdown_end);
+                            // A tight item's text sits directly in the item, with
+                            // no paragraph to carry the alignment. The bullet
+                            // stays put, as it does in a browser.
+                            let text_align = builder.inherited_text_align();
+                            if let Some(text_align) = text_align {
+                                builder.modify_current_div(|item| item.text_align(text_align));
+                            }
+                            builder.push_text_style(TextStyleRefinement {
+                                text_align,
+                                ..Default::default()
+                            });
                         }
                         MarkdownTag::Emphasis => builder.push_text_style(TextStyleRefinement {
                             font_style: Some(FontStyle::Italic),
@@ -2991,7 +3061,10 @@ impl Element for MarkdownElement {
                         }),
                         MarkdownTag::Strong => builder.push_text_style(TextStyleRefinement {
                             font_weight: Some(FontWeight::BOLD),
-                            color: Some(cx.theme().colors().text),
+                            // Bold text is drawn brighter than the body, but not
+                            // over a color the document asked for around it.
+                            color: (builder.explicit_text_color_depth == 0)
+                                .then(|| cx.theme().colors().text),
                             ..Default::default()
                         }),
                         MarkdownTag::Strikethrough => {
@@ -3078,7 +3151,14 @@ impl Element for MarkdownElement {
                                     window.rem_size(),
                                 )
                             });
-                            builder.push_div(div().flex(), range, markdown_end);
+                            // An enclosing `<div align>` moves the table as a
+                            // whole; its cells keep the alignment of their column.
+                            let table_row = match builder.inherited_text_align() {
+                                None | Some(TextAlign::Left) => div().flex(),
+                                Some(TextAlign::Center) => div().flex().justify_center(),
+                                Some(TextAlign::Right) => div().flex().justify_end(),
+                            };
+                            builder.push_div(table_row, range, markdown_end);
                             builder.push_div(
                                 div()
                                     .id(("table", range.start))
@@ -3270,7 +3350,10 @@ impl Element for MarkdownElement {
                         builder.pop_div();
                     }
                     MarkdownTagEnd::Item => {
+                        // The item's divs flush its pending text, which has to be
+                        // measured with the alignment the item was drawn with.
                         self.pop_markdown_list_item(&mut builder);
+                        builder.pop_text_style();
                     }
                     MarkdownTagEnd::Emphasis => builder.pop_text_style(),
                     MarkdownTagEnd::Strong => builder.pop_text_style(),
@@ -3377,8 +3460,28 @@ impl Element for MarkdownElement {
                     InlineHtmlStyle::Code => {
                         builder.push_text_style(self.style.inline_code.clone());
                     }
+                    InlineHtmlStyle::Span(span_style) => {
+                        if let Some(percent) = span_style.paragraph_scale_percent {
+                            self.push_paragraph_scale(&mut builder, percent, range, markdown_end);
+                        }
+                        if span_style.color.is_some() {
+                            builder.explicit_text_color_depth += 1;
+                        }
+                        builder.push_text_style(inline_span_text_style(span_style));
+                    }
                 },
-                MarkdownEvent::InlineHtmlStyleEnd(_) => builder.pop_text_style(),
+                MarkdownEvent::InlineHtmlStyleEnd(style) => {
+                    builder.pop_text_style();
+                    if let InlineHtmlStyle::Span(span_style) = style {
+                        if span_style.color.is_some() {
+                            builder.explicit_text_color_depth =
+                                builder.explicit_text_color_depth.saturating_sub(1);
+                        }
+                        if span_style.paragraph_scale_percent.is_some() {
+                            builder.pop_div();
+                        }
+                    }
+                }
                 MarkdownEvent::Rule => {
                     builder.push_div(
                         div()
@@ -3897,12 +4000,18 @@ struct MarkdownElementBuilder {
     rendered_footnote_separator: bool,
     base_text_style: TextStyle,
     text_style_stack: Vec<TextStyleRefinement>,
+    /// How many `<span>`/`<mark>` colors are in force around the text being
+    /// pushed, so markdown's own styles know not to repaint it.
+    explicit_text_color_depth: usize,
     code_block_stack: Vec<Option<Arc<Language>>>,
     link_depth: usize,
     list_stack: Vec<ListStackEntry>,
     table: TableState,
     syntax_theme: Arc<SyntaxTheme>,
     highlights: MarkdownHighlights,
+    /// The aligned HTML containers whose body, written as markdown in later
+    /// blocks, the events being rendered belong to.
+    inherited_alignments: Vec<html::html_parser::HtmlAlignedSpan>,
 }
 
 struct MarkdownHighlights {
@@ -4013,13 +4122,24 @@ impl MarkdownElementBuilder {
             rendered_footnote_separator: false,
             base_text_style,
             text_style_stack: Vec::new(),
+            explicit_text_color_depth: 0,
             code_block_stack: Vec::new(),
             link_depth: 0,
             list_stack: Vec::new(),
             table: TableState::default(),
             syntax_theme,
             highlights,
+            inherited_alignments: Vec::new(),
         }
+    }
+
+    /// The alignment an enclosing `<div align>` written in an earlier HTML
+    /// block asks of the markdown block being rendered.
+    fn inherited_text_align(&self) -> Option<TextAlign> {
+        self.inherited_alignments
+            .iter()
+            .max_by_key(|span| span.nesting)
+            .map(|span| span.text_align)
     }
 
     fn push_text_style(&mut self, style: TextStyleRefinement) {
@@ -4080,7 +4200,17 @@ impl MarkdownElementBuilder {
     }
 
     fn push_image_child(&mut self, child: impl IntoElement) {
-        self.modify_current_div(|el| el.flex().flex_row().flex_wrap().items_start());
+        // Images are laid out as flex items, which `text-align` does not move,
+        // so a centered or right-aligned paragraph has to justify them itself.
+        let text_align = self.text_style().text_align;
+        self.modify_current_div(|el| {
+            let el = el.flex().flex_row().flex_wrap().items_start();
+            match text_align {
+                TextAlign::Left => el,
+                TextAlign::Center => el.justify_center(),
+                TextAlign::Right => el.justify_end(),
+            }
+        });
         self.div_stack.last_mut().unwrap().line_break_mode = LineBreakMode::FlexWrap;
         self.append_child(child.into_any_element());
     }
@@ -4339,6 +4469,8 @@ impl MarkdownElementBuilder {
             language: None,
             text_align: TextAlign::Left,
             highlights: SmallVec::new(),
+            #[cfg(test)]
+            runs: Vec::new(),
         }));
         div()
             .absolute()
@@ -4364,6 +4496,8 @@ impl MarkdownElementBuilder {
                     .highlights_for_line(first_mapping.source_index..self.current_source_index)
             })
             .unwrap_or_default();
+        #[cfg(test)]
+        let runs = line.runs.clone();
         let text = StyledText::new(line.text).with_runs(line.runs);
         let rendered_line = Rc::new(RenderedLine {
             layout: text.layout().clone(),
@@ -4372,6 +4506,8 @@ impl MarkdownElementBuilder {
             language: self.code_block_stack.last().cloned().flatten(),
             text_align,
             highlights,
+            #[cfg(test)]
+            runs,
         });
         if rendered_line.highlights.is_empty() {
             self.rendered_lines.push(rendered_line);
@@ -4476,6 +4612,10 @@ struct RenderedLine {
     text_align: TextAlign,
     /// Highlighted source ranges intersecting this line, in paint order.
     highlights: SmallVec<[(Range<usize>, Hsla); 1]>,
+    /// The runs the line was laid out with, which the laid-out text no longer
+    /// exposes, so tests can see what colors it was drawn in.
+    #[cfg(test)]
+    runs: Vec<TextRun>,
 }
 
 impl RenderedLine {
@@ -5664,6 +5804,107 @@ mod tests {
         );
     }
 
+    /// Draws `source` 600px wide with every image resolving to a 1×1 picture,
+    /// and returns where the image written at the start of the source landed
+    /// together with the destinations the resolver was asked for.
+    fn draw_leading_image(source: &str, cx: &mut TestAppContext) -> (Bounds<Pixels>, Vec<String>) {
+        struct ImageTestView {
+            markdown: Entity<Markdown>,
+            image: Arc<RenderImage>,
+            requested: Rc<RefCell<Vec<String>>>,
+        }
+
+        impl Render for ImageTestView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let image = self.image.clone();
+                let requested = self.requested.clone();
+                div().w_full().child(
+                    MarkdownElement::new(self.markdown.clone(), MarkdownStyle::default())
+                        .image_resolver(move |destination, _| {
+                            requested.borrow_mut().push(destination.to_string());
+                            Some(ImageSource::Render(image.clone()))
+                        }),
+                )
+            }
+        }
+
+        ensure_theme_initialized(cx);
+        let image = test_image(cx);
+        let markdown = cx.new(|cx| {
+            Markdown::new_with_options(
+                source.to_string().into(),
+                None,
+                None,
+                MarkdownOptions {
+                    parse_html: true,
+                    ..Default::default()
+                },
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        let requested = Rc::new(RefCell::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let requested = requested.clone();
+            move |_, _| ImageTestView {
+                markdown,
+                image,
+                requested,
+            }
+        });
+        cx.simulate_resize(size(px(600.), px(600.)));
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+
+        let bounds = cx
+            .debug_bounds("markdown-image-0")
+            .unwrap_or_else(|| panic!("the image in {source:?} should be drawn"));
+        let requested = requested.borrow().clone();
+        (bounds, requested)
+    }
+
+    /// The three shapes `markdown::InsertImage` writes must all come out of the
+    /// preview as the dialog promised: found, sized, and aligned.
+    #[gpui::test]
+    fn test_image_dialog_markup_is_drawn_sized_and_aligned(cx: &mut TestAppContext) {
+        let (plain, requested) = draw_leading_image("![写真](images/a%20b.png)", cx);
+        assert!(
+            requested.iter().all(|url| url == "images/a%20b.png"),
+            "the resolver gets the destination as written and decodes it itself: {requested:?}"
+        );
+        assert!(plain.left() < px(10.), "{plain:?}");
+
+        let (sized, _) = draw_leading_image(
+            "<img src=\"images/a%20b.png\" alt=\"写真\" width=\"300\">",
+            cx,
+        );
+        assert_eq!(sized.size.width, px(300.));
+        assert!(
+            sized.left() < px(10.),
+            "an image without a container stays on the left: {sized:?}"
+        );
+
+        let (centered, _) = draw_leading_image(
+            "<div align=\"center\">\n  <img src=\"images/a%20b.png\" alt=\"写真\" width=\"300\">\n</div>",
+            cx,
+        );
+        assert_eq!(centered.size.width, px(300.));
+        assert!(
+            (centered.center().x - px(300.)).abs() < px(10.),
+            "a centered image sits in the middle of the 600px preview: {centered:?}"
+        );
+
+        let (right, _) = draw_leading_image(
+            "<p align=\"right\"><img src=\"images/a%20b.png\" width=\"300\"></p>",
+            cx,
+        );
+        assert!(
+            right.right() > px(580.),
+            "a right-aligned image sits against the right edge: {right:?}"
+        );
+    }
+
     #[gpui::test]
     fn test_surrounding_word_range(cx: &mut TestAppContext) {
         let rendered = render_markdown("Hello world tesεζ", cx);
@@ -5821,6 +6062,362 @@ mod tests {
 
         assert_eq!(first_word, "a");
         assert_eq!(second_word, "b");
+    }
+
+    struct HtmlPreviewTestView {
+        markdown: Entity<Markdown>,
+        image: Arc<RenderImage>,
+        rendered_text: Rc<RefCell<Option<RenderedText>>>,
+    }
+
+    impl Render for HtmlPreviewTestView {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let image = self.image.clone();
+            let rendered_text = self.rendered_text.clone();
+            div().w_full().child(
+                MarkdownElement::new(self.markdown.clone(), MarkdownStyle::default())
+                    .image_resolver(move |_, _| Some(ImageSource::Render(image.clone())))
+                    .on_render(move |text| *rendered_text.borrow_mut() = Some(text)),
+            )
+        }
+    }
+
+    /// Draws `source` 600px wide the way the preview does, with HTML parsed and
+    /// every image resolving to a 1×1 picture, after toggling the disclosures
+    /// with the given summaries.
+    fn draw_html_preview<'a>(
+        source: &str,
+        toggled_details: &[&str],
+        cx: &'a mut TestAppContext,
+    ) -> (RenderedText, &'a mut VisualTestContext) {
+        ensure_theme_initialized(cx);
+        let image = test_image(cx);
+        let markdown = cx.new(|cx| {
+            Markdown::new_with_options(
+                source.to_string().into(),
+                None,
+                None,
+                MarkdownOptions {
+                    parse_html: true,
+                    ..Default::default()
+                },
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        for summary in toggled_details {
+            markdown.update(cx, |markdown, cx| {
+                markdown.toggle_details(html::html_parser::html_details_key(summary, 0), false);
+                cx.notify();
+            });
+        }
+
+        let rendered_text = Rc::new(RefCell::new(None));
+        let (_, cx) = cx.add_window_view({
+            let rendered_text = rendered_text.clone();
+            move |_, _| HtmlPreviewTestView {
+                markdown,
+                image,
+                rendered_text,
+            }
+        });
+        cx.simulate_resize(size(px(600.), px(600.)));
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+
+        let rendered = rendered_text
+            .borrow()
+            .clone()
+            .expect("markdown should be rendered in the test view");
+        (rendered, cx)
+    }
+
+    fn line_text_align(rendered: &RenderedText, text: &str) -> TextAlign {
+        rendered
+            .lines
+            .iter()
+            .find(|line| line.layout.wrapped_text().contains(text))
+            .unwrap_or_else(|| panic!("{text:?} should be drawn"))
+            .text_align
+    }
+
+    fn drawn_image_bounds(
+        cx: &mut VisualTestContext,
+        source: &str,
+        image_source: &str,
+    ) -> Bounds<Pixels> {
+        let offset = source
+            .find(image_source)
+            .expect("the image is in the source");
+        cx.debug_bounds(format!("markdown-image-{offset}").leak())
+            .unwrap_or_else(|| panic!("{image_source:?} should be drawn"))
+    }
+
+    /// The README shape GitHub renders centered: blank lines inside the
+    /// `<div align>` end its HTML block, so everything up to `</div>` arrives as
+    /// separate markdown blocks and used to be drawn on the left.
+    const README_WITH_ALIGNED_DIV: &str = "<div align=\"center\">\n\n# プロジェクト名\n\n<img src=\"logo.png\" width=\"200\">\n\n![バッジ](badge.png)\n\n説明文\n\n- 項目\n\n| 列 |\n|---|\n| 値 |\n\n</div>\n\n後ろ\n";
+
+    #[gpui::test]
+    fn test_aligned_div_across_blocks_aligns_its_markdown_text(cx: &mut TestAppContext) {
+        let source = README_WITH_ALIGNED_DIV;
+        let (rendered, _) = draw_html_preview(source, &[], cx);
+
+        assert_eq!(
+            line_text_align(&rendered, "プロジェクト名"),
+            TextAlign::Center
+        );
+        assert_eq!(line_text_align(&rendered, "説明文"), TextAlign::Center);
+        assert_eq!(line_text_align(&rendered, "項目"), TextAlign::Center);
+        assert_eq!(line_text_align(&rendered, "後ろ"), TextAlign::Left);
+
+        // Selecting and clicking the centered text still lands on the text.
+        let text_start = source.find("説明文").expect("the text is in the source");
+        let text_range = text_start..text_start + "説明文".len();
+        let selection = rendered.bounds_for_source_range(text_range.clone());
+        let first_selection = selection.first().expect("the text should be selectable");
+        assert!(
+            first_selection.left() > px(200.),
+            "the selection is painted under the centered text: {selection:?}"
+        );
+        let clicked = match rendered.source_index_for_position(first_selection.center()) {
+            Ok(index) | Err(index) => index,
+        };
+        assert!(text_range.contains(&clicked), "clicked {clicked}");
+        assert_eq!(
+            rendered.text_for_range(rendered.surrounding_word_range(clicked)),
+            "説明文"
+        );
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_across_blocks_moves_its_images_and_tables(cx: &mut TestAppContext) {
+        let source = README_WITH_ALIGNED_DIV;
+        let (_, cx) = draw_html_preview(source, &[], cx);
+
+        let logo = drawn_image_bounds(cx, source, "<img src=\"logo.png\"");
+        assert_eq!(logo.size.width, px(200.));
+        assert!(
+            (logo.center().x - px(300.)).abs() < px(10.),
+            "the <img> block sits in the middle of the 600px preview: {logo:?}"
+        );
+        let badge = drawn_image_bounds(cx, source, "![バッジ]");
+        assert!(
+            (badge.center().x - px(300.)).abs() < px(10.),
+            "a markdown image sits in the middle too: {badge:?}"
+        );
+
+        let table = cx
+            .debug_bounds("markdown_table")
+            .expect("the table should be drawn");
+        assert!(
+            table.size.width < px(300.) && (table.center().x - px(300.)).abs() < px(10.),
+            "the table as a whole sits in the middle: {table:?}"
+        );
+    }
+
+    /// Sizes and colors written inside a `<div align>` split by blank lines
+    /// still apply, on top of the alignment the markdown in between inherits.
+    #[gpui::test]
+    fn test_aligned_div_across_blocks_keeps_paragraph_sizes_and_colors(cx: &mut TestAppContext) {
+        let source = "<div align=\"center\">\n\n並\n\n<span style=\"font-size: 1.5em\">大きい</span>\n\n<span style=\"color: #d44c47\">赤</span>\n\n<p style=\"font-size: 1.5em\">段落</p>\n\n- <span style=\"font-size: 1.5em\">項目</span>\n\n</div>\n\n後ろ\n";
+        let (rendered, _) = draw_html_preview(source, &[], cx);
+        let line = |text: &str| {
+            rendered
+                .lines
+                .iter()
+                .find(|line| line.layout.wrapped_text().contains(text))
+                .unwrap_or_else(|| panic!("{text:?} should be drawn"))
+        };
+        let font_size = |text: &str| {
+            line(text)
+                .layout
+                .line_layouts()
+                .first()
+                .expect("the line was laid out")
+                .unwrapped_layout
+                .font_size
+        };
+
+        for text in ["並", "大きい", "赤", "段落", "項目"] {
+            assert_eq!(
+                line_text_align(&rendered, text),
+                TextAlign::Center,
+                "{text}"
+            );
+        }
+        for text in ["大きい", "段落", "項目"] {
+            assert!(
+                font_size(text) > font_size("並") * 1.4,
+                "{text}: {:?} against {:?}",
+                font_size(text),
+                font_size("並")
+            );
+        }
+        let red = line("赤").runs.first().expect("the line has a run").color;
+        let plain = line("並").runs.first().expect("the line has a run").color;
+        assert_ne!(red, plain, "the colored span keeps its color");
+
+        let start = source.find("大きい").expect("the text is in the source");
+        let bounds = rendered.bounds_for_source_range(start..start + "大きい".len());
+        let first = bounds.first().expect("the text should be selectable");
+        assert!(
+            (first.center().x - px(300.)).abs() < px(20.),
+            "the enlarged text sits in the middle: {bounds:?}"
+        );
+        assert_eq!(line_text_align(&rendered, "後ろ"), TextAlign::Left);
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_moves_the_image_right_above_its_close(cx: &mut TestAppContext) {
+        let source = "<div align=\"center\">\n\n本文\n\n<img src=\"demo.gif\" width=\"100\">\n</div>\n\n後ろ\n";
+        let (_, cx) = draw_html_preview(source, &[], cx);
+        let demo = drawn_image_bounds(cx, source, "<img src=\"demo.gif\"");
+        assert!(
+            (demo.center().x - px(300.)).abs() < px(10.),
+            "the image before `</div>` sits in the middle: {demo:?}"
+        );
+
+        let source = "<div align=\"right\">\n\n本文\n\n<img src=\"demo.gif\" width=\"100\">\n</div>\n<p>閉じの後ろ</p>\n";
+        let (rendered, cx) = draw_html_preview(source, &[], cx);
+        let demo = drawn_image_bounds(cx, source, "<img src=\"demo.gif\"");
+        assert!((demo.right() - px(600.)).abs() < px(10.), "{demo:?}");
+        assert_eq!(
+            line_text_align(&rendered, "閉じの後ろ"),
+            TextAlign::Left,
+            "what follows `</div>` in the same block stays as it was"
+        );
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_without_a_close_aligns_nothing(cx: &mut TestAppContext) {
+        let source = "<div align=\"center\">\n\n本文\n\n![画像](a.png)\n";
+        let (rendered, cx) = draw_html_preview(source, &[], cx);
+
+        assert_eq!(line_text_align(&rendered, "本文"), TextAlign::Left);
+        let image = drawn_image_bounds(cx, source, "![画像]");
+        assert!(image.left() < px(10.), "{image:?}");
+    }
+
+    #[gpui::test]
+    fn test_nested_aligned_divs_across_blocks_align_by_the_innermost(cx: &mut TestAppContext) {
+        let source = "<div align=\"center\">\n\n外\n\n<div align=\"right\">\n\n- 一\n\n- 二\n\n</div>\n\n外2\n\n```\nコード\n```\n\n</div>\n";
+        let (rendered, _) = draw_html_preview(source, &[], cx);
+
+        assert_eq!(line_text_align(&rendered, "外"), TextAlign::Center);
+        assert_eq!(line_text_align(&rendered, "一"), TextAlign::Right);
+        assert_eq!(line_text_align(&rendered, "二"), TextAlign::Right);
+        assert_eq!(line_text_align(&rendered, "外2"), TextAlign::Center);
+        assert_eq!(
+            line_text_align(&rendered, "コード"),
+            TextAlign::Left,
+            "code keeps its own layout"
+        );
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_and_details_across_blocks(cx: &mut TestAppContext) {
+        let source = "<div align=\"center\">\n\n<details>\n<summary>題</summary>\n\n本文\n\n</details>\n\n</div>\n\n後ろ\n";
+        let (collapsed, _) = draw_html_preview(source, &[], cx);
+        assert!(
+            !collapsed
+                .lines
+                .iter()
+                .any(|line| line.layout.wrapped_text().contains("本文")),
+            "the collapsed disclosure still hides its body"
+        );
+        assert_eq!(line_text_align(&collapsed, "後ろ"), TextAlign::Left);
+
+        let (expanded, _) = draw_html_preview(source, &["題"], cx);
+        assert_eq!(line_text_align(&expanded, "本文"), TextAlign::Center);
+        assert_eq!(line_text_align(&expanded, "後ろ"), TextAlign::Left);
+
+        let source = "<details>\n<summary>題</summary>\n\n<div align=\"right\">\n\n本文\n\n</div>\n\n</details>\n\n後ろ\n";
+        let (expanded, _) = draw_html_preview(source, &["題"], cx);
+        assert_eq!(line_text_align(&expanded, "本文"), TextAlign::Right);
+        assert_eq!(line_text_align(&expanded, "後ろ"), TextAlign::Left);
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_keeps_code_in_list_items_left(cx: &mut TestAppContext) {
+        let source = "<div align=\"center\">\n\n- 項目\n\n  ```\n  コード\n  ```\n\n> 引用\n>\n> ```\n> 引用コード\n> ```\n\n</div>\n";
+        let (rendered, _) = draw_html_preview(source, &[], cx);
+
+        assert_eq!(line_text_align(&rendered, "項目"), TextAlign::Center);
+        assert_eq!(line_text_align(&rendered, "引用"), TextAlign::Center);
+        assert_eq!(
+            line_text_align(&rendered, "コード"),
+            TextAlign::Left,
+            "code in a list item keeps its layout like code outside a list"
+        );
+        assert_eq!(line_text_align(&rendered, "引用コード"), TextAlign::Left);
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_opened_in_a_details_block_stays_inside_it(cx: &mut TestAppContext) {
+        let source = "<details><summary>題</summary>\n<div align=\"center\">\n\n本文\n\n</div>\n</details>\n\n後ろ\n";
+        let (collapsed, _) = draw_html_preview(source, &[], cx);
+        assert_eq!(line_text_align(&collapsed, "後ろ"), TextAlign::Left);
+
+        let (expanded, _) = draw_html_preview(source, &["題"], cx);
+        assert_eq!(line_text_align(&expanded, "本文"), TextAlign::Center);
+        assert_eq!(line_text_align(&expanded, "後ろ"), TextAlign::Left);
+    }
+
+    /// The spans are recorded by the parse, so an edit that removes or moves
+    /// the closing tag has to take the alignment away on the next parse.
+    #[gpui::test]
+    fn test_aligned_div_across_blocks_follows_edits(cx: &mut TestAppContext) {
+        ensure_theme_initialized(cx);
+        let image = test_image(cx);
+        let markdown = cx.new(|cx| {
+            Markdown::new_with_options(
+                "<div align=\"center\">\n\n本文\n\n</div>\n\n後ろ\n".into(),
+                None,
+                None,
+                MarkdownOptions {
+                    parse_html: true,
+                    ..Default::default()
+                },
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let rendered_text = Rc::new(RefCell::new(None));
+        let (_, cx) = cx.add_window_view({
+            let rendered_text = rendered_text.clone();
+            let markdown = markdown.clone();
+            move |_, _| HtmlPreviewTestView {
+                markdown,
+                image,
+                rendered_text,
+            }
+        });
+        cx.simulate_resize(size(px(600.), px(600.)));
+        let mut render = |source: Option<&str>| {
+            if let Some(source) = source {
+                markdown.update(cx, |markdown, cx| markdown.replace(source.to_string(), cx));
+                cx.run_until_parked();
+            }
+            cx.update(|window, _| window.refresh());
+            cx.run_until_parked();
+            rendered_text
+                .borrow()
+                .clone()
+                .expect("markdown should be rendered in the test view")
+        };
+
+        assert_eq!(line_text_align(&render(None), "本文"), TextAlign::Center);
+
+        let rendered = render(Some("<div align=\"center\">\n\n本文\n\n</span>\n\n後ろ\n"));
+        assert_eq!(line_text_align(&rendered, "本文"), TextAlign::Left);
+
+        let rendered = render(Some(
+            "前\n\n<div align=\"right\">\n\n本文\n\n</div>\n\n後ろ\n",
+        ));
+        assert_eq!(line_text_align(&rendered, "前"), TextAlign::Left);
+        assert_eq!(line_text_align(&rendered, "本文"), TextAlign::Right);
+        assert_eq!(line_text_align(&rendered, "後ろ"), TextAlign::Left);
     }
 
     const REVIEW_TABLE: &str = concat!(

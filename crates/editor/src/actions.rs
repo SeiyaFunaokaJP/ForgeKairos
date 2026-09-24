@@ -427,6 +427,87 @@ pub struct InsertMermaidDiagram {
     pub diagram: MermaidDiagramKind,
 }
 
+/// A preset text color for [`SetTextColor`]: mid tones, like Notion's, that
+/// stay readable on a light page and on a dark one alike.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkdownTextColor {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Blue,
+    Purple,
+    Pink,
+    Gray,
+}
+
+/// A marker color for [`SetMarker`]. Yellow is written as a bare `<mark>`,
+/// which GitHub draws in yellow as well.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkdownMarkerColor {
+    Yellow,
+    Green,
+    Blue,
+    Pink,
+}
+
+/// A paragraph text size for [`SetTextSize`].
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkdownTextSize {
+    Small,
+    Large,
+    ExtraLarge,
+}
+
+/// Colors the selected text with a preset color, written as
+/// `<span style="color: …">`, while in Markdown files. Inside a colored span
+/// the span's color is replaced instead of nesting another one.
+#[derive(PartialEq, Clone, Debug, Deserialize, JsonSchema, Action)]
+#[action(namespace = markdown)]
+#[serde(deny_unknown_fields)]
+pub struct SetTextColor {
+    pub color: MarkdownTextColor,
+}
+
+/// Highlights the selected text with a marker, written as `<mark>`, while in
+/// Markdown files. Inside a marker the marker's color is replaced instead of
+/// nesting another one.
+#[derive(PartialEq, Clone, Debug, Deserialize, JsonSchema, Action)]
+#[action(namespace = markdown)]
+#[serde(deny_unknown_fields)]
+pub struct SetMarker {
+    pub color: MarkdownMarkerColor,
+}
+
+/// Sets the text size of every paragraph the selection touches, written as a
+/// `<span style="font-size: …">` around the paragraph's text, while in
+/// Markdown files. Headings, code blocks, tables and HTML blocks are left alone.
+#[derive(PartialEq, Clone, Debug, Deserialize, JsonSchema, Action)]
+#[action(namespace = markdown)]
+#[serde(deny_unknown_fields)]
+pub struct SetTextSize {
+    pub size: MarkdownTextSize,
+}
+
+actions!(
+    markdown,
+    [
+        /// Removes the text color from the selected text while in Markdown files.
+        RemoveTextColor,
+        /// Toggles a yellow marker (`<mark>`) on the selected text while in
+        /// Markdown files.
+        ToggleMarker,
+        /// Removes the marker from the selected text while in Markdown files.
+        RemoveMarker,
+        /// Returns the paragraphs the selection touches to the normal text size
+        /// while in Markdown files.
+        ResetTextSize,
+    ]
+);
+
 /// Folds the body of every Markdown heading of the given level (1 to 6),
 /// leaving the heading lines themselves visible.
 #[derive(PartialEq, Clone, Debug, Deserialize, JsonSchema, Action)]

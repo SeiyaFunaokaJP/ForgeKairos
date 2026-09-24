@@ -123,6 +123,9 @@ impl MarkdownElement {
                     markdown_end,
                     paragraph.text_align,
                 );
+                if let Some(percent) = paragraph.font_scale_percent {
+                    self.push_paragraph_scale(builder, percent, &source_range, markdown_end);
+                }
                 self.render_html_paragraph(
                     &paragraph.contents,
                     source_allocator,
@@ -130,6 +133,9 @@ impl MarkdownElement {
                     cx,
                     markdown_end,
                 );
+                if paragraph.font_scale_percent.is_some() {
+                    builder.pop_div();
+                }
                 self.pop_markdown_paragraph(builder);
             }
             ParsedHtmlElement::Heading(heading) => {
@@ -699,6 +705,19 @@ fn apply_html_highlight_style(refinement: &mut TextStyleRefinement, style: &Html
             color: None,
         });
     }
+
+    // Highlights arrive outermost first, so a link inside a colored span takes
+    // the link color back, while a span inside a link recolors it.
+    if style.link {
+        refinement.color = None;
+    }
+    if let Some(color) = style.color {
+        refinement.color = Some(gpui::rgb(color).into());
+    }
+
+    if let Some(background_color) = style.background_color {
+        refinement.background_color = Some(gpui::rgb(background_color).into());
+    }
 }
 
 fn html_list_item_prefix(order: usize, ordered: bool, depth: usize) -> String {
@@ -1264,6 +1283,203 @@ mod tests {
     fn test_sub_and_sup_of_a_plain_paragraph_use_unicode(cx: &mut TestAppContext) {
         let rendered = render_html_preview("H<sub>2</sub>O x<sup>2</sup>", None, cx);
         assert_eq!(rendered, "H\u{2082}O x\u{b2}");
+    }
+
+    /// Lays `source` out the way the preview does, HTML parsing on, and hands
+    /// back what was laid out.
+    fn render_html_preview_text(source: &str, cx: &mut TestAppContext) -> crate::RenderedText {
+        struct PreviewTextView {
+            markdown: Entity<Markdown>,
+            rendered_text: Rc<RefCell<Option<crate::RenderedText>>>,
+        }
+
+        impl Render for PreviewTextView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let rendered_text = self.rendered_text.clone();
+                MarkdownElement::new(self.markdown.clone(), MarkdownStyle::default())
+                    .on_render(move |text| *rendered_text.borrow_mut() = Some(text))
+            }
+        }
+
+        ensure_theme_initialized(cx);
+        let markdown = cx.new(|cx| {
+            Markdown::new_with_options(
+                source.to_string().into(),
+                None,
+                None,
+                MarkdownOptions {
+                    parse_html: true,
+                    ..Default::default()
+                },
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        let rendered_text = Rc::new(RefCell::new(None));
+        let (_, cx) = cx.add_window_view({
+            let rendered_text = rendered_text.clone();
+            move |_, _| PreviewTextView {
+                markdown,
+                rendered_text,
+            }
+        });
+        cx.run_until_parked();
+
+        rendered_text
+            .borrow()
+            .clone()
+            .expect("markdown should be rendered in the test view")
+    }
+
+    fn line_containing<'a>(
+        rendered: &'a crate::RenderedText,
+        needle: &str,
+    ) -> &'a crate::RenderedLine {
+        rendered
+            .lines
+            .iter()
+            .find(|line| line.layout.text().contains(needle))
+            .unwrap_or_else(|| panic!("no line contains {needle:?}"))
+    }
+
+    fn line_font_size(line: &crate::RenderedLine) -> Pixels {
+        line.layout
+            .line_layouts()
+            .first()
+            .expect("the line was laid out")
+            .unwrapped_layout
+            .font_size
+    }
+
+    #[gpui::test]
+    fn test_a_paragraph_wrapped_in_a_font_size_span_is_laid_out_larger(cx: &mut TestAppContext) {
+        let source = "並の段落\n\n<span style=\"font-size: 1.5em\">大きい段落</span>\n\n一部だけ<span style=\"font-size: 1.5em\">大</span>きい\n\n<p style=\"font-size: 1.5em\">HTML の段落</p>";
+        let rendered = render_html_preview_text(source, cx);
+
+        let normal = line_containing(&rendered, "並の段落");
+        let large = line_containing(&rendered, "大きい段落");
+        let partial = line_containing(&rendered, "一部だけ");
+        let html = line_containing(&rendered, "HTML の段落");
+
+        assert!(
+            line_font_size(large) > line_font_size(normal) * 1.4,
+            "{:?} against {:?}",
+            line_font_size(large),
+            line_font_size(normal)
+        );
+        assert!(large.layout.line_height() > normal.layout.line_height() * 1.4);
+        assert!(line_font_size(html) > line_font_size(normal) * 1.4);
+        // Part of a paragraph cannot be drawn at another size.
+        assert_eq!(line_font_size(partial), line_font_size(normal));
+
+        // The tags are not drawn, and the text still maps back to its source,
+        // which is what copying and clicking through to the editor rely on.
+        assert_eq!(large.layout.text(), "大きい段落");
+        assert_eq!(partial.layout.text(), "一部だけ大きい");
+        let start = source.find("大きい段落").expect("the source has the text");
+        assert_eq!(
+            rendered.text_for_range(start..start + "大きい段落".len()),
+            "大きい段落"
+        );
+    }
+
+    /// The run the first occurrence of `needle` in the line was drawn with.
+    fn run_at<'a>(line: &'a crate::RenderedLine, needle: &str) -> &'a gpui::TextRun {
+        let text = line.layout.text();
+        let offset = text
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle:?} is not in {text:?}"));
+        let mut run_end = 0;
+        for run in &line.runs {
+            run_end += run.len;
+            if offset < run_end {
+                return run;
+            }
+        }
+        panic!("no run covers {needle:?} in {text:?}");
+    }
+
+    #[gpui::test]
+    fn test_colored_text_is_drawn_in_its_color(cx: &mut TestAppContext) {
+        let source = "前 <span style=\"color: #d44c47\">赤 **太字**</span> <mark>印</mark> 後\n\n\
+            <p><span style=\"color: #337ea9\">青</span> <mark style=\"background-color: #b7ebc6\">緑</mark></p>";
+        let rendered = render_html_preview_text(source, cx);
+        let red: gpui::Hsla = gpui::rgb(0xd44c47).into();
+        let black: gpui::Hsla = gpui::rgb(0x000000).into();
+
+        let line = line_containing(&rendered, "前");
+        assert_eq!(line.layout.text(), "前 赤 太字 印 後");
+        assert_eq!(run_at(line, "赤").color, red);
+        // Bold text is normally drawn brighter, but not over the span's color.
+        assert_eq!(run_at(line, "太字").color, red);
+        assert_eq!(run_at(line, "太字").font.weight, gpui::FontWeight::BOLD);
+        assert_eq!(
+            run_at(line, "印").background_color,
+            Some(gpui::rgb(0xffff00).into())
+        );
+        assert_eq!(run_at(line, "印").color, black);
+        assert_ne!(run_at(line, "後").color, red);
+        assert_eq!(run_at(line, "後").background_color, None);
+
+        let html = line_containing(&rendered, "青");
+        assert_eq!(run_at(html, "青").color, gpui::rgb(0x337ea9).into());
+        assert_eq!(
+            run_at(html, "緑").background_color,
+            Some(gpui::rgb(0xb7ebc6).into())
+        );
+        assert_eq!(run_at(html, "緑").color, black);
+
+        // The colored text still maps back to its source.
+        let start = source.find('赤').expect("the source has the text");
+        assert_eq!(
+            rendered.text_for_range(start..start + '赤'.len_utf8()),
+            "赤"
+        );
+    }
+
+    #[test]
+    fn test_span_and_html_colors_become_the_text_style() {
+        let refinement = crate::inline_span_text_style(&crate::parser::InlineSpanStyle {
+            color: Some(0xd44c47),
+            background: Some(0xffff00),
+            paragraph_scale_percent: None,
+        });
+        assert_eq!(refinement.color, Some(gpui::rgb(0xd44c47).into()));
+        assert_eq!(
+            refinement.background_color,
+            Some(gpui::rgb(0xffff00).into())
+        );
+
+        let mut refinement = gpui::TextStyleRefinement::default();
+        super::apply_html_highlight_style(
+            &mut refinement,
+            &crate::html::html_parser::HtmlHighlightStyle {
+                color: Some(0x337ea9),
+                background_color: Some(0xb7ebc6),
+                ..Default::default()
+            },
+        );
+        assert_eq!(refinement.color, Some(gpui::rgb(0x337ea9).into()));
+        assert_eq!(
+            refinement.background_color,
+            Some(gpui::rgb(0xb7ebc6).into())
+        );
+
+        // A link inside the colored span takes the link color back, while the
+        // marker behind it stays.
+        super::apply_html_highlight_style(
+            &mut refinement,
+            &crate::html::html_parser::HtmlHighlightStyle {
+                link: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(refinement.color, None);
+        assert_eq!(
+            refinement.background_color,
+            Some(gpui::rgb(0xb7ebc6).into())
+        );
     }
 
     #[gpui::test]

@@ -67,6 +67,24 @@ fn test_splice_included_ranges() {
     );
     assert_eq!(change, 0..1);
 
+    // keeps ranges that only touch the changed range
+    let (new_ranges, change) = splice_included_ranges(
+        vec![ts_range(20..30), ts_range(30..40), ts_range(40..50)],
+        &[32..35],
+        &[ts_range(30..40)],
+    );
+    assert_eq!(
+        new_ranges,
+        &[ts_range(20..30), ts_range(30..40), ts_range(40..50)]
+    );
+    assert_eq!(change, 1..2);
+
+    // keeps both of two new ranges that touch
+    let (new_ranges, change) =
+        splice_included_ranges(Vec::new(), &[0..50], &[ts_range(0..10), ts_range(10..20)]);
+    assert_eq!(new_ranges, &[ts_range(0..10), ts_range(10..20)]);
+    assert_eq!(change, 0..2);
+
     fn ts_range(range: Range<usize>) -> tree_sitter::Range {
         tree_sitter::Range {
             start_byte: range.start,
@@ -343,6 +361,9 @@ fn test_dynamic_language_injection(cx: &mut App) {
         &[
             "(document (section (paragraph (inline)) (fenced_code_block (fenced_code_block_delimiter) (info_string (language)) (block_continuation) (code_fence_content (block_continuation)) (fenced_code_block_delimiter))))",
             "(inline (code_span (code_span_delimiter) (code_span_delimiter)))",
+            // Markdown parses its HTML blocks as one combined layer, which
+            // exists, empty, as soon as HTML is known.
+            "(document)",
             "(document (text))",
         ],
     );
@@ -916,6 +937,9 @@ fn test_empty_combined_injections_inside_injections(cx: &mut App) {
         &[
             // Markdown document
             "(document (section (fenced_code_block (fenced_code_block_delimiter) (info_string (language)) (block_continuation) (code_fence_content (block_continuation)) (fenced_code_block_delimiter)) (paragraph (inline))))",
+            // The combined layer for Markdown's HTML blocks, empty since there
+            // are none.
+            "(document)",
             // ERB template in the code block
             "(template...",
             // Markdown inline content
@@ -1131,6 +1155,208 @@ fn test_syntax_map_languages_loading_with_erb(cx: &mut App) {
             </«body»>
         ",
     );
+}
+
+#[gpui::test]
+fn test_editing_markdown_html_blocks_reparses_one_combined_layer(cx: &mut App) {
+    test_edit_sequence(
+        "Markdown",
+        &[
+            r#"
+                <details>
+                <summary>A</summary>
+
+                body **one**
+
+                </details>
+
+                <div align="center">
+
+                # Title
+
+                </div>
+            "#,
+            // Text inserted before every block shifts all of their ranges.
+            r#"
+                «intro
+
+                »<details>
+                <summary>A</summary>
+
+                body **one**
+
+                </details>
+
+                <div align="center">
+
+                # Title
+
+                </div>
+            "#,
+            // Deleting the blank line joins the paragraph to the HTML block.
+            r#"
+                intro
+
+                <details>
+                <summary>A</summary>
+                ˇbody **one**
+
+                </details>
+
+                <div align="center">
+
+                # Title
+
+                </div>
+            "#,
+            // Restoring it splits the block again.
+            r#"
+                intro
+
+                <details>
+                <summary>A</summary>
+                «
+                »body **one**
+
+                </details>
+
+                <div align="center">
+
+                # Title
+
+                </div>
+            "#,
+            // A new block ahead of the others.
+            r#"
+                intro
+
+                «<p>x</p>
+
+                »<details>
+                <summary>A</summary>
+
+                body **one**
+
+                </details>
+
+                <div align="center">
+
+                # Title
+
+                </div>
+            "#,
+            // Removing an opening tag leaves its closing tag unmatched.
+            r#"
+                intro
+
+                <p>x</p>
+
+                ˇ<summary>A</summary>
+
+                body **one**
+
+                </details>
+
+                <div align="center">
+
+                # Title
+
+                </div>
+            "#,
+            r#"
+                intro
+
+                <p>x</p>
+
+                <summary>A</summary>
+
+                body **one**
+
+                </details>
+
+                <div align="center">
+
+                # Title
+
+                </«section»>
+            "#,
+        ],
+        cx,
+    );
+}
+
+#[gpui::test(iterations = 50)]
+fn test_random_syntax_map_edits_with_markdown_html_blocks(rng: StdRng, cx: &mut App) {
+    let text = r#"
+        <details>
+        <summary>Heading</summary>
+
+        Some **text** with <b>inline</b> HTML.
+
+        </details>
+
+        <div align="center">
+
+        # Title
+
+        </div>
+        <!-- a comment -->
+        - item
+    "#
+    .unindent()
+    .repeat(4);
+
+    let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+    let language = markdown_lang();
+    registry.add(language.clone());
+    registry.add(Arc::new(markdown_inline_lang()));
+    registry.add(Arc::new(html_lang()));
+
+    // Every HTML block of the document feeds one layer, so an edit anywhere
+    // can shift what the layer holds; compare it with a fresh parse after
+    // each edit rather than only at the end.
+    let mut rng = rng;
+    let operations = env::var("OPERATIONS")
+        .map(|i| i.parse().expect("invalid `OPERATIONS` variable"))
+        .unwrap_or(10);
+    let mut buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), text);
+    let mut syntax_map = SyntaxMap::new(&buffer);
+    syntax_map.set_language_registry(registry.clone());
+    syntax_map.reparse(language.clone(), &buffer);
+    for operation in 0..operations {
+        buffer.randomly_edit(&mut rng, 3);
+        syntax_map.interpolate(&buffer);
+        syntax_map.reparse(language.clone(), &buffer);
+
+        let mut reference_syntax_map = SyntaxMap::new(&buffer);
+        reference_syntax_map.set_language_registry(registry.clone());
+        reference_syntax_map.reparse(language.clone(), &buffer);
+
+        let layers = syntax_map.layers(&buffer);
+        let reference_layers = reference_syntax_map.layers(&buffer);
+        assert_eq!(
+            layers.len(),
+            reference_layers.len(),
+            "wrong number of layers after edit {operation} of text:\n{}",
+            buffer.text()
+        );
+        for (layer, reference_layer) in layers.into_iter().zip(reference_layers) {
+            assert_eq!(
+                layer.node().to_sexp(),
+                reference_layer.node().to_sexp(),
+                "{} layer differs after edit {operation} of text:\n{}",
+                layer.language.name(),
+                buffer.text()
+            );
+            assert_eq!(
+                layer.tree.included_ranges(),
+                reference_layer.tree.included_ranges(),
+                "{} layer covers other ranges after edit {operation} of text:\n{}",
+                layer.language.name(),
+                buffer.text()
+            );
+        }
+    }
 }
 
 #[gpui::test(iterations = 50)]

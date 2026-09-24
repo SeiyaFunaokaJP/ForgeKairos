@@ -2,13 +2,17 @@ use std::{
     cell::RefCell,
     collections::{BTreeMap, HashMap},
     hash::{Hash, Hasher},
-    mem,
     ops::Range,
 };
 
 use gpui::{DefiniteLength, FontWeight, SharedString, TextAlign, px, relative};
 use html5ever::{
-    Attribute, LocalName, ParseOpts, local_name, parse_document, tendril::TendrilSink,
+    Attribute, LocalName, ParseOpts, local_name, parse_document,
+    tendril::{StrTendril, TendrilSink},
+    tokenizer::{
+        BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
+        TokenizerResult,
+    },
 };
 use markup5ever_rcdom::{Handle, Node, NodeData, RcDom};
 use pulldown_cmark::{Alignment, HeadingLevel, Options};
@@ -34,6 +38,46 @@ pub(crate) struct ParsedHtmlBlock {
     /// Filled in by the markdown parser once the block that closes this one is
     /// known, so the renderer can skip everything in between while collapsed.
     pub details_span: Option<HtmlDetailsSpan>,
+    /// The container tags of the block's source in document order, which the
+    /// markdown parser pairs across blocks. GitHub READMEs leave blank lines
+    /// inside `<div align="center">` so its body is parsed as markdown, which
+    /// ends the CommonMark HTML block right after the opening tag.
+    pub container_tags: Vec<HtmlContainerTag>,
+    /// Filled in by the markdown parser for each aligned container this block
+    /// opens and a later block closes, so the renderer can align the markdown
+    /// in between the way the container asks.
+    pub aligned_spans: Vec<HtmlAlignedSpan>,
+}
+
+/// The tags that can hold later blocks in their body. `<details>` is followed
+/// too because closing it also closes every `<div>` opened inside it, the way
+/// `</div>` closes a `<center>` opened inside the `<div>`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HtmlContainerName {
+    Div,
+    Center,
+    Details,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HtmlContainerTag {
+    Open {
+        name: HtmlContainerName,
+        text_align: Option<TextAlign>,
+    },
+    Close(HtmlContainerName),
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+pub(crate) struct HtmlAlignedSpan {
+    /// Event indices, like [`HtmlDetailsSpan::hidden_events`]: from the event
+    /// after the opening block up to the start of the block that closes it.
+    pub events: Range<usize>,
+    pub text_align: TextAlign,
+    /// How many containers were open around this one, so where aligned spans
+    /// overlap the innermost one wins.
+    pub nesting: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -104,6 +148,10 @@ pub(crate) struct ParsedHtmlDetails {
 #[cfg_attr(test, derive(PartialEq))]
 pub(crate) struct ParsedHtmlParagraph {
     pub text_align: Option<TextAlign>,
+    /// The paragraph's `font-size`, as a percentage of the surrounding text.
+    /// Only a whole paragraph can be resized: GPUI lays a line out at a single
+    /// font size, so a `font-size` on part of one is not drawn.
+    pub font_scale_percent: Option<u16>,
     pub contents: HtmlParagraph,
 }
 
@@ -218,6 +266,10 @@ pub(crate) struct HtmlHighlightStyle {
     pub oblique: bool,
     /// `<code>` and the other monospace tags, rendered with the inline code style.
     pub code: bool,
+    /// The text color as `0xRRGGBB`.
+    pub color: Option<u32>,
+    /// The background color as `0xRRGGBB`.
+    pub background_color: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -262,6 +314,9 @@ struct ParseHtmlNodeContext {
     text_align: Option<TextAlign>,
     /// Text styling inherited from enclosing inline-styled containers.
     inherited_styles: Vec<HtmlHighlightStyle>,
+    /// A `font-size` inherited from an enclosing container such as
+    /// `<div style="font-size: 1.25em">`, applied to the paragraphs inside it.
+    font_scale_percent: Option<u16>,
 }
 
 impl Default for ParseHtmlNodeContext {
@@ -270,6 +325,7 @@ impl Default for ParseHtmlNodeContext {
             list_item_depth: 1,
             text_align: None,
             inherited_styles: Vec::new(),
+            font_scale_percent: None,
         }
     }
 }
@@ -303,7 +359,92 @@ pub(crate) fn parse_html_block(
         unclosed_details,
         unmatched_details_closes,
         details_span: None,
+        container_tags: container_tags(source),
+        aligned_spans: Vec::new(),
     })
+}
+
+/// Lists the `<div>`, `<center>` and `<details>` tags of a raw HTML block in
+/// order, with the alignment each opening tag asks for. html5ever's tree
+/// builder silently closes whatever the block left open, so the tags are read
+/// with its tokenizer instead, which still skips comments and quoted `>`.
+fn container_tags(source: &str) -> Vec<HtmlContainerTag> {
+    struct ContainerTagSink(Vec<HtmlContainerTag>);
+
+    impl TokenSink for ContainerTagSink {
+        type Handle = ();
+
+        fn process_token(&mut self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
+            if let Token::TagToken(tag) = token {
+                let name = match tag.name.as_ref() {
+                    "div" => Some(HtmlContainerName::Div),
+                    "center" => Some(HtmlContainerName::Center),
+                    "details" => Some(HtmlContainerName::Details),
+                    _ => None,
+                };
+                if let Some(name) = name {
+                    self.0.push(match tag.kind {
+                        TagKind::StartTag => {
+                            let attrs = RefCell::new(tag.attrs);
+                            let styles = extract_styles_from_attributes(&attrs);
+                            let text_align = text_align_from_attributes(&attrs, &styles)
+                                .or((name == HtmlContainerName::Center)
+                                    .then_some(TextAlign::Center));
+                            HtmlContainerTag::Open { name, text_align }
+                        }
+                        TagKind::EndTag => HtmlContainerTag::Close(name),
+                    });
+                }
+            }
+            TokenSinkResult::Continue
+        }
+    }
+
+    let mut tokenizer = Tokenizer::new(ContainerTagSink(Vec::new()), TokenizerOpts::default());
+    let mut input = BufferQueue::default();
+    input.push_back(StrTendril::from(source));
+    // The sink never asks to run a script, so this finishes in one pass; the
+    // loop is how the tokenizer expects to be resumed if it ever pauses.
+    while let TokenizerResult::Script(()) = tokenizer.feed(&mut input) {}
+    tokenizer.end();
+    tokenizer.sink.0
+}
+
+/// Gives the elements of a block that sits inside an aligned container opened
+/// by an earlier block the alignment they would have inherited had the
+/// container been written in the same block, where an element's own alignment
+/// still wins. Tables are left alone there too.
+#[stacksafe]
+pub(crate) fn inherit_text_align(elements: &mut [ParsedHtmlElement], text_align: TextAlign) {
+    for element in elements {
+        match element {
+            ParsedHtmlElement::Paragraph(paragraph) => {
+                paragraph.text_align.get_or_insert(text_align);
+            }
+            ParsedHtmlElement::Heading(heading) => {
+                heading.text_align.get_or_insert(text_align);
+            }
+            ParsedHtmlElement::List(list) => {
+                for item in &mut list.items {
+                    inherit_text_align(&mut item.content, text_align);
+                }
+            }
+            ParsedHtmlElement::BlockQuote(block_quote) => {
+                inherit_text_align(&mut block_quote.children, text_align);
+            }
+            ParsedHtmlElement::Details(details) => {
+                inherit_text_align(&mut details.children, text_align);
+            }
+            ParsedHtmlElement::Image(image) => {
+                *element = ParsedHtmlElement::Paragraph(ParsedHtmlParagraph {
+                    text_align: Some(text_align),
+                    font_scale_percent: None,
+                    contents: vec![HtmlParagraphChunk::Image(image.clone())],
+                });
+            }
+            ParsedHtmlElement::Table(_) | ParsedHtmlElement::Rule(_) => {}
+        }
+    }
 }
 
 /// Walks the `<details>` and `</details>` tags of a raw HTML block in order,
@@ -445,6 +586,7 @@ fn parse_html_node(
             }
             elements.push(ParsedHtmlElement::Paragraph(ParsedHtmlParagraph {
                 text_align: context.text_align,
+                font_scale_percent: context.font_scale_percent,
                 contents: vec![HtmlParagraphChunk::Text(ParsedHtmlText {
                     source_range,
                     highlights: Vec::default(),
@@ -463,6 +605,10 @@ fn parse_html_node(
                     None
                 })
                 .or(context.text_align);
+            let font_scale_percent = styles_map
+                .get("font-size")
+                .and_then(|value| parse_css_font_scale(value))
+                .or(context.font_scale_percent);
             let mut styles = context.inherited_styles.clone();
             if let Some(style) = html_style_from_html_styles(styles_map) {
                 styles.push(style);
@@ -470,7 +616,18 @@ fn parse_html_node(
 
             if name.local == local_name!("img") {
                 if let Some(image) = extract_image(source_range, attrs) {
-                    elements.push(ParsedHtmlElement::Image(image));
+                    // An image has no alignment of its own, so the one a
+                    // `<div align="center">` around it asks for only reaches it
+                    // through a paragraph, the way it reaches text in that div.
+                    // The image's own `align` means floating, not this.
+                    elements.push(match context.text_align {
+                        Some(text_align) => ParsedHtmlElement::Paragraph(ParsedHtmlParagraph {
+                            text_align: Some(text_align),
+                            font_scale_percent: context.font_scale_percent,
+                            contents: vec![HtmlParagraphChunk::Image(image)],
+                        }),
+                        None => ParsedHtmlElement::Image(image),
+                    });
                 }
             } else if name.local == local_name!("p") {
                 let mut paragraph = HtmlParagraph::new();
@@ -485,6 +642,7 @@ fn parse_html_node(
                 if !paragraph.is_empty() {
                     elements.push(ParsedHtmlElement::Paragraph(ParsedHtmlParagraph {
                         text_align,
+                        font_scale_percent,
                         contents: paragraph,
                     }));
                 }
@@ -529,11 +687,22 @@ fn parse_html_node(
                     context.list_item_depth,
                     source_range,
                 ) {
-                    elements.push(ParsedHtmlElement::List(list));
+                    let mut list = ParsedHtmlElement::List(list);
+                    // The items start from a fresh context, so an enclosing
+                    // `<div align>` reaches their text the same way it reaches a
+                    // list written as markdown after the `<div>`'s blank line.
+                    if let Some(text_align) = text_align {
+                        inherit_text_align(std::slice::from_mut(&mut list), text_align);
+                    }
+                    elements.push(list);
                 }
             } else if name.local == local_name!("blockquote") {
                 if let Some(blockquote) = extract_html_blockquote(node, source_range) {
-                    elements.push(ParsedHtmlElement::BlockQuote(blockquote));
+                    let mut blockquote = ParsedHtmlElement::BlockQuote(blockquote);
+                    if let Some(text_align) = text_align {
+                        inherit_text_align(std::slice::from_mut(&mut blockquote), text_align);
+                    }
+                    elements.push(blockquote);
                 }
             } else if name.local == local_name!("table") {
                 if let Some(table) = extract_html_table(node, source_range) {
@@ -549,6 +718,7 @@ fn parse_html_node(
                     &ParseHtmlNodeContext {
                         text_align,
                         inherited_styles: styles,
+                        font_scale_percent,
                         ..context.clone()
                     },
                 )));
@@ -565,6 +735,7 @@ fn parse_html_node(
                 if paragraph_has_content(&paragraph) {
                     elements.push(ParsedHtmlElement::Paragraph(ParsedHtmlParagraph {
                         text_align,
+                        font_scale_percent: context.font_scale_percent,
                         contents: paragraph,
                     }));
                 }
@@ -576,6 +747,7 @@ fn parse_html_node(
                     &ParseHtmlNodeContext {
                         text_align,
                         inherited_styles: styles,
+                        font_scale_percent,
                         ..context.clone()
                     },
                 );
@@ -960,6 +1132,20 @@ fn parse_paragraph(
     highlights: &mut Vec<HtmlHighlightStyle>,
     links: &mut Vec<SharedString>,
 ) {
+    let consume_styled = |style: HtmlHighlightStyle,
+                          paragraph: &mut HtmlParagraph,
+                          highlights: &mut Vec<HtmlHighlightStyle>,
+                          links: &mut Vec<SharedString>| {
+        consume_styled_paragraph(
+            source_range.clone(),
+            node,
+            paragraph,
+            style,
+            highlights,
+            links,
+        )
+    };
+
     match &node.data {
         NodeData::Text { contents } => {
             let contents = contents.borrow().to_string();
@@ -971,53 +1157,88 @@ fn parse_paragraph(
                     paragraph.push(HtmlParagraphChunk::Image(image));
                 }
             } else if name.local == local_name!("b") || name.local == local_name!("strong") {
-                highlights.push(HtmlHighlightStyle {
-                    weight: FontWeight::BOLD,
-                    ..Default::default()
-                });
-                consume_paragraph(source_range, node, paragraph, highlights, links);
+                consume_styled(
+                    HtmlHighlightStyle {
+                        weight: FontWeight::BOLD,
+                        ..Default::default()
+                    },
+                    paragraph,
+                    highlights,
+                    links,
+                );
             } else if name.local == local_name!("i") {
-                highlights.push(HtmlHighlightStyle {
-                    italic: true,
-                    ..Default::default()
-                });
-                consume_paragraph(source_range, node, paragraph, highlights, links);
+                consume_styled(
+                    HtmlHighlightStyle {
+                        italic: true,
+                        ..Default::default()
+                    },
+                    paragraph,
+                    highlights,
+                    links,
+                );
             } else if name.local == local_name!("em") {
-                highlights.push(HtmlHighlightStyle {
-                    oblique: true,
-                    ..Default::default()
-                });
-                consume_paragraph(source_range, node, paragraph, highlights, links);
+                consume_styled(
+                    HtmlHighlightStyle {
+                        oblique: true,
+                        ..Default::default()
+                    },
+                    paragraph,
+                    highlights,
+                    links,
+                );
             } else if name.local == local_name!("del") {
-                highlights.push(HtmlHighlightStyle {
-                    strikethrough: true,
-                    ..Default::default()
-                });
-                consume_paragraph(source_range, node, paragraph, highlights, links);
-            } else if name.local == local_name!("ins") {
-                highlights.push(HtmlHighlightStyle {
-                    underline: true,
-                    ..Default::default()
-                });
-                consume_paragraph(source_range, node, paragraph, highlights, links);
-            } else if name.local == local_name!("u") {
-                highlights.push(HtmlHighlightStyle {
-                    underline: true,
-                    ..Default::default()
-                });
-                consume_paragraph(source_range, node, paragraph, highlights, links);
+                consume_styled(
+                    HtmlHighlightStyle {
+                        strikethrough: true,
+                        ..Default::default()
+                    },
+                    paragraph,
+                    highlights,
+                    links,
+                );
+            } else if name.local == local_name!("ins") || name.local == local_name!("u") {
+                consume_styled(
+                    HtmlHighlightStyle {
+                        underline: true,
+                        ..Default::default()
+                    },
+                    paragraph,
+                    highlights,
+                    links,
+                );
             } else if matches!(name.local.as_ref(), "s" | "strike") {
-                highlights.push(HtmlHighlightStyle {
-                    strikethrough: true,
-                    ..Default::default()
-                });
-                consume_paragraph(source_range, node, paragraph, highlights, links);
+                consume_styled(
+                    HtmlHighlightStyle {
+                        strikethrough: true,
+                        ..Default::default()
+                    },
+                    paragraph,
+                    highlights,
+                    links,
+                );
             } else if matches!(name.local.as_ref(), "code" | "kbd" | "samp" | "tt" | "var") {
-                highlights.push(HtmlHighlightStyle {
-                    code: true,
-                    ..Default::default()
-                });
-                consume_paragraph(source_range, node, paragraph, highlights, links);
+                consume_styled(
+                    HtmlHighlightStyle {
+                        code: true,
+                        ..Default::default()
+                    },
+                    paragraph,
+                    highlights,
+                    links,
+                );
+            } else if matches!(name.local.as_ref(), "span" | "mark" | "font") {
+                let styles = extract_styles_from_attributes(attrs);
+                let font_color = attr_value_named(attrs, "color");
+                let (color, background_color) =
+                    inline_tag_colors(name.local.as_ref(), &styles, font_color.as_deref());
+                let mut style = html_style_from_html_styles(styles).unwrap_or_default();
+                style.color = color;
+                style.background_color = background_color;
+                if style == HtmlHighlightStyle::default() {
+                    consume_paragraph(source_range, node, paragraph, highlights, links);
+                } else {
+                    consume_styled(style, paragraph, highlights, links);
+                }
             } else if matches!(name.local.as_ref(), "sub" | "sup") {
                 let substituted = text_only_contents(node)
                     .and_then(|contents| unicode_script_for_tag(&contents, name.local.as_ref()));
@@ -1028,22 +1249,25 @@ fn parse_paragraph(
                     None => consume_paragraph(source_range, node, paragraph, highlights, links),
                 }
             } else if name.local == local_name!("br") {
-                append_paragraph_text(
-                    source_range,
-                    paragraph,
-                    "\n",
-                    &mut Vec::new(),
-                    &mut Vec::new(),
-                );
+                append_paragraph_text(source_range, paragraph, "\n", &[], &[]);
             } else if name.local == local_name!("a") {
-                if let Some(url) = attr_value(attrs, local_name!("href")) {
-                    highlights.push(HtmlHighlightStyle {
-                        link: true,
-                        ..Default::default()
-                    });
-                    links.push(url.into());
+                match attr_value(attrs, local_name!("href")) {
+                    Some(url) => {
+                        let link_depth = links.len();
+                        links.push(url.into());
+                        consume_styled(
+                            HtmlHighlightStyle {
+                                link: true,
+                                ..Default::default()
+                            },
+                            paragraph,
+                            highlights,
+                            links,
+                        );
+                        links.truncate(link_depth);
+                    }
+                    None => consume_paragraph(source_range, node, paragraph, highlights, links),
                 }
-                consume_paragraph(source_range, node, paragraph, highlights, links);
             } else {
                 consume_paragraph(source_range, node, paragraph, highlights, links);
             }
@@ -1052,22 +1276,39 @@ fn parse_paragraph(
     }
 }
 
+/// Parses an element's children with `style` in force, and only for them: a
+/// tag's style covers every descendant rather than just the first run of text
+/// inside it, so `<span style="color: red">a <b>b</b> c</span>` keeps all three
+/// red and the text after the element is left alone.
+fn consume_styled_paragraph(
+    source_range: Range<usize>,
+    node: &Node,
+    paragraph: &mut HtmlParagraph,
+    style: HtmlHighlightStyle,
+    highlights: &mut Vec<HtmlHighlightStyle>,
+    links: &mut Vec<SharedString>,
+) {
+    let depth = highlights.len();
+    highlights.push(style);
+    consume_paragraph(source_range, node, paragraph, highlights, links);
+    highlights.truncate(depth);
+}
+
 /// Appends `contents` to the paragraph's trailing text chunk, or starts a new
-/// one, attributing the pending highlights and links to the appended range.
+/// one, attributing the highlights and links in force to the appended range.
+/// They are listed outermost first, so an inner element's color is applied
+/// after an outer one's and wins.
 fn append_paragraph_text(
     source_range: Range<usize>,
     paragraph: &mut HtmlParagraph,
     contents: &str,
-    highlights: &mut Vec<HtmlHighlightStyle>,
-    links: &mut Vec<SharedString>,
+    highlights: &[HtmlHighlightStyle],
+    links: &[SharedString],
 ) {
-    fn items_with_range<T>(
-        range: Range<usize>,
-        items: impl IntoIterator<Item = T>,
-    ) -> Vec<(Range<usize>, T)> {
+    fn items_with_range<T: Clone>(range: Range<usize>, items: &[T]) -> Vec<(Range<usize>, T)> {
         items
-            .into_iter()
-            .map(|item| (range.clone(), item))
+            .iter()
+            .map(|item| (range.clone(), item.clone()))
             .collect()
     }
 
@@ -1097,18 +1338,16 @@ fn append_paragraph_text(
 
         text.highlights.extend(items_with_range(
             text.contents.len()..new_text.len(),
-            mem::take(highlights),
+            highlights,
         ));
-        text.links.extend(items_with_range(
-            text.contents.len()..new_text.len(),
-            mem::take(links),
-        ));
+        text.links
+            .extend(items_with_range(text.contents.len()..new_text.len(), links));
         text.contents = SharedString::from(new_text);
     } else {
         paragraph.push(HtmlParagraphChunk::Text(ParsedHtmlText {
             source_range,
-            highlights: items_with_range(0..contents.len(), mem::take(highlights)),
-            links: items_with_range(0..contents.len(), mem::take(links)),
+            highlights: items_with_range(0..contents.len(), highlights),
+            links: items_with_range(0..contents.len(), links),
             contents: contents.to_string().into(),
         }));
     }
@@ -1247,6 +1486,7 @@ fn consume_nodes(
         if paragraph_has_content(&paragraph) {
             elements.push(ParsedHtmlElement::Paragraph(ParsedHtmlParagraph {
                 text_align: context.text_align,
+                font_scale_percent: context.font_scale_percent,
                 contents: paragraph,
             }));
         }
@@ -1316,6 +1556,10 @@ fn html_style_from_html_styles(styles: HashMap<String, String>) -> Option<HtmlHi
         }
     }
 
+    let (color, background_color) = style_colors(&styles);
+    html_style.color = color;
+    html_style.background_color = background_color;
+
     if html_style != HtmlHighlightStyle::default() {
         Some(html_style)
     } else {
@@ -1348,18 +1592,156 @@ fn text_align_from_attributes(
 }
 
 fn extract_styles_from_attributes(attrs: &RefCell<Vec<Attribute>>) -> HashMap<String, String> {
-    let mut styles = HashMap::new();
+    attr_value(attrs, local_name!("style"))
+        .map(|style| parse_style_declarations(&style))
+        .unwrap_or_default()
+}
 
-    if let Some(style) = attr_value(attrs, local_name!("style")) {
-        for declaration in style.split(';') {
-            let mut parts = declaration.splitn(2, ':');
-            if let Some((key, value)) = parts.next().zip(parts.next()) {
-                styles.insert(key.trim().to_lowercase(), value.trim().to_string());
-            }
+/// The declarations of a `style` attribute, keyed by their lowercased property.
+pub(crate) fn parse_style_declarations(style: &str) -> HashMap<String, String> {
+    let mut styles = HashMap::new();
+    for declaration in style.split(';') {
+        let mut parts = declaration.splitn(2, ':');
+        if let Some((key, value)) = parts.next().zip(parts.next()) {
+            styles.insert(key.trim().to_lowercase(), value.trim().to_string());
         }
     }
-
     styles
+}
+
+/// The background a browser gives `<mark>` when nothing says otherwise.
+pub(crate) const DEFAULT_MARK_BACKGROUND: u32 = 0xffff00;
+
+/// The text color a browser gives `<mark>`. A dark theme's light text would
+/// be unreadable on the yellow, so the preview follows the browser here too,
+/// for a `<mark>` of any color.
+pub(crate) const MARK_TEXT_COLOR: u32 = 0x000000;
+
+/// The colors an inline `<span>`, `<mark>` or `<font>` asks for: its `style`
+/// declarations, the `color` attribute of a `<font>`, and the defaults a
+/// browser gives `<mark>`.
+pub(crate) fn inline_tag_colors(
+    tag_name: &str,
+    styles: &HashMap<String, String>,
+    font_color_attribute: Option<&str>,
+) -> (Option<u32>, Option<u32>) {
+    let (color, background) = style_colors(styles);
+    match tag_name {
+        "mark" => (
+            color.or(Some(MARK_TEXT_COLOR)),
+            background.or(Some(DEFAULT_MARK_BACKGROUND)),
+        ),
+        "font" => (
+            color.or_else(|| font_color_attribute.and_then(parse_css_color)),
+            background,
+        ),
+        _ => (color, background),
+    }
+}
+
+/// The text and background colors of a set of `style` declarations. The
+/// `background` shorthand only counts when it is nothing but a color.
+fn style_colors(styles: &HashMap<String, String>) -> (Option<u32>, Option<u32>) {
+    let color = styles.get("color").and_then(|value| parse_css_color(value));
+    let background = styles
+        .get("background-color")
+        .or_else(|| styles.get("background"))
+        .and_then(|value| parse_css_color(value));
+    (color, background)
+}
+
+/// A CSS color as `0xRRGGBB`: `#rgb`, `#rrggbb`, `rgb(r, g, b)` or one of the
+/// basic color names. Anything else, a color with transparency included, is
+/// not understood, and the caller leaves the text in its usual color.
+pub(crate) fn parse_css_color(value: &str) -> Option<u32> {
+    let value = value.trim().to_ascii_lowercase();
+
+    if let Some(hex) = value.strip_prefix('#') {
+        if !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
+        }
+        return match hex.len() {
+            6 => u32::from_str_radix(hex, 16).ok(),
+            3 => {
+                let expanded = hex
+                    .chars()
+                    .flat_map(|digit| [digit, digit])
+                    .collect::<String>();
+                u32::from_str_radix(&expanded, 16).ok()
+            }
+            _ => None,
+        };
+    }
+
+    if let Some(components) = value
+        .strip_prefix("rgb(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    {
+        let components = components
+            .split([',', ' '])
+            .filter(|component| !component.is_empty())
+            .map(|component| component.parse::<u8>().ok())
+            .collect::<Option<Vec<_>>>()?;
+        let [red, green, blue] = components.as_slice() else {
+            return None;
+        };
+        return Some(u32::from(*red) << 16 | u32::from(*green) << 8 | u32::from(*blue));
+    }
+
+    Some(match value.as_str() {
+        "black" => 0x000000,
+        "white" => 0xffffff,
+        "red" => 0xff0000,
+        "green" => 0x008000,
+        "blue" => 0x0000ff,
+        "yellow" => 0xffff00,
+        "orange" => 0xffa500,
+        "purple" => 0x800080,
+        "pink" => 0xffc0cb,
+        "gray" | "grey" => 0x808080,
+        "brown" => 0xa52a2a,
+        "navy" => 0x000080,
+        "teal" => 0x008080,
+        "maroon" => 0x800000,
+        "olive" => 0x808000,
+        "lime" => 0x00ff00,
+        "aqua" | "cyan" => 0x00ffff,
+        "fuchsia" | "magenta" => 0xff00ff,
+        "silver" => 0xc0c0c0,
+        _ => return None,
+    })
+}
+
+/// The largest `font-size` the preview draws, relative to the surrounding
+/// text. A paragraph written at ten times the size would push everything
+/// else out of the preview.
+const MAX_FONT_SCALE_PERCENT: f32 = 400.0;
+const MIN_FONT_SCALE_PERCENT: f32 = 25.0;
+
+/// A CSS `font-size` relative to the surrounding text, as a percentage:
+/// `1.25em`, `125%`, or `1.25rem`, which the preview treats like `em` since its
+/// body text is close to the root size. Absolute sizes and keywords are not
+/// understood.
+pub(crate) fn parse_css_font_scale(value: &str) -> Option<u16> {
+    let value = value.trim().to_ascii_lowercase();
+    let percent = if let Some(number) = value
+        .strip_suffix("rem")
+        .or_else(|| value.strip_suffix("em"))
+    {
+        number.trim().parse::<f32>().ok()? * 100.0
+    } else if let Some(number) = value.strip_suffix('%') {
+        number.trim().parse::<f32>().ok()?
+    } else {
+        return None;
+    };
+    if !percent.is_finite() || percent <= 0.0 {
+        return None;
+    }
+    Some(
+        percent
+            .round()
+            .clamp(MIN_FONT_SCALE_PERCENT, MAX_FONT_SCALE_PERCENT) as u16,
+    )
 }
 
 fn extract_image(source_range: Range<usize>, attrs: &RefCell<Vec<Attribute>>) -> Option<HtmlImage> {
@@ -1834,6 +2216,139 @@ mod tests {
     }
 
     #[test]
+    fn lists_container_tags_in_order_with_their_alignment() {
+        use HtmlContainerName::{Center, Details, Div};
+
+        assert_eq!(
+            parse("<div align=\"center\">\n<img src=\"logo.png\">").container_tags,
+            vec![HtmlContainerTag::Open {
+                name: Div,
+                text_align: Some(TextAlign::Center),
+            }]
+        );
+        assert_eq!(
+            parse("<DIV ALIGN=RIGHT>").container_tags,
+            vec![HtmlContainerTag::Open {
+                name: Div,
+                text_align: Some(TextAlign::Right),
+            }]
+        );
+        assert_eq!(
+            parse("<div align=\"left\" style=\"color: red; text-align: center\">").container_tags,
+            vec![HtmlContainerTag::Open {
+                name: Div,
+                text_align: Some(TextAlign::Center),
+            }],
+            "the style wins over the attribute, as it does inside one block"
+        );
+        assert_eq!(
+            parse("<center>").container_tags,
+            vec![HtmlContainerTag::Open {
+                name: Center,
+                text_align: Some(TextAlign::Center),
+            }]
+        );
+        assert_eq!(
+            parse("</div>\n<details><summary>題</summary>").container_tags,
+            vec![
+                HtmlContainerTag::Close(Div),
+                HtmlContainerTag::Open {
+                    name: Details,
+                    text_align: None,
+                },
+            ],
+            "a block that closes one container and opens the next keeps the order"
+        );
+        assert_eq!(
+            parse("<div title=\"a > b\"><!-- </div> --><p align=\"center\">x</p></div>")
+                .container_tags,
+            vec![
+                HtmlContainerTag::Open {
+                    name: Div,
+                    text_align: None,
+                },
+                HtmlContainerTag::Close(Div),
+            ],
+            "quoted `>` and comments do not end or add tags, and `<p>` is not followed"
+        );
+    }
+
+    #[test]
+    fn list_and_block_quote_text_inherit_the_container_alignment() {
+        let parsed = parse(
+            "<div align=\"center\"><ul><li>項目</li></ul><blockquote><p>引用</p></blockquote></div>",
+        );
+
+        let ParsedHtmlElement::List(list) = &parsed.children[0] else {
+            panic!("expected list, got {:?}", parsed.children);
+        };
+        let ParsedHtmlElement::Paragraph(item) = &list.items[0].content[0] else {
+            panic!("expected the item's text, got {:?}", list.items[0].content);
+        };
+        assert_eq!(item.text_align, Some(TextAlign::Center));
+
+        let ParsedHtmlElement::BlockQuote(block_quote) = &parsed.children[1] else {
+            panic!("expected block quote, got {:?}", parsed.children);
+        };
+        let ParsedHtmlElement::Paragraph(quoted) = &block_quote.children[0] else {
+            panic!("expected the quoted text, got {:?}", block_quote.children);
+        };
+        assert_eq!(quoted.text_align, Some(TextAlign::Center));
+
+        let parsed = parse("<ul><li>項目</li></ul>");
+        let ParsedHtmlElement::List(list) = &parsed.children[0] else {
+            panic!("expected list, got {:?}", parsed.children);
+        };
+        let ParsedHtmlElement::Paragraph(item) = &list.items[0].content[0] else {
+            panic!("expected the item's text, got {:?}", list.items[0].content);
+        };
+        assert_eq!(item.text_align, None, "without a container nothing changes");
+    }
+
+    #[test]
+    fn inheriting_an_alignment_keeps_the_elements_own() {
+        let mut parsed = parse(
+            "<p>既定</p><p align=\"left\">左</p><img src=\"a.png\"><details><summary>題</summary><h2>中</h2></details><table><tr><td>x</td></tr></table>",
+        );
+
+        inherit_text_align(&mut parsed.children, TextAlign::Right);
+
+        let alignments = parsed
+            .children
+            .iter()
+            .map(|element| match element {
+                ParsedHtmlElement::Paragraph(paragraph) => {
+                    let is_image = matches!(
+                        paragraph.contents.as_slice(),
+                        [HtmlParagraphChunk::Image(_)]
+                    );
+                    (
+                        if is_image { "image" } else { "paragraph" },
+                        paragraph.text_align,
+                    )
+                }
+                ParsedHtmlElement::Details(details) => match &details.children[0] {
+                    ParsedHtmlElement::Heading(heading) => ("details heading", heading.text_align),
+                    other => panic!("expected heading, got {other:?}"),
+                },
+                ParsedHtmlElement::Table(_) => ("table", None),
+                other => panic!("unexpected element {other:?}"),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            alignments,
+            vec![
+                ("paragraph", Some(TextAlign::Right)),
+                ("paragraph", Some(TextAlign::Left)),
+                ("image", Some(TextAlign::Right)),
+                ("details heading", Some(TextAlign::Right)),
+                ("table", None),
+            ]
+        );
+    }
+
+    #[test]
     fn parses_br_as_a_line_break_inside_html_paragraphs() {
         for source in [
             "<p>a<br>b</p>",
@@ -1901,6 +2416,32 @@ mod tests {
             panic!("expected heading");
         };
         assert_eq!(heading.text_align, Some(TextAlign::Center));
+    }
+
+    #[test]
+    fn an_image_in_an_aligned_container_carries_the_alignment() {
+        let parsed = parse(
+            "<div align=\"center\">\n  <img src=\"a.png\" alt=\"写真\" width=\"300\">\n</div>",
+        );
+
+        assert_eq!(parsed.children.len(), 1);
+        let ParsedHtmlElement::Paragraph(paragraph) = &parsed.children[0] else {
+            panic!("expected the image to sit in an aligned paragraph");
+        };
+        assert_eq!(paragraph.text_align, Some(TextAlign::Center));
+        let [HtmlParagraphChunk::Image(image)] = paragraph.contents.as_slice() else {
+            panic!("expected the paragraph to hold only the image");
+        };
+        assert_eq!(image.dest_url.as_ref(), "a.png");
+        assert_eq!(image.width, Some(px(300.).into()));
+
+        // Without a container there is nothing to align, and the image stays a
+        // block of its own as before.
+        let parsed = parse("<img src=\"a.png\" align=\"right\">");
+        assert!(matches!(
+            parsed.children.as_slice(),
+            [ParsedHtmlElement::Image(_)]
+        ));
     }
 
     #[test]
@@ -2083,6 +2624,152 @@ mod tests {
     fn parses_hr_as_a_rule() {
         let parsed = parse("<div>a<hr>b</div>");
         assert!(matches!(parsed.children[1], ParsedHtmlElement::Rule(_)));
+    }
+
+    /// The style in force at each character of a text chunk, the way the
+    /// renderer merges them: in order, later ones winning.
+    fn colors_at(text: &ParsedHtmlText, needle: &str) -> (Option<u32>, Option<u32>, FontWeight) {
+        let offset = text
+            .contents
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle:?} is not in {:?}", text.contents));
+        let mut colors = (None, None, FontWeight::default());
+        for (range, style) in &text.highlights {
+            if range.contains(&offset) {
+                colors.0 = style.color.or(colors.0);
+                colors.1 = style.background_color.or(colors.1);
+                if style.weight != FontWeight::default() {
+                    colors.2 = style.weight;
+                }
+            }
+        }
+        colors
+    }
+
+    fn first_text(element: &ParsedHtmlElement) -> &ParsedHtmlText {
+        let ParsedHtmlElement::Paragraph(paragraph) = element else {
+            panic!("expected paragraph, got {element:?}");
+        };
+        let HtmlParagraphChunk::Text(text) = &paragraph.contents[0] else {
+            panic!("expected a text chunk");
+        };
+        text
+    }
+
+    #[test]
+    fn parses_colored_inline_tags_in_an_html_block() {
+        let parsed = parse(
+            "<p>a <span style=\"color: #d44c47\">赤 <b>太</b> 続</span> 後 <mark>黄</mark> \
+             <mark style=\"background-color: #b7ebc6\">緑</mark> <font color=\"#00f\">青</font></p>",
+        );
+        let text = first_text(&parsed.children[0]);
+
+        assert_eq!(colors_at(text, "a"), (None, None, FontWeight::default()));
+        assert_eq!(
+            colors_at(text, "赤"),
+            (Some(0xd44c47), None, FontWeight::default())
+        );
+        // The color covers everything inside the span, not only its first text.
+        assert_eq!(
+            colors_at(text, "太"),
+            (Some(0xd44c47), None, FontWeight::BOLD)
+        );
+        assert_eq!(
+            colors_at(text, "続"),
+            (Some(0xd44c47), None, FontWeight::default())
+        );
+        assert_eq!(colors_at(text, "後"), (None, None, FontWeight::default()));
+        assert_eq!(
+            colors_at(text, "黄"),
+            (Some(0x000000), Some(0xffff00), FontWeight::default())
+        );
+        assert_eq!(
+            colors_at(text, "緑"),
+            (Some(0x000000), Some(0xb7ebc6), FontWeight::default())
+        );
+        assert_eq!(
+            colors_at(text, "青"),
+            (Some(0x0000ff), None, FontWeight::default())
+        );
+    }
+
+    #[test]
+    fn inner_colors_win_in_an_html_block() {
+        let parsed = parse(
+            "<div style=\"color: red\">外 <span style=\"color: blue\">内</span> <span style=\"color: bogus\">無</span></div>",
+        );
+        let text = first_text(&parsed.children[0]);
+        assert_eq!(colors_at(text, "外").0, Some(0xff0000));
+        assert_eq!(colors_at(text, "内").0, Some(0x0000ff));
+        // A color that cannot be read leaves the one around it in place.
+        assert_eq!(colors_at(text, "無").0, Some(0xff0000));
+    }
+
+    #[test]
+    fn parses_paragraph_font_size_in_an_html_block() {
+        let parsed = parse("<p style=\"font-size: 1.25em\">大</p><p>並</p>");
+        let sizes = parsed
+            .children
+            .iter()
+            .map(|element| match element {
+                ParsedHtmlElement::Paragraph(paragraph) => paragraph.font_scale_percent,
+                element => panic!("expected paragraph, got {element:?}"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(sizes, [Some(125), None]);
+
+        // A container passes its size on to the paragraphs inside it.
+        let parsed = parse("<div style=\"font-size: 150%\"><p>一</p>二</div><p>三</p>");
+        let sizes = parsed
+            .children
+            .iter()
+            .map(|element| match element {
+                ParsedHtmlElement::Paragraph(paragraph) => (
+                    paragraph_chunks_text(&paragraph.contents),
+                    paragraph.font_scale_percent,
+                ),
+                element => panic!("expected paragraph, got {element:?}"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            sizes,
+            [("一二".to_string(), Some(150)), ("三".to_string(), None)]
+        );
+    }
+
+    #[test]
+    fn parses_css_colors() {
+        assert_eq!(parse_css_color("#d44c47"), Some(0xd44c47));
+        assert_eq!(parse_css_color(" #ABC "), Some(0xaabbcc));
+        assert_eq!(parse_css_color("rgb(255, 0, 16)"), Some(0xff0010));
+        assert_eq!(parse_css_color("rgb(255 0 16)"), Some(0xff0010));
+        assert_eq!(parse_css_color("Red"), Some(0xff0000));
+        assert_eq!(parse_css_color("grey"), Some(0x808080));
+        for unreadable in [
+            "",
+            "#12",
+            "#1234",
+            "#gggggg",
+            "rgb(256, 0, 0)",
+            "rgb(1, 2)",
+            "rgba(1, 2, 3, 0.5)",
+            "hsl(0, 100%, 50%)",
+            "reddish",
+        ] {
+            assert_eq!(parse_css_color(unreadable), None, "{unreadable:?}");
+        }
+    }
+
+    #[test]
+    fn parses_css_font_scales() {
+        assert_eq!(parse_css_font_scale("1.25em"), Some(125));
+        assert_eq!(parse_css_font_scale("0.85em"), Some(85));
+        assert_eq!(parse_css_font_scale(" 1.5rem "), Some(150));
+        assert_eq!(parse_css_font_scale("120%"), Some(120));
+        assert_eq!(parse_css_font_scale("20em"), Some(400));
+        for unreadable in ["", "16px", "large", "-1em", "0em", "em", "NaNem"] {
+            assert_eq!(parse_css_font_scale(unreadable), None, "{unreadable:?}");
+        }
     }
 
     #[test]

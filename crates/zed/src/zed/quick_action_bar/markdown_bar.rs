@@ -1,4 +1,6 @@
-use editor::actions::MermaidDiagramKind;
+use editor::actions::{
+    MarkdownMarkerColor, MarkdownTextColor, MarkdownTextSize, MermaidDiagramKind,
+};
 use editor::{Editor, EditorEvent, EditorSettings, actions as editor_actions};
 use gpui::{
     Action, AnyElement, Entity, EventEmitter, FocusHandle, Focusable, FontWeight, Stateful,
@@ -242,6 +244,36 @@ fn menu_format_button(
         })
 }
 
+/// A menu entry with a square of `rgb` in front of its label, so the color can
+/// be seen before it is picked. Like the menu's own entries, it hands the
+/// action to the editor the row belongs to.
+fn swatch_entry(
+    menu: ContextMenu,
+    label: &'static str,
+    rgb: u32,
+    action: Box<dyn Action>,
+    focus_handle: &FocusHandle,
+) -> ContextMenu {
+    let focus_handle = focus_handle.clone();
+    menu.custom_entry(
+        move |_window, cx| {
+            h_flex()
+                .gap_2()
+                .child(
+                    div()
+                        .size_3()
+                        .rounded_xs()
+                        .border_1()
+                        .border_color(cx.theme().colors().border)
+                        .bg(gpui::rgb(rgb)),
+                )
+                .child(Label::new(label))
+                .into_any_element()
+        },
+        move |window, cx| focus_handle.dispatch_action(action.as_ref(), window, cx),
+    )
+}
+
 impl Render for MarkdownFormatBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(editor) = self
@@ -317,6 +349,83 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
             &focus_handle,
         ));
 
+    let styles = h_flex()
+        .gap(DynamicSpacing::Base01.rems(cx))
+        .child(
+            div()
+                .debug_selector(|| "markdown-text-color".into())
+                .child(menu_format_button(
+                    "markdown-text-color",
+                    IconName::Font,
+                    "文字色",
+                    &focus_handle,
+                    {
+                        let focus_handle = focus_handle.clone();
+                        move |mut menu| {
+                            for color in MarkdownTextColor::ALL {
+                                menu = swatch_entry(
+                                    menu,
+                                    color.label(),
+                                    color.rgb(),
+                                    Box::new(editor_actions::SetTextColor { color }),
+                                    &focus_handle,
+                                );
+                            }
+                            menu.separator()
+                                .action("色を外す", editor_actions::RemoveTextColor.boxed_clone())
+                        }
+                    },
+                )),
+        )
+        .child(
+            div()
+                .debug_selector(|| "markdown-marker".into())
+                .child(menu_format_button(
+                    "markdown-marker",
+                    IconName::Pencil,
+                    "マーカー",
+                    &focus_handle,
+                    {
+                        let focus_handle = focus_handle.clone();
+                        move |mut menu| {
+                            for color in MarkdownMarkerColor::ALL {
+                                menu = swatch_entry(
+                                    menu,
+                                    color.label(),
+                                    color.swatch_rgb(),
+                                    Box::new(editor_actions::SetMarker { color }),
+                                    &focus_handle,
+                                );
+                            }
+                            menu.separator().action(
+                                "マーカーを外す",
+                                editor_actions::RemoveMarker.boxed_clone(),
+                            )
+                        }
+                    },
+                )),
+        )
+        .child(
+            div()
+                .debug_selector(|| "markdown-text-size".into())
+                .child(menu_format_button(
+                    "markdown-text-size",
+                    IconName::FontSize,
+                    "段落の文字サイズ",
+                    &focus_handle,
+                    |mut menu| {
+                        for size in MarkdownTextSize::ALL {
+                            menu = menu.action(
+                                size.label(),
+                                Box::new(editor_actions::SetTextSize { size }),
+                            );
+                        }
+                        menu.separator()
+                            .action("標準に戻す", editor_actions::ResetTextSize.boxed_clone())
+                    },
+                )),
+        );
+
     let headings = h_flex()
         .gap(DynamicSpacing::Base01.rems(cx))
         .child(text_format_button(
@@ -381,6 +490,20 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
             editor_actions::InsertLink.boxed_clone(),
             &focus_handle,
         ))
+        // The same action edits the image the cursor is on, so one button
+        // covers both. The wrapper only names it for tests, since a
+        // `ButtonLike` carries no selector of its own.
+        .child(
+            div()
+                .debug_selector(|| "markdown_image_button".into())
+                .child(icon_format_button(
+                    "markdown-image",
+                    IconName::Image,
+                    "画像を挿入",
+                    markdown_preview::InsertImage.boxed_clone(),
+                    &focus_handle,
+                )),
+        )
         .child(icon_format_button(
             "markdown-horizontal-rule",
             IconName::Dash,
@@ -450,6 +573,7 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
 
     vec![
         followed_by_separator(inline),
+        followed_by_separator(styles),
         followed_by_separator(headings),
         followed_by_separator(blocks),
         followed_by_separator(inserts),
@@ -545,16 +669,180 @@ mod tests {
         );
     }
 
+    /// Renders the row over a focus handle that records the image action, as
+    /// the Markdown editor's handle would receive it.
+    struct ImageButtonTestView {
+        focus_handle: FocusHandle,
+        inserted_images: std::rc::Rc<std::cell::Cell<usize>>,
+    }
+
+    impl Render for ImageButtonTestView {
+        fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let inserted_images = self.inserted_images.clone();
+            v_flex()
+                .track_focus(&self.focus_handle)
+                .on_action(move |_: &markdown_preview::InsertImage, _window, _cx| {
+                    inserted_images.set(inserted_images.get() + 1);
+                })
+                .child(format_bar_row(&self.focus_handle, cx))
+        }
+    }
+
+    #[gpui::test]
+    fn format_bar_image_button_opens_the_image_dialog(cx: &mut TestAppContext) {
+        open_format_bar(cx);
+        let inserted_images = std::rc::Rc::new(std::cell::Cell::new(0));
+        let (_view, cx) = cx.add_window_view({
+            let inserted_images = inserted_images.clone();
+            move |_window, cx| ImageButtonTestView {
+                focus_handle: cx.focus_handle(),
+                inserted_images,
+            }
+        });
+        cx.simulate_resize(size(px(1600.), px(600.)));
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        let bounds = cx
+            .debug_bounds("markdown_image_button")
+            .expect("the image button is drawn in the row");
+        cx.simulate_click(bounds.center(), gpui::Modifiers::none());
+        assert_eq!(
+            inserted_images.get(),
+            1,
+            "clicking the button hands `markdown::InsertImage` to the editor"
+        );
+    }
+
     #[gpui::test]
     fn format_bar_keeps_its_dividers_inside_the_groups(cx: &mut TestAppContext) {
         let cx = open_format_bar(cx);
 
         // Each divider is a child of the group it follows, so the row's own
-        // children are only the five groups: a wrapped line can never start
+        // children are only the six groups: a wrapped line can never start
         // with a divider.
         cx.update(|_window, cx| {
             let focus_handle = cx.focus_handle();
-            assert_eq!(format_button_groups(&focus_handle, cx).len(), 5);
+            assert_eq!(format_button_groups(&focus_handle, cx).len(), 6);
         });
+    }
+
+    #[gpui::test]
+    fn format_bar_swatch_entries_send_the_picked_color_to_the_editor(cx: &mut TestAppContext) {
+        use std::{cell::RefCell, rc::Rc};
+
+        struct RecordingView {
+            focus_handle: FocusHandle,
+            picked: Rc<RefCell<Vec<String>>>,
+        }
+
+        impl Render for RecordingView {
+            fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+                v_flex()
+                    .track_focus(&self.focus_handle)
+                    .on_action({
+                        let picked = self.picked.clone();
+                        move |action: &editor_actions::SetTextColor, _, _| {
+                            picked.borrow_mut().push(format!("{action:?}"))
+                        }
+                    })
+                    .on_action({
+                        let picked = self.picked.clone();
+                        move |action: &editor_actions::SetMarker, _, _| {
+                            picked.borrow_mut().push(format!("{action:?}"))
+                        }
+                    })
+                    .child(format_bar_row(&self.focus_handle, cx))
+            }
+        }
+
+        cx.update(|cx| {
+            if !cx.has_global::<SettingsStore>() {
+                settings::init(cx);
+            }
+            if !cx.has_global::<theme::GlobalTheme>() {
+                theme_settings::init(theme::LoadThemes::JustBase, cx);
+            }
+        });
+        let picked = Rc::new(RefCell::new(Vec::new()));
+        let (_view, cx) = cx.add_window_view({
+            let picked = picked.clone();
+            move |_window, cx| RecordingView {
+                focus_handle: cx.focus_handle(),
+                picked,
+            }
+        });
+        cx.simulate_resize(size(px(1600.), px(600.)));
+        cx.run_until_parked();
+
+        // The swatches are custom entries, which hand the action over
+        // themselves rather than through the menu's context; the keyboard
+        // confirms them through the same handler a click runs.
+        for (selector, steps, expected) in [
+            (
+                "markdown-text-color",
+                0,
+                format!(
+                    "{:?}",
+                    editor_actions::SetTextColor {
+                        color: MarkdownTextColor::Red
+                    }
+                ),
+            ),
+            (
+                "markdown-marker",
+                1,
+                format!(
+                    "{:?}",
+                    editor_actions::SetMarker {
+                        color: MarkdownMarkerColor::Green
+                    }
+                ),
+            ),
+        ] {
+            picked.borrow_mut().clear();
+            let trigger = cx
+                .debug_bounds(selector)
+                .unwrap_or_else(|| panic!("{selector} should be drawn"));
+            cx.simulate_click(trigger.center(), gpui::Modifiers::none());
+            cx.run_until_parked();
+            // The popover focuses its menu two frames after it opens.
+            for _ in 0..2 {
+                cx.update(|window, cx| window.simulate_next_frame(cx));
+            }
+            cx.dispatch_action(menu::SelectFirst);
+            for _ in 0..steps {
+                cx.dispatch_action(menu::SelectNext);
+            }
+            cx.dispatch_action(menu::Confirm);
+            cx.run_until_parked();
+            assert_eq!(*picked.borrow(), [expected], "{selector}");
+        }
+    }
+
+    #[gpui::test]
+    fn format_bar_offers_text_color_marker_and_size_menus(cx: &mut TestAppContext) {
+        let cx = open_format_bar(cx);
+        format_bar_height(px(1600.), cx);
+
+        let mut previous_right = None;
+        for selector in [
+            "markdown-text-color",
+            "markdown-marker",
+            "markdown-text-size",
+        ] {
+            let bounds = cx
+                .debug_bounds(selector)
+                .unwrap_or_else(|| panic!("{selector} should be drawn"));
+            assert!(
+                bounds.size.width > px(0.) && bounds.size.height > px(0.),
+                "{selector} is drawn empty: {bounds:?}"
+            );
+            // The three sit side by side, in the order the row lists them.
+            if let Some(previous_right) = previous_right {
+                assert!(bounds.origin.x >= previous_right, "{selector}: {bounds:?}");
+            }
+            previous_right = Some(bounds.origin.x + bounds.size.width);
+        }
     }
 }

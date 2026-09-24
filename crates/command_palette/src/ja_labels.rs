@@ -977,6 +977,22 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "markdown::ToggleInlineCode",
         "Markdown: インラインコードの切り替え",
     ),
+    ("markdown::SetTextColor", "Markdown: 文字色を付ける"),
+    ("markdown::RemoveTextColor", "Markdown: 文字色を外す"),
+    ("markdown::SetMarker", "Markdown: マーカーを引く"),
+    (
+        "markdown::ToggleMarker",
+        "Markdown: マーカー (黄) の切り替え",
+    ),
+    ("markdown::RemoveMarker", "Markdown: マーカーを外す"),
+    (
+        "markdown::SetTextSize",
+        "Markdown: 段落の文字サイズを変える",
+    ),
+    (
+        "markdown::ResetTextSize",
+        "Markdown: 段落の文字サイズを標準に戻す",
+    ),
     ("markdown::ToggleHeading1", "Markdown: 見出し 1 の切り替え"),
     ("markdown::ToggleHeading2", "Markdown: 見出し 2 の切り替え"),
     ("markdown::ToggleHeading3", "Markdown: 見出し 3 の切り替え"),
@@ -993,6 +1009,7 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "Markdown: タスクリストの切り替え",
     ),
     ("markdown::InsertLink", "Markdown: リンクを挿入"),
+    ("markdown::InsertImage", "Markdown: 画像を挿入 / 編集…"),
     ("markdown::InsertHorizontalRule", "Markdown: 水平線を挿入"),
     (
         "markdown::WrapInCodeBlock",

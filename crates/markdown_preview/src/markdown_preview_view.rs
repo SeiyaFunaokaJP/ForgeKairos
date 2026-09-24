@@ -2810,6 +2810,42 @@ mod tests {
         assert!(missing.is_none());
     }
 
+    /// The image dialog percent-encodes what Markdown cannot hold as it is and
+    /// writes `../` for a file above the document; the preview has to find
+    /// every one of those on disk.
+    #[gpui::test]
+    fn resolves_the_paths_the_image_dialog_writes(cx: &mut App) {
+        let tree = TempTree::new(json!({
+            "docs": {
+                "images": {
+                    "a b (1).png": "mock data",
+                    "写真 100%.png": "mock data",
+                },
+            },
+            "shared.png": "mock data",
+        }));
+        let base_directory = markdown_fixture_directory(&tree);
+        let images = base_directory.join("images");
+
+        for (destination, expected) in [
+            ("images/a%20b%20%281%29.png", images.join("a b (1).png")),
+            ("images/a%20b%20(1).png", images.join("a b (1).png")),
+            ("images/写真%20100%25.png", images.join("写真 100%.png")),
+            ("../shared.png", tree.path().join("shared.png")),
+        ] {
+            let resolved = resolve_preview_image(
+                destination,
+                Some(&base_directory),
+                Some(tree.path()),
+                None,
+                None,
+                PathStyle::local(),
+                cx,
+            );
+            assert_resolved_preview_image_path(resolved, &expected);
+        }
+    }
+
     #[gpui::test]
     async fn resolves_remote_preview_image_through_project(cx: &mut TestAppContext) {
         init_test(cx);

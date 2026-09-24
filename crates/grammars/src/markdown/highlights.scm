@@ -19,6 +19,8 @@
   (list_marker_star)
   (list_marker_dot)
   (list_marker_parenthesis)
+  (task_list_marker_unchecked)
+  (task_list_marker_checked)
 ] @punctuation.list_marker.markup
 
 [
@@ -46,3 +48,12 @@
 (link_reference_definition) @link_text.markup
 
 (link_destination) @link_uri.markup
+
+(link_title) @string.markup
+
+; A closing tag whose opening tag is in no HTML block (it was written inside a
+; paragraph, or in a list item the Markdown grammar fails to parse) is an error
+; to the HTML grammar, which leaves the tag name uncolored. The HTML layer still
+; paints the `</` and `>` over this.
+((html_block) @tag
+  (#match? @tag "^([\\s>]*</[A-Za-z][A-Za-z0-9-]*\\s*>)+[\\s>]*$"))

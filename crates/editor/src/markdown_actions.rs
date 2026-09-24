@@ -894,6 +894,2669 @@ impl MermaidDiagramKind {
     }
 }
 
+impl MarkdownTextColor {
+    /// Every preset, in the order the format bar lists them.
+    pub const ALL: [MarkdownTextColor; 8] = [
+        MarkdownTextColor::Red,
+        MarkdownTextColor::Orange,
+        MarkdownTextColor::Yellow,
+        MarkdownTextColor::Green,
+        MarkdownTextColor::Blue,
+        MarkdownTextColor::Purple,
+        MarkdownTextColor::Pink,
+        MarkdownTextColor::Gray,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Red => "赤",
+            Self::Orange => "橙",
+            Self::Yellow => "黄",
+            Self::Green => "緑",
+            Self::Blue => "青",
+            Self::Purple => "紫",
+            Self::Pink => "桃",
+            Self::Gray => "灰",
+        }
+    }
+
+    /// The color as `0xRRGGBB`.
+    pub fn rgb(self) -> u32 {
+        match self {
+            Self::Red => 0xd44c47,
+            Self::Orange => 0xd9730d,
+            Self::Yellow => 0xcb912f,
+            Self::Green => 0x448361,
+            Self::Blue => 0x337ea9,
+            Self::Purple => 0x9065b0,
+            Self::Pink => 0xc14c8a,
+            Self::Gray => 0x787774,
+        }
+    }
+}
+
+/// The background the preview gives a bare `<mark>`. Mirrors
+/// `markdown::html::html_parser::DEFAULT_MARK_BACKGROUND`, which this crate
+/// cannot reach.
+const BARE_MARK_BACKGROUND: u32 = 0xffff00;
+
+impl MarkdownMarkerColor {
+    /// Every marker color, in the order the format bar lists them.
+    pub const ALL: [MarkdownMarkerColor; 4] = [
+        MarkdownMarkerColor::Yellow,
+        MarkdownMarkerColor::Green,
+        MarkdownMarkerColor::Blue,
+        MarkdownMarkerColor::Pink,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Yellow => "黄",
+            Self::Green => "緑",
+            Self::Blue => "青",
+            Self::Pink => "桃",
+        }
+    }
+
+    /// The background written into the `<mark>` as `0xRRGGBB`, or `None` for
+    /// yellow, which is written as a bare `<mark>`.
+    pub fn rgb(self) -> Option<u32> {
+        match self {
+            Self::Yellow => None,
+            Self::Green => Some(0xb7ebc6),
+            Self::Blue => Some(0xbfe0ff),
+            Self::Pink => Some(0xffc9e0),
+        }
+    }
+
+    /// The color the preview draws the marker in, for a swatch.
+    pub fn swatch_rgb(self) -> u32 {
+        self.rgb().unwrap_or(BARE_MARK_BACKGROUND)
+    }
+}
+
+impl MarkdownTextSize {
+    /// Every size, in the order the format bar lists them.
+    pub const ALL: [MarkdownTextSize; 3] = [
+        MarkdownTextSize::Small,
+        MarkdownTextSize::Large,
+        MarkdownTextSize::ExtraLarge,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Small => "小",
+            Self::Large => "大",
+            Self::ExtraLarge => "特大",
+        }
+    }
+
+    /// The `font-size` written for the paragraph.
+    pub fn css(self) -> &'static str {
+        match self {
+            Self::Small => "0.85em",
+            Self::Large => "1.25em",
+            Self::ExtraLarge => "1.5em",
+        }
+    }
+}
+
+impl Editor {
+    pub fn set_markdown_text_color(
+        &mut self,
+        action: &SetTextColor,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_markdown_inline_style(
+            InlineStyleRequest::SetTextColor(action.color.rgb()),
+            window,
+            cx,
+        );
+    }
+
+    pub fn remove_markdown_text_color(
+        &mut self,
+        _: &RemoveTextColor,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_markdown_inline_style(InlineStyleRequest::RemoveTextColor, window, cx);
+    }
+
+    pub fn set_markdown_marker(
+        &mut self,
+        action: &SetMarker,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_markdown_inline_style(
+            InlineStyleRequest::SetMarker(action.color.rgb()),
+            window,
+            cx,
+        );
+    }
+
+    pub fn toggle_markdown_marker(
+        &mut self,
+        _: &ToggleMarker,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_markdown_inline_style(InlineStyleRequest::ToggleMarker, window, cx);
+    }
+
+    pub fn remove_markdown_marker(
+        &mut self,
+        _: &RemoveMarker,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_markdown_inline_style(InlineStyleRequest::RemoveMarker, window, cx);
+    }
+
+    pub fn set_markdown_text_size(
+        &mut self,
+        action: &SetTextSize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_markdown_paragraph_size(Some(action.size.css()), window, cx);
+    }
+
+    pub fn reset_markdown_text_size(
+        &mut self,
+        _: &ResetTextSize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_markdown_paragraph_size(None, window, cx);
+    }
+
+    fn apply_markdown_inline_style(
+        &mut self,
+        request: InlineStyleRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((text, selections)) = self.markdown_style_input(cx) else {
+            return;
+        };
+        let plan = plan_inline_style(&text, &selections, request);
+        self.apply_markdown_style_plan(plan, window, cx);
+    }
+
+    fn apply_markdown_paragraph_size(
+        &mut self,
+        size: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((text, selections)) = self.markdown_style_input(cx) else {
+            return;
+        };
+        let plan = plan_paragraph_size(&text, &selections, size);
+        self.apply_markdown_style_plan(plan, window, cx);
+    }
+
+    /// The buffer's text and the selections as offsets into it, when the
+    /// styling actions may edit this buffer at all.
+    fn markdown_style_input(&self, cx: &mut Context<Self>) -> Option<(String, Vec<Range<usize>>)> {
+        if self.read_only(cx) || !self.is_in_markdown_language(cx) {
+            return None;
+        }
+        let text = self.buffer.read(cx).snapshot(cx).text();
+        let selections = self
+            .selections
+            .all::<MultiBufferOffset>(&self.display_snapshot(cx))
+            .into_iter()
+            .map(|selection| selection.start.0..selection.end.0)
+            .collect();
+        Some((text, selections))
+    }
+
+    fn apply_markdown_style_plan(
+        &mut self,
+        plan: Result<StylePlan, StyleRefusal>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let plan = match plan {
+            Ok(plan) => plan,
+            Err(refusal) => {
+                self.show_markdown_style_refusal(refusal, window, cx);
+                return;
+            }
+        };
+        if plan.edits.is_empty() {
+            return;
+        }
+
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        let edits = plan
+            .edits
+            .into_iter()
+            .map(|edit| {
+                let start = snapshot.anchor_before(MultiBufferOffset(edit.range.start));
+                let end = if edit.range.is_empty() {
+                    start
+                } else {
+                    snapshot.anchor_after(MultiBufferOffset(edit.range.end))
+                };
+                (start..end, edit.text)
+            })
+            .collect::<Vec<_>>();
+        let selections = plan
+            .selections
+            .into_iter()
+            .map(|range| MultiBufferOffset(range.start)..MultiBufferOffset(range.end))
+            .collect::<Vec<_>>();
+
+        self.transact(window, cx, |this, window, cx| {
+            this.buffer
+                .update(cx, |buffer, cx| buffer.edit(edits, None, cx));
+            this.change_selections(Default::default(), window, cx, |s| {
+                s.select_ranges(selections);
+            });
+            this.request_autoscroll(Autoscroll::fit(), cx);
+        });
+    }
+
+    /// Tells the user why a styling action changed nothing, since a format bar
+    /// button that silently does nothing reads as a broken one.
+    fn show_markdown_style_refusal(
+        &self,
+        refusal: StyleRefusal,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(workspace) = self.workspace() else {
+            return;
+        };
+        struct MarkdownStyleRefused;
+        // The workspace may be mid-update when the action arrives, so the toast
+        // waits until that update is over.
+        window.defer(cx, move |_, cx| {
+            workspace.update(cx, |workspace, cx| {
+                workspace.show_toast(
+                    Toast::new(
+                        NotificationId::unique::<MarkdownStyleRefused>(),
+                        refusal.message(),
+                    ),
+                    cx,
+                );
+            });
+        });
+    }
+}
+
+/// What an inline styling action asks for. Colors are `0xRRGGBB`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InlineStyleRequest {
+    SetTextColor(u32),
+    RemoveTextColor,
+    /// `None` is the bare, yellow `<mark>`.
+    SetMarker(Option<u32>),
+    ToggleMarker,
+    RemoveMarker,
+}
+
+/// Why a styling action left the document as it was.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StyleRefusal {
+    InsideCode,
+    InsideTag,
+    CrossesTags,
+    CrossesTableCells,
+    NothingSelected,
+    NoTextColor,
+    NoMarker,
+    NoParagraph,
+    NoTextSize,
+}
+
+impl StyleRefusal {
+    fn message(self) -> &'static str {
+        match self {
+            Self::InsideCode => "コードの中は書式を変更できません。",
+            Self::InsideTag => "HTML のタグやコメントの中には書式を付けられません。",
+            Self::CrossesTags => {
+                "選択範囲が既存の HTML タグ (文字色・マーカーなど) をまたいでいるため、変更できません。"
+            }
+            Self::CrossesTableCells => "表のセルをまたぐ範囲には書式を付けられません。",
+            Self::NothingSelected => "書式を付ける文字がありません。",
+            Self::NoTextColor => "選択範囲に文字色の付いた部分がありません。",
+            Self::NoMarker => "選択範囲にマーカーの付いた部分がありません。",
+            Self::NoParagraph => {
+                "文字サイズは段落にだけ付けられます (見出し・コードブロック・表・HTML ブロックは対象外です)。"
+            }
+            Self::NoTextSize => "文字サイズの指定された段落がありません。",
+        }
+    }
+}
+
+/// The edits a styling action makes, and where the selections end up.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct StylePlan {
+    /// Sorted, and never overlapping or touching one another.
+    edits: Vec<StyleEdit>,
+    /// Offsets into the text as it reads once `edits` are applied.
+    selections: Vec<Range<usize>>,
+}
+
+/// A replacement of one range of the source, together with where a selection
+/// endpoint that sits on the range lands in the new text: past an opening tag,
+/// before a closing one, inside the new tags of a wrapped selection.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StyleEdit {
+    range: Range<usize>,
+    text: String,
+    /// Where an offset at `range.start` lands in `text`.
+    start_lands: usize,
+    /// Where an offset strictly inside `range` lands in `text`.
+    inside_lands: usize,
+    /// Where an offset at `range.end` of a non-empty `range` lands in `text`.
+    end_lands: usize,
+}
+
+impl StyleEdit {
+    /// Rewrites an opening tag: the text that follows it stays after it.
+    fn opening_tag(range: Range<usize>, text: String) -> Self {
+        let length = text.len();
+        Self {
+            range,
+            text,
+            start_lands: 0,
+            inside_lands: length,
+            end_lands: length,
+        }
+    }
+
+    /// Rewrites a closing tag: the text before it stays before it.
+    fn closing_tag(range: Range<usize>, text: String) -> Self {
+        let length = text.len();
+        Self {
+            range,
+            text,
+            start_lands: 0,
+            inside_lands: 0,
+            end_lands: length,
+        }
+    }
+
+    /// Inserts an opening tag, which an offset at the insertion point ends up
+    /// in front of, with the text it opens.
+    fn insert_opening(at: usize, text: String) -> Self {
+        let length = text.len();
+        Self {
+            range: at..at,
+            text,
+            start_lands: length,
+            inside_lands: length,
+            end_lands: length,
+        }
+    }
+
+    /// Inserts a closing tag, which an offset at the insertion point stays in
+    /// front of.
+    fn insert_closing(at: usize, text: String) -> Self {
+        Self {
+            range: at..at,
+            text,
+            start_lands: 0,
+            inside_lands: 0,
+            end_lands: 0,
+        }
+    }
+
+    /// Replaces `range` with `open`, the rewritten `inner` and `close`, leaving
+    /// the selection on the inner text.
+    fn wrap(range: Range<usize>, open: &str, inner: &str, close: &str) -> Self {
+        Self {
+            range,
+            text: format!("{open}{inner}{close}"),
+            start_lands: open.len(),
+            inside_lands: open.len(),
+            end_lands: open.len() + inner.len(),
+        }
+    }
+
+    fn touches(&self, other: &StyleEdit) -> bool {
+        self.range.start <= other.range.end && other.range.start <= self.range.end
+    }
+}
+
+/// Where `offset` ends up once `edits` (sorted, not overlapping) are applied.
+fn map_offset_through_edits(offset: usize, edits: &[StyleEdit]) -> usize {
+    let mut shifted = offset;
+    for edit in edits {
+        let Range { start, end } = edit.range;
+        if offset < start {
+            break;
+        }
+        let new_start = start + shifted - offset;
+        if offset == start {
+            return new_start + edit.start_lands;
+        }
+        if offset < end {
+            return new_start + edit.inside_lands;
+        }
+        if offset == end {
+            return new_start + edit.end_lands;
+        }
+        shifted = shifted + edit.text.len() - edit.range.len();
+    }
+    shifted
+}
+
+/// Applies `edits`, all of which lie inside `range`, to that slice of `text`.
+fn apply_edits_to_slice(text: &str, range: Range<usize>, edits: &[StyleEdit]) -> String {
+    let mut result = String::new();
+    let mut position = range.start;
+    for edit in edits {
+        result.push_str(text.get(position..edit.range.start).unwrap_or_default());
+        result.push_str(&edit.text);
+        position = edit.range.end;
+    }
+    result.push_str(text.get(position..range.end).unwrap_or_default());
+    result
+}
+
+/// The inline HTML elements the styling actions write and edit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StyleTagName {
+    Span,
+    Mark,
+}
+
+/// A balanced `<span>…</span>` or `<mark>…</mark>` in a block's text, paired
+/// the way the preview pairs them: a closing tag only closes the innermost
+/// open element of its own name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StyledElement {
+    name: StyleTagName,
+    open: Range<usize>,
+    close: Range<usize>,
+}
+
+impl StyledElement {
+    fn outer(&self) -> Range<usize> {
+        self.open.start..self.close.end
+    }
+
+    fn inner(&self) -> Range<usize> {
+        self.open.end..self.close.start
+    }
+
+    /// Whether `segment` sits in the element's text, or is the whole element.
+    fn encloses(&self, segment: &Range<usize>) -> bool {
+        (self.open.end <= segment.start && segment.end <= self.close.start)
+            || self.outer() == *segment
+    }
+
+    /// Whether both tags lie inside `segment`.
+    fn is_inside(&self, segment: &Range<usize>) -> bool {
+        segment.start <= self.open.start && self.close.end <= segment.end
+    }
+
+    /// Whether wrapping `segment` would leave one of the element's tags inside
+    /// the new element and the other outside, or would cut a tag in two.
+    fn crosses(&self, segment: &Range<usize>) -> bool {
+        tags_cross(&self.open, &self.close, segment)
+    }
+}
+
+/// Whether wrapping `segment` would leave one of an element's two tags inside
+/// the new element and the other outside, or would cut a tag in two.
+fn tags_cross(open: &Range<usize>, close: &Range<usize>, segment: &Range<usize>) -> bool {
+    let cuts = |tag: &Range<usize>| {
+        (tag.start < segment.start && segment.start < tag.end)
+            || (tag.start < segment.end && segment.end < tag.end)
+    };
+    if cuts(open) || cuts(close) {
+        return true;
+    }
+    if segment.is_empty() {
+        return false;
+    }
+    let contains = |tag: &Range<usize>| segment.start <= tag.start && tag.end <= segment.end;
+    contains(open) != contains(close)
+}
+
+/// The HTML of a block's text that a new tag must be kept out of: every tag,
+/// comment and autolink, and the pairs of tags of any name, so that
+/// `<b>a</b>` is not cut into `<b><span>a</b></span>` and a cursor inside
+/// `<a href="…">` does not get a tag written into the attribute.
+struct BlockMarkup {
+    tags: Vec<Range<usize>>,
+    elements: Vec<(Range<usize>, Range<usize>)>,
+}
+
+impl BlockMarkup {
+    fn scan(text: &str, range: Range<usize>, code_spans: &[Range<usize>]) -> Self {
+        let mut tags = Vec::new();
+        let mut elements = Vec::new();
+        let mut open: Vec<(String, Range<usize>)> = Vec::new();
+        let mut index = range.start;
+
+        while index < range.end {
+            let Some(relative) = text.get(index..range.end).and_then(|rest| rest.find('<')) else {
+                break;
+            };
+            let start = index + relative;
+            if let Some(code) = code_spans
+                .iter()
+                .find(|code| code.start <= start && start < code.end)
+            {
+                index = code.end;
+                continue;
+            }
+            if start > 0 && text.as_bytes().get(start - 1) == Some(&b'\\') {
+                index = start + 1;
+                continue;
+            }
+            let rest = text.get(start..range.end).unwrap_or_default();
+            if rest.starts_with("<!--") {
+                let end = rest
+                    .find("-->")
+                    .map_or(range.end, |end| start + end + "-->".len());
+                tags.push(start..end);
+                index = end;
+                continue;
+            }
+            let starts_like_a_tag = rest
+                .strip_prefix('<')
+                .map(|after| after.strip_prefix('/').unwrap_or(after))
+                .and_then(|after| after.chars().next())
+                .is_some_and(|character| {
+                    character.is_ascii_alphabetic() || matches!(character, '!' | '?')
+                });
+            let Some(length) = html_tag_length(rest).filter(|_| starts_like_a_tag) else {
+                index = start + 1;
+                continue;
+            };
+            let tag_range = start..start + length;
+            tags.push(tag_range.clone());
+            if let Some((name, closing)) = rest.get(..length).and_then(html_tag_name) {
+                if closing {
+                    if let Some(position) =
+                        open.iter().rposition(|(open_name, _)| *open_name == name)
+                    {
+                        let (_, open_range) = open.remove(position);
+                        elements.push((open_range, tag_range.clone()));
+                    }
+                } else {
+                    open.push((name, tag_range.clone()));
+                }
+            }
+            index = tag_range.end;
+        }
+
+        Self { tags, elements }
+    }
+
+    /// Whether `offset` sits strictly inside a tag, a comment or an autolink.
+    fn is_inside_tag(&self, offset: usize) -> bool {
+        self.tags
+            .iter()
+            .any(|tag| tag.start < offset && offset < tag.end)
+    }
+
+    fn crosses(&self, segment: &Range<usize>) -> bool {
+        self.is_inside_tag(segment.start)
+            || self.is_inside_tag(segment.end)
+            || self
+                .elements
+                .iter()
+                .any(|(open, close)| tags_cross(open, close, segment))
+    }
+}
+
+/// The lowercased name of an opening or closing tag, and whether it is the
+/// closing one. A self-closing tag has no partner and gets `None`.
+fn html_tag_name(tag: &str) -> Option<(String, bool)> {
+    let inner = tag.strip_prefix('<')?.strip_suffix('>')?;
+    if inner.ends_with('/') {
+        return None;
+    }
+    let (inner, closing) = match inner.strip_prefix('/') {
+        Some(inner) => (inner, true),
+        None => (inner, false),
+    };
+    let name_end = inner
+        .find(|character: char| !(character.is_ascii_alphanumeric() || character == '-'))
+        .unwrap_or(inner.len());
+    let name = inner.get(..name_end)?;
+    if !name.starts_with(|character: char| character.is_ascii_alphabetic()) {
+        return None;
+    }
+    Some((name.to_ascii_lowercase(), closing))
+}
+
+/// An attribute of an opening tag, with its range inside the tag.
+struct TagAttribute {
+    name: String,
+    range: Range<usize>,
+    value: Option<String>,
+}
+
+/// The attributes of an opening tag such as `<span style="color: red">`, or
+/// `None` when `tag` is not one.
+fn opening_tag_attributes(tag: &str) -> Option<Vec<TagAttribute>> {
+    let inner = tag.strip_prefix('<')?.strip_suffix('>')?;
+    let inner = inner.strip_suffix('/').unwrap_or(inner);
+    let name_end = inner
+        .find(|character: char| !character.is_ascii_alphanumeric())
+        .unwrap_or(inner.len());
+    if name_end == 0 {
+        return None;
+    }
+
+    let mut attributes = Vec::new();
+    let mut position = name_end;
+    loop {
+        let rest = inner.get(position..)?;
+        let trimmed = rest.trim_start();
+        position += rest.len() - trimmed.len();
+        if trimmed.is_empty() {
+            break;
+        }
+
+        let name_length = trimmed
+            .find(|character: char| character == '=' || character.is_whitespace())
+            .unwrap_or(trimmed.len());
+        let name = trimmed.get(..name_length)?.to_ascii_lowercase();
+        let attribute_start = position;
+        position += name_length;
+
+        let rest = inner.get(position..)?;
+        let after_space = rest.trim_start();
+        let mut value = None;
+        if let Some(after_equals) = after_space.strip_prefix('=') {
+            let value_rest = after_equals.trim_start();
+            let value_start = position + (rest.len() - value_rest.len());
+            match value_rest.chars().next() {
+                Some(quote @ ('"' | '\'')) => {
+                    let body = value_rest.get(1..)?;
+                    let closing = body.find(quote)?;
+                    value = Some(body.get(..closing)?.to_string());
+                    position = value_start + 1 + closing + 1;
+                }
+                Some(_) => {
+                    let length = value_rest
+                        .find(char::is_whitespace)
+                        .unwrap_or(value_rest.len());
+                    value = Some(value_rest.get(..length)?.to_string());
+                    position = value_start + length;
+                }
+                None => return None,
+            }
+        }
+
+        // Offsets are into `tag`, which starts with the `<` that `inner` lost.
+        attributes.push(TagAttribute {
+            name,
+            range: attribute_start + 1..position + 1,
+            value,
+        });
+    }
+    Some(attributes)
+}
+
+/// The declarations of a `style` attribute, in order, with lowercased
+/// properties.
+fn style_declarations(style: &str) -> Vec<(String, String)> {
+    // A `;` inside quotes or parentheses, as in
+    // `background: url(data:image/png;base64,…)`, belongs to the value: cutting
+    // there would write back a declaration that lost half of itself.
+    let mut declarations = Vec::new();
+    let mut quote = None;
+    let mut parentheses = 0usize;
+    let mut start = 0;
+    for (index, character) in style.char_indices() {
+        match (quote, character) {
+            (Some(open), _) if character == open => quote = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => quote = Some(character),
+            (None, '(') => parentheses += 1,
+            (None, ')') => parentheses = parentheses.saturating_sub(1),
+            (None, ';') if parentheses == 0 => {
+                declarations.push(style.get(start..index).unwrap_or_default());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    declarations.push(style.get(start..).unwrap_or_default());
+
+    declarations
+        .into_iter()
+        .filter_map(|declaration| {
+            let (property, value) = declaration.split_once(':')?;
+            let property = property.trim().to_ascii_lowercase();
+            let value = value.trim();
+            (!property.is_empty() && !value.is_empty()).then(|| (property, value.to_string()))
+        })
+        .collect()
+}
+
+/// The `style` declarations an element's opening tag carries, and whether it
+/// has attributes besides `style`.
+fn element_style(text: &str, element: &StyledElement) -> (Vec<(String, String)>, bool) {
+    let attributes = text
+        .get(element.open.clone())
+        .and_then(opening_tag_attributes)
+        .unwrap_or_default();
+    let declarations = attributes
+        .iter()
+        .find(|attribute| attribute.name == "style")
+        .and_then(|attribute| attribute.value.as_deref())
+        .map(style_declarations)
+        .unwrap_or_default();
+    let has_other_attributes = attributes.iter().any(|attribute| attribute.name != "style");
+    (declarations, has_other_attributes)
+}
+
+fn declares(text: &str, element: &StyledElement, property: &str) -> bool {
+    element_style(text, element)
+        .0
+        .iter()
+        .any(|(declared, _)| declared == property)
+}
+
+/// `tag` with its `style` attribute replaced by `declarations`, dropped when
+/// there are none, or added when the tag had no `style` yet.
+fn opening_tag_with_style(tag: &str, declarations: &[(String, String)]) -> String {
+    let style = declarations
+        .iter()
+        .map(|(property, value)| format!("{property}: {value}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    // A value such as `font-family: "Yu Gothic"` came from a single-quoted
+    // attribute; wrapping it in double quotes again would end the attribute
+    // in the middle of the value.
+    let attribute = if !style.contains('"') {
+        format!("style=\"{style}\"")
+    } else if !style.contains('\'') {
+        format!("style='{style}'")
+    } else {
+        format!("style=\"{}\"", style.replace('"', "&quot;"))
+    };
+    let existing = opening_tag_attributes(tag)
+        .unwrap_or_default()
+        .into_iter()
+        .find(|attribute| attribute.name == "style");
+
+    match existing {
+        Some(existing) => {
+            let before = tag.get(..existing.range.start).unwrap_or_default();
+            let after = tag.get(existing.range.end..).unwrap_or_default();
+            if style.is_empty() {
+                format!("{}{after}", before.trim_end())
+            } else {
+                format!("{before}{attribute}{after}")
+            }
+        }
+        None if style.is_empty() => tag.to_string(),
+        None => {
+            let end = tag
+                .strip_suffix("/>")
+                .map(|head| head.len())
+                .unwrap_or(tag.len().saturating_sub(1));
+            let head = tag.get(..end).unwrap_or_default().trim_end();
+            let tail = tag.get(end..).unwrap_or_default();
+            format!("{head} {attribute}{tail}")
+        }
+    }
+}
+
+/// Sets `property` on an element (replacing its value when it is already
+/// declared) and removes the `removed` properties. No edit when the tag would
+/// come out as it went in.
+fn set_element_declaration(
+    text: &str,
+    element: &StyledElement,
+    property: Option<(&str, &str)>,
+    removed: &[&str],
+) -> Vec<StyleEdit> {
+    let Some(tag) = text.get(element.open.clone()) else {
+        return Vec::new();
+    };
+    let (mut declarations, _) = element_style(text, element);
+    declarations.retain(|(declared, _)| !removed.contains(&declared.as_str()));
+    if let Some((property, value)) = property {
+        match declarations
+            .iter_mut()
+            .find(|(declared, _)| declared == property)
+        {
+            Some((_, existing)) => *existing = value.to_string(),
+            None => declarations.push((property.to_string(), value.to_string())),
+        }
+    }
+    let rewritten = opening_tag_with_style(tag, &declarations);
+    if rewritten == tag {
+        Vec::new()
+    } else {
+        vec![StyleEdit::opening_tag(element.open.clone(), rewritten)]
+    }
+}
+
+/// Removes an element's tags, keeping its text.
+fn unwrap_element(element: &StyledElement) -> Vec<StyleEdit> {
+    vec![
+        StyleEdit::opening_tag(element.open.clone(), String::new()),
+        StyleEdit::closing_tag(element.close.clone(), String::new()),
+    ]
+}
+
+/// Removes `properties` from an element, and the element itself once a
+/// `<span>` is left with nothing to say.
+fn remove_element_declarations(
+    text: &str,
+    element: &StyledElement,
+    properties: &[&str],
+) -> Vec<StyleEdit> {
+    let (declarations, has_other_attributes) = element_style(text, element);
+    if !declarations
+        .iter()
+        .any(|(declared, _)| properties.contains(&declared.as_str()))
+    {
+        return Vec::new();
+    }
+    let left = declarations
+        .iter()
+        .filter(|(declared, _)| !properties.contains(&declared.as_str()))
+        .count();
+    if element.name == StyleTagName::Span && left == 0 && !has_other_attributes {
+        unwrap_element(element)
+    } else {
+        set_element_declaration(text, element, None, properties)
+    }
+}
+
+/// The `<span>` and `<mark>` elements in `range`, skipping the tags that are
+/// only text: inside code spans, inside comments, or escaped.
+fn scan_styled_elements(
+    text: &str,
+    range: Range<usize>,
+    code_spans: &[Range<usize>],
+) -> Vec<StyledElement> {
+    let mut elements = Vec::new();
+    let mut open: Vec<(StyleTagName, Range<usize>)> = Vec::new();
+    let mut index = range.start;
+
+    while index < range.end {
+        let Some(relative) = text.get(index..range.end).and_then(|rest| rest.find('<')) else {
+            break;
+        };
+        let start = index + relative;
+        if let Some(code) = code_spans
+            .iter()
+            .find(|code| code.start <= start && start < code.end)
+        {
+            index = code.end;
+            continue;
+        }
+        if start > 0 && text.as_bytes().get(start - 1) == Some(&b'\\') {
+            index = start + 1;
+            continue;
+        }
+        let rest = text.get(start..range.end).unwrap_or_default();
+        if rest.starts_with("<!--") {
+            index = match rest.find("-->") {
+                Some(end) => start + end + "-->".len(),
+                None => range.end,
+            };
+            continue;
+        }
+        let Some(length) = html_tag_length(rest) else {
+            index = start + 1;
+            continue;
+        };
+        let tag_range = start..start + length;
+        match rest.get(..length).and_then(style_tag_name) {
+            Some((name, false)) => open.push((name, tag_range.clone())),
+            Some((name, true)) => {
+                if open.last().is_some_and(|(open_name, _)| *open_name == name)
+                    && let Some((name, open_range)) = open.pop()
+                {
+                    elements.push(StyledElement {
+                        name,
+                        open: open_range,
+                        close: tag_range.clone(),
+                    });
+                }
+            }
+            None => {}
+        }
+        index = tag_range.end;
+    }
+
+    elements
+}
+
+/// The length of the HTML tag `rest` starts with, up to its unquoted `>`.
+fn html_tag_length(rest: &str) -> Option<usize> {
+    let mut quote = None;
+    for (index, character) in rest.char_indices().skip(1) {
+        match (quote, character) {
+            (Some(open), _) if character == open => quote = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => quote = Some(character),
+            (None, '>') => return Some(index + 1),
+            (None, '<') => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The element a `<span>`, `</span>`, `<mark>` or `</mark>` tag belongs to,
+/// and whether it is the closing one.
+fn style_tag_name(tag: &str) -> Option<(StyleTagName, bool)> {
+    let inner = tag.strip_prefix('<')?.strip_suffix('>')?;
+    if inner.ends_with('/') {
+        return None;
+    }
+    let (inner, closing) = match inner.strip_prefix('/') {
+        Some(inner) => (inner, true),
+        None => (inner, false),
+    };
+    let name_end = inner
+        .find(|character: char| !character.is_ascii_alphanumeric())
+        .unwrap_or(inner.len());
+    let after_name = inner.get(name_end..)?;
+    if !(after_name.is_empty() || after_name.starts_with(char::is_whitespace)) {
+        return None;
+    }
+    let name = match inner.get(..name_end)?.to_ascii_lowercase().as_str() {
+        "span" => StyleTagName::Span,
+        "mark" => StyleTagName::Mark,
+        _ => return None,
+    };
+    Some((name, closing))
+}
+
+/// The code spans in `range`, backticks included, the way CommonMark finds
+/// them: a run of backticks is closed by the next run of the same length.
+fn inline_code_spans(text: &str, range: Range<usize>) -> Vec<Range<usize>> {
+    let bytes = text.as_bytes();
+    let run_length = |start: usize| {
+        bytes
+            .get(start..range.end)
+            .unwrap_or_default()
+            .iter()
+            .take_while(|byte| **byte == b'`')
+            .count()
+    };
+
+    let mut spans = Vec::new();
+    let mut index = range.start;
+    while index < range.end {
+        match bytes.get(index) {
+            // A backslash escapes the next character, a backtick included. Every
+            // character this looks for is ASCII, so stepping over a single byte
+            // of a multi-byte character cannot mistake it for one of them.
+            Some(b'\\') => index += 2,
+            Some(b'`') => {
+                let opening = run_length(index);
+                let mut search = index + opening;
+                let mut closed_at = None;
+                while search < range.end {
+                    if bytes.get(search) == Some(&b'`') {
+                        let closing = run_length(search);
+                        if closing == opening {
+                            closed_at = Some(search + closing);
+                            break;
+                        }
+                        search += closing;
+                    } else {
+                        search += 1;
+                    }
+                }
+                match closed_at {
+                    Some(end) => {
+                        spans.push(index..end);
+                        index = end;
+                    }
+                    None => index += opening,
+                }
+            }
+            Some(_) => index += 1,
+            None => break,
+        }
+    }
+    spans
+}
+
+/// Where a line's inline text starts: past its indentation, its block quote
+/// markers and its list marker.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LinePrefix {
+    /// Past everything, list marker (and task checkbox) included.
+    text_start: usize,
+    /// Past the block quote markers only.
+    after_quotes: usize,
+    quote_depth: usize,
+    has_list_marker: bool,
+}
+
+fn line_prefix(line: &str) -> LinePrefix {
+    let skip_blanks = |position: usize| {
+        let rest = line.get(position..).unwrap_or_default();
+        position + (rest.len() - rest.trim_start_matches([' ', '\t']).len())
+    };
+
+    let mut position = skip_blanks(0);
+    let mut quote_depth = 0;
+    while line
+        .get(position..)
+        .is_some_and(|rest| rest.starts_with('>'))
+    {
+        quote_depth += 1;
+        position = skip_blanks(position + 1);
+    }
+    let after_quotes = position;
+
+    let rest = line.get(position..).unwrap_or_default();
+    let mut has_list_marker = false;
+    if !is_thematic_break(rest)
+        && let Some((_, marker_length)) = list_marker(rest)
+    {
+        has_list_marker = true;
+        position = skip_blanks(position + marker_length);
+    } else if let Some(marker_length) = footnote_definition_marker(rest) {
+        // A tag in front of `[^1]:` would turn the footnote into text, so the
+        // marker is passed over the way a list marker is.
+        has_list_marker = true;
+        position = skip_blanks(position + marker_length);
+    }
+
+    LinePrefix {
+        text_start: position,
+        after_quotes,
+        quote_depth,
+        has_list_marker,
+    }
+}
+
+/// The length of the `[^label]:` a footnote definition starts with.
+fn footnote_definition_marker(content: &str) -> Option<usize> {
+    let label = content.strip_prefix("[^")?;
+    let label_end = label.find(']')?;
+    let label_text = label.get(..label_end)?;
+    if label_text.trim().is_empty() || label_text.contains('[') {
+        return None;
+    }
+    label
+        .get(label_end + 1..)?
+        .starts_with(':')
+        .then_some("[^".len() + label_end + "]:".len())
+}
+
+/// Whether `content` starts a link reference definition such as
+/// `[label]: https://example.com`. Its text is not a paragraph's: a tag around
+/// it would turn the definition into text and break every link that uses it.
+fn is_link_reference_definition(content: &str) -> bool {
+    let Some(label) = content.strip_prefix('[') else {
+        return false;
+    };
+    if label.starts_with('^') {
+        return false;
+    }
+    let Some(label_end) = label.find(']') else {
+        return false;
+    };
+    label
+        .get(..label_end)
+        .is_some_and(|label_text| !label_text.trim().is_empty() && !label_text.contains('['))
+        && label
+            .get(label_end + 1..)
+            .is_some_and(|rest| rest.starts_with(':'))
+}
+
+/// A `---`, `***` or `___` line, which is a rule rather than text.
+fn is_thematic_break(content: &str) -> bool {
+    let trimmed = content.trim();
+    let Some(marker) = trimmed
+        .chars()
+        .next()
+        .filter(|c| matches!(c, '-' | '*' | '_'))
+    else {
+        return false;
+    };
+    trimmed
+        .chars()
+        .all(|character| character == marker || character == ' ' || character == '\t')
+        && trimmed
+            .chars()
+            .filter(|character| *character == marker)
+            .count()
+            >= 3
+}
+
+/// A `===` or `---` line, which turns the paragraph above it into a heading.
+fn is_setext_underline(content: &str) -> bool {
+    let trimmed = content.trim();
+    !trimmed.is_empty()
+        && (trimmed.chars().all(|character| character == '=')
+            || trimmed.chars().all(|character| character == '-'))
+}
+
+/// The block-level HTML tag names a CommonMark HTML block can start with, even
+/// in the middle of a paragraph.
+const HTML_BLOCK_TAG_NAMES: &[&str] = &[
+    "address",
+    "article",
+    "aside",
+    "base",
+    "basefont",
+    "blockquote",
+    "body",
+    "caption",
+    "center",
+    "col",
+    "colgroup",
+    "dd",
+    "details",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hr",
+    "html",
+    "iframe",
+    "legend",
+    "li",
+    "link",
+    "main",
+    "menu",
+    "menuitem",
+    "nav",
+    "noframes",
+    "ol",
+    "optgroup",
+    "option",
+    "p",
+    "param",
+    "search",
+    "section",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "track",
+    "ul",
+];
+
+/// Whether a line whose text is `content` starts a CommonMark HTML block. A
+/// line holding nothing but an inline tag only does so after a blank line.
+fn starts_html_block(content: &str, interrupts_paragraph: bool) -> bool {
+    let lowered = content.to_ascii_lowercase();
+    if !lowered.starts_with('<') {
+        return false;
+    }
+    if lowered.starts_with("<!--") || lowered.starts_with("<?") || lowered.starts_with("<![cdata[")
+    {
+        return true;
+    }
+    if lowered.starts_with("<!")
+        && lowered
+            .as_bytes()
+            .get(2)
+            .is_some_and(|byte| byte.is_ascii_alphabetic())
+    {
+        return true;
+    }
+
+    let (after_bracket, closing) = match lowered.strip_prefix("</") {
+        Some(rest) => (rest, true),
+        None => (lowered.get(1..).unwrap_or_default(), false),
+    };
+    let name_end = after_bracket
+        .find(|character: char| !character.is_ascii_alphanumeric())
+        .unwrap_or(after_bracket.len());
+    let name = after_bracket.get(..name_end).unwrap_or_default();
+    let after_name = after_bracket.get(name_end..).unwrap_or_default();
+    if name.is_empty() {
+        return false;
+    }
+    let name_ends = after_name.is_empty()
+        || after_name.starts_with([' ', '\t', '>'])
+        || after_name.starts_with("/>");
+
+    if !closing && matches!(name, "script" | "pre" | "style" | "textarea") && name_ends {
+        return true;
+    }
+    if HTML_BLOCK_TAG_NAMES.contains(&name) && name_ends {
+        return true;
+    }
+    !interrupts_paragraph
+        && html_tag_length(content)
+            .and_then(|length| content.get(length..))
+            .is_some_and(|rest| rest.trim().is_empty())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TextBlockKind {
+    Paragraph,
+    Heading,
+    TableRow,
+    Html,
+}
+
+/// A run of source lines whose text the styling actions work on: a paragraph
+/// (also inside a list item or a block quote), a heading, a table row or an
+/// HTML block.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TextBlock {
+    kind: TextBlockKind,
+    rows: Range<usize>,
+    /// From past the first row's container markers to the end of the last
+    /// row, trailing whitespace left out.
+    content: Range<usize>,
+    quote_depth: usize,
+}
+
+/// The Markdown text of a document cut into lines and text blocks, which is
+/// what the styling actions need to know about its structure.
+struct MarkdownTextLayout<'a> {
+    text: &'a str,
+    lines: Vec<Range<usize>>,
+    code_rows: Vec<bool>,
+    blocks: Vec<TextBlock>,
+    block_of_row: Vec<Option<usize>>,
+}
+
+impl<'a> MarkdownTextLayout<'a> {
+    fn new(text: &'a str) -> Self {
+        let mut lines = Vec::new();
+        let mut line_start = 0;
+        for line in text.split('\n') {
+            lines.push(line_start..line_start + line.len());
+            line_start += line.len() + 1;
+        }
+
+        let line_text = |row: usize| {
+            lines
+                .get(row)
+                .and_then(|range| text.get(range.clone()))
+                .unwrap_or_default()
+        };
+
+        // A fence anywhere in a list item or a block quote still fences, so the
+        // container markers go before the fence is looked for. A fence that is
+        // never closed runs to the end of the document.
+        let mut code_rows = vec![false; lines.len()];
+        let mut open_fence: Option<(char, usize)> = None;
+        for (row, is_code) in code_rows.iter_mut().enumerate() {
+            let line = line_text(row);
+            let unquoted = line
+                .get(line_prefix(line).after_quotes..)
+                .unwrap_or_default()
+                .trim_start();
+            match open_fence {
+                Some((marker, length)) => {
+                    *is_code = true;
+                    if is_closing_fence(unquoted, marker, length) {
+                        open_fence = None;
+                    }
+                }
+                None => {
+                    let unlisted = line.get(line_prefix(line).text_start..).unwrap_or_default();
+                    if let Some((marker, length, _, _)) =
+                        parse_opening_fence(unquoted).or_else(|| parse_opening_fence(unlisted))
+                    {
+                        *is_code = true;
+                        open_fence = Some((marker, length));
+                    }
+                }
+            }
+        }
+
+        let mut table_rows = vec![false; lines.len()];
+        let mut row = 0;
+        while row < lines.len() {
+            let is_table_candidate = |row: usize| {
+                !code_rows.get(row).copied().unwrap_or(true) && is_table_line(line_text(row))
+            };
+            if !is_table_candidate(row) {
+                row += 1;
+                continue;
+            }
+            let start = row;
+            while is_table_candidate(row) {
+                row += 1;
+            }
+            let block = (start..row).map(line_text).collect::<Vec<_>>();
+            if parse_markdown_table(&block).is_some() {
+                for is_table in table_rows.get_mut(start..row).into_iter().flatten() {
+                    *is_table = true;
+                }
+            }
+        }
+
+        let mut blocks: Vec<TextBlock> = Vec::new();
+        let mut open_block: Option<TextBlock> = None;
+        // The row of the latest link reference definition, whose title may
+        // follow on the next row.
+        let mut link_definition_row = None;
+        let mut in_list = false;
+        for row in 0..lines.len() {
+            let Some(line_range) = lines.get(row).cloned() else {
+                break;
+            };
+            let line = line_text(row);
+            let is_code = code_rows.get(row).copied().unwrap_or(false);
+            if is_code || line.trim().is_empty() {
+                blocks.extend(open_block.take());
+                continue;
+            }
+
+            if let Some(block) = open_block.as_mut()
+                && block.kind == TextBlockKind::Html
+            {
+                block.rows.end = row + 1;
+                block.content.end = line_range.start + line.trim_end().len();
+                continue;
+            }
+
+            // An indented code block is as much code as a fenced one. Inside a
+            // list item the indentation belongs to the item, which this does
+            // not measure, so only lines outside every list count.
+            let indentation = line
+                .chars()
+                .take_while(|character| matches!(character, ' ' | '\t'))
+                .fold(0, |columns, character| {
+                    if character == '\t' {
+                        columns + 4 - columns % 4
+                    } else {
+                        columns + 1
+                    }
+                });
+            let paragraph_is_open_anywhere = open_block
+                .as_ref()
+                .is_some_and(|block| block.kind == TextBlockKind::Paragraph);
+            if indentation == 0 && !paragraph_is_open_anywhere {
+                in_list = false;
+            }
+            if indentation >= 4 && !in_list && !paragraph_is_open_anywhere {
+                blocks.extend(open_block.take());
+                if let Some(is_code) = code_rows.get_mut(row) {
+                    *is_code = true;
+                }
+                continue;
+            }
+
+            if table_rows.get(row).copied().unwrap_or(false) {
+                blocks.extend(open_block.take());
+                // The row's outer pipes are not cell text: a tag in front of the
+                // first one would become a cell of its own.
+                let mut start = line.len() - line.trim_start().len();
+                let mut end = line.trim_end().len();
+                let cells = line.get(start..end).unwrap_or_default();
+                if cells.starts_with('|') {
+                    start += 1;
+                }
+                if cells.len() > 1 && cells.ends_with('|') && !cells.ends_with("\\|") {
+                    end -= 1;
+                }
+                let cells = line.get(start..end).unwrap_or_default();
+                start += cells.len() - cells.trim_start().len();
+                end = start + cells.trim().len();
+                blocks.push(TextBlock {
+                    kind: TextBlockKind::TableRow,
+                    rows: row..row + 1,
+                    content: line_range.start + start..line_range.start + end,
+                    quote_depth: 0,
+                });
+                continue;
+            }
+
+            let prefix = line_prefix(line);
+            in_list |= prefix.has_list_marker;
+            let unquoted = line.get(prefix.after_quotes..).unwrap_or_default();
+            let content = line.get(prefix.text_start..).unwrap_or_default();
+            let content_end = line_range.start + line.trim_end().len();
+            let paragraph_is_open = open_block.as_ref().is_some_and(|block| {
+                block.kind == TextBlockKind::Paragraph && block.quote_depth == prefix.quote_depth
+            });
+
+            if paragraph_is_open && !prefix.has_list_marker && is_setext_underline(unquoted) {
+                if let Some(mut block) = open_block.take() {
+                    block.kind = TextBlockKind::Heading;
+                    blocks.push(block);
+                }
+                continue;
+            }
+
+            if content.trim().is_empty() || is_thematic_break(unquoted) {
+                blocks.extend(open_block.take());
+                continue;
+            }
+
+            if let Some(level) = heading_level(content) {
+                blocks.extend(open_block.take());
+                let text_start = content
+                    .get(level..)
+                    .map(|rest| content.len() - rest.trim_start().len())
+                    .unwrap_or(content.len());
+                blocks.push(TextBlock {
+                    kind: TextBlockKind::Heading,
+                    rows: row..row + 1,
+                    content: (line_range.start + prefix.text_start + text_start).min(content_end)
+                        ..content_end,
+                    quote_depth: prefix.quote_depth,
+                });
+                continue;
+            }
+
+            let starts_block = !paragraph_is_open || prefix.has_list_marker;
+            let continues_definition = row > 0
+                && link_definition_row == Some(row - 1)
+                && content.starts_with(['"', '\'', '(']);
+            if (starts_block && is_link_reference_definition(content)) || continues_definition {
+                blocks.extend(open_block.take());
+                link_definition_row = Some(row);
+                continue;
+            }
+
+            let text_start = line_range.start + prefix.text_start;
+            if starts_html_block(content, paragraph_is_open) {
+                blocks.extend(open_block.take());
+                open_block = Some(TextBlock {
+                    kind: TextBlockKind::Html,
+                    rows: row..row + 1,
+                    content: text_start..content_end,
+                    quote_depth: prefix.quote_depth,
+                });
+                continue;
+            }
+
+            if paragraph_is_open && !prefix.has_list_marker {
+                if let Some(block) = open_block.as_mut() {
+                    block.rows.end = row + 1;
+                    block.content.end = content_end;
+                }
+                continue;
+            }
+
+            blocks.extend(open_block.take());
+            open_block = Some(TextBlock {
+                kind: TextBlockKind::Paragraph,
+                rows: row..row + 1,
+                content: text_start..content_end,
+                quote_depth: prefix.quote_depth,
+            });
+        }
+        blocks.extend(open_block);
+
+        let mut block_of_row = vec![None; lines.len()];
+        for (index, block) in blocks.iter().enumerate() {
+            for slot in block_of_row
+                .get_mut(block.rows.clone())
+                .into_iter()
+                .flatten()
+            {
+                *slot = Some(index);
+            }
+        }
+
+        Self {
+            text,
+            lines,
+            code_rows,
+            blocks,
+            block_of_row,
+        }
+    }
+
+    fn row_of(&self, offset: usize) -> usize {
+        self.lines
+            .partition_point(|line| line.end < offset)
+            .min(self.lines.len().saturating_sub(1))
+    }
+
+    fn is_code_row(&self, row: usize) -> bool {
+        self.code_rows.get(row).copied().unwrap_or(false)
+    }
+
+    /// Where the text of `row` starts inside `block`: the block's own start on
+    /// its first row, past the row's container markers on the rows after it.
+    fn row_text_start(&self, block: &TextBlock, row: usize) -> usize {
+        if row <= block.rows.start {
+            return block.content.start;
+        }
+        let Some(line) = self.lines.get(row) else {
+            return block.content.end;
+        };
+        let line_text = self.text.get(line.clone()).unwrap_or_default();
+        (line.start + line_prefix(line_text).text_start).min(block.content.end)
+    }
+
+    /// The blocks the rows of `selection` belong to, in order. A selection that
+    /// ends at the very start of a row does not reach into that row.
+    fn blocks_touched_by(&self, selection: &Range<usize>) -> (Vec<usize>, bool) {
+        let first_row = self.row_of(selection.start);
+        let mut last_row = self.row_of(selection.end);
+        if selection.end > selection.start
+            && last_row > first_row
+            && self
+                .lines
+                .get(last_row)
+                .is_some_and(|line| line.start == selection.end)
+        {
+            last_row -= 1;
+        }
+
+        let mut blocks = Vec::new();
+        let mut saw_code = false;
+        for row in first_row..=last_row {
+            saw_code |= self.is_code_row(row);
+            if let Some(Some(block)) = self.block_of_row.get(row)
+                && blocks.last() != Some(block)
+            {
+                blocks.push(*block);
+            }
+        }
+        (blocks, saw_code)
+    }
+
+    /// The pieces of `selection` an inline styling action wraps: one per block,
+    /// kept to the block's text, and leaving out code.
+    fn inline_segments(
+        &self,
+        selection: &Range<usize>,
+    ) -> Result<Vec<InlineSegment>, StyleRefusal> {
+        if selection.is_empty() {
+            let row = self.row_of(selection.start);
+            if self.is_code_row(row) {
+                return Err(StyleRefusal::InsideCode);
+            }
+            let Some(block) = self
+                .block_of_row
+                .get(row)
+                .copied()
+                .flatten()
+                .and_then(|index| self.blocks.get(index))
+            else {
+                // A blank line, or a list item or quote with nothing in it yet,
+                // takes an empty pair to type into. Anything else outside a
+                // block is a rule or a heading underline, which a tag would
+                // turn into text.
+                let line = self.lines.get(row).cloned().unwrap_or_default();
+                let line_text = self.text.get(line.clone()).unwrap_or_default();
+                let text_start = line_prefix(line_text).text_start;
+                if !line_text
+                    .get(text_start..)
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty()
+                {
+                    return Err(StyleRefusal::NothingSelected);
+                }
+                let offset = selection.start.max(line.start + text_start);
+                return Ok(vec![InlineSegment {
+                    range: offset..offset,
+                    elements: Vec::new(),
+                }]);
+            };
+            let offset = selection
+                .start
+                .max(self.row_text_start(block, row))
+                .min(block.content.end);
+            let code_spans = inline_code_spans(self.text, block.content.clone());
+            if code_spans
+                .iter()
+                .any(|code| code.start < offset && offset < code.end)
+            {
+                return Err(StyleRefusal::InsideCode);
+            }
+            if BlockMarkup::scan(self.text, block.content.clone(), &code_spans)
+                .is_inside_tag(offset)
+            {
+                return Err(StyleRefusal::InsideTag);
+            }
+            return Ok(vec![InlineSegment {
+                range: offset..offset,
+                elements: scan_styled_elements(self.text, block.content.clone(), &code_spans),
+            }]);
+        }
+
+        let (block_indices, saw_code) = self.blocks_touched_by(selection);
+        let mut segments = Vec::new();
+        let mut refusal = None;
+        for block in block_indices
+            .into_iter()
+            .filter_map(|index| self.blocks.get(index))
+        {
+            let mut start = selection.start.max(block.content.start);
+            let mut end = selection.end.min(block.content.end);
+            let start_row = self.row_of(start);
+            start = start.max(self.row_text_start(block, start_row));
+            let end_row = self.row_of(end);
+            if end_row > block.rows.start && end <= self.row_text_start(block, end_row) {
+                end = self
+                    .lines
+                    .get(end_row - 1)
+                    .map_or(end, |line| line.end.min(end));
+            }
+            if start >= end {
+                continue;
+            }
+
+            let code_spans = inline_code_spans(self.text, block.content.clone());
+            if code_spans.iter().any(|code| {
+                (code.start < start && start < code.end) || (code.start < end && end < code.end)
+            }) {
+                refusal.get_or_insert(StyleRefusal::InsideCode);
+                continue;
+            }
+            if BlockMarkup::scan(self.text, block.content.clone(), &code_spans)
+                .crosses(&(start..end))
+            {
+                refusal.get_or_insert(StyleRefusal::CrossesTags);
+                continue;
+            }
+            if block.kind == TextBlockKind::TableRow
+                && contains_unescaped_pipe(self.text.get(start..end).unwrap_or_default())
+            {
+                refusal.get_or_insert(StyleRefusal::CrossesTableCells);
+                continue;
+            }
+            segments.push(InlineSegment {
+                range: start..end,
+                elements: scan_styled_elements(self.text, block.content.clone(), &code_spans),
+            });
+        }
+
+        if segments.is_empty() {
+            return Err(refusal.unwrap_or(if saw_code {
+                StyleRefusal::InsideCode
+            } else {
+                StyleRefusal::NothingSelected
+            }));
+        }
+        Ok(segments)
+    }
+}
+
+fn contains_unescaped_pipe(text: &str) -> bool {
+    let mut escaped = false;
+    for character in text.chars() {
+        match character {
+            '\\' if !escaped => escaped = true,
+            '|' if !escaped => return true,
+            _ => escaped = false,
+        }
+    }
+    false
+}
+
+/// A piece of a selection inside one block, with the styled elements of that
+/// block.
+struct InlineSegment {
+    range: Range<usize>,
+    elements: Vec<StyledElement>,
+}
+
+impl InlineSegment {
+    /// The innermost element of `name` that the segment sits in, or is.
+    fn enclosing(
+        &self,
+        name: StyleTagName,
+        accepts: impl Fn(&StyledElement) -> bool,
+    ) -> Option<&StyledElement> {
+        self.elements
+            .iter()
+            .filter(|element| {
+                element.name == name && element.encloses(&self.range) && accepts(element)
+            })
+            .min_by_key(|element| element.outer().len())
+    }
+
+    fn crosses_any_element(&self) -> bool {
+        self.elements
+            .iter()
+            .any(|element| element.crosses(&self.range))
+    }
+}
+
+fn css_hex(rgb: u32) -> String {
+    format!("#{rgb:06x}")
+}
+
+/// Works out the edits of an inline styling action for every selection.
+fn plan_inline_style(
+    text: &str,
+    selections: &[Range<usize>],
+    request: InlineStyleRequest,
+) -> Result<StylePlan, StyleRefusal> {
+    let layout = MarkdownTextLayout::new(text);
+    let mut refusal = None;
+    let segments_per_selection = selections
+        .iter()
+        .map(|selection| match layout.inline_segments(selection) {
+            Ok(segments) => segments,
+            Err(reason) => {
+                refusal.get_or_insert(reason);
+                Vec::new()
+            }
+        })
+        .collect::<Vec<_>>();
+
+    // Like the other toggles, the marker comes off only when everything the
+    // selections cover already has one.
+    let request = match request {
+        InlineStyleRequest::ToggleMarker => {
+            let mut segments = segments_per_selection.iter().flatten().peekable();
+            let all_marked = segments.peek().is_some()
+                && segments
+                    .all(|segment| segment.enclosing(StyleTagName::Mark, |_| true).is_some());
+            if all_marked {
+                InlineStyleRequest::RemoveMarker
+            } else {
+                InlineStyleRequest::SetMarker(None)
+            }
+        }
+        request => request,
+    };
+
+    let cursor_positions = selections
+        .iter()
+        .zip(&segments_per_selection)
+        .map(|(selection, segments)| {
+            selection
+                .is_empty()
+                .then(|| segments.first().map(|segment| segment.range.start))
+                .flatten()
+        })
+        .collect::<Vec<_>>();
+
+    let mut edits: Vec<StyleEdit> = Vec::new();
+    let mut any_applied = false;
+    for segments in segments_per_selection {
+        let mut group = Vec::new();
+        for segment in &segments {
+            match segment_style_edits(text, segment, request) {
+                Ok(segment_edits) => {
+                    any_applied = true;
+                    group.extend(segment_edits);
+                }
+                Err(reason) => {
+                    refusal.get_or_insert(reason);
+                }
+            }
+        }
+        // Two cursors in the same element ask for the same edit; anything else
+        // that meets an edit already planned would leave the two to fight over
+        // the same text, so the later selection is left alone.
+        group.retain(|edit| !edits.contains(edit));
+        if group
+            .iter()
+            .any(|edit| edits.iter().any(|planned| planned.touches(edit)))
+        {
+            continue;
+        }
+        edits.extend(group);
+    }
+
+    if !any_applied {
+        return Err(refusal.unwrap_or(StyleRefusal::NothingSelected));
+    }
+    // A cursor in front of a list marker or a heading's `#` had its tags moved
+    // to the text, and follows them there.
+    let selections = selections
+        .iter()
+        .zip(&cursor_positions)
+        .map(|(selection, cursor)| cursor.map_or(selection.clone(), |cursor| cursor..cursor))
+        .collect::<Vec<_>>();
+    Ok(style_plan(edits, &selections))
+}
+
+fn style_plan(mut edits: Vec<StyleEdit>, selections: &[Range<usize>]) -> StylePlan {
+    edits.sort_by_key(|edit| (edit.range.start, edit.range.end));
+    let selections = selections
+        .iter()
+        .map(|selection| {
+            let start = map_offset_through_edits(selection.start, &edits);
+            let end = map_offset_through_edits(selection.end, &edits);
+            start..end.max(start)
+        })
+        .collect();
+    StylePlan { edits, selections }
+}
+
+/// The edits an inline styling action makes to one segment.
+fn segment_style_edits(
+    text: &str,
+    segment: &InlineSegment,
+    request: InlineStyleRequest,
+) -> Result<Vec<StyleEdit>, StyleRefusal> {
+    if segment.crosses_any_element() {
+        return Err(StyleRefusal::CrossesTags);
+    }
+    let range = &segment.range;
+    let colored = |element: &StyledElement| declares(text, element, "color");
+
+    match request {
+        InlineStyleRequest::SetTextColor(rgb) => {
+            let color = css_hex(rgb);
+            let mut edits = Vec::new();
+            let host = segment.enclosing(StyleTagName::Span, colored).or_else(|| {
+                // A span that covers exactly the selection, such as the one a
+                // paragraph's size is written with, takes the color as well
+                // rather than having another span nested inside it.
+                segment.elements.iter().find(|element| {
+                    element.name == StyleTagName::Span
+                        && !range.is_empty()
+                        && (element.inner() == *range || element.outer() == *range)
+                })
+            });
+            let inner_colored = segment
+                .elements
+                .iter()
+                .filter(|element| {
+                    element.name == StyleTagName::Span
+                        && element.is_inside(range)
+                        && Some(*element) != host
+                        && colored(element)
+                })
+                .flat_map(|element| remove_element_declarations(text, element, &["color"]))
+                .collect::<Vec<_>>();
+
+            match host {
+                Some(host) => {
+                    edits.extend(set_element_declaration(
+                        text,
+                        host,
+                        Some(("color", &color)),
+                        &[],
+                    ));
+                    edits.extend(inner_colored);
+                }
+                None => {
+                    // `<mark>` paints its text black, so a color for a whole
+                    // marker goes inside it, where it wins.
+                    let range = segment
+                        .elements
+                        .iter()
+                        .find(|element| {
+                            element.name == StyleTagName::Mark && element.outer() == *range
+                        })
+                        .map_or(range.clone(), StyledElement::inner);
+                    edits.extend(wrap_edits(
+                        text,
+                        range,
+                        &format!("<span style=\"color: {color}\">"),
+                        "</span>",
+                        inner_colored,
+                    ));
+                }
+            }
+            Ok(edits)
+        }
+        InlineStyleRequest::RemoveTextColor => {
+            let host = segment.enclosing(StyleTagName::Span, colored);
+            let edits = segment
+                .elements
+                .iter()
+                .filter(|element| {
+                    element.name == StyleTagName::Span
+                        && (Some(*element) == host || element.is_inside(range))
+                })
+                .flat_map(|element| remove_element_declarations(text, element, &["color"]))
+                .collect::<Vec<_>>();
+            if edits.is_empty() {
+                return Err(StyleRefusal::NoTextColor);
+            }
+            Ok(edits)
+        }
+        InlineStyleRequest::SetMarker(background) => {
+            let declaration = background.map(css_hex);
+            let host = segment.enclosing(StyleTagName::Mark, |_| true);
+            let inner_marks = segment
+                .elements
+                .iter()
+                .filter(|element| {
+                    element.name == StyleTagName::Mark
+                        && element.is_inside(range)
+                        && Some(*element) != host
+                })
+                .flat_map(unwrap_element)
+                .collect::<Vec<_>>();
+
+            match host {
+                Some(host) => {
+                    // The bare `<mark>` is the yellow one, so yellow is written
+                    // by dropping the background rather than by naming it.
+                    let mut edits = match declaration.as_deref() {
+                        Some(value) => set_element_declaration(
+                            text,
+                            host,
+                            Some(("background-color", value)),
+                            &["background"],
+                        ),
+                        None => set_element_declaration(
+                            text,
+                            host,
+                            None,
+                            &["background", "background-color"],
+                        ),
+                    };
+                    edits.extend(inner_marks);
+                    Ok(edits)
+                }
+                None => {
+                    // A marker over exactly the text of a span goes around the
+                    // span: `<mark>` paints its text black, which would hide a
+                    // color the span gives it from inside.
+                    let range = segment
+                        .elements
+                        .iter()
+                        .find(|element| {
+                            element.name == StyleTagName::Span
+                                && !range.is_empty()
+                                && element.inner() == *range
+                        })
+                        .map_or(range.clone(), StyledElement::outer);
+                    let open = match &declaration {
+                        Some(value) => format!("<mark style=\"background-color: {value}\">"),
+                        None => "<mark>".to_string(),
+                    };
+                    Ok(wrap_edits(text, range, &open, "</mark>", inner_marks))
+                }
+            }
+        }
+        InlineStyleRequest::RemoveMarker | InlineStyleRequest::ToggleMarker => {
+            let host = segment.enclosing(StyleTagName::Mark, |_| true);
+            let edits = segment
+                .elements
+                .iter()
+                .filter(|element| {
+                    element.name == StyleTagName::Mark
+                        && (Some(*element) == host || element.is_inside(range))
+                })
+                .flat_map(unwrap_element)
+                .collect::<Vec<_>>();
+            if edits.is_empty() {
+                return Err(StyleRefusal::NoMarker);
+            }
+            Ok(edits)
+        }
+    }
+}
+
+/// Wraps `range` in `open` and `close`. `inner_edits` rewrite the tags of
+/// elements inside the range; when there are any, or when the range is a
+/// cursor, the range is replaced as a whole so no two edits meet at one point.
+fn wrap_edits(
+    text: &str,
+    range: Range<usize>,
+    open: &str,
+    close: &str,
+    mut inner_edits: Vec<StyleEdit>,
+) -> Vec<StyleEdit> {
+    if range.is_empty() || !inner_edits.is_empty() {
+        inner_edits.sort_by_key(|edit| (edit.range.start, edit.range.end));
+        let inner = apply_edits_to_slice(text, range.clone(), &inner_edits);
+        vec![StyleEdit::wrap(range, open, &inner, close)]
+    } else {
+        vec![
+            StyleEdit::insert_opening(range.start, open.to_string()),
+            StyleEdit::insert_closing(range.end, close.to_string()),
+        ]
+    }
+}
+
+/// Works out the edits that set (or, with `None`, remove) the `font-size` of
+/// every paragraph the selections touch.
+fn plan_paragraph_size(
+    text: &str,
+    selections: &[Range<usize>],
+    size: Option<&str>,
+) -> Result<StylePlan, StyleRefusal> {
+    let layout = MarkdownTextLayout::new(text);
+    let mut block_indices = Vec::new();
+    let mut refusal = None;
+    for selection in selections {
+        let (blocks, saw_code) = layout.blocks_touched_by(selection);
+        if saw_code && blocks.is_empty() {
+            refusal.get_or_insert(StyleRefusal::InsideCode);
+        }
+        for block in blocks {
+            if !block_indices.contains(&block) {
+                block_indices.push(block);
+            }
+        }
+    }
+
+    let mut edits = Vec::new();
+    let mut any_applied = false;
+    for block in block_indices
+        .into_iter()
+        .filter_map(|index| layout.blocks.get(index))
+    {
+        if block.kind != TextBlockKind::Paragraph || block.content.is_empty() {
+            refusal.get_or_insert(StyleRefusal::NoParagraph);
+            continue;
+        }
+        let code_spans = inline_code_spans(text, block.content.clone());
+        let elements = scan_styled_elements(text, block.content.clone(), &code_spans);
+        let wrapper = elements
+            .iter()
+            .filter(|element| {
+                element.name == StyleTagName::Span && element.outer() == block.content
+            })
+            .min_by_key(|element| element.inner().len());
+
+        match (size, wrapper) {
+            (Some(size), Some(wrapper)) => {
+                any_applied = true;
+                edits.extend(set_element_declaration(
+                    text,
+                    wrapper,
+                    Some(("font-size", size)),
+                    &[],
+                ));
+            }
+            (Some(size), None) => {
+                any_applied = true;
+                edits.push(StyleEdit::insert_opening(
+                    block.content.start,
+                    format!("<span style=\"font-size: {size}\">"),
+                ));
+                edits.push(StyleEdit::insert_closing(
+                    block.content.end,
+                    "</span>".to_string(),
+                ));
+            }
+            (None, wrapper) => {
+                let removed = wrapper
+                    .map(|wrapper| remove_element_declarations(text, wrapper, &["font-size"]))
+                    .unwrap_or_default();
+                if removed.is_empty() {
+                    refusal.get_or_insert(StyleRefusal::NoTextSize);
+                } else {
+                    any_applied = true;
+                    edits.extend(removed);
+                }
+            }
+        }
+    }
+
+    if !any_applied {
+        return Err(refusal.unwrap_or(StyleRefusal::NoParagraph));
+    }
+    Ok(style_plan(edits, selections))
+}
+
+#[cfg(test)]
+mod style_tests {
+    use super::*;
+    use util::test::{generate_marked_text, marked_text_ranges};
+
+    const RED: u32 = 0xd44c47;
+    const BLUE: u32 = 0x337ea9;
+
+    fn rendered(text: &str, plan: StylePlan) -> String {
+        let new_text = apply_edits_to_slice(text, 0..text.len(), &plan.edits);
+        generate_marked_text(&new_text, &plan.selections, false)
+    }
+
+    #[track_caller]
+    fn inline(marked: &str, request: InlineStyleRequest) -> String {
+        let (text, selections) = marked_text_ranges(marked, false);
+        match plan_inline_style(&text, &selections, request) {
+            Ok(plan) => rendered(&text, plan),
+            Err(refusal) => format!("refused: {refusal:?}"),
+        }
+    }
+
+    #[track_caller]
+    fn sized(marked: &str, size: Option<&str>) -> String {
+        let (text, selections) = marked_text_ranges(marked, false);
+        match plan_paragraph_size(&text, &selections, size) {
+            Ok(plan) => rendered(&text, plan),
+            Err(refusal) => format!("refused: {refusal:?}"),
+        }
+    }
+
+    use InlineStyleRequest as Request;
+
+    #[test]
+    fn test_text_color_wraps_the_selection() {
+        assert_eq!(
+            inline("a «b» c", Request::SetTextColor(RED)),
+            "a <span style=\"color: #d44c47\">«b»</span> c"
+        );
+        // A cursor gets an empty pair to type into.
+        assert_eq!(
+            inline("aˇ b", Request::SetTextColor(RED)),
+            "a<span style=\"color: #d44c47\">ˇ</span> b"
+        );
+        // Multi-byte text is wrapped on its character boundaries.
+        assert_eq!(
+            inline("日本«語»です", Request::SetTextColor(RED)),
+            "日本<span style=\"color: #d44c47\">«語»</span>です"
+        );
+        // A code span inside the selection is carried along untouched.
+        assert_eq!(
+            inline("«a `b` c»", Request::SetTextColor(RED)),
+            "<span style=\"color: #d44c47\">«a `b` c»</span>"
+        );
+    }
+
+    #[test]
+    fn test_text_color_replaces_an_enclosing_color_instead_of_nesting() {
+        assert_eq!(
+            inline(
+                "<span style=\"color: #d44c47\">aˇb</span>",
+                Request::SetTextColor(BLUE)
+            ),
+            "<span style=\"color: #337ea9\">aˇb</span>"
+        );
+        assert_eq!(
+            inline(
+                "x <span style=\"color: #d44c47\">a«b»c</span> y",
+                Request::SetTextColor(BLUE)
+            ),
+            "x <span style=\"color: #337ea9\">a«b»c</span> y"
+        );
+        // A selection of the whole element, tags included.
+        assert_eq!(
+            inline(
+                "«<span style=\"color: #d44c47\">abc</span>»",
+                Request::SetTextColor(BLUE)
+            ),
+            "«<span style=\"color: #337ea9\">abc</span>»"
+        );
+        // Colors inside the selection give way to the new one.
+        assert_eq!(
+            inline(
+                "«a <span style=\"color: #d44c47\">b</span> c»",
+                Request::SetTextColor(BLUE)
+            ),
+            "<span style=\"color: #337ea9\">«a b c»</span>"
+        );
+        // A span that covers exactly the selection takes the color as well.
+        assert_eq!(
+            inline(
+                "<span style=\"font-size: 1.25em\">«abc»</span>",
+                Request::SetTextColor(RED)
+            ),
+            "<span style=\"font-size: 1.25em; color: #d44c47\">«abc»</span>"
+        );
+    }
+
+    #[test]
+    fn test_removing_text_color() {
+        assert_eq!(
+            inline(
+                "<span style=\"color: #d44c47\">aˇb</span>",
+                Request::RemoveTextColor
+            ),
+            "aˇb"
+        );
+        // Only the color goes when the span also sets the size.
+        assert_eq!(
+            inline(
+                "<span style=\"color: #d44c47; font-size: 1.25em\">aˇb</span>",
+                Request::RemoveTextColor
+            ),
+            "<span style=\"font-size: 1.25em\">aˇb</span>"
+        );
+        // A span with other attributes keeps them.
+        assert_eq!(
+            inline(
+                "<span class=\"x\" style=\"color: #d44c47\">aˇb</span>",
+                Request::RemoveTextColor
+            ),
+            "<span class=\"x\">aˇb</span>"
+        );
+        // Every color inside the selection goes.
+        assert_eq!(
+            inline(
+                "«<span style=\"color: #d44c47\">a</span> <span style=\"color: #337ea9\">b</span>»",
+                Request::RemoveTextColor
+            ),
+            "«a b»"
+        );
+        assert_eq!(
+            inline("plain ˇtext", Request::RemoveTextColor),
+            "refused: NoTextColor"
+        );
+    }
+
+    #[test]
+    fn test_inline_styles_split_at_block_boundaries() {
+        assert_eq!(
+            inline("«one\n\ntwo»", Request::SetTextColor(RED)),
+            "<span style=\"color: #d44c47\">«one</span>\n\n<span style=\"color: #d44c47\">two»</span>"
+        );
+        assert_eq!(
+            inline("- «one\n- two»", Request::SetTextColor(RED)),
+            "- <span style=\"color: #d44c47\">«one</span>\n- <span style=\"color: #d44c47\">two»</span>"
+        );
+        // Lines of one paragraph share a span, container markers and all.
+        assert_eq!(
+            inline("> «one\n> two»", Request::SetTextColor(RED)),
+            "> <span style=\"color: #d44c47\">«one\n> two»</span>"
+        );
+        // A selection that starts before a list marker starts at the text.
+        assert_eq!(
+            inline("«- item»", Request::SetTextColor(RED)),
+            "«- <span style=\"color: #d44c47\">item»</span>"
+        );
+        assert_eq!(
+            inline("ˇ- item", Request::SetTextColor(RED)),
+            "- <span style=\"color: #d44c47\">ˇ</span>item"
+        );
+        assert_eq!(
+            inline("ˇ# title", Request::SetTextColor(RED)),
+            "# <span style=\"color: #d44c47\">ˇ</span>title"
+        );
+        // A table row's leading pipe is not cell text.
+        assert_eq!(
+            inline("ˇ| a | b |\n| --- | --- |", Request::SetTextColor(RED)),
+            "| <span style=\"color: #d44c47\">ˇ</span>a | b |\n| --- | --- |"
+        );
+        // A rule has no text to color.
+        assert_eq!(
+            inline("a\n\nˇ***", Request::SetTextColor(RED)),
+            "refused: NothingSelected"
+        );
+    }
+
+    #[test]
+    fn test_inline_styles_leave_code_alone() {
+        assert_eq!(
+            inline("`aˇb` c", Request::SetTextColor(RED)),
+            "refused: InsideCode"
+        );
+        assert_eq!(
+            inline("a `b«c` d»", Request::SetTextColor(RED)),
+            "refused: InsideCode"
+        );
+        assert_eq!(
+            inline("```\naˇb\n```", Request::SetTextColor(RED)),
+            "refused: InsideCode"
+        );
+        assert_eq!(
+            inline("- item\n  ```\n  aˇb\n  ```", Request::SetTextColor(RED)),
+            "refused: InsideCode"
+        );
+        // Tags inside a code span are text, not elements to recolor.
+        assert_eq!(
+            inline("`<span style=\"color: red\">` aˇ", Request::RemoveTextColor),
+            "refused: NoTextColor"
+        );
+        // Only the paragraph part of a selection that runs into a fence is
+        // wrapped.
+        assert_eq!(
+            inline("«a\n```\nb»\n```", Request::SetTextColor(RED)),
+            "<span style=\"color: #d44c47\">«a</span>\n```\nb»\n```"
+        );
+    }
+
+    #[test]
+    fn test_inline_styles_refuse_to_cross_existing_tags() {
+        assert_eq!(
+            inline(
+                "<span style=\"color: #d44c47\">a«b</span>c»",
+                Request::SetTextColor(BLUE)
+            ),
+            "refused: CrossesTags"
+        );
+        assert_eq!(
+            inline("<mark>a«b</mark>c»", Request::SetMarker(None)),
+            "refused: CrossesTags"
+        );
+        assert_eq!(
+            inline("| a «| b» |\n| --- | --- |", Request::SetTextColor(RED)),
+            "refused: CrossesTableCells"
+        );
+    }
+
+    #[test]
+    fn test_inline_styles_with_several_cursors() {
+        assert_eq!(
+            inline("ˇa ˇb", Request::SetTextColor(RED)),
+            "<span style=\"color: #d44c47\">ˇ</span>a <span style=\"color: #d44c47\">ˇ</span>b"
+        );
+        // Two cursors in the same span change it once.
+        assert_eq!(
+            inline(
+                "<span style=\"color: #d44c47\">aˇbˇc</span>",
+                Request::SetTextColor(BLUE)
+            ),
+            "<span style=\"color: #337ea9\">aˇbˇc</span>"
+        );
+        assert_eq!(
+            inline(
+                "<span style=\"color: #d44c47\">aˇbˇc</span>",
+                Request::RemoveTextColor
+            ),
+            "aˇbˇc"
+        );
+    }
+
+    #[test]
+    fn test_markers() {
+        assert_eq!(inline("«a»", Request::SetMarker(None)), "<mark>«a»</mark>");
+        assert_eq!(
+            inline("«a»", Request::SetMarker(Some(0xb7ebc6))),
+            "<mark style=\"background-color: #b7ebc6\">«a»</mark>"
+        );
+        // An existing marker changes color rather than getting another inside.
+        assert_eq!(
+            inline("<mark>aˇ</mark>", Request::SetMarker(Some(0xb7ebc6))),
+            "<mark style=\"background-color: #b7ebc6\">aˇ</mark>"
+        );
+        assert_eq!(
+            inline(
+                "<mark style=\"background-color: #b7ebc6\">aˇ</mark>",
+                Request::SetMarker(None)
+            ),
+            "<mark>aˇ</mark>"
+        );
+        assert_eq!(inline("<mark>a«b»</mark>", Request::RemoveMarker), "a«b»");
+        assert_eq!(inline("aˇ", Request::RemoveMarker), "refused: NoMarker");
+
+        assert_eq!(inline("«a»", Request::ToggleMarker), "<mark>«a»</mark>");
+        assert_eq!(inline("<mark>«a»</mark>", Request::ToggleMarker), "«a»");
+        // One unmarked selection is enough for the toggle to mark them all.
+        assert_eq!(
+            inline("<mark>«a»</mark> «b»", Request::ToggleMarker),
+            "<mark>«a»</mark> <mark>«b»</mark>"
+        );
+
+        // A marker over a colored span goes around it, since `<mark>` paints
+        // its text black; a color over a whole marker goes inside it.
+        assert_eq!(
+            inline(
+                "<span style=\"color: #d44c47\">«a»</span>",
+                Request::SetMarker(None)
+            ),
+            "<mark><span style=\"color: #d44c47\">«a»</span></mark>"
+        );
+        assert_eq!(
+            inline("«<mark>a</mark>»", Request::SetTextColor(RED)),
+            "«<mark><span style=\"color: #d44c47\">a</span></mark>»"
+        );
+    }
+
+    #[test]
+    fn test_paragraph_size() {
+        assert_eq!(
+            sized("abˇc", Some("1.25em")),
+            "<span style=\"font-size: 1.25em\">abˇc</span>"
+        );
+        assert_eq!(
+            sized("<span style=\"font-size: 1.25em\">abˇc</span>", None),
+            "abˇc"
+        );
+        assert_eq!(
+            sized(
+                "<span style=\"font-size: 1.25em\">abˇc</span>",
+                Some("0.85em")
+            ),
+            "<span style=\"font-size: 0.85em\">abˇc</span>"
+        );
+        // A span that colors the whole paragraph takes the size too, and keeps
+        // its color when the size is reset.
+        assert_eq!(
+            sized("<span style=\"color: #d44c47\">abˇc</span>", Some("1.5em")),
+            "<span style=\"color: #d44c47; font-size: 1.5em\">abˇc</span>"
+        );
+        assert_eq!(
+            sized(
+                "<span style=\"color: #d44c47; font-size: 1.5em\">abˇc</span>",
+                None
+            ),
+            "<span style=\"color: #d44c47\">abˇc</span>"
+        );
+        // A span over part of the paragraph does not count as its size.
+        assert_eq!(
+            sized("a <span style=\"font-size: 1.25em\">bˇ</span>", None),
+            "refused: NoTextSize"
+        );
+    }
+
+    #[test]
+    fn test_paragraph_size_inside_containers() {
+        assert_eq!(
+            sized("- itˇem\n- other", Some("1.25em")),
+            "- <span style=\"font-size: 1.25em\">itˇem</span>\n- other"
+        );
+        assert_eq!(
+            sized("- [ ] taˇsk", Some("1.25em")),
+            "- [ ] <span style=\"font-size: 1.25em\">taˇsk</span>"
+        );
+        assert_eq!(
+            sized("> aˇ\n> b\n\nc", Some("1.25em")),
+            "> <span style=\"font-size: 1.25em\">aˇ\n> b</span>\n\nc"
+        );
+        // Every paragraph the selection touches, and each only once.
+        assert_eq!(
+            sized("«one\n\ntwo»", Some("1.25em")),
+            "<span style=\"font-size: 1.25em\">«one</span>\n\n<span style=\"font-size: 1.25em\">two»</span>"
+        );
+        assert_eq!(
+            sized("aˇbˇc", Some("1.25em")),
+            "<span style=\"font-size: 1.25em\">aˇbˇc</span>"
+        );
+    }
+
+    #[test]
+    fn test_paragraph_size_leaves_other_blocks_alone() {
+        assert_eq!(sized("# tiˇtle", Some("1.25em")), "refused: NoParagraph");
+        assert_eq!(
+            sized("Tiˇtle\n=====", Some("1.25em")),
+            "refused: NoParagraph"
+        );
+        assert_eq!(
+            sized("```\ncoˇde\n```", Some("1.25em")),
+            "refused: InsideCode"
+        );
+        assert_eq!(
+            sized("| aˇ | b |\n| --- | --- |", Some("1.25em")),
+            "refused: NoParagraph"
+        );
+        assert_eq!(
+            sized("<div>\nhtˇml\n</div>", Some("1.25em")),
+            "refused: NoParagraph"
+        );
+        // Mixed with a paragraph, only the paragraph changes.
+        assert_eq!(
+            sized("«# title\n\ntext»", Some("1.25em")),
+            "«# title\n\n<span style=\"font-size: 1.25em\">text»</span>"
+        );
+    }
+
+    #[test]
+    fn test_opening_tag_with_style() {
+        let color = [("color".to_string(), "#d44c47".to_string())];
+        assert_eq!(
+            opening_tag_with_style("<mark>", &color),
+            "<mark style=\"color: #d44c47\">"
+        );
+        assert_eq!(
+            opening_tag_with_style("<span style='color: red' class=\"a\">", &[]),
+            "<span class=\"a\">"
+        );
+        assert_eq!(
+            opening_tag_with_style("<span class=\"a\" style=\"color: red\">", &color),
+            "<span class=\"a\" style=\"color: #d44c47\">"
+        );
+    }
+
+    #[test]
+    fn test_rewritten_styles_keep_every_other_declaration_intact() {
+        // A `;` inside `url(…)` is part of the value, not the end of it.
+        assert_eq!(
+            inline(
+                "<span style=\"background: url(data:image/png;base64,AAA); color: red\">aˇb</span>",
+                Request::SetTextColor(BLUE)
+            ),
+            "<span style=\"background: url(data:image/png;base64,AAA); color: #337ea9\">aˇb</span>"
+        );
+        assert_eq!(
+            inline(
+                "<span style=\"background: url(data:image/png;base64,AAA); color: red\">aˇb</span>",
+                Request::RemoveTextColor
+            ),
+            "<span style=\"background: url(data:image/png;base64,AAA)\">aˇb</span>"
+        );
+        // A value with double quotes keeps the single quotes it was written
+        // in, or the attribute would end in the middle of it.
+        assert_eq!(
+            inline(
+                "<span style='color: red; font-family: \"Yu Gothic\"'>aˇb</span>",
+                Request::SetTextColor(BLUE)
+            ),
+            "<span style='color: #337ea9; font-family: \"Yu Gothic\"'>aˇb</span>"
+        );
+        assert_eq!(
+            sized(
+                "<span style='font-family: \"Yu Gothic\"'>aˇb</span>",
+                Some("1.25em")
+            ),
+            "<span style='font-family: \"Yu Gothic\"; font-size: 1.25em'>aˇb</span>"
+        );
+    }
+
+    #[test]
+    fn test_inline_styles_stay_out_of_other_html() {
+        // A tag written into an attribute, a comment or an autolink would
+        // break it.
+        assert_eq!(
+            inline("<a href=\"htˇtp://x\">l</a>", Request::SetTextColor(RED)),
+            "refused: InsideTag"
+        );
+        assert_eq!(
+            inline("<img src=\"a.pˇng\">", Request::SetMarker(None)),
+            "refused: InsideTag"
+        );
+        assert_eq!(
+            inline("<!-- aˇ -->", Request::SetTextColor(RED)),
+            "refused: InsideTag"
+        );
+        assert_eq!(
+            inline("<https://exaˇmple.com>", Request::SetTextColor(RED)),
+            "refused: InsideTag"
+        );
+        // Wrapping half of any element, not only a span or a mark, would
+        // leave its tags crossed.
+        assert_eq!(
+            inline("<b>a«b</b>c»", Request::SetTextColor(RED)),
+            "refused: CrossesTags"
+        );
+        assert_eq!(
+            inline("a <!-- «x --> b» c", Request::SetTextColor(RED)),
+            "refused: CrossesTags"
+        );
+        assert_eq!(
+            inline("<div>\n«a\n</div>»", Request::SetTextColor(RED)),
+            "refused: CrossesTags"
+        );
+        // Whole elements, and text next to them, are still fine.
+        assert_eq!(
+            inline("«<b>a</b>»", Request::SetTextColor(RED)),
+            "<span style=\"color: #d44c47\">«<b>a</b>»</span>"
+        );
+        assert_eq!(
+            inline("<b>«a»</b><br>«b»", Request::SetTextColor(RED)),
+            "<b><span style=\"color: #d44c47\">«a»</span></b><br><span style=\"color: #d44c47\">«b»</span>"
+        );
+        assert_eq!(
+            inline("a < b > «c»", Request::SetTextColor(RED)),
+            "a < b > <span style=\"color: #d44c47\">«c»</span>"
+        );
+    }
+
+    #[test]
+    fn test_styles_leave_definitions_and_indented_code_alone() {
+        // A tag in front of a definition turns it into text, which breaks
+        // every link or footnote reference that uses it.
+        assert_eq!(
+            sized("ˇ[ref]: http://x", Some("1.25em")),
+            "refused: NoParagraph"
+        );
+        assert_eq!(
+            inline("[ref]: htˇtp://x \"title\"", Request::SetTextColor(RED)),
+            "refused: NothingSelected"
+        );
+        assert_eq!(
+            sized("[ref]: http://x\n\"tiˇtle\"", Some("1.25em")),
+            "refused: NoParagraph"
+        );
+        assert_eq!(
+            sized("[^1]: noˇte", Some("1.25em")),
+            "[^1]: <span style=\"font-size: 1.25em\">noˇte</span>"
+        );
+        assert_eq!(
+            inline("«[^1]: note»", Request::SetTextColor(RED)),
+            "«[^1]: <span style=\"color: #d44c47\">note»</span>"
+        );
+
+        assert_eq!(
+            sized("a\n\n    coˇde", Some("1.25em")),
+            "refused: InsideCode"
+        );
+        assert_eq!(
+            inline("\tcoˇde", Request::SetTextColor(RED)),
+            "refused: InsideCode"
+        );
+        // Indentation that continues a paragraph or a list item is text.
+        assert_eq!(
+            sized("a\n    bˇ", Some("1.25em")),
+            "<span style=\"font-size: 1.25em\">a\n    bˇ</span>"
+        );
+        assert_eq!(
+            inline("- a\n\n    coˇntinued", Request::SetTextColor(RED)),
+            "- a\n\n    co<span style=\"color: #d44c47\">ˇ</span>ntinued"
+        );
+    }
+
+    #[test]
+    fn test_inline_code_spans() {
+        let spans = |text: &str| {
+            inline_code_spans(text, 0..text.len())
+                .into_iter()
+                .map(|range| text[range].to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(spans("a `b` c"), ["`b`"]);
+        assert_eq!(spans("a ``b ` c`` d"), ["``b ` c``"]);
+        // An unmatched run is literal, and a backslash escapes a backtick.
+        assert_eq!(spans("a ``b` c"), Vec::<String>::new());
+        assert_eq!(spans("a \\`b` c `d`"), ["` c `"]);
+        assert_eq!(spans("日本 `語`"), ["`語`"]);
+    }
+}
+
 /// Splits a line into its leading whitespace and the rest.
 fn split_indent(line: &str) -> (&str, &str) {
     let content_start = line

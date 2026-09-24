@@ -732,6 +732,7 @@ pub(crate) fn parse_markdown_with_options(
         style_inline_html_tags(&mut state.events, text);
         html::html_parser::assign_details_ordinals(&mut html_blocks);
         link_html_details_spans(&mut html_blocks, &state.events);
+        link_html_aligned_spans(&mut html_blocks, &state.events, text);
     }
 
     let heading_slugs = if parse_heading_slugs {
@@ -848,13 +849,220 @@ fn html_details_body_events(
     (start < balanced_end).then_some(start..balanced_end)
 }
 
+/// Pairs each `<div align>`, `<div style="text-align: …">` or `<center>` an
+/// HTML block leaves open with the later block that closes it, and aligns the
+/// HTML blocks in between the way the container asks; the markdown blocks in
+/// between are aligned by the renderer from the recorded event spans.
+///
+/// Tags are matched the way a browser matches them, so `</div>` closes the
+/// innermost open `<div>` together with everything opened inside it. A
+/// container that is never closed aligns nothing instead of the rest of the
+/// document, and one opened inside a list item or a block quote is dropped when
+/// that ends, since a browser would close it there too.
+fn link_html_aligned_spans(
+    html_blocks: &mut BTreeMap<usize, html::html_parser::ParsedHtmlBlock>,
+    events: &[(Range<usize>, MarkdownEvent)],
+    text: &str,
+) {
+    use html::html_parser::{HtmlAlignedSpan, HtmlContainerName, HtmlContainerTag};
+
+    struct OpenContainer {
+        name: HtmlContainerName,
+        text_align: Option<gpui::TextAlign>,
+        block_start: usize,
+        body_start: usize,
+        /// How deep the opening block sits in lists and block quotes. A close
+        /// at another depth belongs to another container.
+        depth: usize,
+    }
+
+    let mut open_containers: Vec<OpenContainer> = Vec::new();
+    let mut spans: Vec<(usize, HtmlAlignedSpan)> = Vec::new();
+    let mut html_block_events = Vec::new();
+    // The blocks that close containers an earlier block opened, with those
+    // containers as (stack position, name, alignment).
+    let mut closing_blocks: Vec<(
+        Range<usize>,
+        Vec<(usize, HtmlContainerName, Option<gpui::TextAlign>)>,
+    )> = Vec::new();
+    let mut depth = 0usize;
+
+    for (index, (range, event)) in events.iter().enumerate() {
+        match event {
+            MarkdownEvent::Start(tag) => {
+                if let MarkdownTag::HtmlBlock = tag
+                    && let Some(block) = html_blocks.get(&range.start)
+                {
+                    html_block_events.push((index, range.start));
+                    let mut closed_from_earlier_blocks = Vec::new();
+                    for container_tag in &block.container_tags {
+                        match *container_tag {
+                            HtmlContainerTag::Open { name, text_align } => {
+                                open_containers.push(OpenContainer {
+                                    name,
+                                    text_align,
+                                    block_start: range.start,
+                                    // A parsed HTML block's own events are
+                                    // dropped, so its end follows its start.
+                                    body_start: index + 2,
+                                    depth,
+                                });
+                            }
+                            HtmlContainerTag::Close(name) => {
+                                let Some(position) =
+                                    open_containers.iter().rposition(|open| open.name == name)
+                                else {
+                                    continue;
+                                };
+                                if open_containers[position].depth != depth {
+                                    continue;
+                                }
+                                for (offset, open) in open_containers.drain(position..).enumerate()
+                                {
+                                    if open.block_start != range.start {
+                                        closed_from_earlier_blocks.push((
+                                            position + offset,
+                                            open.name,
+                                            open.text_align,
+                                        ));
+                                    }
+                                    // One opened and closed in this very block
+                                    // was already aligned by the HTML parser.
+                                    if let Some(text_align) = open.text_align
+                                        && open.body_start < index
+                                    {
+                                        spans.push((
+                                            open.block_start,
+                                            HtmlAlignedSpan {
+                                                events: open.body_start..index,
+                                                text_align,
+                                                nesting: position + offset,
+                                            },
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if !closed_from_earlier_blocks.is_empty() {
+                        closing_blocks.push((range.clone(), closed_from_earlier_blocks));
+                    }
+                }
+                depth += 1;
+            }
+            MarkdownEvent::End(_) => {
+                depth = depth.saturating_sub(1);
+                open_containers.retain(|open| open.depth <= depth);
+            }
+            _ => {}
+        }
+    }
+
+    // Whatever a closing block holds before its `</div>` still sits inside the
+    // container, the way the rest of an opening block after its `<div align>`
+    // does. The tree builder only knows where that part ends if it sees the
+    // opening tags, so the block is parsed again behind them; the part after
+    // the close comes out as it did before. A disclosure is left alone, since
+    // parsing it again would lose the key its open state is stored under.
+    for (block_range, mut containers) in closing_blocks {
+        if containers
+            .iter()
+            .all(|(_, _, text_align)| text_align.is_none())
+            || containers
+                .iter()
+                .any(|(_, name, _)| *name == HtmlContainerName::Details)
+        {
+            continue;
+        }
+        let Some(block) = html_blocks.get_mut(&block_range.start) else {
+            continue;
+        };
+        if block.container_tags.iter().any(|tag| {
+            matches!(
+                tag,
+                HtmlContainerTag::Open {
+                    name: HtmlContainerName::Details,
+                    ..
+                } | HtmlContainerTag::Close(HtmlContainerName::Details)
+            )
+        }) {
+            continue;
+        }
+        let Some(source) = text.get(block_range.clone()) else {
+            continue;
+        };
+
+        containers.sort_by_key(|(position, _, _)| *position);
+        let mut enclosed_source = String::new();
+        for (_, name, text_align) in containers {
+            let tag_name = match name {
+                HtmlContainerName::Center => "center",
+                HtmlContainerName::Div | HtmlContainerName::Details => "div",
+            };
+            enclosed_source.push('<');
+            enclosed_source.push_str(tag_name);
+            if let Some(text_align) = text_align {
+                enclosed_source.push_str(match text_align {
+                    gpui::TextAlign::Left => " style=\"text-align: left\"",
+                    gpui::TextAlign::Center => " style=\"text-align: center\"",
+                    gpui::TextAlign::Right => " style=\"text-align: right\"",
+                });
+            }
+            enclosed_source.push('>');
+        }
+        enclosed_source.push_str(source);
+        if let Some(enclosed) =
+            html::html_parser::parse_html_block(&enclosed_source, block_range.clone())
+        {
+            block.children = enclosed.children;
+        }
+    }
+
+    if spans.is_empty() {
+        return;
+    }
+
+    for (block_start, span) in &spans {
+        if let Some(block) = html_blocks.get_mut(block_start) {
+            block.aligned_spans.push(span.clone());
+        }
+    }
+
+    spans.sort_by_key(|(_, span)| span.events.start);
+    let mut pending_spans = spans.iter().map(|(_, span)| span).peekable();
+    let mut active_spans: Vec<&HtmlAlignedSpan> = Vec::new();
+    for (index, block_start) in html_block_events {
+        while let Some(span) = pending_spans.next_if(|span| span.events.start <= index) {
+            active_spans.push(span);
+        }
+        active_spans.retain(|span| span.events.end > index);
+        let Some(innermost) = active_spans.iter().max_by_key(|span| span.nesting) else {
+            continue;
+        };
+        if let Some(block) = html_blocks.get_mut(&block_start) {
+            html::html_parser::inherit_text_align(&mut block.children, innermost.text_align);
+        }
+    }
+}
+
+/// An inline HTML tag the preview can style instead of dropping.
+struct InlineHtmlTag {
+    name: &'static str,
+    /// The destination an opening `<a>` links to.
+    destination: Option<String>,
+    /// What an opening `<span>`, `<mark>` or `<font>` asks to be drawn with.
+    span_style: InlineSpanStyle,
+    closing: bool,
+}
+
 /// The inline HTML tags a plain paragraph may carry that the preview can style
 /// instead of dropping. `<b>text</b>` reaches the renderer as two empty
 /// substitutions around the text, which used to leave the text unstyled.
 ///
-/// An opening `<a>` also hands back the destination it links to, since that is
-/// the one tag whose rewritten events need more than its name.
-fn inline_html_style_tag(html: &str) -> Option<(&'static str, Option<String>, bool)> {
+/// An opening `<a>` also hands back the destination it links to, and an opening
+/// `<span>`, `<mark>` or `<font>` the colors and size it asks for, since those
+/// are the tags whose rewritten events need more than their name.
+fn inline_html_style_tag(html: &str) -> Option<InlineHtmlTag> {
     let inner = html
         .trim()
         .strip_prefix('<')
@@ -877,6 +1085,11 @@ fn inline_html_style_tag(html: &str) -> Option<(&'static str, Option<String>, bo
         "sub" => "sub",
         "sup" => "sup",
         "a" => "a",
+        // A `<span>` that asks for nothing is still recognized, so that its
+        // `</span>` closes it rather than an enclosing colored one.
+        "span" => "span",
+        "mark" => "mark",
+        "font" => "font",
         _ => return None,
     };
 
@@ -894,7 +1107,30 @@ fn inline_html_style_tag(html: &str) -> Option<(&'static str, Option<String>, bo
         None
     };
 
-    Some((name, destination, closing))
+    let span_style = if matches!(name, "span" | "mark" | "font") && !closing {
+        let styles = inline_html_attribute(inner, "style")
+            .map(|style| html::html_parser::parse_style_declarations(&style))
+            .unwrap_or_default();
+        let font_color = inline_html_attribute(inner, "color");
+        let (color, background) =
+            html::html_parser::inline_tag_colors(name, &styles, font_color.as_deref());
+        InlineSpanStyle {
+            color,
+            background,
+            paragraph_scale_percent: styles
+                .get("font-size")
+                .and_then(|value| html::html_parser::parse_css_font_scale(value)),
+        }
+    } else {
+        InlineSpanStyle::default()
+    };
+
+    Some(InlineHtmlTag {
+        name,
+        destination,
+        span_style,
+        closing,
+    })
 }
 
 /// The value of the `name` attribute of an opening tag, `inner` being the text
@@ -1074,8 +1310,20 @@ pub fn link_destination_scheme(destination: &str) -> Option<String> {
     }
 }
 
-fn inline_html_style_events(name: &str) -> Option<(MarkdownEvent, MarkdownEvent)> {
+fn inline_html_style_events(
+    name: &str,
+    span_style: InlineSpanStyle,
+) -> Option<(MarkdownEvent, MarkdownEvent)> {
     Some(match name {
+        "span" | "mark" | "font" => {
+            if span_style == InlineSpanStyle::default() {
+                return None;
+            }
+            (
+                MarkdownEvent::InlineHtmlStyleStart(InlineHtmlStyle::Span(span_style)),
+                MarkdownEvent::InlineHtmlStyleEnd(InlineHtmlStyle::Span(span_style)),
+            )
+        }
         "strong" => (
             MarkdownEvent::Start(MarkdownTag::Strong),
             MarkdownEvent::End(MarkdownTagEnd::Strong),
@@ -1109,6 +1357,7 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
         name: &'static str,
         /// The destination of an `<a>`; every other tag carries `None`.
         destination: Option<String>,
+        span_style: InlineSpanStyle,
         index: usize,
         depth: usize,
     }
@@ -1148,7 +1397,12 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
             continue;
         }
 
-        let Some((name, destination, closing)) = text
+        let Some(InlineHtmlTag {
+            name,
+            destination,
+            span_style,
+            closing,
+        }) = text
             .get(range.clone())
             .and_then(|html| inline_html_style_tag(html))
         else {
@@ -1164,17 +1418,30 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
         }
 
         if closing {
-            if open
-                .last()
-                .is_some_and(|open| open.name == name && open.depth == depth)
-                && let Some(open) = open.pop()
+            // An unclosed `<span>`, `<mark>` or `<font>` left inside the element
+            // being closed is passed over, the way a browser closes whatever is
+            // still open inside it; since those three became recognized, a
+            // stray `<span>` would otherwise cost `<b>x <span>y</b>` its bold.
+            let position = open
+                .iter()
+                .rposition(|open| open.name == name && open.depth == depth);
+            if let Some(position) = position
+                && open.get(position + 1..).is_some_and(|inside| {
+                    inside.iter().all(|inside| {
+                        inside.depth == depth && matches!(inside.name, "span" | "mark" | "font")
+                    })
+                })
             {
-                pairs.push((open, index));
+                open.truncate(position + 1);
+                if let Some(open) = open.pop() {
+                    pairs.push((open, index));
+                }
             }
         } else {
             open.push(OpenInlineTag {
                 name,
                 destination,
+                span_style,
                 index,
                 depth,
             });
@@ -1212,7 +1479,15 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
                     MarkdownEvent::End(MarkdownTagEnd::Link),
                 )
             }),
-            name => inline_html_style_events(name),
+            name => {
+                let mut span_style = open.span_style;
+                if span_style.paragraph_scale_percent.is_some()
+                    && !wraps_whole_block_content(events, open_index, close_index)
+                {
+                    span_style.paragraph_scale_percent = None;
+                }
+                inline_html_style_events(name, span_style)
+            }
         };
 
         if let Some((start_event, end_event)) = pair_events {
@@ -1226,6 +1501,56 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
             substitute_unicode_script(events, open.name, open_index, close_index, text);
         }
     }
+}
+
+/// Whether the events at `open_index` and `close_index` enclose everything a
+/// paragraph or a list item holds before its first nested block: only then can
+/// a `font-size` be drawn, by sizing the whole run of lines, since GPUI lays a
+/// line out at a single font size.
+fn wraps_whole_block_content(
+    events: &[(Range<usize>, MarkdownEvent)],
+    open_index: usize,
+    close_index: usize,
+) -> bool {
+    // A task item's checkbox marker comes first, and is drawn as the bullet.
+    let mut before = open_index.checked_sub(1);
+    while let Some(index) = before
+        && matches!(
+            events.get(index),
+            Some((_, MarkdownEvent::TaskListMarker(_)))
+        )
+    {
+        before = index.checked_sub(1);
+    }
+    let opens_block = before
+        .and_then(|index| events.get(index))
+        .is_some_and(|(_, event)| {
+            matches!(
+                event,
+                MarkdownEvent::Start(MarkdownTag::Paragraph | MarkdownTag::Item)
+            )
+        });
+
+    let closes_block = events
+        .get(close_index + 1)
+        .is_some_and(|(_, event)| match event {
+            MarkdownEvent::End(MarkdownTagEnd::Paragraph | MarkdownTagEnd::Item) => true,
+            // A tight list item's text runs straight into its nested blocks.
+            MarkdownEvent::Start(tag) => !matches!(
+                tag,
+                MarkdownTag::Emphasis
+                    | MarkdownTag::Strong
+                    | MarkdownTag::Strikethrough
+                    | MarkdownTag::Superscript
+                    | MarkdownTag::Subscript
+                    | MarkdownTag::Link { .. }
+                    | MarkdownTag::Image { .. }
+            ),
+            MarkdownEvent::Rule => true,
+            _ => false,
+        });
+
+    opens_block && closes_block
 }
 
 /// Whether a link starts strictly between two events.
@@ -1394,6 +1719,21 @@ pub enum InlineHtmlStyle {
     Underline,
     /// `<code>` and the other monospace tags.
     Code,
+    /// `<span>`, `<mark>` and `<font>` that ask for colors or a paragraph size.
+    Span(InlineSpanStyle),
+}
+
+/// What a `<span>`, `<mark>` or `<font>` asks the preview to draw. Colors are
+/// `0xRRGGBB`; a `<mark>` carries the yellow background and black text a
+/// browser gives it unless its `style` says otherwise.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InlineSpanStyle {
+    pub color: Option<u32>,
+    pub background: Option<u32>,
+    /// The `font-size`, as a percentage of the surrounding text, of a span that
+    /// wraps a paragraph's whole content. A span over part of a paragraph
+    /// leaves this unset: a line is laid out at a single font size.
+    pub paragraph_scale_percent: Option<u16>,
 }
 
 /// Tags for elements that can contain other elements.
@@ -1581,6 +1921,7 @@ mod tests {
     use super::MarkdownEvent::*;
     use super::MarkdownTag::*;
     use super::*;
+    use gpui::TextAlign;
 
     const CONDITIONAL_OPTIONS: Options = Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
     const UNWANTED_OPTIONS: Options = Options::ENABLE_MATH
@@ -3234,6 +3575,405 @@ mod tests {
         );
     }
 
+    /// Each markdown text of `source` with the alignment the aligned spans give
+    /// it, the innermost span winning the way the renderer picks it.
+    fn aligned_texts(source: &str) -> Vec<(&str, Option<gpui::TextAlign>)> {
+        let parsed = parse_markdown_with_options(source, true, false, false);
+        let spans = parsed
+            .html_blocks
+            .values()
+            .flat_map(|block| block.aligned_spans.iter())
+            .collect::<Vec<_>>();
+
+        parsed
+            .events
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, event))| matches!(event, MarkdownEvent::Text))
+            .map(|(index, (range, _))| {
+                let text_align = spans
+                    .iter()
+                    .filter(|span| span.events.contains(&index))
+                    .max_by_key(|span| span.nesting)
+                    .map(|span| span.text_align);
+                (&source[range.clone()], text_align)
+            })
+            .collect()
+    }
+
+    fn html_block_children(
+        source: &str,
+        block_source: &str,
+    ) -> Vec<html::html_parser::ParsedHtmlElement> {
+        let block_start = source
+            .find(block_source)
+            .expect("the block is in the source");
+        parse_markdown_with_options(source, true, false, false)
+            .html_blocks
+            .get(&block_start)
+            .map(|block| block.children.clone())
+            .expect("the block should be an HTML block")
+    }
+
+    fn aligned_image_paragraph(
+        element: &html::html_parser::ParsedHtmlElement,
+    ) -> Option<TextAlign> {
+        use html::html_parser::{HtmlParagraphChunk, ParsedHtmlElement};
+
+        match element {
+            ParsedHtmlElement::Paragraph(paragraph)
+                if matches!(
+                    paragraph.contents.as_slice(),
+                    [HtmlParagraphChunk::Image(_)]
+                ) =>
+            {
+                paragraph.text_align
+            }
+            _ => None,
+        }
+    }
+
+    /// The README shape the fix is for: blank lines inside `<div align>` end
+    /// the HTML block, so the heading, the image, the text, the list and the
+    /// table in between used to be left-aligned.
+    #[test]
+    fn test_aligned_div_spans_the_markdown_between_its_blocks() {
+        let source = "<div align=\"center\">\n\n# プロジェクト名\n\n<img src=\"logo.png\" width=\"200\">\n\n説明文\n\n- 項目\n\n| 列 |\n|---|\n| 値 |\n\n</div>\n\n後ろ\n";
+
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("プロジェクト名", Some(TextAlign::Center)),
+                ("説明文", Some(TextAlign::Center)),
+                ("項目", Some(TextAlign::Center)),
+                ("列", Some(TextAlign::Center)),
+                ("値", Some(TextAlign::Center)),
+                ("後ろ", None),
+            ]
+        );
+
+        let image_block = html_block_children(source, "<img");
+        assert_eq!(
+            image_block
+                .iter()
+                .map(aligned_image_paragraph)
+                .collect::<Vec<_>>(),
+            vec![Some(TextAlign::Center)],
+            "the image written as its own HTML block is aligned like one inside the div: {image_block:?}"
+        );
+    }
+
+    #[test]
+    fn test_aligned_div_without_its_other_half_aligns_nothing() {
+        for source in [
+            "<div align=\"center\">\n\n本文\n\n後ろ\n",
+            "本文\n\n</div>\n\n後ろ\n",
+            "<div align=\"center\">\n\n本文\n\n</center>\n\n後ろ\n",
+        ] {
+            assert_eq!(
+                aligned_texts(source),
+                vec![("本文", None), ("後ろ", None)],
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_div_tags_inside_code_blocks_are_not_containers() {
+        let source = "<div align=\"center\">\n\n```\n</div>\n```\n\n中\n\n</div>\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("</div>\n", Some(TextAlign::Center)),
+                ("中", Some(TextAlign::Center)),
+                ("後ろ", None),
+            ]
+        );
+
+        let source = "```\n<div align=\"center\">\n```\n\n本文\n\n</div>\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![("<div align=\"center\">\n", None), ("本文", None)]
+        );
+    }
+
+    #[test]
+    fn test_nested_aligned_divs_align_by_the_innermost() {
+        let source = "<div align=\"center\">\n\n外1\n\n<div align=\"right\">\n\n内\n\n<img src=\"a.png\">\n\n</div>\n\n外2\n\n</div>\n";
+
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("外1", Some(TextAlign::Center)),
+                ("内", Some(TextAlign::Right)),
+                ("外2", Some(TextAlign::Center)),
+            ]
+        );
+        assert_eq!(
+            html_block_children(source, "<img")
+                .iter()
+                .map(aligned_image_paragraph)
+                .collect::<Vec<_>>(),
+            vec![Some(TextAlign::Right)]
+        );
+
+        // Both opened by one block: the inner one closes first, so it cannot win
+        // by coming last.
+        let source = "<div align=\"center\"><div align=\"right\">\n\n内\n\n<img src=\"a.png\">\n\n</div>\n\n外\n\n</div>\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("内", Some(TextAlign::Right)),
+                ("外", Some(TextAlign::Center)),
+            ]
+        );
+        assert_eq!(
+            html_block_children(source, "<img")
+                .iter()
+                .map(aligned_image_paragraph)
+                .collect::<Vec<_>>(),
+            vec![Some(TextAlign::Right)]
+        );
+    }
+
+    /// The HTML elements of the block starting with `block_source`, each as
+    /// an image or text with its alignment.
+    fn html_block_alignments(
+        source: &str,
+        block_source: &str,
+    ) -> Vec<(&'static str, Option<TextAlign>)> {
+        use html::html_parser::{HtmlParagraphChunk, ParsedHtmlElement};
+
+        html_block_children(source, block_source)
+            .iter()
+            .map(|element| match element {
+                ParsedHtmlElement::Image(_) => ("image", None),
+                ParsedHtmlElement::Paragraph(paragraph) => {
+                    let is_image = matches!(
+                        paragraph.contents.as_slice(),
+                        [HtmlParagraphChunk::Image(_)]
+                    );
+                    (
+                        if is_image { "image" } else { "text" },
+                        paragraph.text_align,
+                    )
+                }
+                ParsedHtmlElement::Details(_) => ("details", None),
+                other => panic!("unexpected element {other:?}"),
+            })
+            .collect()
+    }
+
+    /// The README shape where the last image sits right above `</div>`: the
+    /// part of the closing block before the tag is inside the container.
+    #[test]
+    fn test_closing_block_aligns_what_comes_before_its_close() {
+        let source =
+            "<div align=\"center\">\n\n本文\n\n<img src=\"a.png\">\n</div>\n<p>後ろ</p>\n\n最後\n";
+        assert_eq!(
+            html_block_alignments(source, "<img"),
+            vec![("image", Some(TextAlign::Center)), ("text", None)],
+            "the part after the close stays as it was"
+        );
+        assert_eq!(
+            aligned_texts(source),
+            vec![("本文", Some(TextAlign::Center)), ("最後", None)]
+        );
+
+        // Closing the inner container first, then the outer one.
+        let source = "<div align=\"center\">\n\n<div align=\"right\">\n\n中\n\n<img src=\"a.png\">\n</div>\n<img src=\"b.png\">\n</div>\n";
+        assert_eq!(
+            html_block_alignments(source, "<img"),
+            vec![
+                ("image", Some(TextAlign::Right)),
+                ("image", Some(TextAlign::Center)),
+            ]
+        );
+
+        // A plain `<div>` in between still takes the first `</div>`.
+        let source = "<div align=\"right\">\n\n<div>\n\n中\n\n<img src=\"a.png\">\n</div>\n<img src=\"b.png\">\n</div>\n";
+        assert_eq!(
+            html_block_alignments(source, "<img"),
+            vec![
+                ("image", Some(TextAlign::Right)),
+                ("image", Some(TextAlign::Right)),
+            ]
+        );
+
+        // Closing only the inner container: what follows the close is still
+        // inside the outer one.
+        let source = "<div align=\"center\">\n\n<div align=\"right\">\n\n中\n\n<img src=\"a.png\">\n</div>\n<img src=\"b.png\">\n\n外\n\n</div>\n";
+        assert_eq!(
+            html_block_alignments(source, "<img"),
+            vec![
+                ("image", Some(TextAlign::Right)),
+                ("image", Some(TextAlign::Center)),
+            ]
+        );
+
+        // A stray close aligns nothing, and a block closing a plain `<div>`
+        // is left as it was.
+        for source in [
+            "本文\n\n<img src=\"a.png\">\n</div>\n",
+            "<div>\n\n本文\n\n<img src=\"a.png\">\n</div>\n",
+        ] {
+            assert_eq!(
+                html_block_alignments(source, "<img"),
+                vec![("image", None)],
+                "{source:?}"
+            );
+        }
+
+        // Parsing a disclosure again would lose the key its open state is
+        // stored under, so a closing block holding one is left as it was.
+        let source = "<div align=\"center\">\n\n本文\n\n<details><summary>題</summary>中</details>\n<img src=\"a.png\">\n</div>\n";
+        assert_eq!(
+            html_block_alignments(source, "<details"),
+            vec![("details", None), ("image", None)]
+        );
+    }
+
+    #[test]
+    fn test_plain_div_inside_an_aligned_div_is_closed_first() {
+        let source =
+            "<div align=\"center\">\n\n<div>\n\n中\n\n</div>\n\nまだ中\n\n</div>\n\n後ろ\n";
+
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("中", Some(TextAlign::Center)),
+                ("まだ中", Some(TextAlign::Center)),
+                ("後ろ", None),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_center_tag_and_text_align_style_span_blocks_too() {
+        let source = "<center>\n\n中\n\n</center>\n\n<div style=\"text-align: right\">\n\n右\n\n</div>\n\n後ろ\n";
+
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("中", Some(TextAlign::Center)),
+                ("右", Some(TextAlign::Right)),
+                ("後ろ", None),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_aligned_div_does_not_reach_across_a_list_item() {
+        // Opened in a list item and closed after the list, where a browser
+        // would already have closed it with the item.
+        let source = "- <div align=\"center\">\n\n  中\n\n</div>\n\n後ろ\n";
+        assert_eq!(aligned_texts(source), vec![("中", None), ("後ろ", None)]);
+
+        // Opened outside the list and closed inside an item.
+        let source = "<div align=\"center\">\n\n- 項目\n\n  </div>\n\n後ろ\n";
+        assert_eq!(aligned_texts(source), vec![("項目", None), ("後ろ", None)]);
+
+        // Opened in one item and closed in the next.
+        let source = "- <div align=\"center\">\n\n  中\n\n- </div>\n\n  次\n";
+        assert_eq!(aligned_texts(source), vec![("中", None), ("次", None)]);
+
+        // Opened and closed inside the same item.
+        let source = "- 項目\n\n  <div align=\"right\">\n\n  右\n\n  </div>\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![
+                ("項目", None),
+                ("右", Some(TextAlign::Right)),
+                ("後ろ", None)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_aligned_div_and_details_nest_either_way() {
+        let source = "<div align=\"center\">\n\n<details>\n<summary>題</summary>\n\n本文\n\n</details>\n\n</div>\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![("本文", Some(TextAlign::Center)), ("後ろ", None)]
+        );
+        let details_start = source.find("<details>").expect("the disclosure is there");
+        assert!(
+            parse_markdown_with_options(source, true, false, false)
+                .html_blocks
+                .get(&details_start)
+                .is_some_and(|block| block.details_span.is_some()),
+            "the disclosure still hides its body"
+        );
+
+        let source = "<details>\n<summary>題</summary>\n\n<div align=\"right\">\n\n本文\n\n</div>\n\n</details>\n\n後ろ\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![("本文", Some(TextAlign::Right)), ("後ろ", None)]
+        );
+        assert!(
+            parse_markdown_with_options(source, true, false, false)
+                .html_blocks
+                .get(&0)
+                .is_some_and(|block| block.details_span.is_some())
+        );
+
+        // `</details>` closes the `<div>` opened inside it, so the `</div>`
+        // after it is a stray one that must not pull the alignment further.
+        let source = "<details>\n<summary>題</summary>\n\n<div align=\"right\">\n\n本文\n\n</details>\n\n後ろ\n\n</div>\n";
+        assert_eq!(
+            aligned_texts(source),
+            vec![("本文", Some(TextAlign::Right)), ("後ろ", None)]
+        );
+    }
+
+    #[test]
+    fn test_aligned_div_pairs_only_real_container_tags() {
+        let cases: [(&str, Vec<(&str, Option<TextAlign>)>); 7] = [
+            // Opened in a block quote, which a browser closes with the quote.
+            (
+                "> <div align=\"center\">\n>\n> 中\n\n本文\n\n</div>\n\n後ろ\n",
+                vec![("中", None), ("本文", None), ("後ろ", None)],
+            ),
+            // A `</div>` inside a comment or inline code closes nothing.
+            (
+                "<div align=\"center\" title=\"日本語の説明\">\n\n<!-- </div> -->\n\n`</div>`\n\n本文\n\n</div>\n\n後ろ\n",
+                vec![("本文", Some(TextAlign::Center)), ("後ろ", None)],
+            ),
+            // One block closing a container and opening the next.
+            (
+                "<div align=\"center\">\n\nA\n\n</div>\n<div align=\"right\">\n\nB\n\n</div>\n\n後ろ\n",
+                vec![
+                    ("A", Some(TextAlign::Center)),
+                    ("B", Some(TextAlign::Right)),
+                    ("後ろ", None),
+                ],
+            ),
+            // The outer container is never closed, so only the inner one aligns.
+            (
+                "<div align=\"center\">\n\n<div align=\"right\">\n\nA\n\n</div>\n\nB\n",
+                vec![("A", Some(TextAlign::Right)), ("B", None)],
+            ),
+            // A `</div>` inside a paragraph is inline HTML, not a block.
+            (
+                "<div align=\"center\">\n\n本文 </div>\n\n後ろ\n",
+                vec![("本文 ", None), ("後ろ", None)],
+            ),
+            (
+                "<DIV ALIGN=\"CENTER\">\n\n本文\n\n</DIV>\n\n後ろ\n",
+                vec![("本文", Some(TextAlign::Center)), ("後ろ", None)],
+            ),
+            // An opening tag cut off by the blank line never opens anything.
+            (
+                "<div align=center\n\n本文\n\n</div>\n\n後ろ\n",
+                vec![("本文", None), ("後ろ", None)],
+            ),
+        ];
+
+        for (source, expected) in cases {
+            assert_eq!(aligned_texts(source), expected, "{source:?}");
+        }
+    }
+
     #[test]
     fn test_unrecognized_inline_html_preserved_as_inline_html() {
         for input in ["a<span>b</span>c", "a<em>b</em>c", "a<strong>b</strong>c"] {
@@ -3255,5 +3995,322 @@ mod tests {
                 "unrecognized inline HTML \"{input}\" should not emit HardBreak"
             );
         }
+    }
+
+    /// Every span style the preview would draw, with the source it covers.
+    fn span_styles(source: &str) -> Vec<(String, InlineSpanStyle)> {
+        parse_markdown_with_options(source, true, false, false)
+            .events
+            .into_iter()
+            .filter_map(|(range, event)| match event {
+                MarkdownEvent::InlineHtmlStyleStart(InlineHtmlStyle::Span(style)) => {
+                    Some((source.get(range)?.to_string(), style))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_span_mark_and_font_colors_reach_the_renderer() {
+        let source = "a <span style=\"color: #d44c47\">赤</span> <mark>黄</mark> \
+            <mark style=\"background-color: #b7ebc6\">緑</mark> <font color=\"blue\">青</font> \
+            <span style=\"background: yellow\">地</span> <span style='color: rgb(1, 2, 3)'>x</span>";
+        assert_eq!(
+            span_styles(source),
+            vec![
+                (
+                    "<span style=\"color: #d44c47\">赤</span>".to_string(),
+                    InlineSpanStyle {
+                        color: Some(0xd44c47),
+                        ..Default::default()
+                    }
+                ),
+                (
+                    "<mark>黄</mark>".to_string(),
+                    InlineSpanStyle {
+                        color: Some(0x000000),
+                        background: Some(0xffff00),
+                        paragraph_scale_percent: None,
+                    }
+                ),
+                (
+                    "<mark style=\"background-color: #b7ebc6\">緑</mark>".to_string(),
+                    InlineSpanStyle {
+                        color: Some(0x000000),
+                        background: Some(0xb7ebc6),
+                        paragraph_scale_percent: None,
+                    }
+                ),
+                (
+                    "<font color=\"blue\">青</font>".to_string(),
+                    InlineSpanStyle {
+                        color: Some(0x0000ff),
+                        ..Default::default()
+                    }
+                ),
+                (
+                    "<span style=\"background: yellow\">地</span>".to_string(),
+                    InlineSpanStyle {
+                        background: Some(0xffff00),
+                        ..Default::default()
+                    }
+                ),
+                (
+                    "<span style='color: rgb(1, 2, 3)'>x</span>".to_string(),
+                    InlineSpanStyle {
+                        color: Some(0x010203),
+                        ..Default::default()
+                    }
+                ),
+            ]
+        );
+
+        // The tags themselves are never drawn as text.
+        let parsed = parse_markdown_with_options(source, true, false, false);
+        assert!(
+            !parsed
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, MarkdownEvent::InlineHtml)),
+            "{:?}",
+            parsed.events
+        );
+    }
+
+    #[test]
+    fn test_colors_the_preview_cannot_read_leave_the_text_plain() {
+        for source in [
+            "a <span style=\"color: nonsense\">x</span> b",
+            "a <span style=\"color: rgba(1, 2, 3, 0.5)\">x</span> b",
+            "a <span style=\"color: #12345\">x</span> b",
+            "a <span class=\"note\">x</span> b",
+            "a <font size=\"5\">x</font> b",
+        ] {
+            assert_eq!(span_styles(source), Vec::new(), "{source}");
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            assert!(
+                parsed.events.iter().any(|(range, event)| {
+                    matches!(event, MarkdownEvent::Text) && source.get(range.clone()) == Some("x")
+                }),
+                "{source} should still show its text: {:?}",
+                parsed.events
+            );
+        }
+    }
+
+    #[test]
+    fn test_nested_colors_pair_the_way_html_does() {
+        // The plain span inside closes itself, so the outer color reaches the
+        // end of the paragraph's last `</span>` and the inner one wins inside.
+        let source = "<span style=\"color: red\">a <span>b</span> <span style=\"color: blue\">c</span> d</span>";
+        let parsed = parse_markdown_with_options(source, true, false, false);
+        let order = parsed
+            .events
+            .iter()
+            .filter_map(|(range, event)| match event {
+                MarkdownEvent::InlineHtmlStyleStart(InlineHtmlStyle::Span(style)) => {
+                    Some(format!("start {:06x}", style.color.unwrap_or_default()))
+                }
+                MarkdownEvent::InlineHtmlStyleEnd(InlineHtmlStyle::Span(style)) => {
+                    Some(format!("end {:06x}", style.color.unwrap_or_default()))
+                }
+                MarkdownEvent::Text => source.get(range.clone()).map(str::to_string),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            order,
+            [
+                "start ff0000",
+                "a ",
+                "b",
+                " ",
+                "start 0000ff",
+                "c",
+                "end 0000ff",
+                " d",
+                "end ff0000"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_unmatched_color_tags_do_not_color_the_rest_of_the_document() {
+        for source in [
+            "<span style=\"color: red\">a\n\nb",
+            "a</span> <span style=\"color: red\">b\n\nc</span>",
+            "<mark>a\n\nb</mark>",
+            "- <span style=\"color: red\">a\n- b</span>",
+            "<span style=\"color: red\">a <mark>b</span> c</mark>",
+        ] {
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            let mut depth = 0isize;
+            for (_, event) in &parsed.events {
+                match event {
+                    MarkdownEvent::InlineHtmlStyleStart(_) => depth += 1,
+                    MarkdownEvent::InlineHtmlStyleEnd(_) => depth -= 1,
+                    MarkdownEvent::End(MarkdownTagEnd::Paragraph | MarkdownTagEnd::Item) => {
+                        assert_eq!(depth, 0, "{source}: a style outlived its block");
+                    }
+                    _ => {}
+                }
+            }
+            assert_eq!(depth, 0, "{source}: unbalanced styles {:?}", parsed.events);
+        }
+
+        // A closing tag cannot end a paragraph other than its own.
+        assert_eq!(
+            span_styles("<span style=\"color: red\">a\n\nb</span>"),
+            Vec::new()
+        );
+    }
+
+    #[test]
+    fn test_font_size_whole_paragraph_edges() {
+        let scale = |source: &str| {
+            span_styles(source)
+                .into_iter()
+                .map(|(_, style)| style.paragraph_scale_percent)
+                .collect::<Vec<_>>()
+        };
+        let large = "<span style=\"font-size: 1.25em\">";
+
+        // Whitespace around the paragraph is not part of its text.
+        assert_eq!(scale(&format!("  {large}a</span>  ")), [Some(125)]);
+        assert_eq!(scale(&format!("{large}a\nb</span>")), [Some(125)]);
+        assert_eq!(scale(&format!("{large}a  \nb</span>")), [Some(125)]);
+        // Anything the span leaves out keeps the paragraph at its size.
+        assert_eq!(
+            scale(&format!("{large}a</span><br>")),
+            Vec::<Option<u16>>::new()
+        );
+        assert_eq!(
+            scale(&format!("<br>{large}a</span>")),
+            Vec::<Option<u16>>::new()
+        );
+        assert_eq!(
+            scale(&format!("{large}a</span>\nb")),
+            Vec::<Option<u16>>::new()
+        );
+        assert_eq!(
+            scale(&format!("a\n{large}b</span>")),
+            Vec::<Option<u16>>::new()
+        );
+        assert_eq!(
+            scale(&format!("{large}a</span>{large}b</span>")),
+            Vec::<Option<u16>>::new()
+        );
+        assert_eq!(
+            scale(&format!("{large}a</span> `code`")),
+            Vec::<Option<u16>>::new()
+        );
+        assert_eq!(
+            scale(&format!("{large}a</span>[link](x)")),
+            Vec::<Option<u16>>::new()
+        );
+        // A size inside another span that holds the whole paragraph is not the
+        // paragraph's.
+        assert_eq!(
+            scale(&format!(
+                "<span style=\"color: red\">{large}a</span> b</span>"
+            )),
+            [None]
+        );
+    }
+
+    #[test]
+    fn test_a_stray_span_does_not_cost_the_element_around_it_its_style() {
+        for source in [
+            "<b>x <span>y</b> z",
+            "<b>x <span style=\"color: red\">y</b> z",
+            "<b>x <mark>y <font color=\"red\">w</b> z",
+        ] {
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            let strong = parsed
+                .events
+                .iter()
+                .filter(|(_, event)| {
+                    matches!(
+                        event,
+                        MarkdownEvent::Start(MarkdownTag::Strong)
+                            | MarkdownEvent::End(MarkdownTagEnd::Strong)
+                    )
+                })
+                .count();
+            assert_eq!(strong, 2, "{source}: {:?}", parsed.events);
+            assert_eq!(span_styles(source), Vec::new(), "{source}");
+        }
+
+        // Anything else left open inside still keeps the closing tag from
+        // pairing, as before.
+        let parsed = parse_markdown_with_options("<b>x <i>y</b> z", true, false, false);
+        assert!(
+            !parsed
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, MarkdownEvent::Start(MarkdownTag::Strong))),
+            "{:?}",
+            parsed.events
+        );
+    }
+
+    #[test]
+    fn test_font_size_applies_only_to_a_whole_paragraph() {
+        let scale = |source: &str| {
+            span_styles(source)
+                .into_iter()
+                .map(|(_, style)| style.paragraph_scale_percent)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            scale("<span style=\"font-size: 1.25em\">段落全体</span>"),
+            [Some(125)]
+        );
+        assert_eq!(
+            scale("> <span style=\"font-size: 1.5em\">引用\nの中</span>"),
+            [Some(150)]
+        );
+        // A tight list item's text runs straight into its nested list.
+        assert_eq!(
+            scale("- <span style=\"font-size: 0.85em\">項目</span>\n  - 入れ子"),
+            [Some(85)]
+        );
+        assert_eq!(
+            scale("- [ ] <span style=\"font-size: 125%\">タスク</span>"),
+            [Some(125)]
+        );
+        assert_eq!(
+            scale("- a\n\n- <span style=\"font-size: 1.25em\">loose</span>"),
+            [Some(125)]
+        );
+
+        // Part of a paragraph cannot change size, and a span that asks for
+        // nothing else is dropped altogether.
+        assert_eq!(
+            scale("a <span style=\"font-size: 1.25em\">b</span>"),
+            Vec::<Option<u16>>::new()
+        );
+        assert_eq!(
+            scale("<span style=\"font-size: 1.25em\">a</span> b"),
+            Vec::<Option<u16>>::new()
+        );
+        // Headings are sized by their level.
+        assert_eq!(
+            scale("# <span style=\"font-size: 1.25em\">見出し</span>"),
+            Vec::<Option<u16>>::new()
+        );
+        // A color on the same span survives when the size cannot apply.
+        assert_eq!(
+            span_styles("<span style=\"color: red; font-size: 1.25em\">a</span> b"),
+            vec![(
+                "<span style=\"color: red; font-size: 1.25em\">a</span>".to_string(),
+                InlineSpanStyle {
+                    color: Some(0xff0000),
+                    ..Default::default()
+                }
+            )]
+        );
     }
 }

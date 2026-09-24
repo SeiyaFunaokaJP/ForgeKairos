@@ -482,13 +482,27 @@ fn render_body(
             MarkdownEvent::Html | MarkdownEvent::InlineHtml => {
                 output.push_str(source.get(range).unwrap_or_default());
             }
-            MarkdownEvent::InlineHtmlStyleStart(style) => output.push_str(match style {
-                InlineHtmlStyle::Underline => "<u>",
-                InlineHtmlStyle::Code => "<code>",
-            }),
+            MarkdownEvent::InlineHtmlStyleStart(style) => match style {
+                InlineHtmlStyle::Underline => output.push_str("<u>"),
+                InlineHtmlStyle::Code => output.push_str("<code>"),
+                InlineHtmlStyle::Span(span_style) => {
+                    output.push_str("<span style=\"");
+                    if let Some(color) = span_style.color {
+                        output.push_str(&format!("color:#{color:06x};"));
+                    }
+                    if let Some(background) = span_style.background {
+                        output.push_str(&format!("background-color:#{background:06x};"));
+                    }
+                    if let Some(percent) = span_style.paragraph_scale_percent {
+                        output.push_str(&format!("font-size:{percent}%;"));
+                    }
+                    output.push_str("\">");
+                }
+            },
             MarkdownEvent::InlineHtmlStyleEnd(style) => output.push_str(match style {
                 InlineHtmlStyle::Underline => "</u>",
                 InlineHtmlStyle::Code => "</code>",
+                InlineHtmlStyle::Span(_) => "</span>",
             }),
             MarkdownEvent::FootnoteReference(label) => {
                 output.push_str("<sup><a href=\"#fn-");
@@ -1003,6 +1017,46 @@ mod tests {
     fn test_raw_html_passes_through() {
         assert_eq!(render("<div>x</div>\n"), "<div>x</div>\n");
         assert!(render("a <br> b\n").contains("<br>"));
+    }
+
+    /// What the format bar writes reaches the printed page as written, so the
+    /// browser that prints it draws the colors, markers and sizes itself.
+    #[test]
+    fn test_text_colors_markers_and_sizes_are_printed() {
+        assert_eq!(
+            render(
+                "<span style=\"font-size: 1.25em\">a <span style=\"color: #d44c47\">赤</span> <mark>黄</mark> <mark style=\"background-color: #b7ebc6\">緑</mark></span>\n"
+            ),
+            "<p><span style=\"font-size: 1.25em\">a <span style=\"color: #d44c47\">赤</span> <mark>黄</mark> <mark style=\"background-color: #b7ebc6\">緑</mark></span></p>\n"
+        );
+    }
+
+    /// The printed document is laid out by a browser, which aligns whatever
+    /// lies between a `<div align>` block and its `</div>` block by itself, the
+    /// way GitHub does, as long as the markdown lands between the two tags.
+    #[test]
+    fn test_aligned_div_across_blocks_encloses_its_markdown_body() {
+        let html = render(
+            "<div align=\"center\">\n\n# プロジェクト名\n\n<img src=\"logo.png\" width=\"200\">\n\n説明文\n\n- 項目\n\n</div>\n\n後ろ\n",
+        );
+
+        let positions = [
+            "<div align=\"center\">",
+            "<h1>プロジェクト名</h1>",
+            "<img src=\"logo.png\" width=\"200\">",
+            "<p>説明文</p>",
+            "<li>項目</li>",
+            "</div>",
+            "<p>後ろ</p>",
+        ]
+        .map(|fragment| {
+            html.find(fragment)
+                .unwrap_or_else(|| panic!("{fragment:?} should be printed: {html}"))
+        });
+        assert!(
+            positions.is_sorted(),
+            "the body should be printed inside the div: {html}"
+        );
     }
 
     #[test]

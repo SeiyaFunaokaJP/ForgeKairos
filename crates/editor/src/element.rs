@@ -645,6 +645,13 @@ impl EditorElement {
             register_action(editor, window, Editor::toggle_markdown_italic);
             register_action(editor, window, Editor::toggle_markdown_strikethrough);
             register_action(editor, window, Editor::toggle_markdown_inline_code);
+            register_action(editor, window, Editor::set_markdown_text_color);
+            register_action(editor, window, Editor::remove_markdown_text_color);
+            register_action(editor, window, Editor::set_markdown_marker);
+            register_action(editor, window, Editor::toggle_markdown_marker);
+            register_action(editor, window, Editor::remove_markdown_marker);
+            register_action(editor, window, Editor::set_markdown_text_size);
+            register_action(editor, window, Editor::reset_markdown_text_size);
             register_action(editor, window, Editor::toggle_markdown_heading_1);
             register_action(editor, window, Editor::toggle_markdown_heading_2);
             register_action(editor, window, Editor::toggle_markdown_heading_3);

@@ -3577,11 +3577,17 @@ fn offset_in_sub_ranges(
 ) -> bool {
     let start_anchor = snapshot.anchor_before(offset);
     let end_anchor = snapshot.anchor_after(offset);
+    // A sub-range that ends with a line break (an HTML block in Markdown takes
+    // in the blank line that closes it) does not reach the start of the next
+    // line, which belongs to whatever follows the injection.
+    let follows_line_break = snapshot.reversed_chars_at(offset).next() == Some('\n');
 
     sub_ranges.iter().any(|sub_range| {
         let is_before_start = sub_range.end.cmp(&start_anchor, snapshot).is_lt();
         let is_after_end = sub_range.start.cmp(&end_anchor, snapshot).is_gt();
-        !is_before_start && !is_after_end
+        let ends_on_previous_line =
+            follows_line_break && sub_range.end.to_offset(snapshot) == offset;
+        !is_before_start && !is_after_end && !ends_on_previous_line
     })
 }
 

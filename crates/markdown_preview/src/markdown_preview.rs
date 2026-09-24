@@ -2,6 +2,7 @@ use gpui::{App, actions};
 use workspace::Workspace;
 
 pub mod fold_headings_selector;
+pub mod image_dialog;
 pub mod markdown_export;
 pub mod markdown_preview_settings;
 pub mod markdown_preview_view;
@@ -45,7 +46,10 @@ actions!(
         InsertMermaidDiagramPicker,
         /// Picks the heading level to fold, since `markdown::FoldHeadings`
         /// always carries one and so cannot be built from the palette.
-        FoldHeadingsPicker
+        FoldHeadingsPicker,
+        /// Opens the image dialog: inserts an image at the cursor, or edits the
+        /// image the cursor is on.
+        InsertImage
     ]
 );
 
@@ -61,6 +65,7 @@ pub fn init(cx: &mut App) {
         fold_headings_selector::register(workspace);
         table_editor::register(workspace);
         mermaid_editor::register(workspace);
+        image_dialog::register(workspace);
     })
     .detach();
 }

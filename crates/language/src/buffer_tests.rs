@@ -5285,3 +5285,587 @@ fn test_formatted_chunks(cx: &mut gpui::App) {
         }
     }
 }
+
+// The HTML extension's highlight query as the extension registry ships it
+// (`extensions/html/languages/html/highlights.scm`, extension 0.3.1). HTML inside
+// Markdown is colored by that extension on a user's machine, and the fork cannot
+// change what it installs, so the Markdown queries are tested against this copy.
+const HTML_EXTENSION_HIGHLIGHTS: &str = r#"
+(tag_name) @tag
+
+(doctype) @tag.doctype
+
+(attribute_name) @attribute
+
+[
+  "\""
+  "'"
+  (attribute_value)
+] @string
+
+(comment) @comment
+
+(entity) @string.special
+
+"=" @punctuation.delimiter.html
+
+[
+  "<"
+  ">"
+  "<!"
+  "</"
+  "/>"
+] @punctuation.bracket.html
+"#;
+
+fn html_extension_language() -> Arc<Language> {
+    Arc::new(
+        Language::new(
+            LanguageConfig {
+                name: "HTML".into(),
+                matcher: (LanguageMatcher {
+                    path_suffixes: vec!["html".to_string()],
+                    ..Default::default()
+                })
+                .into(),
+                ..Default::default()
+            },
+            Some(tree_sitter_html::LANGUAGE.into()),
+        )
+        .with_highlights_query(HTML_EXTENSION_HIGHLIGHTS)
+        .unwrap(),
+    )
+}
+
+/// The syntax keys the default dark theme styles. A capture changes the color on
+/// screen only when it resolves to one of them.
+fn default_theme_syntax() -> SyntaxTheme {
+    let themes: serde_json::Value =
+        serde_json::from_str(include_str!("../../../assets/themes/one/one.json")).unwrap();
+    let one_dark = themes["themes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|theme| theme["name"] == "One Dark")
+        .unwrap();
+    SyntaxTheme::new(
+        one_dark["style"]["syntax"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|key| (key.clone(), HighlightStyle::default())),
+    )
+}
+
+fn markdown_with_html_registry(
+    theme: &SyntaxTheme,
+    executor: gpui::BackgroundExecutor,
+) -> (Arc<LanguageRegistry>, Arc<Language>) {
+    let markdown = markdown_lang();
+    let markdown_inline = test_language("markdown-inline", tree_sitter_md::INLINE_LANGUAGE.into());
+    let html = html_extension_language();
+    let registry = Arc::new(LanguageRegistry::test(executor));
+    for language in [&markdown, &markdown_inline, &html] {
+        language.set_theme(theme);
+        registry.add(language.clone());
+    }
+    (registry, markdown)
+}
+
+/// The theme key that paints each byte of `text` as Markdown, the way the editor
+/// would draw it.
+fn markdown_theme_keys(text: &str, cx: &mut TestAppContext) -> Vec<Option<String>> {
+    let theme = default_theme_syntax();
+    let (registry, markdown) = markdown_with_html_registry(&theme, cx.background_executor.clone());
+    let snapshot = cx.update(|cx| {
+        Buffer::build_snapshot_sync(text::Rope::from(text), Some(markdown), Some(registry), cx)
+    });
+    theme_keys(&snapshot, &theme)
+}
+
+fn theme_keys(snapshot: &BufferSnapshot, theme: &SyntaxTheme) -> Vec<Option<String>> {
+    let mut keys = Vec::with_capacity(snapshot.len());
+    let chunks = snapshot.chunks(
+        0..snapshot.len(),
+        LanguageAwareStyling {
+            tree_sitter: true,
+            diagnostics: false,
+        },
+    );
+    for chunk in chunks {
+        let key = chunk
+            .syntax_highlight_id
+            .and_then(|id| theme.get_capture_name(usize::from(id)))
+            .map(str::to_string);
+        keys.extend(std::iter::repeat_n(key, chunk.text.len()));
+    }
+    keys
+}
+
+/// The theme key painted on `needle` inside the first occurrence of `context`,
+/// asserting that the whole needle is painted the same way.
+fn theme_key_at<'a>(
+    text: &str,
+    keys: &'a [Option<String>],
+    context: &str,
+    needle: &str,
+) -> Option<&'a str> {
+    let context_start = text
+        .find(context)
+        .unwrap_or_else(|| panic!("{context:?} is not in the fixture"));
+    let needle_start = context_start
+        + context
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle:?} is not in {context:?}"));
+    let needle_keys = &keys[needle_start..needle_start + needle.len()];
+    assert!(
+        needle_keys.iter().all(|key| *key == needle_keys[0]),
+        "{needle:?} in {context:?} is painted unevenly: {needle_keys:?}"
+    );
+    needle_keys[0].as_deref()
+}
+
+#[gpui::test]
+async fn test_markdown_html_closing_tags_split_off_by_blank_lines_are_highlighted(
+    cx: &mut TestAppContext,
+) {
+    let text = indoc! {r#"
+        <details>
+        <summary>見出し</summary>
+
+        本文 **太字**
+
+        </details>
+        <details>
+        <summary>次の見出し</summary>
+
+        本文二
+
+        </details>
+
+        <div align="center">
+
+        # 表題
+
+        </div>
+
+        <table>
+        <tr>
+        <td>
+
+        セル
+
+        </td>
+        </tr>
+        </table>
+    "#};
+    let keys = markdown_theme_keys(text, cx);
+    let key = |context, needle| theme_key_at(text, &keys, context, needle);
+
+    // The closing tag shares its block with the next opening tag, so only
+    // parsing every HTML block as one document can tell what it closes.
+    assert_eq!(key("</details>\n<details>", "details"), Some("tag"));
+    assert_eq!(
+        key("</details>\n<details>", "</"),
+        Some("punctuation.bracket")
+    );
+    assert_eq!(key("本文二\n\n</details>", "details"), Some("tag"));
+    assert_eq!(key("</div>", "div"), Some("tag"));
+    assert_eq!(key("</td>", "td"), Some("tag"));
+    assert_eq!(key("</tr>", "tr"), Some("tag"));
+    assert_eq!(key("</table>", "table"), Some("tag"));
+
+    assert_eq!(key("<summary>見出し</summary>", "見出し"), None);
+    assert_eq!(key("本文 **太字**", "本文"), None);
+    assert_eq!(key("本文 **太字**", "**太字**"), Some("emphasis.strong"));
+    assert_eq!(key("# 表題", "# 表題"), Some("title"));
+}
+
+#[gpui::test]
+async fn test_markdown_closing_tag_without_an_opening_html_block_is_highlighted(
+    cx: &mut TestAppContext,
+) {
+    let text = indoc! {r#"
+        - 項目
+
+          <details>
+          <summary>折り畳み</summary>
+
+          本文
+
+          </details>
+
+        段落の中で開く <div>
+        続き
+
+        </div>
+
+        </section>
+        <p>テキスト</p>
+    "#};
+    let keys = markdown_theme_keys(text, cx);
+    let key = |context, needle| theme_key_at(text, &keys, context, needle);
+
+    assert_eq!(key("  </details>", "details"), Some("tag"));
+    assert_eq!(key("  </details>", "</"), Some("punctuation.bracket"));
+    assert_eq!(key("続き\n\n</div>", "div"), Some("tag"));
+    assert_eq!(key("続き\n\n</div>", ">"), Some("punctuation.bracket"));
+    // A block that goes on past its closing tags has content that must not
+    // take the tag color.
+    assert_eq!(key("<p>テキスト</p>", "テキスト"), None);
+}
+
+#[gpui::test]
+fn test_markdown_between_html_blocks_is_still_markdown(cx: &mut App) {
+    init_settings(cx, |_| {});
+    let theme = default_theme_syntax();
+    let (registry, markdown) =
+        markdown_with_html_registry(&theme, cx.background_executor().clone());
+    let text = indoc! {"
+        <details>
+        <summary>見出し</summary>
+
+        本文の段落
+
+        </details>
+
+        # 外
+    "};
+
+    cx.new(|cx| {
+        let mut buffer = Buffer::local(text, cx);
+        buffer.set_language_registry(registry);
+        buffer.set_language(Some(markdown), cx);
+        let snapshot = buffer.snapshot();
+        let language_names_at = |offset: usize| {
+            (
+                snapshot.language_at(offset).map(|language| language.name()),
+                buffer.language_at(offset).map(|language| language.name()),
+                snapshot
+                    .language_scope_at(offset)
+                    .map(|scope| scope.language_name()),
+                buffer
+                    .languages_at(offset)
+                    .iter()
+                    .map(|language| language.name())
+                    .collect::<Vec<_>>(),
+            )
+        };
+
+        for line in ["本文の段落", "# 外"] {
+            let line_start = text.find(line).unwrap();
+            let second_character = line_start + line.chars().next().unwrap().len_utf8();
+            for offset in [line_start, second_character, line_start + line.len()] {
+                assert_eq!(
+                    language_names_at(offset),
+                    (
+                        Some("Markdown".into()),
+                        Some("Markdown".into()),
+                        Some("Markdown".into()),
+                        vec!["Markdown".into()]
+                    ),
+                    "at byte {offset} of {line:?}"
+                );
+            }
+        }
+
+        for (line, column) in [("<summary>見出し</summary>", 1), ("</details>", 2)] {
+            let offset = text.find(line).unwrap() + column;
+            let (snapshot_language, buffer_language, scope, _) = language_names_at(offset);
+            assert_eq!(snapshot_language, Some("HTML".into()), "in {line:?}");
+            assert_eq!(buffer_language, Some("HTML".into()), "in {line:?}");
+            assert_eq!(scope, Some("HTML".into()), "in {line:?}");
+        }
+
+        buffer
+    });
+}
+
+#[gpui::test]
+async fn test_markdown_task_markers_escapes_link_titles_entities_and_math_are_highlighted(
+    cx: &mut TestAppContext,
+) {
+    let text = indoc! {r#"
+        - [ ] 未完了
+        - [x] 完了
+
+        \*強調ではない\* と改行\
+        次の行
+
+        [リンク](https://example.com "タイトル") と A&nbsp;B と &#169;
+
+        [参照]: https://example.com "定義のタイトル"
+
+        $$
+        E=mc^2
+        $$
+
+        価格は $5 と $10 です。
+    "#};
+    let keys = markdown_theme_keys(text, cx);
+    let key = |context, needle| theme_key_at(text, &keys, context, needle);
+
+    assert_eq!(key("- [ ] 未完了", "[ ]"), Some("punctuation.list_marker"));
+    assert_eq!(key("- [x] 完了", "[x]"), Some("punctuation.list_marker"));
+    assert_eq!(key("\\*強調ではない", "\\*"), Some("string.escape"));
+    assert_eq!(key("改行\\\n", "\\"), Some("string.escape"));
+    assert_eq!(key("\"タイトル\"", "\"タイトル\""), Some("string"));
+    assert_eq!(key("[リンク]", "[リンク]"), Some("link_text"));
+    assert_eq!(key("A&nbsp;B", "&nbsp;"), Some("string.special"));
+    assert_eq!(key("&#169;", "&#169;"), Some("string.special"));
+    assert_eq!(
+        key("\"定義のタイトル\"", "\"定義のタイトル\""),
+        Some("string")
+    );
+    assert_eq!(
+        key("$$\nE=mc^2\n$$", "$$\nE=mc^2\n$$"),
+        Some("text.literal")
+    );
+    // The grammar takes `$5 と $` for inline math; prices must stay prose.
+    assert_eq!(key("$5 と $10", "$5 と $"), None);
+}
+
+#[gpui::test]
+fn test_markdown_line_starts_after_html_blocks_are_markdown(cx: &mut App) {
+    init_settings(cx, |_| {});
+    let theme = default_theme_syntax();
+    let (registry, markdown) =
+        markdown_with_html_registry(&theme, cx.background_executor().clone());
+    // A comment block ends at its `-->` line, with no blank line after it.
+    // Inline tags on separate lines of a paragraph are joined by the line
+    // break after the first one.
+    let text = "<!-- 注記 -->\r\n# 見出し\r\n\r\n<div>\r\n\r\n- 項目\r\n\r\n</div>\r\n\r\n段落\r\n\r\n<b>一行目</b>\r\n二行目 <i>x</i>\r\n";
+
+    cx.new(|cx| {
+        let mut buffer = Buffer::local(text, cx);
+        assert_eq!(buffer.line_ending(), LineEnding::Windows);
+        buffer.set_language_registry(registry);
+        buffer.set_language(Some(markdown), cx);
+        let snapshot = buffer.snapshot();
+        let row_of = |line: &str| {
+            snapshot
+                .text()
+                .lines()
+                .position(|text_line| text_line == line)
+                .unwrap_or_else(|| panic!("{line:?} is not in the fixture")) as u32
+        };
+
+        for line in ["# 見出し", "- 項目", "段落", "二行目 <i>x</i>"] {
+            let point = Point::new(row_of(line), 0);
+            assert_eq!(
+                snapshot
+                    .language_scope_at(point)
+                    .map(|scope| scope.language_name()),
+                Some("Markdown".into()),
+                "scope at the start of {line:?}"
+            );
+            assert_eq!(
+                buffer.language_at(point).map(|language| language.name()),
+                Some("Markdown".into()),
+                "language at the start of {line:?}"
+            );
+            assert_eq!(
+                buffer
+                    .languages_at(point)
+                    .iter()
+                    .map(|language| language.name())
+                    .collect::<Vec<_>>(),
+                vec![LanguageName::from("Markdown")],
+                "languages at the start of {line:?}"
+            );
+        }
+        for line in ["<!-- 注記 -->", "<div>", "</div>", "<b>一行目</b>"] {
+            let point = Point::new(row_of(line), 0);
+            assert_eq!(
+                snapshot
+                    .language_scope_at(point)
+                    .map(|scope| scope.language_name()),
+                Some("HTML".into()),
+                "scope at the start of {line:?}"
+            );
+        }
+
+        buffer
+    });
+}
+
+#[gpui::test]
+fn test_language_scope_at_line_starts_between_combined_injections(cx: &mut App) {
+    init_settings(cx, |_| {});
+
+    cx.new(|cx| {
+        let text = r#"
+            <ol>
+            <% people.each do |person| %>
+            <li><%= person.name %></li>
+            <% end %>
+                <% if people.empty? %>
+            </ol>
+        "#
+        .unindent();
+
+        let language_registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+        language_registry.add(Arc::new(ruby_lang()));
+        language_registry.add(Arc::new(html_lang()));
+        language_registry.add(Arc::new(erb_lang()));
+
+        let mut buffer = Buffer::local(text, cx);
+        buffer.set_language_registry(language_registry.clone());
+        let language = language_registry
+            .language_for_name("HTML+ERB")
+            .now_or_never()
+            .and_then(Result::ok);
+        buffer.set_language(language, cx);
+        let snapshot = buffer.snapshot();
+        let scope_name_at = |point: Point| {
+            snapshot
+                .language_scope_at(point)
+                .map(|scope| scope.language_name())
+        };
+
+        // Ruby's combined layer takes in the line break after each directive,
+        // which must not make the HTML line that follows Ruby.
+        let html_line_start = Point::new(2, 0);
+        assert_eq!(scope_name_at(html_line_start), Some("HTML".into()));
+        let html_config = snapshot.language_scope_at(html_line_start).unwrap();
+        assert_eq!(html_config.line_comment_prefixes(), &[]);
+        assert_eq!(
+            html_config
+                .block_comment()
+                .map(|comment| comment.start.as_ref()),
+            Some("<!--")
+        );
+        assert_eq!(
+            buffer
+                .language_at(html_line_start)
+                .map(|language| language.name()),
+            Some("HTML".into())
+        );
+        assert!(
+            !buffer
+                .languages_at(html_line_start)
+                .iter()
+                .any(|language| language.name().as_ref() == "Ruby"),
+        );
+        assert_eq!(scope_name_at(Point::new(5, 0)), Some("HTML".into()));
+
+        // A directive at the start of a line belongs to the template, like one
+        // at the start of the file.
+        assert_eq!(scope_name_at(Point::new(0, 0)), Some("HTML".into()));
+        assert_eq!(scope_name_at(Point::new(1, 0)), Some("HTML+ERB".into()));
+        assert_eq!(scope_name_at(Point::new(3, 0)), Some("HTML+ERB".into()));
+        // After indentation the HTML text runs up to the directive and still
+        // claims the position, as before.
+        assert_eq!(scope_name_at(Point::new(4, 4)), Some("HTML".into()));
+
+        buffer
+    });
+}
+
+#[gpui::test]
+async fn test_markdown_html_block_colors_after_edits_match_a_fresh_parse(cx: &mut TestAppContext) {
+    let theme = default_theme_syntax();
+    let (registry, markdown) = markdown_with_html_registry(&theme, cx.background_executor.clone());
+    let text = indoc! {r#"
+        <details>
+        <summary>見出し</summary>
+
+        本文
+
+        </details>
+
+        <table>
+        <tr>
+        <td>セル</td>
+        </tr>
+        </table>
+
+        <div align="center">
+
+        # 表題
+
+        </div>
+    "#};
+    let buffer = cx.new(|cx| {
+        let mut buffer = Buffer::local(text, cx);
+        buffer.set_language_registry(registry);
+        buffer.set_language(Some(markdown), cx);
+        buffer
+    });
+    cx.run_until_parked();
+
+    let edits: [(&str, &str); 4] = [
+        // Ahead of every block.
+        ("<details>", "前書き\n\n<details>"),
+        // Inside a block whose blank line touches the next block, far enough
+        // from that block that its lines are not looked at again.
+        ("セル", "セル二"),
+        // Joining a paragraph to the block before it, then splitting it off.
+        ("</summary>\n\n本文", "</summary>\n本文"),
+        ("</summary>\n本文", "</summary>\n\n本文"),
+    ];
+    for (old, new) in edits {
+        buffer.update(cx, |buffer, cx| {
+            let start = buffer
+                .text()
+                .find(old)
+                .unwrap_or_else(|| panic!("{old:?} is not in the buffer"));
+            buffer.edit([(start..start + old.len(), new)], None, cx);
+        });
+        cx.run_until_parked();
+
+        let (edited_text, edited_keys) = buffer.read_with(cx, |buffer, _| {
+            let snapshot = buffer.snapshot();
+            (snapshot.text(), theme_keys(&snapshot, &theme))
+        });
+        assert_eq!(
+            edited_keys,
+            markdown_theme_keys(&edited_text, cx),
+            "colors differ from a fresh parse after replacing {old:?} with {new:?}"
+        );
+        // The tag name is painted by the Markdown fallback either way; the
+        // brackets show the HTML layer still covers the last block.
+        assert_eq!(
+            theme_key_at(&edited_text, &edited_keys, "</div>", "</"),
+            Some("punctuation.bracket")
+        );
+    }
+
+    for _ in 0..4 {
+        buffer.update(cx, |buffer, cx| {
+            buffer.undo(cx);
+        });
+    }
+    cx.run_until_parked();
+    let (undone_text, undone_keys) = buffer.read_with(cx, |buffer, _| {
+        let snapshot = buffer.snapshot();
+        (snapshot.text(), theme_keys(&snapshot, &theme))
+    });
+    assert_eq!(undone_text, text);
+    assert_eq!(undone_keys, markdown_theme_keys(text, cx));
+}
+
+#[gpui::test]
+async fn test_markdown_closing_tag_fallback_leaves_other_text_alone(cx: &mut TestAppContext) {
+    let text = indoc! {r#"
+        段落の中で開く <div>
+        続き
+
+        </div> 後ろの文字
+
+        </span>
+        続きの行
+
+        > 引用
+        >
+        > </div>
+        > </section>
+    "#};
+    let keys = markdown_theme_keys(text, cx);
+    let key = |context, needle| theme_key_at(text, &keys, context, needle);
+
+    assert_eq!(key("</div> 後ろの文字", "後ろの文字"), None);
+    assert_eq!(key("</span>\n続きの行", "続きの行"), None);
+    assert_eq!(key("> </div>", "div"), Some("tag"));
+    assert_eq!(key("> </section>", "section"), Some("tag"));
+}
