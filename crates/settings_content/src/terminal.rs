@@ -195,6 +195,9 @@ pub struct TerminalSettingsContent {
     pub bell: Option<TerminalBell>,
     /// Session log (TeraTerm-style output recording) settings.
     pub session_log: Option<TerminalSessionLogContent>,
+    /// Whether SSH terminals keep their shell running on the remote host
+    /// across disconnects, and for how long.
+    pub remote_persistence: Option<TerminalRemotePersistenceContent>,
     /// マクロの実行ピッカーを開いたときフォルダーを閉じた状態にする。
     ///
     /// Default: false
@@ -227,6 +230,23 @@ pub struct TerminalSessionLogContent {
     ///
     /// Default: false
     pub timestamps: Option<bool>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct TerminalRemotePersistenceContent {
+    /// Whether a terminal opened over SSH runs its shell inside a session the
+    /// remote server keeps alive, so that a dropped connection neither stops
+    /// running commands nor loses the output: reconnecting shows everything
+    /// again and continues. Only for SSH hosts that are not Windows.
+    ///
+    /// Default: true
+    pub enabled: Option<bool>,
+    /// How many hours a session stays alive on the host with no terminal
+    /// attached to it before its shell is ended. 0 keeps it forever.
+    ///
+    /// Default: 24
+    pub detached_timeout_hours: Option<u32>,
 }
 
 /// Shell configuration to open the terminal with.

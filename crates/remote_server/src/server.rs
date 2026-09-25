@@ -1,5 +1,6 @@
 mod daemon;
 mod headless_project;
+pub mod terminal_session;
 
 #[cfg(test)]
 mod remote_editing_tests;
@@ -89,6 +90,11 @@ pub enum Commands {
         identifier: String,
     },
     Version,
+    /// Keeps the shell of a remote terminal alive across disconnects.
+    TerminalSession {
+        #[command(subcommand)]
+        command: terminal_session::TerminalSessionCommand,
+    },
 }
 
 pub fn run(command: Commands) -> anyhow::Result<()> {
@@ -123,6 +129,9 @@ pub fn run(command: Commands) -> anyhow::Result<()> {
             };
             Ok(())
         }
+        // Its exit codes are what the terminal reads (see
+        // `terminal_session`), not the generic 1 of an error.
+        Commands::TerminalSession { command } => std::process::exit(terminal_session::run(command)),
     }
 }
 

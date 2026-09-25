@@ -7465,7 +7465,6 @@ impl ProjectEntryId {
     }
 }
 
-#[cfg(feature = "test-support")]
 impl CreatedEntry {
     pub fn into_included(self) -> Option<Entry> {
         match self {

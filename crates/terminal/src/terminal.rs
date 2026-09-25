@@ -4,6 +4,7 @@ mod alacritty;
 mod pty_info;
 pub mod quick_connect_credentials;
 pub mod remote_cwd;
+pub mod remote_session;
 pub mod session_log;
 pub mod terminal_macro;
 pub mod terminal_settings;
@@ -49,7 +50,7 @@ use std::{
     process::ExitStatus,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -80,6 +81,7 @@ use crate::alacritty::{
 use crate::mappings::colors::to_vte_rgb;
 use crate::mappings::keys::to_esc_str;
 use crate::remote_cwd::RemoteCwdTracker;
+use crate::remote_session::{RemoteSessionFailure, RemoteTerminalSession, TAKEN_OVER_EXIT_CODE};
 use crate::session_log::{SessionLog, SessionLogOptions, SessionLogTap};
 
 /// Process-wide flag set by headless hosts (e.g. the eval CLI) that have no
@@ -1041,6 +1043,9 @@ impl TerminalBuilder {
             cwd_history: Vec::new(),
             pending_cwd_boundary: None,
             remote_cwd: None,
+            remote_session: None,
+            remote_session_failure: None,
+            remote_session_taken_over: false,
             #[cfg(any(test, feature = "test-support"))]
             input_log: Vec::new(),
             #[cfg(test)]
@@ -1059,6 +1064,47 @@ impl TerminalBuilder {
         working_directory: Option<PathBuf>,
         task: Option<TaskState>,
         shell: Shell,
+        env: HashMap<String, String>,
+        cursor_shape: SettingsCursorShape,
+        alternate_scroll: AlternateScroll,
+        max_scroll_history_lines: Option<usize>,
+        path_hyperlink_regexes: Vec<String>,
+        path_hyperlink_timeout_ms: u64,
+        is_remote_terminal: bool,
+        window_id: u64,
+        completion_tx: Option<Sender<Option<ExitStatus>>>,
+        cx: &App,
+        activation_script: Vec<String>,
+        path_style: PathStyle,
+    ) -> Task<Result<TerminalBuilder>> {
+        Self::new_with_remote_session(
+            working_directory,
+            task,
+            shell,
+            env,
+            cursor_shape,
+            alternate_scroll,
+            max_scroll_history_lines,
+            path_hyperlink_regexes,
+            path_hyperlink_timeout_ms,
+            is_remote_terminal,
+            window_id,
+            completion_tx,
+            cx,
+            activation_script,
+            path_style,
+            None,
+        )
+    }
+
+    /// [`Self::new`] for a remote shell whose `shell` attaches to a persistent
+    /// session (see [`remote_session`]). The session's nonce has to be known
+    /// before the PTY is read from, since the very first bytes the attach
+    /// prints are the marker carrying it.
+    pub fn new_with_remote_session(
+        working_directory: Option<PathBuf>,
+        task: Option<TaskState>,
+        shell: Shell,
         mut env: HashMap<String, String>,
         cursor_shape: SettingsCursorShape,
         alternate_scroll: AlternateScroll,
@@ -1071,6 +1117,7 @@ impl TerminalBuilder {
         cx: &App,
         activation_script: Vec<String>,
         path_style: PathStyle,
+        remote_session: Option<RemoteTerminalSession>,
     ) -> Task<Result<TerminalBuilder>> {
         let version = release_channel::AppVersion::global(cx);
         let background_executor = cx.background_executor().clone();
@@ -1180,6 +1227,9 @@ impl TerminalBuilder {
             // switched on later without rebuilding the terminal.
             let session_log_tap = SessionLogTap::default();
             let remote_cwd = is_remote_terminal.then(|| RemoteCwdTracker::new(path_style));
+            let remote_session = remote_session
+                .filter(|_| is_remote_terminal)
+                .map(RemoteSessionState::new);
             //Set up the terminal...
             let term = new_term(
                 &config,
@@ -1265,6 +1315,9 @@ impl TerminalBuilder {
                     pty_options.drain_on_exit,
                     session_log_tap.clone(),
                     remote_cwd.clone(),
+                    remote_session
+                        .as_ref()
+                        .map(RemoteSessionState::replay_marker_filter),
                 )?;
 
                 (
@@ -1346,6 +1399,9 @@ impl TerminalBuilder {
                 },
                 pending_cwd_boundary: None,
                 remote_cwd,
+                remote_session,
+                remote_session_failure: None,
+                remote_session_taken_over: false,
                 #[cfg(any(test, feature = "test-support"))]
                 input_log: Vec::new(),
                 #[cfg(test)]
@@ -1549,12 +1605,42 @@ pub struct Terminal {
     /// rebuilt from scratch whenever the grid is resized or cleared, and the
     /// directory a restart needs has to outlive both.
     remote_cwd: Option<RemoteCwdTracker>,
+    /// Present only for a remote shell attached to a persistent session.
+    remote_session: Option<RemoteSessionState>,
+    /// The attach exited without ever reaching a holder.
+    remote_session_failure: Option<RemoteSessionFailure>,
+    /// Another attach took the shell over ([`TAKEN_OVER_EXIT_CODE`]).
+    remote_session_taken_over: bool,
     #[cfg(any(test, feature = "test-support"))]
     input_log: Vec<Vec<u8>>,
     #[cfg(test)]
     suppress_hyperlink_throttle_once: bool,
     #[cfg(any(test, feature = "test-support"))]
     pty_write_log: std::cell::RefCell<Vec<Vec<u8>>>,
+}
+
+struct RemoteSessionState {
+    session: RemoteTerminalSession,
+    /// Set by the PTY reader thread once the attach announced its replay,
+    /// i.e. once it is known to have connected to a holder.
+    attached: Arc<AtomicBool>,
+}
+
+impl RemoteSessionState {
+    fn new(session: RemoteTerminalSession) -> Self {
+        Self {
+            session,
+            attached: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn replay_marker_filter(&self) -> crate::remote_session::ReplayMarkerFilter {
+        crate::remote_session::ReplayMarkerFilter::new(&self.session.nonce, self.attached.clone())
+    }
+
+    fn attached(&self) -> bool {
+        self.attached.load(Ordering::Acquire)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2342,6 +2428,32 @@ impl Terminal {
     #[cfg(any(test, feature = "test-support"))]
     pub fn take_pty_write_log(&mut self) -> Vec<Vec<u8>> {
         std::mem::take(self.pty_write_log.get_mut())
+    }
+
+    /// Makes this terminal behave as a remote shell, attached to `session`
+    /// when there is one, having (`attached`) or not yet having seen the
+    /// attach connect.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_remote_for_test(&mut self, session: Option<RemoteTerminalSession>, attached: bool) {
+        self.is_remote_terminal = true;
+        self.remote_session = session.map(|session| {
+            let state = RemoteSessionState::new(session);
+            state.attached.store(attached, Ordering::Release);
+            state
+        });
+    }
+
+    /// Handles the shell process exiting with `exit_code`, as the PTY event
+    /// loop reports it.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn simulate_exit_for_test(&mut self, exit_code: u32, cx: &mut Context<Self>) {
+        #[cfg(unix)]
+        let status = <ExitStatus as std::os::unix::process::ExitStatusExt>::from_raw(
+            (exit_code as i32) << 8,
+        );
+        #[cfg(windows)]
+        let status = <ExitStatus as std::os::windows::process::ExitStatusExt>::from_raw(exit_code);
+        self.register_task_finished(Some(status), cx);
     }
 
     /// Whether anything has been typed into this terminal by hand. Automation
@@ -3179,6 +3291,44 @@ impl Terminal {
         self.is_remote_terminal
     }
 
+    /// The persistent session this remote shell is attached to, if any. A
+    /// restart after a dropped connection attaches to the same one again, and
+    /// closing the tab ends it.
+    pub fn remote_session_id(&self) -> Option<&str> {
+        self.remote_session
+            .as_ref()
+            .map(|state| state.session.id.as_str())
+    }
+
+    /// Whether the attach exited without ever reaching a holder, and why, so
+    /// the shell has to be started again another way.
+    pub fn remote_session_failure(&self) -> Option<RemoteSessionFailure> {
+        self.remote_session_failure
+    }
+
+    /// Whether the attach of this terminal's persistent session reached a
+    /// holder, which it announces before anything else it prints. Until it
+    /// has, a dropped connection says nothing about a shell on the host.
+    pub fn remote_session_attached(&self) -> bool {
+        self.remote_session
+            .as_ref()
+            .is_some_and(RemoteSessionState::attached)
+    }
+
+    /// Whether this terminal's attach asked for a session an earlier attach
+    /// had, which may still hold a shell even if this attach never got to it.
+    pub fn remote_session_resumed(&self) -> bool {
+        self.remote_session
+            .as_ref()
+            .is_some_and(|state| state.session.resume)
+    }
+
+    /// Whether another attach took this terminal's shell over. The shell is
+    /// still alive; the tab stays so the user can take it back.
+    pub fn remote_session_taken_over(&self) -> bool {
+        self.remote_session_taken_over
+    }
+
     /// See [`Terminal::connection_origin`]. Recorded right after the quick
     /// connect spawn, since the terminal itself cannot tell what its command
     /// line meant.
@@ -3209,21 +3359,55 @@ impl Terminal {
         const SSH_CONNECTION_FAILURE_EXIT_CODE: i32 = 255;
 
         if !self.is_remote_terminal
-            || self.remote_connection_lost
             || self.child_exited.and_then(|status| status.code())
                 != Some(SSH_CONNECTION_FAILURE_EXIT_CODE)
         {
             return false;
         }
+        // The PTY event loop reports `ChildExit` and then `Exit` for the same
+        // process; the second report must keep the tab open as well.
+        if self.remote_connection_lost {
+            return true;
+        }
 
         self.remote_connection_lost = true;
+        // Only an attach that reached a holder knows of a shell that lives on;
+        // one that never did may have failed to reach the host at all.
+        let notice = if self.remote_session_attached() {
+            REMOTE_SESSION_DETACHED_NOTICE
+        } else {
+            REMOTE_CONNECTION_LOST_NOTICE
+        };
         // SAFETY: the child has exited, so the PTY reader produces no further
         // output that this write could interleave with, and the notice is
         // appended once because `remote_connection_lost` gates re-entry.
-        unsafe { append_text_to_term(&mut self.term.lock(), &[REMOTE_CONNECTION_LOST_NOTICE]) };
+        unsafe { append_text_to_term(&mut self.term.lock(), &[notice]) };
         cx.emit(Event::RemoteConnectionLost);
         cx.emit(Event::Wakeup);
         true
+    }
+
+    /// Handles the exits of an attach that are not the shell ending. Returns
+    /// whether the exit was one, in which case the tab must not close.
+    fn register_remote_session_exit(&mut self, cx: &mut Context<Terminal>) -> bool {
+        let Some(remote_session) = &self.remote_session else {
+            return false;
+        };
+        let exit_code = self.child_exited.and_then(|status| status.code());
+        if !remote_session.attached() {
+            let Some(failure) = exit_code.and_then(RemoteSessionFailure::from_exit_code) else {
+                return false;
+            };
+            self.remote_session_failure = Some(failure);
+            cx.emit(Event::Wakeup);
+            return true;
+        }
+        if exit_code == Some(TAKEN_OVER_EXIT_CODE) {
+            self.remote_session_taken_over = true;
+            cx.emit(Event::Wakeup);
+            return true;
+        }
+        false
     }
 
     fn register_task_finished(
@@ -3242,6 +3426,9 @@ impl Terminal {
             Some(task) => task,
             None => {
                 if self.register_remote_connection_lost(cx) {
+                    return;
+                }
+                if self.register_remote_session_exit(cx) {
                     return;
                 }
                 // For interactive shells (no task), we need to differentiate:
@@ -3333,6 +3520,11 @@ impl Terminal {
 /// connection, so the surviving tab explains why its shell stopped responding.
 pub const REMOTE_CONNECTION_LOST_NOTICE: &str =
     "[リモート接続が切れました。再接続後に再起動します]";
+
+/// [`REMOTE_CONNECTION_LOST_NOTICE`] for a shell attached to a persistent
+/// session, which did not stop with the connection.
+pub const REMOTE_SESSION_DETACHED_NOTICE: &str =
+    "[リモート接続が切れました。シェルはリモートで動き続けています。再接続後に続きから表示します]";
 
 const TASK_DELIMITER: &str = "⏵ ";
 fn task_summary(task: &TaskState, exit_status: Option<ExitStatus>) -> (bool, String, String) {
@@ -3827,6 +4019,46 @@ mod tests {
             ]),
             Some("customer-data-export".to_string())
         );
+    }
+
+    #[gpui::test]
+    fn test_remote_persistence_defaults_come_from_default_settings(cx: &mut TestAppContext) {
+        use gpui::BorrowAppContext as _;
+
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            // Read from the file itself, since `from_settings` falls back to
+            // the same values when the key is missing.
+            let defaults = settings_store
+                .raw_default_settings()
+                .terminal
+                .as_ref()
+                .and_then(|terminal| terminal.remote_persistence.clone());
+            assert_eq!(
+                defaults,
+                Some(settings::TerminalRemotePersistenceContent {
+                    enabled: Some(true),
+                    detached_timeout_hours: Some(24),
+                })
+            );
+            cx.set_global(settings_store);
+            let remote_persistence = TerminalSettings::get_global(cx).remote_persistence;
+            assert!(remote_persistence.enabled);
+            assert_eq!(remote_persistence.detached_timeout_secs(), 86_400);
+
+            cx.update_global::<settings::SettingsStore, _>(|settings_store, cx| {
+                settings_store
+                    .set_user_settings(
+                        r#"{"terminal": {"remote_persistence": {"enabled": false, "detached_timeout_hours": 0}}}"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("valid user settings");
+            });
+            let remote_persistence = TerminalSettings::get_global(cx).remote_persistence;
+            assert!(!remote_persistence.enabled);
+            assert_eq!(remote_persistence.detached_timeout_secs(), 0);
+        });
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -4541,6 +4773,8 @@ mod tests {
             terminal.is_remote_terminal = true;
             terminal.input(b"ls\r".to_vec());
             terminal.register_task_finished(Some(exit_status_with_code(255)), cx);
+            // The PTY event loop follows `ChildExit` with `Exit`.
+            terminal.register_task_finished(None, cx);
         });
         cx.run_until_parked();
 
@@ -4605,6 +4839,164 @@ mod tests {
         );
         terminal.update(cx, |terminal, _| {
             assert!(!terminal.remote_connection_lost());
+        });
+    }
+
+    /// A remote terminal attached to a persistent session whose shell exits
+    /// with `exit_code` after the user typed into it, with the events emitted.
+    fn finish_persistent_session(
+        attached: bool,
+        exit_code: u32,
+        cx: &mut TestAppContext,
+    ) -> (Entity<Terminal>, Arc<Mutex<Vec<Event>>>) {
+        let terminal = cx.new(|cx| {
+            TerminalBuilder::new_display_only(
+                SettingsCursorShape::default(),
+                AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                PathStyle::local(),
+            )
+            .subscribe(cx)
+        });
+
+        let all_events: Arc<Mutex<Vec<Event>>> = Arc::new(Mutex::new(Vec::new()));
+        cx.update({
+            let all_events = all_events.clone();
+            |cx| {
+                cx.subscribe(&terminal, move |_, event, _| {
+                    all_events.lock().push(event.clone());
+                })
+            }
+        })
+        .detach();
+
+        terminal.update(cx, |terminal, cx| {
+            terminal.set_remote_for_test(
+                Some(RemoteTerminalSession {
+                    id: "session".to_string(),
+                    nonce: "0123456789abcdef".to_string(),
+                    resume: false,
+                }),
+                attached,
+            );
+            terminal.input(b"ls\r".to_vec());
+            terminal.simulate_exit_for_test(exit_code, cx);
+        });
+        cx.run_until_parked();
+        (terminal, all_events)
+    }
+
+    #[gpui::test]
+    async fn test_persistent_session_that_never_attached_reports_why(cx: &mut TestAppContext) {
+        for (exit_code, expected) in [
+            // What clap exits with for a subcommand it does not know.
+            (2, RemoteSessionFailure::Unsupported),
+            // What `env` exits with when the server binary is not there.
+            (127, RemoteSessionFailure::Unsupported),
+            // A holder that did not start, or one of another version: the
+            // server knows sessions, just not this one.
+            (1, RemoteSessionFailure::Unreachable),
+        ] {
+            let (terminal, all_events) = finish_persistent_session(false, exit_code, cx);
+            assert!(
+                !all_events.lock().contains(&Event::CloseTerminal),
+                "the tab has to stay for the shell to start again, got: {:?}",
+                all_events.lock()
+            );
+            terminal.update(cx, |terminal, _| {
+                assert_eq!(
+                    terminal.remote_session_failure(),
+                    Some(expected),
+                    "exit code {exit_code}"
+                );
+                assert!(!terminal.remote_connection_lost());
+                assert!(!terminal.remote_session_taken_over());
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn test_persistent_session_that_never_attached_does_not_claim_a_live_shell(
+        cx: &mut TestAppContext,
+    ) {
+        // The very first `ssh` failed: nothing is known of a shell on the host.
+        let (terminal, all_events) = finish_persistent_session(false, 255, cx);
+        assert!(!all_events.lock().contains(&Event::CloseTerminal));
+        terminal.update(cx, |terminal, _| {
+            assert!(terminal.remote_connection_lost());
+            assert_eq!(terminal.remote_session_failure(), None);
+            let content = terminal.get_content();
+            assert!(
+                content.contains(REMOTE_CONNECTION_LOST_NOTICE),
+                "got: {content:?}"
+            );
+            assert!(!content.contains(REMOTE_SESSION_DETACHED_NOTICE));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_persistent_session_that_never_attached_closes_on_a_clean_exit(
+        cx: &mut TestAppContext,
+    ) {
+        let (terminal, all_events) = finish_persistent_session(false, 0, cx);
+        assert!(all_events.lock().contains(&Event::CloseTerminal));
+        terminal.update(cx, |terminal, _| {
+            assert_eq!(terminal.remote_session_failure(), None);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_persistent_session_taken_over_neither_closes_nor_waits_for_a_reconnect(
+        cx: &mut TestAppContext,
+    ) {
+        let (terminal, all_events) =
+            finish_persistent_session(true, TAKEN_OVER_EXIT_CODE as u32, cx);
+        assert!(
+            !all_events.lock().contains(&Event::CloseTerminal),
+            "a shell taken over by another attach is still alive, got: {:?}",
+            all_events.lock()
+        );
+        terminal.update(cx, |terminal, _| {
+            assert!(terminal.remote_session_taken_over());
+            assert!(
+                !terminal.remote_connection_lost(),
+                "a reconnect must not take the shell back on its own"
+            );
+            assert_eq!(terminal.remote_session_failure(), None);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_persistent_session_shell_exit_closes_like_any_remote_shell(
+        cx: &mut TestAppContext,
+    ) {
+        // 254 is what the server reports a shell's own 255 as.
+        let (terminal, all_events) = finish_persistent_session(true, 254, cx);
+        assert!(all_events.lock().contains(&Event::CloseTerminal));
+        terminal.update(cx, |terminal, _| {
+            assert!(!terminal.remote_session_taken_over());
+            assert_eq!(terminal.remote_session_failure(), None);
+            assert!(!terminal.remote_connection_lost());
+        });
+    }
+
+    #[gpui::test]
+    async fn test_persistent_session_dropped_connection_says_the_shell_lives_on(
+        cx: &mut TestAppContext,
+    ) {
+        let (terminal, all_events) = finish_persistent_session(true, 255, cx);
+        assert!(!all_events.lock().contains(&Event::CloseTerminal));
+        assert!(all_events.lock().contains(&Event::RemoteConnectionLost));
+        terminal.update(cx, |terminal, _| {
+            assert!(terminal.remote_connection_lost());
+            let content = terminal.get_content();
+            assert!(
+                content.contains(REMOTE_SESSION_DETACHED_NOTICE),
+                "got: {content:?}"
+            );
+            assert!(!content.contains(REMOTE_CONNECTION_LOST_NOTICE));
         });
     }
 

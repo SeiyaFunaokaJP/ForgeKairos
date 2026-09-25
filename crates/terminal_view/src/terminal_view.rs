@@ -26,6 +26,7 @@ use settings::{
 };
 use std::{
     any::Any,
+    cell::Cell,
     cmp,
     ops::Range as StdRange,
     path::{Path, PathBuf},
@@ -38,6 +39,7 @@ use terminal::{
     Clear, Copy, Event, HoveredWord, MaybeNavigationTarget, Modes, Paste, PasteText, Point, Range,
     ScrollLineDown, ScrollLineUp, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop,
     Search, ShowCharacterPalette, TaskState, TaskStatus, Terminal, TerminalBounds, ToggleViMode,
+    remote_session::RemoteSessionFailure,
     session_log,
     terminal_macro::{MacroProgress, TerminalMacro},
     terminal_settings::{CursorShape, TerminalSettings},
@@ -193,6 +195,17 @@ pub struct TerminalView {
     /// Kept so a restart in flight is cancelled with the view, and so a second
     /// request cannot spawn a second shell.
     restart_task: Option<Task<()>>,
+    /// Whether the view was last taken out of a pane rather than put into one.
+    /// A view that is released in that state was closed by the user, whose
+    /// persistent remote session then ends with it; one released while still
+    /// in a pane went with its window, workspace or Zed itself, and its
+    /// session stays for the next restore to attach to. A `Cell` because the
+    /// pane reports a removal through `&self`.
+    removed_from_pane: Cell<bool>,
+    /// A persistent session's attach failed to reach a holder, and the shell
+    /// was started again in a new session. Cleared once an attach gets
+    /// through, so that each failure gets one more try, and only one.
+    remote_session_retried: bool,
     /// Focus listeners live on the `Window` they were registered against, so a
     /// terminal whose tab is torn off into another window has to register them
     /// again. Kept apart from `_subscriptions` so only these are rebuilt.
@@ -343,7 +356,7 @@ impl TerminalView {
             if local {
                 project.create_local_terminal(cx)
             } else {
-                project.create_terminal_shell(working_directory, cx)
+                project.create_persistent_terminal_shell(working_directory, None, cx)
             }
         })
         .detach_and_log_err(cx);
@@ -434,6 +447,8 @@ impl TerminalView {
             session_log_tail: None,
             remote_connection_was_connected,
             restart_task: None,
+            removed_from_pane: Cell::new(false),
+            remote_session_retried: false,
             _window_focus_subscriptions: window_focus_subscriptions,
             focus_listener_window,
             _subscriptions: subscriptions,
@@ -446,6 +461,15 @@ impl TerminalView {
         {
             log::warn!("could not start the automatic terminal session log: {error:#}");
         }
+
+        cx.on_release(|this, cx| {
+            if let Some((project, session_id)) = this.remote_session_to_end_on_release(cx) {
+                project
+                    .read(cx)
+                    .kill_remote_terminal_session(session_id, cx);
+            }
+        })
+        .detach();
 
         this
     }
@@ -1044,6 +1068,15 @@ impl TerminalView {
     /// the tab, its title and its position — in place. The scrollback of the
     /// dead shell is lost.
     fn restart_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.restart_terminal_with(SessionRestart::Continue, window, cx);
+    }
+
+    fn restart_terminal_with(
+        &mut self,
+        session_restart: SessionRestart,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.restart_task.is_some() {
             return;
         }
@@ -1068,17 +1101,29 @@ impl TerminalView {
                 default_working_directory(workspace, cx)
             });
         let is_remote_terminal = terminal.is_remote_terminal();
+        let (persistent, resume_session_id) = match session_restart {
+            SessionRestart::Continue => (
+                terminal.remote_session_id().is_some(),
+                session_to_resume(terminal),
+            ),
+            SessionRestart::NewSession => (true, None),
+            SessionRestart::WithoutSession => (false, None),
+        };
         let Some(project) = self.project.upgrade() else {
             return;
         };
         // Recording continues into the same file, so the restart shows up as a
-        // gap in the session log rather than splitting it in two.
+        // gap in the session log rather than splitting it in two. A resumed
+        // session replays what the log already holds, which the terminal
+        // keeps out of it.
         let session_log_path = self.session_log_path(cx);
         let new_terminal = project.update(cx, |project, cx| {
             // A remote project can also hold local shells; those must not come
             // back as remote ones.
             if project.is_via_remote_server() && !is_remote_terminal {
                 project.create_local_terminal(cx)
+            } else if persistent {
+                project.create_persistent_terminal_shell(working_directory, resume_session_id, cx)
             } else {
                 project.create_terminal_shell(working_directory, cx)
             }
@@ -1125,6 +1170,59 @@ impl TerminalView {
         self.restart_terminal(window, cx);
     }
 
+    /// The attach of this terminal's persistent session exited without
+    /// reaching the remote server's holder. See [`recovery_from_session_failure`].
+    fn recover_from_remote_session_failure(
+        &mut self,
+        failure: RemoteSessionFailure,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.restart_task.is_some() {
+            return;
+        }
+        let (session_restart, message) =
+            recovery_from_session_failure(failure, self.remote_session_retried);
+        // A development build can reuse an old binary on the host, which
+        // every later shell on that server would trip over too.
+        if failure == RemoteSessionFailure::Unsupported
+            && let Some(project) = self.project.upgrade()
+        {
+            project.update(cx, |project, cx| {
+                project.disable_remote_terminal_persistence(cx);
+            });
+        }
+        self.remote_session_retried = session_restart == SessionRestart::NewSession;
+        self.workspace
+            .update(cx, |workspace, cx| {
+                struct RemoteSessionFailureToast;
+                workspace.show_toast(
+                    workspace::Toast::new(
+                        workspace::notifications::NotificationId::unique::<
+                            RemoteSessionFailureToast,
+                        >(),
+                        message,
+                    )
+                    .autohide(),
+                    cx,
+                );
+            })
+            .log_err();
+        self.restart_terminal_with(session_restart, window, cx);
+    }
+
+    /// The persistent remote session to end because this view is going away,
+    /// with the project to end it through. Only for a view the user closed
+    /// (see [`Self::removed_from_pane`]).
+    fn remote_session_to_end_on_release(&self, cx: &App) -> Option<(Entity<Project>, String)> {
+        if !self.removed_from_pane.get() {
+            return None;
+        }
+        let session_id = self.terminal.read(cx).remote_session_id()?.to_string();
+        let project = self.project.upgrade()?;
+        Some((project, session_id))
+    }
+
     fn remote_connection_state_changed(
         &mut self,
         connection_state: ConnectionState,
@@ -1142,9 +1240,7 @@ impl TerminalView {
     /// The strip above the terminal shown while a remote shell is waiting for
     /// its connection to come back.
     fn render_connection_lost_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !self.terminal.read(cx).remote_connection_lost() {
-            return None;
-        }
+        let banner = ConnectionLostBanner::for_terminal(self.terminal.read(cx))?;
 
         let colors = cx.theme().colors();
         Some(
@@ -1162,16 +1258,12 @@ impl TerminalView {
                         .size(IconSize::XSmall)
                         .color(Color::Error),
                 )
-                .child(Label::new("リモート接続が切れました").size(LabelSize::Small))
+                .child(Label::new(banner.message).size(LabelSize::Small))
                 .child(
-                    Button::new("terminal-restart", "再起動")
+                    Button::new("terminal-restart", banner.button)
                         .label_size(LabelSize::Small)
                         .tooltip(move |_window, cx| {
-                            Tooltip::for_action(
-                                "同じ作業ディレクトリでシェルを起動し直します",
-                                &RestartTerminal,
-                                cx,
-                            )
+                            Tooltip::for_action(banner.tooltip, &RestartTerminal, cx)
                         })
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.restart_terminal(window, cx);
@@ -1943,6 +2035,97 @@ fn terminal_rerun_override(task: &TaskId) -> zed_actions::Rerun {
     }
 }
 
+/// Which session a restarted remote shell runs in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SessionRestart {
+    /// The one the shell had, if it is still running there (see
+    /// [`session_to_resume`]), or a new one if the shell had one at all.
+    Continue,
+    /// A new session, giving up the one the shell had.
+    NewSession,
+    /// No session, like any shell where persistence is off.
+    WithoutSession,
+}
+
+/// How a terminal whose attach never reached a holder starts again, and
+/// what the user is told. A server without sessions gets no more attaches;
+/// otherwise the session is given up for a new one, once, so that a failure
+/// that repeats itself does not restart the shell forever.
+fn recovery_from_session_failure(
+    failure: RemoteSessionFailure,
+    already_retried: bool,
+) -> (SessionRestart, &'static str) {
+    match failure {
+        RemoteSessionFailure::Unsupported => (
+            SessionRestart::WithoutSession,
+            "リモートの Zed サーバーが切断対策に対応していないため、通常のシェルで起動し直しました。",
+        ),
+        RemoteSessionFailure::Unreachable if !already_retried => (
+            SessionRestart::NewSession,
+            "リモートのシェルに接続できなかったため、新しいシェルで起動し直しました。",
+        ),
+        RemoteSessionFailure::Unreachable => (
+            SessionRestart::WithoutSession,
+            "リモートのシェルに接続できなかったため、切断対策なしで起動し直しました。",
+        ),
+    }
+}
+
+/// The session a restart attaches to again: the one the shell is still
+/// running in on the host, after a dropped connection or after another
+/// attach took it over. A shell that ended starts over in a new session, and
+/// so does one whose new session was never reached: there is no shell to
+/// come back to, only a notice saying so.
+fn session_to_resume(terminal: &Terminal) -> Option<String> {
+    let shell_may_live_on =
+        terminal.remote_connection_lost() || terminal.remote_session_taken_over();
+    let session_may_exist = terminal.remote_session_attached() || terminal.remote_session_resumed();
+    if shell_may_live_on && session_may_exist {
+        terminal.remote_session_id().map(ToOwned::to_owned)
+    } else {
+        None
+    }
+}
+
+/// The strip shown above a remote shell that stopped showing its shell
+/// without the shell ending: its connection dropped, or another attach took
+/// the shell over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ConnectionLostBanner {
+    message: &'static str,
+    button: &'static str,
+    tooltip: &'static str,
+}
+
+impl ConnectionLostBanner {
+    fn for_terminal(terminal: &Terminal) -> Option<Self> {
+        if terminal.remote_session_taken_over() {
+            return Some(Self {
+                message: "別の接続がこのシェルを引き継ぎました",
+                button: "再接続",
+                tooltip: "このタブにシェルを取り戻します (もう一方の接続は切り離されます)",
+            });
+        }
+        if !terminal.remote_connection_lost() {
+            return None;
+        }
+        // Only an attach that got through knows the shell is on the host.
+        Some(if terminal.remote_session_attached() {
+            Self {
+                message: "リモート接続が切れました。シェルはリモートで動き続けています。再接続すると続きから表示します",
+                button: "再接続",
+                tooltip: "リモートのシェルにつなぎ直して、続きから表示します",
+            }
+        } else {
+            Self {
+                message: "リモート接続が切れました",
+                button: "再起動",
+                tooltip: "同じ作業ディレクトリでシェルを起動し直します",
+            }
+        })
+    }
+}
+
 fn subscribe_for_terminal_events(
     terminal: &Entity<Terminal>,
     workspace: WeakEntity<Workspace>,
@@ -1952,10 +2135,23 @@ fn subscribe_for_terminal_events(
     let terminal_subscription = cx.observe(terminal, |_, _, cx| cx.notify());
     let mut previous_cwd = None;
     let mut previous_remote_cwd = None;
+    let mut previous_remote_session_id = None;
     let terminal_events_subscription = cx.subscribe_in(
         terminal,
         window,
         move |terminal_view, terminal, event, window, cx| {
+            let current_remote_session_id =
+                terminal.read(cx).remote_session_id().map(ToOwned::to_owned);
+            if current_remote_session_id != previous_remote_session_id {
+                previous_remote_session_id = current_remote_session_id;
+                terminal_view.needs_serialize = true;
+            }
+            if terminal.read(cx).remote_session_attached() {
+                terminal_view.remote_session_retried = false;
+            }
+            if let Some(failure) = terminal.read(cx).remote_session_failure() {
+                terminal_view.recover_from_remote_session_failure(failure, window, cx);
+            }
             let current_cwd = terminal.read(cx).working_directory();
             if current_cwd != previous_cwd {
                 previous_cwd = current_cwd;
@@ -2692,6 +2888,7 @@ impl Item for TerminalView {
         // restart falls back to, the links a click follows - has to follow the
         // tab, or a terminal moved to a new window keeps driving the old one.
         self.workspace = workspace.weak_handle();
+        self.removed_from_pane.set(false);
         self.rebind_window_focus_listeners(window, cx);
         if self.terminal().read(cx).task().is_none() {
             if let Some((new_id, old_id)) = workspace.database_id().zip(self.workspace_id) {
@@ -2711,6 +2908,12 @@ impl Item for TerminalView {
 
     fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
         f(*event)
+    }
+
+    // A move to another pane or window removes the view and then adds it
+    // again, which `added_to_workspace` undoes.
+    fn on_removed(&self, _cx: &mut Context<Self>) {
+        self.removed_from_pane.set(true);
     }
 }
 
@@ -2754,6 +2957,7 @@ impl SerializableItem for TerminalView {
         let remote_cwd = terminal
             .remote_working_directory()
             .map(|cwd| cwd.to_string_lossy().into_owned());
+        let remote_session_id = terminal.remote_session_id().map(ToOwned::to_owned);
         let custom_title = self.custom_title.clone();
         self.needs_serialize = false;
 
@@ -2767,6 +2971,10 @@ impl SerializableItem for TerminalView {
                 db.save_remote_working_directory(item_id, workspace_id, remote_cwd)
                     .await?;
             }
+            // Written even when absent, so a tab whose shell no longer has a
+            // session does not resume a stale one after a restart of Zed.
+            db.save_remote_session_id(item_id, workspace_id, remote_session_id)
+                .await?;
             db.save_custom_title(item_id, workspace_id, custom_title)
                 .await?;
             Ok(())
@@ -2786,13 +2994,14 @@ impl SerializableItem for TerminalView {
         cx: &mut App,
     ) -> Task<anyhow::Result<Entity<Self>>> {
         window.spawn(cx, async move |cx| {
-            let (cwd, custom_title) = cx
+            let (cwd, custom_title, remote_session_id) = cx
                 .update(|_window, cx| {
                     let db = TerminalDb::global(cx);
+                    let is_via_remote_server = project.read(cx).is_via_remote_server();
                     // The two directories are stored apart because they are
                     // resolved on different machines; which one applies is
                     // decided by where this workspace's shells now run.
-                    let from_db = if project.read(cx).is_via_remote_server() {
+                    let from_db = if is_via_remote_server {
                         db.get_remote_working_directory(item_id, workspace_id)
                             .log_err()
                             .flatten()
@@ -2817,13 +3026,25 @@ impl SerializableItem for TerminalView {
                         .log_err()
                         .flatten()
                         .filter(|title| !title.trim().is_empty());
-                    (cwd, custom_title)
+                    // The session the tab's shell kept running on the host
+                    // while Zed was closed.
+                    let remote_session_id = if is_via_remote_server {
+                        db.get_remote_session_id(item_id, workspace_id)
+                            .log_err()
+                            .flatten()
+                            .filter(|id| !id.is_empty())
+                    } else {
+                        None
+                    };
+                    (cwd, custom_title, remote_session_id)
                 })
                 .ok()
-                .unwrap_or((None, None));
+                .unwrap_or((None, None, None));
 
             let terminal = project
-                .update(cx, |project, cx| project.create_terminal_shell(cwd, cx))
+                .update(cx, |project, cx| {
+                    project.create_persistent_terminal_shell(cwd, remote_session_id, cx)
+                })
                 .await?;
             cx.update(|window, cx| {
                 cx.new(|cx| {
@@ -3638,6 +3859,413 @@ mod tests {
             .unwrap();
 
         (project, workspace)
+    }
+
+    /// A remote project whose server records the persistent terminal sessions
+    /// it is asked to end.
+    async fn init_remote_test_recording_killed_sessions(
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) -> (
+        Entity<Project>,
+        gpui::WindowHandle<MultiWorkspace>,
+        Arc<std::sync::Mutex<Vec<String>>>,
+        Entity<()>,
+    ) {
+        cx.update(|cx| {
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+        });
+        server_cx.update(|cx| {
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+        });
+
+        let params = cx.update(AppState::test);
+        cx.update(|cx| {
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+        });
+        let (opts, server_session, connect_guard) = RemoteClient::fake_server(cx, server_cx);
+        let handler_entity = server_cx.new(|_| ());
+        server_session.add_request_handler::<rpc::proto::Ping, _, _, _>(
+            handler_entity.downgrade(),
+            |_entity, _envelope, _cx| async { Ok(rpc::proto::Ack {}) },
+        );
+        let killed_sessions = Arc::new(std::sync::Mutex::new(Vec::new()));
+        server_session.add_request_handler::<rpc::proto::KillTerminalSession, _, _, _>(
+            handler_entity.downgrade(),
+            {
+                let killed_sessions = killed_sessions.clone();
+                move |_entity, envelope, _cx| {
+                    let killed_sessions = killed_sessions.clone();
+                    async move {
+                        killed_sessions
+                            .lock()
+                            .map_err(|_| anyhow::anyhow!("poisoned"))?
+                            .push(envelope.payload.session_id);
+                        Ok(rpc::proto::Ack {})
+                    }
+                }
+            },
+        );
+        drop(connect_guard);
+
+        let remote_client = RemoteClient::connect_mock(opts, cx).await;
+        let project = cx.update(|cx| {
+            Project::remote(
+                remote_client,
+                params.client.clone(),
+                params.node_runtime.clone(),
+                params.user_store.clone(),
+                params.languages.clone(),
+                params.fs.clone(),
+                false,
+                cx,
+            )
+        });
+
+        let window_handle = cx.add_window({
+            let params = params.clone();
+            let project_for_workspace = project.clone();
+            move |window, cx| {
+                window.activate_window();
+                let workspace = cx.new(|cx| {
+                    Workspace::new(
+                        None,
+                        project_for_workspace.clone(),
+                        params.clone(),
+                        window,
+                        cx,
+                    )
+                });
+                MultiWorkspace::new(workspace, window, cx)
+            }
+        });
+        // Returned because the handlers hold it weakly and stop answering
+        // once it is gone.
+        (project, window_handle, killed_sessions, handler_entity)
+    }
+
+    fn persistent_session(id: &str) -> terminal::remote_session::RemoteTerminalSession {
+        terminal::remote_session::RemoteTerminalSession {
+            id: id.to_string(),
+            nonce: "0123456789abcdef".to_string(),
+            resume: false,
+        }
+    }
+
+    fn killed(killed_sessions: &Arc<std::sync::Mutex<Vec<String>>>) -> Vec<String> {
+        killed_sessions
+            .lock()
+            .map(|killed_sessions| killed_sessions.clone())
+            .unwrap_or_default()
+    }
+
+    #[gpui::test]
+    async fn test_closing_a_persistent_remote_terminal_ends_its_session(
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) {
+        let (project, window_handle, killed_sessions, _server_handlers) =
+            init_remote_test_recording_killed_sessions(cx, server_cx).await;
+        let (pane, terminal, terminal_view) =
+            add_display_only_terminal(&project, window_handle, true, cx);
+        terminal.update(cx, |terminal, _| {
+            terminal.set_remote_for_test(Some(persistent_session("closed-tab")), true);
+        });
+        let item_id = terminal_view.entity_id();
+        drop(terminal_view);
+        drop(terminal);
+        cx.run_until_parked();
+        assert_eq!(killed(&killed_sessions), Vec::<String>::new());
+
+        window_handle
+            .update(cx, |_, window, cx| {
+                pane.update(cx, |pane, cx| {
+                    pane.close_item_by_id(item_id, workspace::SaveIntent::Close, window, cx)
+                })
+            })
+            .expect("the window is open")
+            .await
+            .expect("closing the tab");
+        cx.run_until_parked();
+        server_cx.run_until_parked();
+        cx.run_until_parked();
+
+        assert_eq!(killed(&killed_sessions), vec!["closed-tab".to_string()]);
+    }
+
+    #[gpui::test]
+    async fn test_moving_a_persistent_remote_terminal_keeps_its_session(
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) {
+        let (project, window_handle, killed_sessions, _server_handlers) =
+            init_remote_test_recording_killed_sessions(cx, server_cx).await;
+        let (source_pane, terminal, terminal_view) =
+            add_display_only_terminal(&project, window_handle, true, cx);
+        terminal.update(cx, |terminal, _| {
+            terminal.set_remote_for_test(Some(persistent_session("moved-tab")), true);
+        });
+        let item_id = terminal_view.entity_id();
+        let weak_terminal_view = terminal_view.downgrade();
+        drop(terminal_view);
+        drop(terminal);
+
+        // Split the view off into a pane of its own: the pane removes it and
+        // the new one adds it.
+        let destination = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                let workspace = multi_workspace.workspace().clone();
+                let destination = workspace.update(cx, |workspace, cx| {
+                    workspace.split_pane(
+                        source_pane.clone(),
+                        workspace::SplitDirection::Right,
+                        window,
+                        cx,
+                    )
+                });
+                workspace::move_item(&source_pane, &destination, item_id, 0, true, window, cx);
+                destination
+            })
+            .expect("the window is open");
+        cx.run_until_parked();
+        server_cx.run_until_parked();
+        cx.run_until_parked();
+        assert_eq!(
+            killed(&killed_sessions),
+            Vec::<String>::new(),
+            "a moved tab still shows the session"
+        );
+        // Nor may it end the session later, when its window closes.
+        cx.read(|cx| {
+            let terminal_view = weak_terminal_view
+                .upgrade()
+                .expect("the moved view is alive");
+            assert!(
+                terminal_view
+                    .read(cx)
+                    .remote_session_to_end_on_release(cx)
+                    .is_none()
+            );
+        });
+
+        // Closing it from where it went still ends the session.
+        window_handle
+            .update(cx, |_, window, cx| {
+                destination.update(cx, |pane, cx| {
+                    pane.close_item_by_id(item_id, workspace::SaveIntent::Close, window, cx)
+                })
+            })
+            .expect("the window is open")
+            .await
+            .expect("closing the tab");
+        cx.run_until_parked();
+        server_cx.run_until_parked();
+        cx.run_until_parked();
+        assert_eq!(killed(&killed_sessions), vec!["moved-tab".to_string()]);
+    }
+
+    /// Closing a window, a workspace or Zed drops the views of its tabs
+    /// without taking them out of their panes first, so a view released that
+    /// way stands for all three.
+    #[gpui::test]
+    async fn test_a_persistent_remote_terminal_dropped_with_its_window_keeps_its_session(
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) {
+        let (project, window_handle, killed_sessions, _server_handlers) =
+            init_remote_test_recording_killed_sessions(cx, server_cx).await;
+        let view_released = Rc::new(Cell::new(false));
+        window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                let workspace = multi_workspace.workspace().clone();
+                let terminal = cx.new(|cx| {
+                    let mut terminal = terminal::TerminalBuilder::new_display_only(
+                        CursorShape::default(),
+                        terminal::terminal_settings::AlternateScroll::On,
+                        None,
+                        0,
+                        cx.background_executor(),
+                        PathStyle::Unix,
+                    )
+                    .subscribe(cx);
+                    terminal.set_remote_for_test(Some(persistent_session("kept")), true);
+                    terminal
+                });
+                let terminal_view = cx.new(|cx| {
+                    TerminalView::new(
+                        terminal,
+                        workspace.downgrade(),
+                        None,
+                        project.downgrade(),
+                        window,
+                        cx,
+                    )
+                });
+                let view_released = view_released.clone();
+                cx.observe_release(&terminal_view, move |_, _, _| view_released.set(true))
+                    .detach();
+            })
+            .expect("the window is open");
+        cx.run_until_parked();
+        server_cx.run_until_parked();
+        cx.run_until_parked();
+
+        assert!(view_released.get(), "the view should be gone");
+        assert_eq!(
+            killed(&killed_sessions),
+            Vec::<String>::new(),
+            "the session stays for the next restore to attach to"
+        );
+    }
+
+    fn remote_terminal_that_exited(
+        exit_code: u32,
+        with_session: bool,
+        cx: &mut TestAppContext,
+    ) -> Entity<Terminal> {
+        remote_terminal_that_exited_after(
+            exit_code,
+            with_session.then(|| persistent_session("session")),
+            true,
+            cx,
+        )
+    }
+
+    fn remote_terminal_that_exited_after(
+        exit_code: u32,
+        session: Option<terminal::remote_session::RemoteTerminalSession>,
+        attached: bool,
+        cx: &mut TestAppContext,
+    ) -> Entity<Terminal> {
+        let terminal = cx.new(|cx| {
+            terminal::TerminalBuilder::new_display_only(
+                CursorShape::default(),
+                terminal::terminal_settings::AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                PathStyle::Unix,
+            )
+            .subscribe(cx)
+        });
+        terminal.update(cx, |terminal, cx| {
+            terminal.set_remote_for_test(session, attached);
+            terminal.simulate_exit_for_test(exit_code, cx);
+        });
+        terminal
+    }
+
+    #[gpui::test]
+    async fn test_a_restart_resumes_the_session_only_while_its_shell_lives(
+        cx: &mut TestAppContext,
+    ) {
+        let lost = remote_terminal_that_exited(255, true, cx);
+        let taken_over = remote_terminal_that_exited(253, true, cx);
+        let ended = remote_terminal_that_exited(254, true, cx);
+        cx.read(|cx| {
+            assert_eq!(
+                session_to_resume(lost.read(cx)),
+                Some("session".to_string()),
+                "a dropped connection left the shell running"
+            );
+            assert_eq!(
+                session_to_resume(taken_over.read(cx)),
+                Some("session".to_string()),
+                "taking the shell back is what a restart of a taken-over tab means"
+            );
+            assert_eq!(
+                session_to_resume(ended.read(cx)),
+                None,
+                "a shell that ended starts over in a new session"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_the_connection_lost_banner_says_whether_the_shell_lives_on(
+        cx: &mut TestAppContext,
+    ) {
+        let persistent = remote_terminal_that_exited(255, true, cx);
+        let plain = remote_terminal_that_exited(255, false, cx);
+        let never_attached =
+            remote_terminal_that_exited_after(255, Some(persistent_session("session")), false, cx);
+        let taken_over = remote_terminal_that_exited(253, true, cx);
+        let ended = remote_terminal_that_exited(0, true, cx);
+        cx.read(|cx| {
+            let banner = ConnectionLostBanner::for_terminal(persistent.read(cx))
+                .expect("a banner for a dropped connection");
+            assert_eq!(
+                banner.message,
+                "リモート接続が切れました。シェルはリモートで動き続けています。再接続すると続きから表示します"
+            );
+            assert_eq!(banner.button, "再接続");
+
+            let banner = ConnectionLostBanner::for_terminal(plain.read(cx))
+                .expect("a banner for a dropped connection");
+            assert_eq!(banner.message, "リモート接続が切れました");
+            assert_eq!(banner.button, "再起動");
+
+            // The first `ssh` never got through: nothing is known of a shell.
+            let banner = ConnectionLostBanner::for_terminal(never_attached.read(cx))
+                .expect("a banner for a dropped connection");
+            assert_eq!(banner.message, "リモート接続が切れました");
+            assert_eq!(banner.button, "再起動");
+
+            let banner = ConnectionLostBanner::for_terminal(taken_over.read(cx))
+                .expect("a banner for a shell another attach took");
+            assert_eq!(banner.message, "別の接続がこのシェルを引き継ぎました");
+            assert_eq!(banner.button, "再接続");
+
+            assert_eq!(ConnectionLostBanner::for_terminal(ended.read(cx)), None);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_a_session_never_reached_is_resumed_only_if_it_existed_before(
+        cx: &mut TestAppContext,
+    ) {
+        let fresh =
+            remote_terminal_that_exited_after(255, Some(persistent_session("fresh")), false, cx);
+        let restored = remote_terminal_that_exited_after(
+            255,
+            Some(terminal::remote_session::RemoteTerminalSession {
+                resume: true,
+                ..persistent_session("restored")
+            }),
+            false,
+            cx,
+        );
+        cx.read(|cx| {
+            assert_eq!(
+                session_to_resume(fresh.read(cx)),
+                None,
+                "a session whose attach never got through holds no shell to come back to"
+            );
+            assert_eq!(
+                session_to_resume(restored.read(cx)),
+                Some("restored".to_string()),
+                "the shell a restored tab asked for may still be on the host"
+            );
+        });
+    }
+
+    #[test]
+    fn test_a_session_that_cannot_be_reached_is_retried_once_in_a_new_one() {
+        assert_eq!(
+            recovery_from_session_failure(RemoteSessionFailure::Unreachable, false).0,
+            SessionRestart::NewSession
+        );
+        assert_eq!(
+            recovery_from_session_failure(RemoteSessionFailure::Unreachable, true).0,
+            SessionRestart::WithoutSession,
+            "a second failure in a row stops asking for sessions in this tab"
+        );
+        for already_retried in [false, true] {
+            assert_eq!(
+                recovery_from_session_failure(RemoteSessionFailure::Unsupported, already_retried).0,
+                SessionRestart::WithoutSession
+            );
+        }
     }
 
     /// Creates a file in the given worktree and returns its entry.

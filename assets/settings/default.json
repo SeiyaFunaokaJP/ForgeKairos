@@ -2292,6 +2292,16 @@
       // 各行の先頭に `[YYYY-MM-DD HH:MM:SS] ` を付けます。
       "timestamps": false,
     },
+    // SSH のターミナルを切断に強くする設定 (Windows 以外のリモートホストのみ)。
+    // シェルはリモートの Zed サーバーが預かるので、接続が切れても実行中のコマンドは止まらず、
+    // 再接続するとそれまでの出力を表示し直して続きから使えます。タブを閉じるとシェルも終了します。
+    "remote_persistence": {
+      // false にすると、従来どおり接続が切れたときにシェルも終了します。
+      "enabled": true,
+      // どのターミナルからも接続されていない状態がこの時間 (時間単位) 続いたら、
+      // リモートのシェルを終了します。0 のときは終了しません。
+      "detached_timeout_hours": 24,
+    },
     "toolbar": {
       // Whether to display the terminal title in its toolbar's breadcrumbs.
       // Only shown if the terminal title is not empty.

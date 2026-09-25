@@ -793,9 +793,7 @@ fn is_transient_accept_error(error: &std::io::Error) -> bool {
 /// socket's directory already keeps other users out; this is the second lock
 /// on the same door.
 #[cfg(target_os = "linux")]
-fn peer_is_this_user(stream: &net::async_net::UnixStream) -> std::io::Result<bool> {
-    use std::os::fd::AsRawFd as _;
-
+pub(crate) fn peer_is_this_user(stream: &impl std::os::fd::AsRawFd) -> std::io::Result<bool> {
     let mut credentials = libc::ucred {
         pid: 0,
         uid: 0,
@@ -821,9 +819,7 @@ fn peer_is_this_user(stream: &net::async_net::UnixStream) -> std::io::Result<boo
 }
 
 #[cfg(target_os = "macos")]
-fn peer_is_this_user(stream: &net::async_net::UnixStream) -> std::io::Result<bool> {
-    use std::os::fd::AsRawFd as _;
-
+pub(crate) fn peer_is_this_user(stream: &impl std::os::fd::AsRawFd) -> std::io::Result<bool> {
     let mut uid = 0;
     let mut gid = 0;
     // SAFETY: `uid` and `gid` outlive the call, which only writes to them.

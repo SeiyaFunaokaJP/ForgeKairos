@@ -1068,7 +1068,7 @@ impl TerminalPanel {
                         cx,
                         working_directory,
                     ),
-                    None => project.create_terminal_shell(working_directory, cx),
+                    None => project.create_persistent_terminal_shell(working_directory, None, cx),
                 })
                 .await
                 .log_err()?;
@@ -1247,7 +1247,7 @@ impl TerminalPanel {
                 if local {
                     project.create_local_terminal(cx)
                 } else {
-                    project.create_terminal_shell(working_directory, cx)
+                    project.create_persistent_terminal_shell(working_directory, None, cx)
                 }
             })
             .detach_and_log_err(cx);
@@ -1495,7 +1495,9 @@ impl TerminalPanel {
                     .await
             } else {
                 project
-                    .update(cx, |project, cx| project.create_terminal_shell(cwd, cx))
+                    .update(cx, |project, cx| {
+                        project.create_persistent_terminal_shell(cwd, None, cx)
+                    })
                     .await
             };
 
@@ -1558,7 +1560,7 @@ impl TerminalPanel {
         })
     }
 
-    fn serialize(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn serialize(&mut self, cx: &mut Context<Self>) {
         if self.restoring {
             return;
         }
@@ -4153,5 +4155,72 @@ mod tests {
                 "the tab that was on top is put back on top"
             );
         });
+    }
+
+    /// Saving is held off while the panel is rebuilt, so what the restore put
+    /// together (including the fresh shell an empty pane is given) has to be
+    /// saved once it is done; otherwise the stale record wins on every start.
+    #[gpui::test]
+    async fn test_a_restored_panel_is_saved_once_the_restore_is_done(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, _panel) = panel_for_persistence_test(cx).await;
+        let serialization_key = window_handle
+            .update(cx, |multi_workspace, _, cx| {
+                TerminalPanel::serialization_key(multi_workspace.workspace().read(cx))
+            })
+            .expect("failed to read the workspace")
+            .expect("the test workspace has a session to save the panel under");
+
+        let serialized = SerializedTerminalPanel {
+            items: SerializedItems::WithSplits(SerializedPaneGroup::Pane(SerializedPane {
+                active: true,
+                items: vec![SerializedPanelItem {
+                    kind: Arc::from("TestItem"),
+                    item_id: 1,
+                    active: true,
+                    preview: false,
+                }],
+                children: Vec::new(),
+                active_item: None,
+                pinned_count: 0,
+            })),
+            active_item_id: None,
+        };
+        // Kept alive the way its workspace would keep it.
+        let _restored = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    deserialize_terminal_panel(
+                        workspace.weak_handle(),
+                        workspace.project().clone(),
+                        workspace::WorkspaceId::from_i64(1),
+                        serialized,
+                        window,
+                        cx,
+                    )
+                })
+            })
+            .expect("failed to start the restore")
+            .await
+            .expect("failed to restore the terminal panel");
+        cx.executor().advance_clock(Duration::from_millis(200));
+        cx.run_until_parked();
+
+        let saved = cx
+            .update(|cx| KeyValueStore::global(cx).read_kvp(&serialization_key))
+            .expect("failed to read the saved panel")
+            .expect("the restored panel should have been saved");
+        let saved: SerializedTerminalPanel =
+            serde_json::from_str(&saved).expect("the saved panel should parse");
+        let SerializedItems::WithSplits(SerializedPaneGroup::Pane(pane)) = &saved.items else {
+            panic!("the restored panel has a single pane");
+        };
+        assert_eq!(
+            pane.items
+                .iter()
+                .map(|item| item.kind.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["TestItem"]
+        );
     }
 }

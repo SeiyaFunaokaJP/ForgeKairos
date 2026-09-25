@@ -43,6 +43,7 @@ use crate::{
     ViMotion,
     pty_info::ProcessIdGetter,
     remote_cwd::RemoteCwdTracker,
+    remote_session::{FilteredOutput, ReplayMarkerFilter},
     session_log::SessionLogTap,
     terminal_settings::{AlternateScroll, CursorShape as SettingsCursorShape},
 };
@@ -205,6 +206,9 @@ pub(super) fn new_term(
 
 /// Wraps a PTY so every byte read from it is also handed to a
 /// [`SessionLogTap`], and — for remote shells — to a [`RemoteCwdTracker`].
+/// A shell attached to a persistent session also has its replay markers
+/// removed here, before any of the three sees them (see
+/// [`crate::remote_session`]).
 ///
 /// `EventedReadWrite::reader` hands back `&mut Self::Reader`, so a wrapper
 /// cannot own a reader that borrows the inner PTY. Making the wrapper itself
@@ -215,28 +219,146 @@ pub(super) struct TeePty<P> {
     inner: P,
     tap: SessionLogTap,
     remote_cwd: Option<RemoteCwdTracker>,
+    replay_markers: Option<ReplayMarkerFilter>,
+    filtered: FilteredOutput,
+    read_again: ReadAgain,
+}
+
+/// Brings alacritty's event loop back for output it left in the PTY.
+///
+/// The event loop stops reading after 64 KiB per wakeup (`MAX_LOCKED_READ`)
+/// so it does not hold the terminal lock too long, and counts on the poller
+/// to report the PTY readable again. On Unix the poller watches the PTY's
+/// file descriptor level-triggered, so it does. On Windows the event loop
+/// reads an in-process pipe that a thread fills from ConPTY, and that pipe
+/// only posts a readable event to a reader that found it empty: a read that
+/// takes data also takes back the reader's waker. After a stop at 64 KiB
+/// with output still queued nothing posts again, the pipe fills up, the
+/// thread stops reading ConPTY, and the shell blocks in its writes. A local
+/// shell, `ssh.exe` and a remote shell behind it all stall like this under
+/// fast output, until something unrelated (a key press) re-registers the
+/// PTY. Posting a readable event after every read that handed out data
+/// brings the loop back; when that later read finds the pipe empty, it
+/// registers the waker the usual way.
+#[derive(Default)]
+struct ReadAgain {
+    #[cfg(windows)]
+    poller: Option<Arc<Poller>>,
+}
+
+#[cfg(windows)]
+impl ReadAgain {
+    fn set_poller(&mut self, poller: &Arc<Poller>, interest: PollingEvent) {
+        self.poller = interest.readable.then(|| poller.clone());
+    }
+
+    fn clear(&mut self) {
+        self.poller = None;
+    }
+
+    fn request(&self) {
+        use polling::os::iocp::{CompletionPacket, PollerIocpExt as _};
+        use util::ResultExt as _;
+
+        if let Some(poller) = &self.poller {
+            poller
+                .post(CompletionPacket::new(PollingEvent::readable(
+                    tty::PTY_READ_WRITE_TOKEN,
+                )))
+                .log_err();
+        }
+    }
+}
+
+#[cfg(not(windows))]
+impl ReadAgain {
+    fn set_poller(&mut self, _: &Arc<Poller>, _: PollingEvent) {}
+
+    fn clear(&mut self) {}
+
+    fn request(&self) {}
 }
 
 impl<P> TeePty<P> {
-    fn new(inner: P, tap: SessionLogTap, remote_cwd: Option<RemoteCwdTracker>) -> Self {
+    fn new(
+        inner: P,
+        tap: SessionLogTap,
+        remote_cwd: Option<RemoteCwdTracker>,
+        replay_markers: Option<ReplayMarkerFilter>,
+    ) -> Self {
         Self {
             inner,
             tap,
             remote_cwd,
+            replay_markers,
+            filtered: FilteredOutput::default(),
+            read_again: ReadAgain::default(),
         }
     }
 }
 
 impl<P: tty::EventedReadWrite> io::Read for TeePty<P> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let read = self.inner.reader().read(buf)?;
+        let read = self.read_and_tee(buf)?;
         if read > 0 {
-            self.tap.record(&buf[..read]);
-            if let Some(remote_cwd) = &self.remote_cwd {
-                remote_cwd.record(&buf[..read]);
-            }
+            self.read_again.request();
         }
         Ok(read)
+    }
+}
+
+impl<P: tty::EventedReadWrite> TeePty<P> {
+    fn read_and_tee(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        use io::Read as _;
+
+        let Some(replay_markers) = self.replay_markers.as_mut() else {
+            let read = self.inner.reader().read(buf)?;
+            if read > 0 {
+                self.tap.record(&buf[..read]);
+                if let Some(remote_cwd) = &self.remote_cwd {
+                    remote_cwd.record(&buf[..read]);
+                }
+            }
+            return Ok(read);
+        };
+
+        loop {
+            // What the filter holds back as the possible start of a marker
+            // comes out in front of the next read, so that read has to leave
+            // room for it. A remainder kept for a later call instead could sit
+            // unseen until the shell next prints, because the event loop only
+            // calls again when the PTY has something new.
+            let room = buf.len().saturating_sub(replay_markers.pending_len());
+            if room == 0 {
+                return Err(io::ErrorKind::WouldBlock.into());
+            }
+            let read = self.inner.reader().read(&mut buf[..room])?;
+            // What the filter holds back stays held back: on Windows `Ok(0)`
+            // only means nothing more for now, and the rest of the marker may
+            // still come. When the stream has really ended, the held bytes are
+            // the unterminated start of an OSC, which the emulator would not
+            // have shown either.
+            if read == 0 {
+                return Ok(0);
+            }
+            self.filtered.clear();
+            replay_markers.filter(&buf[..read], &mut self.filtered);
+            let length = self.filtered.bytes.len();
+            // A chunk that was all marker must not come back as `Ok(0)`, which
+            // the event loop reads as "nothing more for now" while the inner
+            // PTY may still have data queued.
+            if length == 0 {
+                continue;
+            }
+            buf[..length].copy_from_slice(&self.filtered.bytes);
+            for live in &self.filtered.live {
+                self.tap.record(&self.filtered.bytes[live.clone()]);
+            }
+            if let Some(remote_cwd) = &self.remote_cwd {
+                remote_cwd.record(&self.filtered.bytes);
+            }
+            return Ok(length);
+        }
     }
 }
 
@@ -250,6 +372,7 @@ impl<P: tty::EventedReadWrite> tty::EventedReadWrite for TeePty<P> {
         interest: PollingEvent,
         mode: PollMode,
     ) -> io::Result<()> {
+        self.read_again.set_poller(poller, interest);
         unsafe { self.inner.register(poller, interest, mode) }
     }
 
@@ -259,10 +382,12 @@ impl<P: tty::EventedReadWrite> tty::EventedReadWrite for TeePty<P> {
         interest: PollingEvent,
         mode: PollMode,
     ) -> io::Result<()> {
+        self.read_again.set_poller(poller, interest);
         self.inner.reregister(poller, interest, mode)
     }
 
     fn deregister(&mut self, poller: &Arc<Poller>) -> io::Result<()> {
+        self.read_again.clear();
         self.inner.deregister(poller)
     }
 
@@ -294,8 +419,9 @@ pub(super) fn spawn_event_loop(
     drain_on_exit: bool,
     session_log_tap: SessionLogTap,
     remote_cwd: Option<RemoteCwdTracker>,
+    replay_markers: Option<ReplayMarkerFilter>,
 ) -> Result<PtySender> {
-    let pty = TeePty::new(pty, session_log_tap, remote_cwd);
+    let pty = TeePty::new(pty, session_log_tap, remote_cwd, replay_markers);
     let event_loop = EventLoop::new(term, ZedListener(events_tx), pty, drain_on_exit, false)
         .context("failed to create event loop")?;
     let pty_tx = event_loop.channel();
@@ -1263,6 +1389,7 @@ mod tests {
             },
             tap.clone(),
             None,
+            None,
         );
 
         let mut buffer = [0u8; 10];
@@ -1295,6 +1422,7 @@ mod tests {
             },
             SessionLogTap::default(),
             Some(remote_cwd.clone()),
+            None,
         );
 
         let mut buffer = [0u8; 64];
@@ -1302,6 +1430,360 @@ mod tests {
 
         assert_eq!(read, b"\x1b]7;file://host/srv\x07$ ".len());
         assert_eq!(remote_cwd.current(), Some(PathBuf::from("/srv")));
+    }
+
+    /// Hands out the stream in fixed-size reads, the way a PTY splits output
+    /// wherever its buffers happen to end, and then reports that nothing more
+    /// is available for now (`Ok(0)`, as on Windows).
+    struct ChunkedReader {
+        stream: Vec<u8>,
+        position: usize,
+        chunk_size: usize,
+        /// Where the reader once reports that nothing is available yet,
+        /// though more is to come.
+        pause_at: Option<usize>,
+    }
+
+    impl io::Read for ChunkedReader {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if let Some(pause_at) = self.pause_at
+                && self.position >= pause_at
+            {
+                self.pause_at = None;
+                return Ok(0);
+            }
+            let pause_end = self
+                .pause_at
+                .map_or(usize::MAX, |pause_at| pause_at.max(self.position));
+            let end = (self.position + self.chunk_size.min(buf.len()))
+                .min(self.stream.len())
+                .min(pause_end);
+            let chunk = &self.stream[self.position..end];
+            buf[..chunk.len()].copy_from_slice(chunk);
+            self.position = end;
+            Ok(chunk.len())
+        }
+    }
+
+    struct ChunkedPty {
+        reader: ChunkedReader,
+        writer: Vec<u8>,
+    }
+
+    impl tty::EventedReadWrite for ChunkedPty {
+        type Reader = ChunkedReader;
+        type Writer = Vec<u8>;
+
+        unsafe fn register(
+            &mut self,
+            _: &Arc<Poller>,
+            _: PollingEvent,
+            _: PollMode,
+        ) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn reregister(&mut self, _: &Arc<Poller>, _: PollingEvent, _: PollMode) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn deregister(&mut self, _: &Arc<Poller>) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn reader(&mut self) -> &mut Self::Reader {
+            &mut self.reader
+        }
+
+        fn writer(&mut self) -> &mut Self::Writer {
+            &mut self.writer
+        }
+    }
+
+    const NONCE: &str = "0123456789abcdef";
+
+    fn persistent_session_stream() -> Vec<u8> {
+        let mut stream = Vec::new();
+        stream.extend_from_slice(b"\x1b]7719;replay-begin;0123456789abcdef\x07");
+        stream.extend_from_slice(b"old output\r\n\x1b]7;file://host/srv/app\x07$ ");
+        stream.extend_from_slice(b"\x1b]7719;replay-end;0123456789abcdef\x07");
+        stream.extend_from_slice(b"make\r\n\x1b]7719;replay-end;ffffffffffffffff\x07done\r\n");
+        // Held back almost to the end before it turns out not to be a marker.
+        stream.extend_from_slice(b"\x1b]7719;replay-end;0123456789abcdefX\x07 still live");
+        stream
+    }
+
+    /// Reads a persistent session's stream through a [`TeePty`] the way the
+    /// alacritty event loop does, returning what the emulator got and what the
+    /// session log got.
+    fn read_through_replay_filter(
+        chunk_size: usize,
+        buffer_size: usize,
+    ) -> (
+        Vec<u8>,
+        Vec<u8>,
+        RemoteCwdTracker,
+        Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        read_stream_through_replay_filter(
+            persistent_session_stream(),
+            None,
+            chunk_size,
+            buffer_size,
+        )
+    }
+
+    /// Reads `stream` until the first `Ok(0)` after `pause_at` (or the
+    /// first one at all without it).
+    fn read_stream_through_replay_filter(
+        stream: Vec<u8>,
+        pause_at: Option<usize>,
+        chunk_size: usize,
+        buffer_size: usize,
+    ) -> (
+        Vec<u8>,
+        Vec<u8>,
+        RemoteCwdTracker,
+        Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        let tap = SessionLogTap::default();
+        let (sender, receiver) = async_channel::unbounded();
+        tap.install(sender);
+        let remote_cwd = RemoteCwdTracker::new(PathStyle::Unix);
+        let attached = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut pty = TeePty::new(
+            ChunkedPty {
+                reader: ChunkedReader {
+                    stream,
+                    position: 0,
+                    chunk_size,
+                    pause_at,
+                },
+                writer: Vec::new(),
+            },
+            tap,
+            Some(remote_cwd.clone()),
+            Some(ReplayMarkerFilter::new(NONCE, attached.clone())),
+        );
+
+        let mut shown = Vec::new();
+        let mut buffer = vec![0u8; buffer_size];
+        let mut pauses_left = usize::from(pause_at.is_some());
+        loop {
+            match pty.reader().read(&mut buffer) {
+                Ok(0) if pauses_left > 0 => pauses_left -= 1,
+                Ok(0) => break,
+                Ok(read) => shown.extend_from_slice(&buffer[..read]),
+                Err(error) => panic!("unexpected read error: {error}"),
+            }
+        }
+        let mut logged = Vec::new();
+        while let Ok(chunk) = receiver.try_recv() {
+            logged.extend(chunk);
+        }
+        (shown, logged, remote_cwd, attached)
+    }
+
+    #[test]
+    fn tee_pty_removes_replay_markers_and_keeps_the_replay_out_of_the_log() {
+        let expected_logged = b"make\r\n\x1b]7719;replay-end;ffffffffffffffff\x07done\r\n\x1b]7719;replay-end;0123456789abcdefX\x07 still live".to_vec();
+        let mut expected_shown = b"old output\r\n\x1b]7;file://host/srv/app\x07$ ".to_vec();
+        expected_shown.extend_from_slice(&expected_logged);
+        // A marker is 37 bytes long here, so the smaller buffers leave barely
+        // more room than what the filter holds back.
+        for (chunk_size, buffer_size) in [(4096, 4096), (1, 4096), (3, 40), (7, 38), (1, 38)] {
+            let (shown, logged, remote_cwd, attached) =
+                read_through_replay_filter(chunk_size, buffer_size);
+            assert_eq!(
+                String::from_utf8_lossy(&shown),
+                String::from_utf8_lossy(&expected_shown),
+                "reads of {chunk_size} bytes into a buffer of {buffer_size}"
+            );
+            assert_eq!(
+                String::from_utf8_lossy(&logged),
+                String::from_utf8_lossy(&expected_logged),
+                "reads of {chunk_size} bytes into a buffer of {buffer_size}"
+            );
+            // The replay tells where the shell was before the connection
+            // dropped, which is exactly what a later restart needs.
+            assert_eq!(remote_cwd.current(), Some(PathBuf::from("/srv/app")));
+            assert!(attached.load(std::sync::atomic::Ordering::Acquire));
+        }
+    }
+
+    #[test]
+    fn tee_pty_keeps_the_start_of_a_marker_across_a_read_of_nothing() {
+        let stream = persistent_session_stream();
+        let end_marker = b"\x1b]7719;replay-end;0123456789abcdef\x07";
+        let in_end_marker = stream
+            .windows(end_marker.len())
+            .position(|window| window == end_marker)
+            .expect("the stream has an end marker")
+            + 10;
+        let (shown, logged, _, _) =
+            read_stream_through_replay_filter(stream, Some(in_end_marker), 4096, 4096);
+        assert!(
+            !shown
+                .windows(b"7719;replay-end;0123456789abcdef\x07".len())
+                .any(|window| { window == b"7719;replay-end;0123456789abcdef\x07" }),
+            "the marker still comes out whole after the pause: {:?}",
+            String::from_utf8_lossy(&shown)
+        );
+        assert!(
+            logged.starts_with(b"make\r\n"),
+            "the replay stays out of the log: {:?}",
+            String::from_utf8_lossy(&logged)
+        );
+    }
+
+    #[test]
+    fn tee_pty_drops_the_unfinished_start_of_a_marker_at_the_end() {
+        let mut stream = b"\x1b]7719;replay-begin;0123456789abcdef\x07\x1b]7719;replay-end;0123456789abcdef\x07live".to_vec();
+        stream.extend_from_slice(b"\x1b]7719;replay-e");
+        let (shown, logged, _, _) = read_stream_through_replay_filter(stream, None, 4096, 4096);
+        // An OSC that never ends shows nothing in the emulator either.
+        assert_eq!(shown, b"live".to_vec());
+        assert_eq!(logged, b"live".to_vec());
+    }
+
+    #[test]
+    fn tee_pty_never_reports_a_chunk_of_markers_as_the_end_of_output() {
+        let (shown, _, _, _) =
+            read_through_replay_filter(b"\x1b]7719;replay-begin;0123456789abcdef\x07".len(), 4096);
+        assert!(
+            shown.starts_with(b"old output"),
+            "a read that was all marker must be followed by the next one: {:?}",
+            String::from_utf8_lossy(&shown)
+        );
+    }
+
+    /// Behaves like alacritty's Windows PTY pipe while output arrives faster
+    /// than the event loop parses it: each read finds another chunk that came
+    /// in meanwhile, and a readable event is posted only on the first
+    /// registration, never while data is left (the pipe posts only to a
+    /// reader that found it empty).
+    #[cfg(windows)]
+    struct BurstPty {
+        output: Vec<u8>,
+        handed_out: Arc<std::sync::atomic::AtomicUsize>,
+        writer: Vec<u8>,
+    }
+
+    #[cfg(windows)]
+    impl io::Read for BurstPty {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            use std::sync::atomic::Ordering;
+
+            let position = self.handed_out.load(Ordering::Acquire);
+            let length = buf.len().min(16 * 1024).min(self.output.len() - position);
+            buf[..length].copy_from_slice(&self.output[position..position + length]);
+            self.handed_out.store(position + length, Ordering::Release);
+            Ok(length)
+        }
+    }
+
+    #[cfg(windows)]
+    impl tty::EventedReadWrite for BurstPty {
+        type Reader = Self;
+        type Writer = Vec<u8>;
+
+        unsafe fn register(
+            &mut self,
+            poller: &Arc<Poller>,
+            interest: PollingEvent,
+            _: PollMode,
+        ) -> io::Result<()> {
+            use polling::os::iocp::{CompletionPacket, PollerIocpExt as _};
+
+            let mut event = interest;
+            event.key = tty::PTY_READ_WRITE_TOKEN;
+            poller.post(CompletionPacket::new(event))
+        }
+
+        fn reregister(&mut self, _: &Arc<Poller>, _: PollingEvent, _: PollMode) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn deregister(&mut self, _: &Arc<Poller>) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn reader(&mut self) -> &mut Self::Reader {
+            self
+        }
+
+        fn writer(&mut self) -> &mut Self::Writer {
+            &mut self.writer
+        }
+    }
+
+    #[cfg(windows)]
+    impl tty::EventedPty for BurstPty {
+        fn next_child_event(&mut self) -> Option<tty::ChildEvent> {
+            None
+        }
+    }
+
+    #[cfg(windows)]
+    impl alacritty_terminal::event::OnResize for BurstPty {
+        fn on_resize(&mut self, _: WindowSize) {}
+    }
+
+    /// The event loop stops after 64 KiB per wakeup; the rest of a burst must
+    /// still be read without anything else happening in the terminal.
+    #[cfg(windows)]
+    #[test]
+    fn tee_pty_keeps_the_event_loop_reading_a_long_burst_on_windows() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use std::time::{Duration, Instant};
+
+        let output = b"y\r\n".repeat(100_000);
+        for replay_markers in [
+            None,
+            Some(ReplayMarkerFilter::new(
+                NONCE,
+                Arc::new(AtomicBool::new(false)),
+            )),
+        ] {
+            let handed_out = Arc::new(AtomicUsize::new(0));
+            let (events_tx, _events_rx) = futures::channel::mpsc::unbounded();
+            let term = Term::new(
+                pty_term_config(1000, SettingsCursorShape::default()),
+                &TerminalBounds::default(),
+                ZedListener(events_tx.clone()),
+            );
+            let pty = TeePty::new(
+                BurstPty {
+                    output: output.clone(),
+                    handed_out: handed_out.clone(),
+                    writer: Vec::new(),
+                },
+                SessionLogTap::default(),
+                None,
+                replay_markers,
+            );
+            let event_loop = EventLoop::new(
+                Arc::new(FairMutex::new(term)),
+                ZedListener(events_tx),
+                pty,
+                false,
+                false,
+            )
+            .expect("the event loop starts");
+            let sender = event_loop.channel();
+            let event_loop = event_loop.spawn();
+
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while handed_out.load(Ordering::Acquire) < output.len() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let read = handed_out.load(Ordering::Acquire);
+            sender
+                .send(Msg::Shutdown)
+                .expect("the event loop takes the shutdown");
+            event_loop.join().expect("the event loop exits");
+            assert_eq!(read, output.len(), "the event loop stopped reading");
+        }
     }
 
     #[test]

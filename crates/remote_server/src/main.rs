@@ -61,7 +61,7 @@ fn main() -> anyhow::Result<()> {
         res
     } else {
         std::io::stderr()
-            .write_all(b"usage: remote <daemon|proxy|version>\n")
+            .write_all(b"usage: remote <daemon|proxy|version|terminal-session>\n")
             .ok();
         std::process::exit(1);
     }

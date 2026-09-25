@@ -53,6 +53,7 @@ pub struct TerminalSettings {
     pub show_count_badge: bool,
     pub bell: TerminalBell,
     pub session_log: SessionLogSettings,
+    pub remote_persistence: RemotePersistenceSettings,
     /// Whether 「マクロを実行」 opens with every folder heading folded shut,
     /// ignoring the per-folder state kept in `terminal_sessions.json`.
     pub macro_picker_folders_collapsed: bool,
@@ -76,6 +77,24 @@ impl SessionLogSettings {
             strip_control_sequences: self.strip_control_sequences,
             timestamps: crate::session_log::TimestampFlag::new(self.timestamps),
         }
+    }
+}
+
+/// Resolved `terminal.remote_persistence` settings. See
+/// [`crate::remote_session`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RemotePersistenceSettings {
+    pub enabled: bool,
+    pub detached_timeout_hours: u32,
+}
+
+impl RemotePersistenceSettings {
+    const DEFAULT_DETACHED_TIMEOUT_HOURS: u32 = 24;
+
+    /// The idle time after which the host ends a session no terminal is
+    /// attached to, as `terminal-session attach` takes it (0 = never).
+    pub fn detached_timeout_secs(&self) -> u64 {
+        u64::from(self.detached_timeout_hours) * 60 * 60
     }
 }
 
@@ -171,6 +190,17 @@ impl settings::Settings for TerminalSettings {
                     file_name_template: session_log.file_name_template.unwrap(),
                     strip_control_sequences: session_log.strip_control_sequences.unwrap(),
                     timestamps: session_log.timestamps.unwrap(),
+                }
+            },
+            // Like `macro_picker_folders_collapsed` below, a fork addition that
+            // must not take the terminal down when `default.json` lacks it.
+            remote_persistence: {
+                let remote_persistence = user_content.remote_persistence.unwrap_or_default();
+                RemotePersistenceSettings {
+                    enabled: remote_persistence.enabled.unwrap_or(true),
+                    detached_timeout_hours: remote_persistence
+                        .detached_timeout_hours
+                        .unwrap_or(RemotePersistenceSettings::DEFAULT_DETACHED_TIMEOUT_HOURS),
                 }
             },
             // Unlike the fields above this one does not `unwrap`: the key is a

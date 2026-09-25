@@ -154,7 +154,14 @@ pub(crate) fn deserialize_terminal_panel(
             }
         }
 
-        terminal_panel.update(cx, |terminal_panel, _| terminal_panel.restoring = false);
+        terminal_panel.update(cx, |terminal_panel, cx| {
+            terminal_panel.restoring = false;
+            // A pane that came back empty was given a fresh shell while saving
+            // was held off. Unless the panel is saved now, it keeps its empty
+            // record, and every later start opens yet another shell instead of
+            // returning to the one this tab runs (a remote tab's session).
+            terminal_panel.serialize(cx);
+        });
         Ok(terminal_panel)
     })
 }
@@ -285,7 +292,7 @@ async fn deserialize_pane_group(
                     .flatten();
                 let terminal = project
                     .update(cx, |project, cx| {
-                        project.create_terminal_shell(working_directory, cx)
+                        project.create_persistent_terminal_shell(working_directory, None, cx)
                     })
                     .await
                     .log_err();
@@ -551,6 +558,11 @@ impl Domain for TerminalDb {
         sql! (
             ALTER TABLE terminals ADD COLUMN remote_working_directory TEXT;
         ),
+        // The persistent session a remote shell runs in on its host, which
+        // outlives Zed and is attached to again when the tab is restored.
+        sql! (
+            ALTER TABLE terminals ADD COLUMN remote_session_id TEXT;
+        ),
     ];
 }
 
@@ -635,6 +647,37 @@ impl TerminalDb {
     query! {
         pub fn get_remote_working_directory(item_id: ItemId, workspace_id: WorkspaceId) -> Result<Option<String>> {
             SELECT remote_working_directory
+            FROM terminals
+            WHERE item_id = ? AND workspace_id = ?
+        }
+    }
+
+    pub async fn save_remote_session_id(
+        &self,
+        item_id: ItemId,
+        workspace_id: WorkspaceId,
+        remote_session_id: Option<String>,
+    ) -> Result<()> {
+        log::debug!(
+            "Saving remote session id {remote_session_id:?} for item {item_id} in workspace {workspace_id:?}"
+        );
+        self.write(move |conn| {
+            let query = "INSERT INTO terminals (item_id, workspace_id, remote_session_id)
+                VALUES (?1, ?2, ?3)
+                ON CONFLICT (workspace_id, item_id) DO UPDATE SET
+                    remote_session_id = excluded.remote_session_id";
+            let mut statement = Statement::prepare(conn, query)?;
+            let mut next_index = statement.bind(&item_id, 1)?;
+            next_index = statement.bind(&workspace_id, next_index)?;
+            statement.bind(&remote_session_id, next_index)?;
+            statement.exec()
+        })
+        .await
+    }
+
+    query! {
+        pub fn get_remote_session_id(item_id: ItemId, workspace_id: WorkspaceId) -> Result<Option<String>> {
+            SELECT remote_session_id
             FROM terminals
             WHERE item_id = ? AND workspace_id = ?
         }
@@ -795,6 +838,103 @@ mod tests {
             db.get_remote_working_directory(1, workspace_id)
                 .expect("reading back the later remote directory"),
             Some("/srv/app/logs".to_string())
+        );
+    }
+
+    #[gpui::test]
+    async fn test_remote_session_id_is_stored_and_can_be_cleared() {
+        let _workspaces = WorkspaceDb::open_test_db("test_remote_session_id").await;
+        let db = TerminalDb::open_test_db("test_remote_session_id").await;
+        let workspace_id = WorkspaceId::from_i64(1);
+        db.write(|connection| {
+            connection.exec("INSERT INTO workspaces (workspace_id) VALUES (1)")?()
+        })
+        .await
+        .expect("the terminals row needs a workspace to reference");
+
+        db.save_remote_working_directory(1, workspace_id, "/srv/app".to_string())
+            .await
+            .expect("saving a remote directory");
+        db.save_remote_session_id(
+            1,
+            workspace_id,
+            Some("0f8e5d7c-2a4b-4c6d-8e9f-001122334455".to_string()),
+        )
+        .await
+        .expect("saving a session id");
+        assert_eq!(
+            db.get_remote_session_id(1, workspace_id)
+                .expect("reading back the session id"),
+            Some("0f8e5d7c-2a4b-4c6d-8e9f-001122334455".to_string())
+        );
+        assert_eq!(
+            db.get_remote_working_directory(1, workspace_id)
+                .expect("reading back the remote directory"),
+            Some("/srv/app".to_string()),
+            "the session id shares the row with the directory"
+        );
+
+        db.save_remote_session_id(1, workspace_id, None)
+            .await
+            .expect("clearing the session id");
+        // A cleared column reads back empty, which restoring treats as none.
+        assert_eq!(
+            db.get_remote_session_id(1, workspace_id)
+                .expect("reading back the cleared session id")
+                .filter(|id| !id.is_empty()),
+            None
+        );
+    }
+
+    /// A database written by a build from before the column existed gets it
+    /// on the next start, with every row it already had intact.
+    #[test]
+    fn test_remote_session_id_migration_runs_on_an_existing_database() {
+        let connection = db::sqlez::connection::Connection::open_memory(Some(
+            "test_remote_session_id_migration_runs_on_an_existing_database",
+        ));
+        connection
+            .exec("CREATE TABLE workspaces (workspace_id INTEGER PRIMARY KEY)")
+            .expect("preparing the workspaces table")()
+        .expect("creating the workspaces table");
+        let migrations = TerminalDb::MIGRATIONS;
+        let previous_migrations = migrations
+            .split_last()
+            .map(|(_, previous)| previous)
+            .expect("the terminal domain has migrations");
+        connection
+            .migrate(TerminalDb::NAME, previous_migrations, &mut |_, _, _| false)
+            .expect("the previous build's migrations");
+        connection
+            .exec("INSERT INTO workspaces (workspace_id) VALUES (1)")
+            .expect("preparing the workspace row")()
+        .expect("inserting the workspace row");
+        connection
+            .exec(
+                "INSERT INTO terminals (workspace_id, item_id, remote_working_directory, custom_title)
+                 VALUES (1, 7, '/srv/app', 'frontend')",
+            )
+            .expect("preparing an old row")()
+        .expect("inserting an old row");
+
+        connection
+            .migrate(TerminalDb::NAME, migrations, &mut |_, _, _| false)
+            .expect("the current migrations run over the old database");
+
+        let row = connection
+            .select_row::<(Option<String>, Option<String>, Option<String>)>(
+                "SELECT remote_working_directory, custom_title, remote_session_id
+                 FROM terminals WHERE item_id = 7",
+            )
+            .expect("preparing the read")()
+        .expect("reading the old row");
+        assert_eq!(
+            row,
+            Some((
+                Some("/srv/app".to_string()),
+                Some("frontend".to_string()),
+                None
+            ))
         );
     }
 }

@@ -580,6 +580,7 @@ impl HeadlessProject {
         session.add_request_handler(cx.weak_entity(), Self::handle_cancel_transfer_command);
         session.add_request_handler(cx.weak_entity(), Self::handle_list_transfer_directory);
         session.add_request_handler(cx.weak_entity(), Self::handle_transfer_file_operation);
+        session.add_request_handler(cx.weak_entity(), Self::handle_kill_terminal_session);
 
         BufferStore::init(&session);
         WorktreeStore::init(&session);
@@ -1506,6 +1507,17 @@ impl HeadlessProject {
                 cancellation.send(()).ok();
             }
         });
+        Ok(proto::Ack {})
+    }
+
+    /// Ends the shell a persistent remote terminal kept, because its tab was
+    /// closed.
+    async fn handle_kill_terminal_session(
+        _: Entity<Self>,
+        envelope: TypedEnvelope<proto::KillTerminalSession>,
+        cx: AsyncApp,
+    ) -> Result<proto::Ack> {
+        crate::terminal_session::kill(envelope.payload.session_id, &cx).await?;
         Ok(proto::Ack {})
     }
 

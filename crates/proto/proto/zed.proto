@@ -539,7 +539,8 @@ message Envelope {
     ListSandboxProcesses list_sandbox_processes = 507;
     ListSandboxProcessesResponse list_sandbox_processes_response = 508;
     StopSandboxProcesses stop_sandbox_processes = 509;
-    StopSandboxProcessesResponse stop_sandbox_processes_response = 510; // current max
+    StopSandboxProcessesResponse stop_sandbox_processes_response = 510;
+    KillTerminalSession kill_terminal_session = 520; // current max
   }
 
   reserved 87 to 88;

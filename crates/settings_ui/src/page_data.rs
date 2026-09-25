@@ -7948,6 +7948,66 @@ fn terminal_page() -> SettingsPage {
         ]
     }
 
+    fn remote_persistence_section() -> [SettingsPageItem; 3] {
+        [
+            SettingsPageItem::SectionHeader("リモートターミナルの切断対策"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "切断してもシェルを動かし続ける",
+                description: "SSH のターミナルのシェルをリモートの Zed サーバーに預けます。接続が切れても実行中のコマンドは止まらず、再接続するとそれまでの出力を表示し直して続きから使えます。タブを閉じるとシェルも終了します。Windows のリモートホストでは使えません。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("terminal.remote_persistence.enabled"),
+                    pick: |settings_content| {
+                        settings_content
+                            .terminal
+                            .as_ref()?
+                            .remote_persistence
+                            .as_ref()?
+                            .enabled
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .terminal
+                            .get_or_insert_default()
+                            .remote_persistence
+                            .get_or_insert_default()
+                            .enabled = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "未接続のシェルを終了するまでの時間",
+                description: "どのターミナルからも接続されていない状態がこの時間 (時間単位) 続いたら、リモートのシェルを終了します。0 のときは終了しません。新しく起動するシェルから反映されます。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("terminal.remote_persistence.detached_timeout_hours"),
+                    pick: |settings_content| {
+                        settings_content
+                            .terminal
+                            .as_ref()?
+                            .remote_persistence
+                            .as_ref()?
+                            .detached_timeout_hours
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .terminal
+                            .get_or_insert_default()
+                            .remote_persistence
+                            .get_or_insert_default()
+                            .detached_timeout_hours = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
     SettingsPage {
         title: "ターミナル",
         items: concat_sections![
@@ -7958,6 +8018,7 @@ fn terminal_page() -> SettingsPage {
             layout_settings_section(),
             advanced_settings_section(),
             session_log_section(),
+            remote_persistence_section(),
             toolbar_section(),
             scrollbar_section(),
         ],
