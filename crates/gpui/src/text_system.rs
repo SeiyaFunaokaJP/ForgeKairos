@@ -514,15 +514,51 @@ impl WindowTextSystem {
         wrap_width: Option<Pixels>,
         line_clamp: Option<usize>,
     ) -> Result<SmallVec<[WrappedLine; 1]>> {
+        self.shape_text_with_font_sizes(text, font_size, runs, &[], wrap_width, line_clamp)
+    }
+
+    /// Like [`Self::shape_text`], with the byte ranges of `font_sizes` drawn at
+    /// their own size instead of `font_size`. The ranges must be sorted, must
+    /// not overlap and must fall on character boundaries.
+    pub fn shape_text_with_font_sizes(
+        &self,
+        text: SharedString,
+        font_size: Pixels,
+        runs: &[TextRun],
+        font_sizes: &[(Range<usize>, Pixels)],
+        wrap_width: Option<Pixels>,
+        line_clamp: Option<usize>,
+    ) -> Result<SmallVec<[WrappedLine; 1]>> {
         let mut runs = runs.iter().filter(|run| run.len > 0).cloned().peekable();
         let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
+        let mut line_font_sizes: SmallVec<[FontSizeRun; 1]> = SmallVec::new();
 
         let mut lines = SmallVec::new();
         let mut max_wrap_lines = line_clamp;
         let mut wrapped_lines = 0;
 
-        let mut process_line = |line_text: SharedString, line_start, line_end| {
+        let mut process_line = |line_text: SharedString, line_start: usize, line_end: usize| {
             font_runs.clear();
+            line_font_sizes.clear();
+            let mut sized_until = line_start;
+            for (range, size) in font_sizes {
+                let start = range.start.max(line_start);
+                let end = range.end.min(line_end);
+                if start >= end {
+                    continue;
+                }
+                if start > sized_until {
+                    line_font_sizes.push(FontSizeRun {
+                        len: start - sized_until,
+                        font_size,
+                    });
+                }
+                line_font_sizes.push(FontSizeRun {
+                    len: end - start,
+                    font_size: *size,
+                });
+                sized_until = end;
+            }
 
             let mut decoration_runs = <Vec<DecorationRun>>::with_capacity(32);
             let mut run_start = line_start;
@@ -578,6 +614,7 @@ impl WindowTextSystem {
                 &line_text,
                 font_size,
                 &font_runs,
+                &line_font_sizes,
                 wrap_width,
                 max_wrap_lines.map(|max| max.saturating_sub(wrapped_lines)),
             );
@@ -685,6 +722,7 @@ impl WindowTextSystem {
             &SharedString::new(text),
             font_size,
             &font_runs,
+            &[],
             force_width,
         );
 
@@ -705,6 +743,7 @@ impl WindowTextSystem {
                     len: buffer.len(),
                     font_id,
                 }],
+                &[],
                 None,
             )
             .width

@@ -7,7 +7,10 @@ use crate::{
         PromptCompletionProviderDelegate, PromptContextAction, PromptContextType,
         PromptLocalCommand, SlashCommandCompletion,
     },
-    mention_set::{Mention, MentionImage, MentionSet, insert_crease_for_mention},
+    mention_set::{
+        AttachmentDelivery, AttachmentMode, Mention, MentionImage, MentionSet, RestoredFrom,
+        UnlistedAttachment, insert_crease_for_mention,
+    },
 };
 use acp_thread::{AcpThread, AgentThreadEntry, MentionUri};
 use agent::ThreadStore;
@@ -15,7 +18,7 @@ use agent_client_protocol::schema::v1 as acp;
 use agent_settings::AgentSettings;
 use anyhow::{Result, anyhow};
 use base64::Engine as _;
-use collections::HashSet;
+use collections::{HashMap, HashSet};
 use editor::{
     Addon, AnchorRangeExt, ContextMenuOptions, Editor, EditorElement, EditorEvent, EditorMode,
     EditorStyle, Inlay, MultiBuffer, MultiBufferOffset, MultiBufferSnapshot, ToOffset,
@@ -26,9 +29,9 @@ use editor::{
 };
 use futures::{FutureExt as _, future::join_all};
 use gpui::{
-    AppContext, ClipboardEntry, ClipboardItem, Context, Entity, EventEmitter, FocusHandle,
-    Focusable, Image, ImageFormat, KeyContext, SharedString, Subscription, Task, TaskExt,
-    TextStyle, WeakEntity,
+    AppContext, ClipboardEntry, ClipboardItem, Context, Entity, EntityId, EventEmitter,
+    FocusHandle, Focusable, Global, Image, ImageFormat, KeyContext, SharedString, Subscription,
+    Task, TaskExt, TextStyle, WeakEntity,
 };
 use language::{Buffer, language_settings::InlayHintKind};
 use parking_lot::RwLock;
@@ -217,6 +220,9 @@ pub struct MessageEditor {
     _focus_subscriptions: Vec<Subscription>,
     _subscriptions: Vec<Subscription>,
     _parse_slash_command_task: Task<()>,
+    /// The thread whose profile decides whether directory mentions are
+    /// expanded when the message is sent (see [`expands_directory_mentions`]).
+    directory_expansion_thread: Option<WeakEntity<AcpThread>>,
 }
 
 #[derive(Clone, Debug)]
@@ -640,7 +646,7 @@ impl MessageEditor {
             .detach_and_log_err(cx);
         }
 
-        Self {
+        let this = Self {
             editor,
             mention_set,
             workspace,
@@ -652,7 +658,38 @@ impl MessageEditor {
             _focus_subscriptions: focus_subscriptions,
             _subscriptions: subscriptions,
             _parse_slash_command_task: Task::ready(()),
-        }
+            directory_expansion_thread: None,
+        };
+        this.install_attachment_delivery(cx);
+        this
+    }
+
+    /// Tells the mention chips and the total how this editor's message will
+    /// be sent. Read on every render, since the capabilities are updated in
+    /// place when the session reports them.
+    fn install_attachment_delivery(&self, cx: &mut Context<Self>) {
+        let session_capabilities = self.session_capabilities.clone();
+        let directory_expansion_thread = self.directory_expansion_thread.clone();
+        self.mention_set.update(cx, |mention_set, _| {
+            mention_set.set_delivery(Rc::new(move |cx| AttachmentDelivery {
+                embeds_content: session_capabilities.read().supports_embedded_context(),
+                expands_directories: directory_expansion_thread
+                    .as_ref()
+                    .and_then(|thread| thread.upgrade())
+                    .is_some_and(|thread| expands_directory_mentions(thread.read(cx), cx)),
+            }));
+        });
+    }
+
+    /// Makes the chips of directory mentions follow `thread`'s profile: a
+    /// profile without tools gets them expanded when the message is sent.
+    pub fn set_directory_expansion_thread(
+        &mut self,
+        thread: WeakEntity<AcpThread>,
+        cx: &mut Context<Self>,
+    ) {
+        self.directory_expansion_thread = Some(thread);
+        self.install_attachment_delivery(cx);
     }
 
     pub fn set_local_commands(&self, commands: Vec<PromptLocalCommand>) {
@@ -662,9 +699,10 @@ impl MessageEditor {
     pub fn set_session_capabilities(
         &mut self,
         session_capabilities: SharedSessionCapabilities,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) {
         self.session_capabilities = session_capabilities;
+        self.install_attachment_delivery(cx);
     }
 
     fn command_hint(&self, snapshot: &MultiBufferSnapshot) -> Option<Inlay> {
@@ -967,12 +1005,7 @@ impl MessageEditor {
 
         let workspace = self.workspace.upgrade()?;
         let (uri, buffer) = Self::active_file_mention_uri(&workspace, cx)?;
-        if self.mention_set.read(cx).mentions().contains(&uri) {
-            return None;
-        }
-        if let Some(thread) = self.thread.as_ref().and_then(|thread| thread.upgrade())
-            && attached_in_earlier_turn(thread.read(cx), &uri, &buffer, cx)
-        {
+        if !self.would_attach_active_file(&uri, &buffer, cx) {
             return None;
         }
 
@@ -982,6 +1015,42 @@ impl MessageEditor {
             mention_set.confirm_mention_for_uri(uri.clone(), supports_images, http_client, cx)
         });
         Some((uri, task))
+    }
+
+    /// Whether sending now would attach `uri` (the active file) on top of
+    /// the mentions: not when the user mentioned exactly it by hand, nor when
+    /// the agent still has it from an earlier turn.
+    fn would_attach_active_file(
+        &self,
+        uri: &MentionUri,
+        buffer: &Entity<Buffer>,
+        cx: &App,
+    ) -> bool {
+        if self.mention_set.read(cx).mentions().contains(uri) {
+            return false;
+        }
+        if let Some(thread) = self.thread.as_ref().and_then(|thread| thread.upgrade())
+            && attached_in_earlier_turn(thread.read(cx), uri, buffer, cx)
+        {
+            return false;
+        }
+        true
+    }
+
+    /// The active file as sending this message now would attach it, for the
+    /// attachment total.
+    pub fn unlisted_active_file(
+        &self,
+        active_file: &Entity<ActiveFileEstimate>,
+        cx: &App,
+    ) -> Option<UnlistedAttachment> {
+        if !AgentSettings::get_global(cx).attach_active_file {
+            return None;
+        }
+        let resolved = active_file.read(cx).resolved.as_ref()?;
+        let buffer = resolved.buffer.upgrade()?;
+        self.would_attach_active_file(&resolved.attachment.uri, &buffer, cx)
+            .then(|| resolved.attachment.clone())
     }
 
     fn active_file_mention_uri(
@@ -1030,11 +1099,26 @@ impl MessageEditor {
     /// The draft as it stands, with each attachment as its mode produces it:
     /// the message budget only reduces attachments when the message is sent.
     pub fn draft_contents(&self, cx: &mut Context<Self>) -> Task<Result<Vec<acp::ContentBlock>>> {
+        let pinned_modes = self.pinned_attachment_modes(cx);
         let build_task = self.build_content_blocks(false, cx);
         cx.spawn(async move |_, _cx| {
             let (blocks, _tracked_buffers) = build_task.await?;
-            Ok(blocks)
+            Ok(with_attachment_modes(blocks, &pinned_modes))
         })
+    }
+
+    /// The modes the user pinned, by the URI their draft blocks carry.
+    fn pinned_attachment_modes(&self, cx: &App) -> HashMap<String, AttachmentMode> {
+        let mention_set = self.mention_set.read(cx);
+        mention_set
+            .creases()
+            .into_iter()
+            .filter_map(|crease_id| {
+                let mode = mention_set.mode(&crease_id);
+                let uri = mention_set.mention_uri_for_crease(&crease_id)?;
+                (mode != AttachmentMode::Auto).then(|| (uri.to_uri().to_string(), mode))
+            })
+            .collect()
     }
 
     fn build_content_blocks(
@@ -1089,7 +1173,7 @@ impl MessageEditor {
             false,
             |crease_id| mention_set.resolved_mention_for_crease(crease_id),
         );
-        chunks
+        with_attachment_modes(chunks, &self.pinned_attachment_modes(cx))
     }
 
     pub fn clear(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1839,7 +1923,19 @@ impl MessageEditor {
         cx: &mut Context<Self>,
     ) {
         self.clear(window, cx);
-        self.insert_message_blocks(message, false, window, cx);
+        self.insert_message_blocks(message, false, RestoredFrom::EarlierMessage, window, cx);
+    }
+
+    /// Fills the editor with a saved draft. Unlike a sent message, its
+    /// attachments have not been through the message budget yet.
+    pub fn set_draft_message(
+        &mut self,
+        message: Vec<acp::ContentBlock>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.clear(window, cx);
+        self.insert_message_blocks(message, false, RestoredFrom::Draft, window, cx);
     }
 
     pub fn append_message(
@@ -1862,13 +1958,14 @@ impl MessageEditor {
             });
         }
 
-        self.insert_message_blocks(message, true, window, cx);
+        self.insert_message_blocks(message, true, RestoredFrom::EarlierMessage, window, cx);
     }
 
     fn insert_message_blocks(
         &mut self,
         message: Vec<acp::ContentBlock>,
         append_to_existing: bool,
+        restored_from: RestoredFrom,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1891,6 +1988,7 @@ impl MessageEditor {
                 }
                 acp::ContentBlock::Resource(acp::EmbeddedResource {
                     resource: acp::EmbeddedResourceResource::TextResourceContents(resource),
+                    meta,
                     ..
                 }) => {
                     let Some(mention_uri) = MentionUri::parse(&resource.uri, path_style).log_err()
@@ -1907,6 +2005,7 @@ impl MessageEditor {
                             content: resource.text,
                             tracked_buffers: Vec::new(),
                         },
+                        AttachmentMode::from_meta(meta.as_ref()),
                     ));
                 }
                 acp::ContentBlock::ResourceLink(resource) => {
@@ -1916,7 +2015,12 @@ impl MessageEditor {
                         let start = text.len();
                         append_normalized(&mut text, mention_uri.as_link().to_string());
                         let end = text.len();
-                        mentions.push((start..end, mention_uri, Mention::Link));
+                        mentions.push((
+                            start..end,
+                            mention_uri,
+                            Mention::Link,
+                            AttachmentMode::Auto,
+                        ));
                     }
                 }
                 acp::ContentBlock::Image(acp::ImageContent {
@@ -1949,6 +2053,7 @@ impl MessageEditor {
                             data: data.into(),
                             format,
                         }),
+                        AttachmentMode::Auto,
                     ));
                 }
                 _ => {}
@@ -1977,7 +2082,7 @@ impl MessageEditor {
             })
         };
 
-        for (range, mention_uri, mention) in mentions {
+        for (range, mention_uri, mention, mode) in mentions {
             let adjusted_start = insertion_start + range.start;
             let anchor = snapshot.anchor_before(MultiBufferOffset(adjusted_start));
             let image_preview = image_preview_task_for_mention(&mention);
@@ -2003,9 +2108,13 @@ impl MessageEditor {
                     crease_id,
                     mention_uri.clone(),
                     mention,
+                    restored_from,
                     crease_entity,
                     cx,
-                )
+                );
+                if restored_from == RestoredFrom::Draft {
+                    mention_set.restore_mode(crease_id, mode, cx);
+                }
             });
         }
 
@@ -2281,6 +2390,215 @@ fn build_chunks_from_creases(
     (chunks, tracked_buffers)
 }
 
+/// Marks each draft block of an attachment the user pinned to a mode, so that
+/// restoring the draft pins it again (see [`AttachmentMode::to_meta`]).
+fn with_attachment_modes(
+    blocks: Vec<acp::ContentBlock>,
+    pinned_modes: &HashMap<String, AttachmentMode>,
+) -> Vec<acp::ContentBlock> {
+    if pinned_modes.is_empty() {
+        return blocks;
+    }
+    blocks
+        .into_iter()
+        .map(|block| match block {
+            acp::ContentBlock::Resource(mut resource) => {
+                if let acp::EmbeddedResourceResource::TextResourceContents(contents) =
+                    &resource.resource
+                    && let Some(mode) = pinned_modes.get(&contents.uri)
+                {
+                    resource.meta = mode.to_meta();
+                }
+                acp::ContentBlock::Resource(resource)
+            }
+            block => block,
+        })
+        .collect()
+}
+
+/// Whether directory mentions are expanded into their files when a message of
+/// `thread` is sent: only for the native agent with a profile that has no
+/// tools, since it could not read them itself.
+pub(crate) fn expands_directory_mentions(thread: &AcpThread, cx: &App) -> bool {
+    let Some(connection) = thread
+        .connection()
+        .clone()
+        .downcast::<agent::NativeAgentConnection>()
+    else {
+        return false;
+    };
+    let Some(native_thread) = connection.thread(thread.session_id(), cx) else {
+        return false;
+    };
+    AgentSettings::get_global(cx)
+        .profiles
+        .get(&native_thread.read(cx).profile(cx))
+        .is_some_and(|profile| profile.tools.is_empty())
+}
+
+/// Keeps the size of the file `agent.attach_active_file` would attach up to
+/// date, so that the attachment total next to a message editor includes it.
+pub struct ActiveFileEstimate {
+    workspace: WeakEntity<Workspace>,
+    /// Resolves the active file the way sending does, apart from any message
+    /// editor's own mentions.
+    resolver: Entity<MentionSet>,
+    resolved: Option<ResolvedActiveFile>,
+    refresh_task: Task<()>,
+    active_editor_subscription: Option<Subscription>,
+    _subscriptions: Vec<Subscription>,
+}
+
+struct ResolvedActiveFile {
+    attachment: UnlistedAttachment,
+    buffer: WeakEntity<Buffer>,
+}
+
+/// Every thread view of a workspace attaches the same active file, so they
+/// share one estimate rather than each resolving the file on every pause in
+/// typing.
+#[derive(Default)]
+struct ActiveFileEstimates(HashMap<(EntityId, EntityId), WeakEntity<ActiveFileEstimate>>);
+
+impl Global for ActiveFileEstimates {}
+
+/// Typing in the active file changes its size on every keystroke, and
+/// resolving it may build an outline, so it waits for a pause.
+pub(crate) const ACTIVE_FILE_REFRESH_DELAY: std::time::Duration =
+    std::time::Duration::from_millis(300);
+
+impl ActiveFileEstimate {
+    /// The estimate of `workspace`'s active file as `project` resolves it,
+    /// shared with every other thread view that asks for the same pair.
+    pub fn shared(
+        workspace: &Entity<Workspace>,
+        project: &Entity<Project>,
+        cx: &mut App,
+    ) -> Entity<Self> {
+        let key = (workspace.entity_id(), project.entity_id());
+        let estimates = cx.default_global::<ActiveFileEstimates>();
+        if let Some(estimate) = estimates
+            .0
+            .get(&key)
+            .and_then(|estimate| estimate.upgrade())
+        {
+            return estimate;
+        }
+        let estimate = cx.new(|cx| Self::new(workspace, project.downgrade(), cx));
+        let estimates = cx.default_global::<ActiveFileEstimates>();
+        estimates
+            .0
+            .retain(|_, estimate| estimate.upgrade().is_some());
+        estimates.0.insert(key, estimate.downgrade());
+        estimate
+    }
+
+    pub fn new(
+        workspace: &Entity<Workspace>,
+        project: WeakEntity<Project>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let subscriptions = vec![
+            cx.subscribe(workspace, |this, _, event: &workspace::Event, cx| {
+                if matches!(event, workspace::Event::ActiveItemChanged) {
+                    this.watch_active_editor(cx);
+                    this.schedule_refresh(cx);
+                }
+            }),
+            cx.observe_global::<settings::SettingsStore>(|this, cx| this.schedule_refresh(cx)),
+        ];
+        let mut this = Self {
+            workspace: workspace.downgrade(),
+            resolver: cx.new(|_| MentionSet::new(project, None)),
+            resolved: None,
+            refresh_task: Task::ready(()),
+            active_editor_subscription: None,
+            _subscriptions: subscriptions,
+        };
+        this.watch_active_editor(cx);
+        this.schedule_refresh(cx);
+        this
+    }
+
+    fn watch_active_editor(&mut self, cx: &mut Context<Self>) {
+        let editor = self
+            .workspace
+            .upgrade()
+            .and_then(|workspace| workspace.read(cx).active_item(cx)?.act_as::<Editor>(cx));
+        self.active_editor_subscription = editor.map(|editor| {
+            // The workspace reports selection changes of its active item as
+            // `ActiveItemChanged`, but not edits.
+            cx.subscribe(&editor, |this, _, event: &EditorEvent, cx| {
+                if matches!(
+                    event,
+                    EditorEvent::BufferEdited
+                        | EditorEvent::Reparsed(_)
+                        | EditorEvent::FileHandleChanged
+                ) {
+                    this.schedule_refresh(cx);
+                }
+            })
+        });
+    }
+
+    fn schedule_refresh(&mut self, cx: &mut Context<Self>) {
+        if !AgentSettings::get_global(cx).attach_active_file {
+            self.refresh_task = Task::ready(());
+            if self.resolved.take().is_some() {
+                cx.notify();
+            }
+            return;
+        }
+        self.refresh_task = cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(ACTIVE_FILE_REFRESH_DELAY)
+                .await;
+            let resolving = this
+                .update(cx, |this, cx| this.resolve_active_file(cx))
+                .ok()
+                .flatten();
+            let resolved = match resolving {
+                Some((uri, buffer, task)) => match task.await {
+                    Ok(mention) => Some(ResolvedActiveFile {
+                        attachment: UnlistedAttachment {
+                            uri,
+                            bytes: match &mention {
+                                Mention::Text { content, .. } => content.len(),
+                                Mention::Image(_) | Mention::Link => 0,
+                            },
+                            is_text: matches!(mention, Mention::Text { .. }),
+                        },
+                        buffer,
+                    }),
+                    Err(error) => {
+                        log::debug!("failed to measure the active file for the total: {error:#}");
+                        None
+                    }
+                },
+                None => None,
+            };
+            this.update(cx, |this, cx| {
+                this.resolved = resolved;
+                cx.notify();
+            })
+            .ok();
+        });
+    }
+
+    fn resolve_active_file(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<(MentionUri, WeakEntity<Buffer>, Task<Result<Mention>>)> {
+        let workspace = self.workspace.upgrade()?;
+        let (uri, buffer) = MessageEditor::active_file_mention_uri(&workspace, cx)?;
+        let http_client = workspace.read(cx).client().http_client();
+        let task = self.resolver.update(cx, |resolver, cx| {
+            resolver.confirm_mention_for_uri(uri.clone(), false, http_client, cx)
+        });
+        Some((uri, buffer.downgrade(), task))
+    }
+}
+
 /// Whether `uri` was already sent with its content in a turn the agent still
 /// has in full, and the file has not changed since: then attaching the active
 /// file again would only repeat it.
@@ -2489,9 +2807,10 @@ mod tests {
     use crate::completion_provider::{AgentContextSelection, AvailableSkill, PromptContextType};
     use crate::{
         conversation_view::tests::init_test,
-        mention_set::{AttachmentMode, insert_crease_for_mention},
+        mention_set::{AttachmentMode, AttachmentsEstimate, insert_crease_for_mention},
         message_editor::{
-            Mention, MessageEditor, MessageEditorEvent, SessionCapabilities, parse_mention_links,
+            ACTIVE_FILE_REFRESH_DELAY, ActiveFileEstimate, Mention, MessageEditor,
+            MessageEditorEvent, SessionCapabilities, parse_mention_links,
         },
     };
 
@@ -4852,7 +5171,8 @@ mod tests {
         );
 
         let mention_set = message_editor.read_with(cx, |editor, _| editor.mention_set().clone());
-        let total = mention_set.read_with(cx, |mention_set, cx| mention_set.total_estimate(cx));
+        let total =
+            mention_set.read_with(cx, |mention_set, cx| mention_set.total_estimate(None, cx));
         assert_eq!(total.reduced_count, 1);
 
         let blocks = message_editor
@@ -4927,6 +5247,378 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_draft_attachments_go_through_the_budget(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let big = "big line of text\n".repeat(1_800);
+        let (message_editor, cx) =
+            setup_embedded_message_editor(json!({"big.txt": big.clone()}), cx).await;
+        set_context_attachment_limits(128 * 1024, 16 * 1024, cx);
+        let blocks = vec![
+            acp::ContentBlock::Text(acp::TextContent::new("見て ".to_string())),
+            acp::ContentBlock::Resource(acp::EmbeddedResource::new(
+                acp::EmbeddedResourceResource::TextResourceContents(
+                    acp::TextResourceContents::new(
+                        big.clone(),
+                        MentionUri::File {
+                            abs_path: path!("/project/big.txt").into(),
+                        }
+                        .to_uri()
+                        .to_string(),
+                    ),
+                ),
+            )),
+        ];
+        let sent_text = async |cx: &mut VisualTestContext| {
+            let blocks = message_editor
+                .update(cx, |editor, cx| editor.contents(false, cx))
+                .await
+                .unwrap()
+                .0;
+            resource_text(&resource_texts(&blocks), "big.txt")
+        };
+
+        // A message restored for editing went through the budget when it was
+        // sent: it goes again as it was.
+        message_editor.update_in(cx, |editor, window, cx| {
+            editor.set_message(blocks.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(sent_text(cx).await, big);
+
+        // A draft never did.
+        message_editor.update_in(cx, |editor, window, cx| {
+            editor.set_draft_message(blocks.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        let mention_set = message_editor.read_with(cx, |editor, _| editor.mention_set().clone());
+        let total =
+            mention_set.read_with(cx, |mention_set, cx| mention_set.total_estimate(None, cx));
+        assert_eq!(total.reduced_count, 1, "the total warns before sending");
+        let text = sent_text(cx).await;
+        assert!(
+            text.contains("Its full content was not attached."),
+            "{text}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_draft_keeps_the_mode_the_user_pinned(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let big = "big line of text
+"
+        .repeat(1_800);
+        let (message_editor, cx) =
+            setup_embedded_message_editor(json!({"big.txt": big.clone()}), cx).await;
+        set_context_attachment_limits(128 * 1024, 16 * 1024, cx);
+        insert_dragged_project_paths(&message_editor, vec!["big.txt"], cx);
+        let mention_set = message_editor.read_with(cx, |editor, _| editor.mention_set().clone());
+        let only_crease = |cx: &mut VisualTestContext| {
+            mention_set
+                .read_with(cx, |mention_set, _| {
+                    mention_set.creases().into_iter().next()
+                })
+                .expect("big.txt is mentioned")
+        };
+        let crease_id = only_crease(cx);
+        mention_set.update(cx, |mention_set, cx| {
+            mention_set.set_mode(crease_id, AttachmentMode::Full, cx)
+        });
+        cx.run_until_parked();
+
+        let saved = message_editor
+            .update(cx, |editor, cx| editor.draft_contents(cx))
+            .await
+            .unwrap();
+        let snapshot =
+            message_editor.read_with(cx, |editor, cx| editor.draft_content_blocks_snapshot(cx));
+        for draft in [saved, snapshot] {
+            message_editor.update_in(cx, |editor, window, cx| {
+                editor.set_draft_message(draft.clone(), window, cx)
+            });
+            cx.run_until_parked();
+            let crease_id = only_crease(cx);
+            let estimate = mention_set
+                .read_with(cx, |mention_set, cx| {
+                    mention_set.attachment_estimate(&crease_id, cx)
+                })
+                .expect("the restored file has an estimate");
+            assert_eq!(estimate.mode, AttachmentMode::Full, "{draft:?}");
+            assert!(!estimate.reduced_for_budget);
+            let blocks = message_editor
+                .update(cx, |editor, cx| editor.contents(false, cx))
+                .await
+                .unwrap()
+                .0;
+            assert_eq!(resource_text(&resource_texts(&blocks), "big.txt"), big);
+        }
+
+        // Only a draft carries the mode: a sent message never went through
+        // the chips' modes again.
+        let saved = message_editor
+            .update(cx, |editor, cx| editor.draft_contents(cx))
+            .await
+            .unwrap();
+        message_editor.update_in(cx, |editor, window, cx| {
+            editor.set_message(saved, window, cx)
+        });
+        cx.run_until_parked();
+        let crease_id = only_crease(cx);
+        assert_eq!(
+            mention_set.read_with(cx, |mention_set, _| mention_set.mode(&crease_id)),
+            AttachmentMode::Auto
+        );
+    }
+
+    #[gpui::test]
+    async fn test_attachment_estimates_need_embedded_context(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let (message_editor, cx) = setup_embedded_message_editor(
+            json!({"notes.txt": "some notes\n", "dir": {"a.txt": "alpha\n"}}),
+            cx,
+        )
+        .await;
+        insert_dragged_project_paths(&message_editor, vec!["notes.txt", "dir"], cx);
+        let mention_set = message_editor.read_with(cx, |editor, _| editor.mention_set().clone());
+        let estimates = |cx: &mut VisualTestContext| {
+            mention_set.read_with(cx, |mention_set, cx| {
+                let mut estimates = mention_set
+                    .creases()
+                    .into_iter()
+                    .filter_map(|crease_id| {
+                        let name = mention_set.mention_uri_for_crease(&crease_id)?.name();
+                        Some((name, mention_set.attachment_estimate(&crease_id, cx)))
+                    })
+                    .collect::<Vec<_>>();
+                estimates.sort_by(|a, b| a.0.cmp(&b.0));
+                (estimates, mention_set.total_estimate(None, cx))
+            })
+        };
+
+        let (chips, total) = estimates(cx);
+        assert_eq!(chips.len(), 2, "{chips:?}");
+        let directory = chips[0].1.expect("the directory chip has a label");
+        assert!(
+            directory.link_only,
+            "an editor with no thread whose profile lacks tools sends the directory as a link"
+        );
+        let notes = chips[1].1.expect("the file chip has an estimate");
+        assert_eq!(notes.bytes, "some notes\n".len());
+        assert_eq!(total.bytes, "some notes\n".len());
+
+        message_editor.update(cx, |editor, _cx| {
+            editor
+                .session_capabilities
+                .write()
+                .set_prompt_capabilities(acp::PromptCapabilities::new());
+        });
+        let (chips, total) = estimates(cx);
+        assert!(
+            chips.iter().all(|(_, estimate)| estimate.is_none()),
+            "{chips:?}"
+        );
+        assert_eq!(total, AttachmentsEstimate::default());
+    }
+
+    #[gpui::test]
+    async fn test_thread_views_share_the_active_file_estimate(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let app_state = cx.update(AppState::test);
+        cx.update(|cx| {
+            editor::init(cx);
+            workspace::init(app_state.clone(), cx);
+        });
+        let project = Project::test(app_state.fs.clone(), [], cx).await;
+        let other_project = Project::test(app_state.fs.clone(), [], cx).await;
+        let window =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = window
+            .read_with(cx, |mw, _| mw.workspace().clone())
+            .unwrap();
+
+        let (first, second, other) = cx.update(|cx| {
+            (
+                ActiveFileEstimate::shared(&workspace, &project, cx),
+                ActiveFileEstimate::shared(&workspace, &project, cx),
+                ActiveFileEstimate::shared(&workspace, &other_project, cx),
+            )
+        });
+        assert_eq!(first.entity_id(), second.entity_id());
+        assert_ne!(first.entity_id(), other.entity_id());
+
+        let first_id = first.entity_id();
+        drop((first, second));
+        cx.run_until_parked();
+        let fresh = cx.update(|cx| ActiveFileEstimate::shared(&workspace, &project, cx));
+        assert_ne!(
+            fresh.entity_id(),
+            first_id,
+            "a released estimate is not kept"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_active_file_counts_in_the_attachment_total(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let app_state = cx.update(AppState::test);
+        cx.update(|cx| {
+            editor::init(cx);
+            workspace::init(app_state.clone(), cx);
+        });
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(
+                path!("/dir"),
+                json!({ "test.txt": "line1\nline2\nline3\n" }),
+            )
+            .await;
+
+        let project = Project::test(app_state.fs.clone(), [path!("/dir").as_ref()], cx).await;
+        let window =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = window
+            .read_with(cx, |mw, _| mw.workspace().clone())
+            .unwrap();
+        let worktree_id = project.update(cx, |project, cx| {
+            project.worktrees(cx).next().unwrap().read(cx).id()
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+
+        let message_editor = workspace.update_in(&mut cx, |_, window, cx| {
+            let workspace_handle = cx.weak_entity();
+            cx.new(|cx| {
+                let editor = MessageEditor::new(
+                    workspace_handle,
+                    project.downgrade(),
+                    None,
+                    Default::default(),
+                    "Test Agent".into(),
+                    "Test",
+                    EditorMode::AutoHeight {
+                        min_lines: 1,
+                        max_lines: None,
+                    },
+                    window,
+                    cx,
+                );
+                editor
+                    .session_capabilities
+                    .write()
+                    .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+                editor
+            })
+        });
+        let active_file = cx.new(|cx| ActiveFileEstimate::new(&workspace, project.downgrade(), cx));
+        let editor = workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.open_path(
+                    ProjectPath {
+                        worktree_id,
+                        path: rel_path("test.txt").into(),
+                    },
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<Editor>()
+            .unwrap();
+        let settle = |cx: &mut VisualTestContext| {
+            cx.executor().advance_clock(ACTIVE_FILE_REFRESH_DELAY);
+            cx.run_until_parked();
+        };
+        let total = |cx: &mut VisualTestContext| {
+            message_editor.read_with(cx, |message_editor, cx| {
+                let unlisted = message_editor.unlisted_active_file(&active_file, cx);
+                message_editor
+                    .mention_set()
+                    .read(cx)
+                    .total_estimate(unlisted.as_ref(), cx)
+            })
+        };
+
+        // Off by default.
+        settle(&mut cx);
+        assert_eq!(total(&mut cx), AttachmentsEstimate::default());
+
+        cx.update(|_, cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.agent.get_or_insert_default().attach_active_file = Some(true);
+                });
+            });
+        });
+        settle(&mut cx);
+        let whole_file = total(&mut cx);
+        assert_eq!(whole_file.bytes, "line1\nline2\nline3\n".len());
+        assert!(whole_file.includes_active_file);
+
+        // A selection is what gets attached, so it is what the total counts.
+        editor.update_in(&mut cx, |editor, window, cx| {
+            editor.change_selections(Default::default(), window, cx, |selections| {
+                selections.select_ranges([Point::new(0, 0)..Point::new(1, 5)]);
+            });
+        });
+        settle(&mut cx);
+        assert_eq!(total(&mut cx).bytes, "line1\nline2\n".len());
+
+        // An edit that does not move the cursor (an agent's, or the file
+        // reloaded from disk) changes what would be attached too.
+        editor.update_in(&mut cx, |editor, window, cx| {
+            editor.change_selections(Default::default(), window, cx, |selections| {
+                selections.select_ranges([Point::new(0, 0)..Point::new(0, 0)]);
+            });
+        });
+        settle(&mut cx);
+        editor.update(&mut cx, |editor, cx| {
+            let buffer = editor
+                .buffer()
+                .read(cx)
+                .as_singleton()
+                .expect("a file editor has one buffer");
+            buffer.update(cx, |buffer, cx| {
+                let end = buffer.len();
+                buffer.edit([(end..end, "line4\n")], None, cx);
+            });
+        });
+        settle(&mut cx);
+        assert_eq!(total(&mut cx).bytes, "line1\nline2\nline3\nline4\n".len());
+
+        // A file the user mentioned by hand is not attached (or counted) twice.
+        editor.update_in(&mut cx, |editor, window, cx| {
+            editor.change_selections(Default::default(), window, cx, |selections| {
+                selections.select_ranges([Point::new(0, 0)..Point::new(0, 0)]);
+            });
+        });
+        settle(&mut cx);
+        message_editor.update_in(&mut cx, |message_editor, window, cx| {
+            message_editor.set_message(
+                vec![acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
+                    "test.txt",
+                    MentionUri::File {
+                        abs_path: path!("/dir/test.txt").into(),
+                    }
+                    .to_uri()
+                    .to_string(),
+                ))],
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let mentioned = total(&mut cx);
+        assert!(!mentioned.includes_active_file, "{mentioned:?}");
+    }
+
+    #[gpui::test]
     async fn test_expanded_directory_takes_what_the_other_attachments_leave(
         cx: &mut TestAppContext,
     ) {
@@ -4946,7 +5638,8 @@ mod tests {
         insert_dragged_project_paths(&message_editor, vec!["big.txt", "dir"], cx);
 
         let mention_set = message_editor.read_with(cx, |editor, _| editor.mention_set().clone());
-        let total = mention_set.read_with(cx, |mention_set, cx| mention_set.total_estimate(cx));
+        let total =
+            mention_set.read_with(cx, |mention_set, cx| mention_set.total_estimate(None, cx));
         assert_eq!(total.reduced_count, 0, "the chips show nothing reduced");
 
         // An agent without tools gets the directory expanded, in what the

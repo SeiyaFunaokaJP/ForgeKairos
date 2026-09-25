@@ -25,8 +25,14 @@ const WAIT_SCAN_LINES: usize = 200;
 
 pub const DEFAULT_WAIT_TIMEOUT_MS: u64 = 10_000;
 
+/// A step of a macro, as `terminal_sessions.json` spells it.
+///
+/// Fields this build does not know are refused rather than skipped: a step
+/// carrying one was written by a later version, and a field added there can
+/// change what the step does, so the step is kept as [`MacroStep::Unknown`]
+/// instead of being run (or saved back) without it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MacroStep {
     /// Write `text` to the terminal, optionally followed by a carriage return
     /// (what a terminal emulator sends for Enter).
@@ -56,7 +62,11 @@ pub enum MacroStep {
     /// Block for a fixed duration.
     Sleep { ms: u64 },
     /// Wipe the screen and the scrollback, the way `terminal::Clear` does.
-    Clear,
+    ///
+    /// Braced rather than a unit variant because serde reads a tagged unit
+    /// variant without looking at the other keys, so `deny_unknown_fields`
+    /// would not see a field a later version added to it.
+    Clear {},
     /// Run `steps` `count` times before moving on. `0` repeats until the macro
     /// is cancelled, the same rule as [`TerminalMacro::repeat`].
     Repeat {
@@ -98,6 +108,15 @@ pub enum MacroStep {
         #[serde(default)]
         value: String,
     },
+    /// A step this build cannot read: a kind a later version added, a field
+    /// it added to a known kind, or a value of a shape this build does not
+    /// expect. Only this step is set aside, so the rest of the file (and of the
+    /// macro) still loads, and it is written back exactly as it was read, so
+    /// saving a macro here does not throw away what the later version wrote.
+    /// A macro holding one is not run: skipping a step of a router
+    /// maintenance script is not a safe guess.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
 }
 
 /// What a [`MacroStep::If`] looks at.
@@ -199,10 +218,19 @@ impl MacroStep {
             MacroStep::Send { .. } => "送信",
             MacroStep::WaitFor { .. } => "期待文字を待つ",
             MacroStep::Sleep { .. } => "秒待ち",
-            MacroStep::Clear => "画面を消去",
+            MacroStep::Clear {} => "画面を消去",
             MacroStep::Repeat { .. } => "繰り返し",
             MacroStep::If { .. } => "分岐",
             MacroStep::SetVariable { .. } => "変数に設定",
+            MacroStep::Unknown(_) => "不明なステップ",
+        }
+    }
+
+    /// The `type` a [`MacroStep::Unknown`] was written with, when it has one.
+    pub fn unknown_kind(&self) -> Option<&str> {
+        match self {
+            MacroStep::Unknown(value) => value.get("type").and_then(|kind| kind.as_str()),
+            _ => None,
         }
     }
 
@@ -229,7 +257,7 @@ impl MacroStep {
                 summary
             }
             MacroStep::Sleep { ms } => format!("待機: {} 秒", *ms as f64 / 1000.0),
-            MacroStep::Clear => "画面を消去".to_string(),
+            MacroStep::Clear {} => "画面を消去".to_string(),
             MacroStep::Repeat { count, steps } => match count {
                 0 => format!("繰り返し: 中止まで ({} ステップ)", steps.len()),
                 count => format!("繰り返し: {count} 回 ({} ステップ)", steps.len()),
@@ -257,6 +285,10 @@ impl MacroStep {
                 summary
             }
             MacroStep::SetVariable { name, value } => format!("変数: ${{{name}}} に『{value}』"),
+            MacroStep::Unknown(_) => match self.unknown_kind() {
+                Some(kind) => format!("不明なステップ「{kind}」(この版では扱えません)"),
+                None => "不明なステップ (この版では扱えません)".to_string(),
+            },
         }
     }
 }
@@ -832,6 +864,16 @@ pub fn run_macro(
     on_progress: impl Fn(MacroProgress, &mut App) + 'static,
     cx: &mut App,
 ) -> Task<Result<()>> {
+    if let Some((label, step)) = first_unknown_step(&terminal_macro.steps, MacroStepList::Main, "")
+    {
+        let kind = step
+            .unknown_kind()
+            .map(|kind| format!("「{kind}」"))
+            .unwrap_or_default();
+        return Task::ready(Err(anyhow!(
+            "ステップ {label} はこの版では扱えない種類のステップ{kind}です。マクロは実行していません。"
+        )));
+    }
     let step_count = terminal_macro.steps.len();
     let iteration_count = terminal_macro.iteration_count();
     let interval = Duration::from_millis(terminal_macro.repeat_interval_ms);
@@ -882,6 +924,45 @@ pub fn run_macro(
 
         Ok(())
     })
+}
+
+/// The first [`MacroStep::Unknown`] in `steps` or under them, in the order
+/// they are written, with its position spelled the way
+/// [`MacroRunner::step_label`] spells it.
+fn first_unknown_step<'a>(
+    steps: &'a [MacroStep],
+    list: MacroStepList,
+    parent: &str,
+) -> Option<(String, &'a MacroStep)> {
+    for (index, step) in steps.iter().enumerate() {
+        let position = format!("{}{}", list.prefix(), index + 1);
+        let label = if parent.is_empty() {
+            position
+        } else {
+            format!("{parent}-{position}")
+        };
+        let found = match step {
+            MacroStep::Unknown(_) => Some((label, step)),
+            MacroStep::Repeat { steps, .. } => {
+                first_unknown_step(steps, MacroStepList::Main, &label)
+            }
+            MacroStep::If {
+                then_steps,
+                else_steps,
+                ..
+            } => first_unknown_step(then_steps, MacroStepList::Main, &label)
+                .or_else(|| first_unknown_step(else_steps, MacroStepList::Else, &label)),
+            MacroStep::WaitFor {
+                on_timeout: Some(steps),
+                ..
+            } => first_unknown_step(steps, MacroStepList::Timeout, &label),
+            _ => None,
+        };
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
 }
 
 /// One in-flight macro run. Holds the state that every step level shares: the
@@ -1031,17 +1112,6 @@ impl MacroRunner {
         expand_variables(text, &self.variables)
     }
 
-    /// The same for the pattern of a wait or a branch, where a value spliced
-    /// into a regular expression has to stand for itself: what a previous step
-    /// read off the terminal is text to find, not a sub-pattern the user wrote.
-    fn expand_pattern(&self, pattern: &str, regex: bool) -> String {
-        if regex {
-            expand_variables_into_regex(pattern, &self.variables)
-        } else {
-            self.expand(pattern)
-        }
-    }
-
     /// Files what a [`MacroStep::WaitFor`] or a [`MacroStep::If`] matched.
     /// Named regex groups always land under their own names; `capture`
     /// additionally names the match as a whole (the matched line, for a
@@ -1100,7 +1170,7 @@ impl MacroRunner {
                     .timer(Duration::from_millis(*ms));
                 timer.await;
             }
-            MacroStep::Clear => {
+            MacroStep::Clear {} => {
                 // The screen a wait looks at is gone, so the next wait has to
                 // start from whatever the cleared grid holds.
                 self.terminal
@@ -1118,22 +1188,8 @@ impl MacroRunner {
                 capture,
                 on_timeout,
             } => {
-                // The compiled pattern has captured values escaped so they
-                // match themselves in the regex; the display pattern is what
-                // the user actually asked for and is what an error message
-                // has to quote, or a captured `10.0.0.1` would show up as
-                // `10\.0\.0\.1`.
-                let compiled_pattern = self.expand_pattern(pattern, *regex);
-                let display_pattern = self.expand(pattern);
-                let matcher = PatternMatcher::new(&compiled_pattern, *regex).map_err(|error| {
-                    // `error` quotes the compiled pattern, where the captured
-                    // values are escaped, so the pattern the user actually
-                    // wrote has to be named alongside it.
-                    anyhow!(
-                        "ステップ {}: 『{display_pattern}』の正規表現が不正です ({error})",
-                        self.step_label()
-                    )
-                })?;
+                let (matcher, display_pattern) =
+                    compile_step_pattern(pattern, *regex, &self.variables, &self.step_label())?;
                 match wait_for_pattern(
                     &self.terminal,
                     &matcher,
@@ -1172,14 +1228,8 @@ impl MacroRunner {
                 then_steps,
                 else_steps,
             } => {
-                let compiled_pattern = self.expand_pattern(pattern, *regex);
-                let display_pattern = self.expand(pattern);
-                let matcher = PatternMatcher::new(&compiled_pattern, *regex).map_err(|error| {
-                    anyhow!(
-                        "ステップ {}: 『{display_pattern}』の正規表現が不正です ({error})",
-                        self.step_label()
-                    )
-                })?;
+                let (matcher, _) =
+                    compile_step_pattern(pattern, *regex, &self.variables, &self.step_label())?;
                 let lines = self.lines_in_scope(scope);
                 if let Some(matched) = matcher.find(&lines) {
                     self.store_captures(capture.as_ref(), &matched);
@@ -1192,9 +1242,43 @@ impl MacroRunner {
                 let value = self.expand(value);
                 self.variables.insert(name.clone(), value);
             }
+            // `run_macro` refuses a macro holding one before anything runs.
+            MacroStep::Unknown(_) => bail!(
+                "ステップ {}: この版では扱えない種類のステップです",
+                self.step_label()
+            ),
         }
         Ok(())
     }
+}
+
+/// Builds the matcher of a wait's or a branch's pattern against the variables
+/// set so far, and the pattern as an error message should quote it.
+///
+/// In a regular expression a value spliced in has to stand for itself: what a
+/// previous step read off the terminal is text to find, not a sub-pattern the
+/// user wrote. The expanded pattern can still fail to compile where the one the
+/// editor checked did not — `(${p}+)` with `p` set to the empty string is `(+)` —
+/// and the run then stops on that step rather than guessing what was meant.
+fn compile_step_pattern(
+    pattern: &str,
+    regex: bool,
+    variables: &HashMap<String, String>,
+    step_label: &str,
+) -> Result<(PatternMatcher, String)> {
+    let display_pattern = expand_variables(pattern, variables);
+    let compiled_pattern = if regex {
+        expand_variables_into_regex(pattern, variables)
+    } else {
+        display_pattern.clone()
+    };
+    // `error` quotes the compiled pattern, where the values are escaped (a
+    // captured `10.0.0.1` shows up as `10\.0\.0\.1`), so the pattern the
+    // user wrote has to be named alongside it.
+    let matcher = PatternMatcher::new(&compiled_pattern, regex).map_err(|error| {
+        anyhow!("ステップ {step_label}: 『{display_pattern}』の正規表現が不正です ({error})")
+    })?;
+    Ok((matcher, display_pattern))
 }
 
 /// Replaces every `${name}` in `text` with the matching variable.
@@ -1299,6 +1383,43 @@ pub fn check_pattern_regex(pattern: &str) -> Result<regex::Regex, regex::Error> 
         .map(|name| (name, "x".to_string()))
         .collect();
     regex::Regex::new(&expand_variables_into_regex(pattern, &placeholders))
+}
+
+/// The names of the `${name}` references in a regular expression that a
+/// repetition (`*`, `+`, `?`, `{n}`) follows directly. The repetition applies
+/// to the last character of the value only, and when the value is empty to
+/// whatever precedes the reference, or to nothing, which does not compile.
+/// [`check_pattern_regex`] cannot see that, because it stands a one-character
+/// literal in for every reference.
+pub fn references_followed_by_repetition(pattern: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut rest = pattern;
+    while let Some(dollar) = rest.find('$') {
+        let after = &rest[dollar..];
+        if let Some(escaped) = after.strip_prefix("$${") {
+            rest = escaped;
+            continue;
+        }
+        let Some(opened) = after.strip_prefix("${") else {
+            rest = &after[1..];
+            continue;
+        };
+        let Some(closed) = opened.find('}') else {
+            break;
+        };
+        let name = &opened[..closed];
+        rest = &opened[closed + 1..];
+        let mut following = rest.chars();
+        let repeated = match following.next() {
+            Some('*' | '+' | '?') => true,
+            Some('{') => following.next().is_some_and(|next| next.is_ascii_digit()),
+            _ => false,
+        };
+        if repeated && !names.iter().any(|known| known == name) {
+            names.push(name.to_string());
+        }
+    }
+    names
 }
 
 fn scan_lines(terminal: &Entity<Terminal>, cx: &mut AsyncApp) -> Vec<String> {
@@ -1964,7 +2085,7 @@ mod tests {
         let file = parse_sessions_file(
             r#"{ "macros": [{ "name": "m", "steps": [{ "type": "clear" }] }] }"#,
         );
-        assert_eq!(file.macros[0].steps, vec![MacroStep::Clear]);
+        assert_eq!(file.macros[0].steps, vec![MacroStep::Clear {}]);
         let text = serialize_sessions_file(&file).expect("serializes");
         assert!(text.contains(r#""type": "clear""#), "{text}");
         assert_eq!(parse_sessions_file(&text), file);
@@ -2315,7 +2436,7 @@ mod tests {
                 regex: false,
                 scope: MatchScope::Screen,
                 capture: None,
-                then_steps: vec![MacroStep::Clear],
+                then_steps: vec![MacroStep::Clear {}],
                 else_steps: Vec::new(),
             }
             .summary(),
@@ -2327,7 +2448,7 @@ mod tests {
                 regex: false,
                 scope: MatchScope::Screen,
                 capture: Some("banner".to_string()),
-                then_steps: vec![MacroStep::Clear],
+                then_steps: vec![MacroStep::Clear {}],
                 else_steps: Vec::new(),
             }
             .summary(),
@@ -2343,10 +2464,132 @@ mod tests {
                 regex: false,
                 timeout_ms: 5_000,
                 capture: Some("prompt".to_string()),
-                on_timeout: Some(vec![MacroStep::Clear]),
+                on_timeout: Some(vec![MacroStep::Clear {}]),
             }
             .summary(),
             "待機: 『router#』 (5 秒以内)、${prompt} に取り込む、タイムアウト時 1 ステップ"
+        );
+    }
+
+    /// A file a later version wrote: a kind this build has never heard of, a
+    /// known kind with a field added (also to 画面を消去, which has none), a
+    /// 分岐 on a scope that does not exist yet, and one of them nested inside
+    /// a 繰り返し.
+    const FUTURE_SESSIONS_FILE: &str = r#"{
+        "macros": [
+            {
+                "name": "future",
+                "steps": [
+                    { "type": "send", "text": "show version" },
+                    { "type": "http_request", "url": "https://example.invalid", "retry": { "count": 3 } },
+                    { "type": "send", "text": "exit", "delay_ms": 500 },
+                    {
+                        "type": "repeat",
+                        "count": 2,
+                        "steps": [
+                            { "type": "sleep", "ms": 100 },
+                            { "type": "beep" }
+                        ]
+                    },
+                    { "type": "if", "pattern": "x", "scope": { "file": "log.txt" } },
+                    { "type": "clear", "scrollback": false }
+                ]
+            },
+            {
+                "name": "today",
+                "steps": [{ "type": "clear" }]
+            }
+        ]
+    }"#;
+
+    #[test]
+    fn a_step_this_build_cannot_read_is_set_aside_and_written_back_as_it_was() {
+        let file = parse_sessions_file(FUTURE_SESSIONS_FILE);
+        assert_eq!(
+            file.macros.len(),
+            2,
+            "one unreadable step must not cost the whole file"
+        );
+        assert_eq!(file.macros[1].steps, vec![MacroStep::Clear {}]);
+
+        let steps = &file.macros[0].steps;
+        assert_eq!(
+            steps[0],
+            MacroStep::Send {
+                text: "show version".to_string(),
+                newline: true,
+            }
+        );
+        assert_eq!(steps[1].unknown_kind(), Some("http_request"));
+        assert_eq!(
+            steps[2].unknown_kind(),
+            Some("send"),
+            "a field this build does not know may change what the step does, so the step is not run without it"
+        );
+        let MacroStep::Repeat { count, steps: body } = &steps[3] else {
+            panic!("the 繰り返し itself is readable: {:?}", steps[3]);
+        };
+        assert_eq!(*count, 2);
+        assert_eq!(body[0], MacroStep::Sleep { ms: 100 });
+        assert_eq!(body[1].unknown_kind(), Some("beep"));
+        assert_eq!(steps[4].unknown_kind(), Some("if"));
+        assert_eq!(
+            steps[5].unknown_kind(),
+            Some("clear"),
+            "a field added to a kind without fields must not be dropped either"
+        );
+        assert_eq!(steps[1].kind_label(), "不明なステップ");
+        assert_eq!(
+            steps[1].summary(),
+            "不明なステップ「http_request」(この版では扱えません)"
+        );
+
+        let written = serialize_sessions_file(&file).expect("serializes");
+        let original: serde_json::Value =
+            serde_json::from_str(FUTURE_SESSIONS_FILE).expect("the fixture is plain JSON");
+        let rewritten: serde_json::Value =
+            serde_json::from_str(&written).expect("the output is plain JSON");
+        let original_steps = &original["macros"][0]["steps"];
+        let rewritten_steps = &rewritten["macros"][0]["steps"];
+        for index in [1, 2, 4, 5] {
+            assert_eq!(
+                rewritten_steps[index], original_steps[index],
+                "step {index} has to go back into the file untouched"
+            );
+        }
+        assert_eq!(
+            rewritten_steps[3]["steps"][1],
+            original_steps[3]["steps"][1]
+        );
+        assert!(
+            written.contains(r#""url": "https://example.invalid""#),
+            "{written}"
+        );
+        assert_eq!(parse_sessions_file(&written), file);
+    }
+
+    #[test]
+    fn a_repetition_right_after_a_reference_is_found() {
+        assert_eq!(
+            references_followed_by_repetition(r"^${p}+ ${q}* ${r}? ${s}{2} ${t}{x} ${u} (?:${v})+"),
+            vec!["p", "q", "r", "s"]
+        );
+        assert_eq!(
+            references_followed_by_repetition(r"$${p}+ ${p}+${p}+"),
+            vec!["p"],
+            "an escaped reference is text, and a name is reported once"
+        );
+        assert!(
+            check_pattern_regex(r"(${p}+)").is_ok(),
+            "the save-time check stands a one-character literal in, so it cannot see the problem"
+        );
+        let empty = HashMap::from([("p".to_string(), String::new())]);
+        let broken = expand_variables_into_regex(r"(${p}+)", &empty);
+        assert!(regex::Regex::new(&broken).is_err(), "{broken}");
+        let grouped = expand_variables_into_regex(r"^(?:${p})+", &empty);
+        assert!(
+            regex::Regex::new(&grouped).is_ok(),
+            "the form the warning suggests has to compile with an empty value: {grouped}"
         );
     }
 
@@ -2466,7 +2709,7 @@ mod tests {
         assert_eq!(
             MacroStep::Repeat {
                 count: 3,
-                steps: vec![MacroStep::Clear],
+                steps: vec![MacroStep::Clear {}],
             }
             .summary(),
             "繰り返し: 3 回 (1 ステップ)"
@@ -2706,7 +2949,7 @@ mod tests {
                                 text: "show version".into(),
                                 newline: true,
                             },
-                            MacroStep::Clear,
+                            MacroStep::Clear {},
                         ],
                         ..TerminalMacro::default()
                     },
@@ -2811,7 +3054,7 @@ mod tests {
                             send("enable"),
                             MacroStep::Repeat {
                                 count: 2,
-                                steps: vec![send("show version"), MacroStep::Clear],
+                                steps: vec![send("show version"), MacroStep::Clear {}],
                             },
                         ],
                         ..TerminalMacro::default()
@@ -3156,6 +3399,109 @@ mod tests {
                     "no answer from ${host}".to_string(),
                     "reached 10.0.0.1".to_string(),
                 ]
+            );
+        }
+
+        #[gpui::test]
+        async fn a_regex_that_an_empty_value_breaks_stops_the_run_on_that_step(
+            cx: &mut TestAppContext,
+        ) {
+            let terminal = display_only_terminal(cx);
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::SetVariable {
+                                name: "p".into(),
+                                value: String::new(),
+                            },
+                            MacroStep::If {
+                                pattern: r"^(?:${p})+x".into(),
+                                regex: true,
+                                scope: MatchScope::Screen,
+                                capture: None,
+                                then_steps: Vec::new(),
+                                else_steps: vec![MacroStep::Send {
+                                    text: "grouped".into(),
+                                    newline: true,
+                                }],
+                            },
+                            MacroStep::If {
+                                pattern: r"(${p}+)".into(),
+                                regex: true,
+                                scope: MatchScope::Screen,
+                                capture: None,
+                                then_steps: Vec::new(),
+                                else_steps: Vec::new(),
+                            },
+                            MacroStep::Send {
+                                text: "after".into(),
+                                newline: true,
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            let error = run
+                .await
+                .expect_err("`(+)` does not compile, and the run must say so");
+            assert_eq!(
+                error.to_string().lines().next(),
+                Some("ステップ 3: 『(+)』の正規表現が不正です (regex parse error:")
+            );
+            assert_eq!(
+                sent_commands(&terminal, cx),
+                vec!["grouped".to_string()],
+                "the steps after the broken one must not run"
+            );
+        }
+
+        #[gpui::test]
+        async fn a_macro_holding_a_step_this_build_cannot_read_is_not_run(cx: &mut TestAppContext) {
+            let terminal = display_only_terminal(cx);
+            let unknown = MacroStep::Unknown(serde_json::json!({ "type": "beep" }));
+            let run = cx.update(|cx| {
+                run_macro(
+                    terminal.clone(),
+                    TerminalMacro {
+                        name: "t".into(),
+                        steps: vec![
+                            MacroStep::Send {
+                                text: "configure terminal".into(),
+                                newline: true,
+                            },
+                            MacroStep::If {
+                                pattern: "x".into(),
+                                regex: false,
+                                scope: MatchScope::Screen,
+                                capture: None,
+                                then_steps: vec![MacroStep::Clear {}],
+                                else_steps: vec![MacroStep::Clear {}, unknown],
+                            },
+                        ],
+                        ..TerminalMacro::default()
+                    },
+                    |_, _| {},
+                    cx,
+                )
+            });
+
+            cx.run_until_parked();
+            let error = run.await.expect_err("the macro must be refused");
+            assert_eq!(
+                error.to_string(),
+                "ステップ 2-e2 はこの版では扱えない種類のステップ「beep」です。マクロは実行していません。"
+            );
+            assert!(
+                sent_commands(&terminal, cx).is_empty(),
+                "half a maintenance script is worse than none"
             );
         }
 
@@ -3536,7 +3882,7 @@ mod tests {
                     TerminalMacro {
                         name: "t".into(),
                         steps: vec![
-                            MacroStep::Clear,
+                            MacroStep::Clear {},
                             MacroStep::If {
                                 pattern: "現れない".into(),
                                 regex: false,
@@ -3544,7 +3890,7 @@ mod tests {
                                 capture: None,
                                 then_steps: Vec::new(),
                                 else_steps: vec![
-                                    MacroStep::Clear,
+                                    MacroStep::Clear {},
                                     MacroStep::WaitFor {
                                         pattern: "Password:".into(),
                                         regex: false,

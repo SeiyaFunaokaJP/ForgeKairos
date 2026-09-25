@@ -6,6 +6,7 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::Range;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -17,23 +18,28 @@ use editor::{
 use fuzzy::StringMatchCandidate;
 use gpui::{
     App, AppContext as _, ClipboardEntry, ClipboardItem, Context, Entity, EntityId, ExternalPaths,
-    Focusable as _, Global, Task, TaskExt as _, WeakEntity, Window,
+    Focusable as _, Global, Task, WeakEntity, Window,
 };
 use language::{Buffer, CodeLabel, ToOffset as _};
 use project::{
     Completion, CompletionDisplayOptions, CompletionResponse, CompletionSource, Project,
-    ProjectEntryId, ProjectPath,
+    ProjectEntryId, ProjectPath, Worktree, WorktreeId,
 };
+use remote::RemoteConnectionOptions;
+use util::ResultExt as _;
 use util::rel_path::RelPath;
 use workspace::notifications::NotificationId;
 use workspace::{DraggedSelection, Pane, Toast};
 
 use crate::image_dialog::has_image_extension;
-use crate::image_files::{ImageData, link_destination, store_image_next_to};
+use crate::image_files::{ImageData, link_destination, remove_stored_image, store_image_next_to};
 
 pub(crate) fn init(cx: &mut App) {
     cx.set_global(ImagePasteHandler(Rc::new(paste_image)));
-    cx.set_global(EditorDropHandler(Rc::new(drop_images)));
+    cx.set_global(EditorDropHandler {
+        handle: Rc::new(drop_images),
+        accepts: Rc::new(accepts_dropped_images),
+    });
     cx.observe_new(|editor: &mut Editor, _, _| wrap_completion_provider(editor))
         .detach();
 }
@@ -258,7 +264,7 @@ fn drop_images(
     {
         return false;
     }
-    let Some(sources) = dropped_images(editor, dropped, cx) else {
+    let Some(DroppedFiles { images, rest }) = dropped_images(editor, dropped, cx) else {
         if let Some(selection) = dropped.downcast_ref::<DraggedSelection>() {
             cx.default_global::<DeclinedSelectionDrop>().0 =
                 Some(selection.active_selection.entry_id);
@@ -283,87 +289,185 @@ fn drop_images(
     };
     // The pane is still updating the editor it handed the drop to.
     window.defer(cx, move |window, cx| {
-        handle
-            .update(cx, |editor, cx| {
-                insert_image_links(
-                    editor,
-                    project,
-                    document,
-                    sources,
-                    vec![position..position],
-                    true,
-                    window,
-                    cx,
-                );
-                window.focus(&editor.focus_handle(cx), cx);
-            })
-            .ok();
+        let Some(editor) = handle.upgrade() else {
+            return;
+        };
+        editor.update(cx, |editor, cx| {
+            insert_image_links(
+                editor,
+                project,
+                document,
+                images,
+                vec![position..position],
+                true,
+                window,
+                cx,
+            );
+            window.focus(&editor.focus_handle(cx), cx);
+        });
+        open_in_pane(&editor, rest, window, cx);
     });
     true
 }
 
-/// The images in what was dropped, or `None` when anything in it is not an
-/// image file, which leaves the whole drop to open as before.
-fn dropped_images(editor: &Editor, dropped: &dyn Any, cx: &App) -> Option<Vec<LinkSource>> {
+fn accepts_dropped_images(editor: &Editor, pane: &Pane, dropped: &dyn Any, cx: &App) -> bool {
+    pane.drag_split_direction().is_none()
+        && !editor.read_only(cx)
+        && !matches!(markdown_document(editor, cx), DocumentState::NotMarkdown)
+        && dropped_images(editor, dropped, cx).is_some()
+}
+
+/// A drop split into the images that become links and the rest.
+struct DroppedFiles {
+    images: Vec<LinkSource>,
+    rest: DroppedRest,
+}
+
+/// What was dropped besides images, which opens as it would have without them.
+enum DroppedRest {
+    External(Vec<PathBuf>),
+    Entries(Vec<ProjectEntryId>),
+}
+
+/// Hands what was dropped besides images back to the pane the editor is in,
+/// which opens it as it opens any drop (and refuses what it cannot open).
+fn open_in_pane(editor: &Entity<Editor>, rest: DroppedRest, window: &mut Window, cx: &mut App) {
+    let is_empty = match &rest {
+        DroppedRest::External(paths) => paths.is_empty(),
+        DroppedRest::Entries(entries) => entries.is_empty(),
+    };
+    if is_empty {
+        return;
+    }
+    let Some(pane) = editor
+        .read(cx)
+        .workspace()
+        .and_then(|workspace| workspace.read(cx).pane_for(editor))
+    else {
+        log::warn!("no pane to open the dropped files other than images in");
+        return;
+    };
+    // Offered to the editor again first, which takes nothing without images.
+    pane.update(cx, |pane, cx| match rest {
+        DroppedRest::External(paths) => {
+            pane.handle_external_paths_drop(&ExternalPaths(paths.into()), window, cx)
+        }
+        DroppedRest::Entries(entries) => {
+            for entry_id in entries {
+                pane.handle_project_entry_drop(&entry_id, None, window, cx);
+            }
+        }
+    });
+}
+
+/// The images in what was dropped and the rest, or `None` when there is no
+/// image file in it, which leaves the whole drop to open as before.
+fn dropped_images(editor: &Editor, dropped: &dyn Any, cx: &App) -> Option<DroppedFiles> {
     let project = editor.project()?.read(cx);
-    let entry_ids: Vec<ProjectEntryId> =
-        if let Some(paths) = dropped.downcast_ref::<ExternalPaths>() {
-            if paths.paths().is_empty() {
+    let mut images = Vec::new();
+    let rest = if let Some(paths) = dropped.downcast_ref::<ExternalPaths>() {
+        let mut rest = Vec::new();
+        for path in paths.paths() {
+            if !has_image_extension(&path.to_string_lossy()) {
+                rest.push(path.clone());
+                continue;
+            }
+            images.push(match dropped_file_in_project(project, path, cx) {
+                Some(project_path) => LinkSource::Existing(project_path),
+                None => LinkSource::Store {
+                    image: ImageData::LocalFile(path.clone()),
+                    preferred_name: None,
+                },
+            });
+        }
+        DroppedRest::External(rest)
+    } else {
+        let entry_ids: Vec<ProjectEntryId> =
+            if let Some(selection) = dropped.downcast_ref::<DraggedSelection>() {
+                selection
+                    .items()
+                    .map(|selected| selected.entry_id)
+                    .collect()
+            } else if let Some(entry_id) = dropped.downcast_ref::<ProjectEntryId>() {
+                vec![*entry_id]
+            } else {
                 return None;
-            }
-            let mut sources = Vec::new();
-            for path in paths.paths() {
-                if !has_image_extension(&path.to_string_lossy()) {
-                    return None;
+            };
+        let mut rest = Vec::new();
+        for entry_id in entry_ids {
+            let image = project.path_for_entry(entry_id, cx).filter(|project_path| {
+                has_image_extension(project_path.path.as_unix_str())
+                    && project
+                        .entry_for_path(project_path, cx)
+                        .is_some_and(|entry| entry.is_file())
+            });
+            match image {
+                Some(project_path) => images.push(LinkSource::Existing(project_path)),
+                // A folder selected alongside has nothing for the pane to open.
+                None if project
+                    .path_for_entry(entry_id, cx)
+                    .and_then(|project_path| project.entry_for_path(&project_path, cx))
+                    .is_some_and(|entry| entry.is_file()) =>
+                {
+                    rest.push(entry_id)
                 }
-                // A file of a local project dropped from the file manager is
-                // already where the document can link to it.
-                let existing = project
-                    .is_local()
-                    .then(|| project.find_project_path(path, cx))
-                    .flatten()
-                    .filter(|project_path| {
-                        project
-                            .entry_for_path(project_path, cx)
-                            .is_some_and(|entry| entry.is_file())
-                    });
-                sources.push(match existing {
-                    Some(project_path) => LinkSource::Existing(project_path),
-                    None => LinkSource::Store {
-                        image: ImageData::LocalFile(path.clone()),
-                        preferred_name: None,
-                    },
-                });
+                None => {}
             }
-            return Some(sources);
-        } else if let Some(selection) = dropped.downcast_ref::<DraggedSelection>() {
-            selection
-                .items()
-                .map(|selected| selected.entry_id)
-                .collect()
-        } else if let Some(entry_id) = dropped.downcast_ref::<ProjectEntryId>() {
-            vec![*entry_id]
-        } else {
+        }
+        DroppedRest::Entries(rest)
+    };
+    (!images.is_empty()).then_some(DroppedFiles { images, rest })
+}
+
+/// The project file that a file dropped from the file manager is, when the
+/// document can link to it where it is: a file of a local project, or a file
+/// of the WSL distribution the project is opened in, reached from Windows
+/// through `\\wsl$` or `\\wsl.localhost`.
+fn dropped_file_in_project(project: &Project, path: &Path, cx: &App) -> Option<ProjectPath> {
+    let project_path = if project.is_local() {
+        project.find_project_path(path, cx)?
+    } else {
+        let Some(RemoteConnectionOptions::Wsl(options)) = project.remote_connection_options(cx)
+        else {
             return None;
         };
-    let mut sources = Vec::new();
-    for entry_id in entry_ids {
-        let project_path = project.path_for_entry(entry_id, cx)?;
-        let is_file = project
-            .entry_for_path(&project_path, cx)
-            .is_some_and(|entry| entry.is_file());
-        if !is_file || !has_image_extension(project_path.path.as_unix_str()) {
-            return None;
-        }
-        sources.push(LinkSource::Existing(project_path));
+        let linux_path = path_in_wsl_distribution(&path.to_string_lossy(), &options.distro_name)?;
+        project.find_project_path(Path::new(&linux_path), cx)?
+    };
+    project
+        .entry_for_path(&project_path, cx)
+        .is_some_and(|entry| entry.is_file())
+        .then_some(project_path)
+}
+
+/// The path inside the WSL distribution `distribution` that a Windows path
+/// into it (`\\wsl$\<distribution>\…` or `\\wsl.localhost\<distribution>\…`)
+/// names, if it names one there.
+fn path_in_wsl_distribution(windows_path: &str, distribution: &str) -> Option<String> {
+    let normalized = windows_path.replace('\\', "/");
+    let unc = normalized
+        .strip_prefix("//?/UNC/")
+        .or_else(|| normalized.strip_prefix("//"))?;
+    let (host, rest) = unc.split_once('/')?;
+    if !host.eq_ignore_ascii_case("wsl$") && !host.eq_ignore_ascii_case("wsl.localhost") {
+        return None;
     }
-    (!sources.is_empty()).then_some(sources)
+    let (name, inside) = rest.split_once('/').unwrap_or((rest, ""));
+    // Windows compares share names without regard to case.
+    if name.is_empty() || !name.eq_ignore_ascii_case(distribution) {
+        return None;
+    }
+    Some(format!("/{}", inside.trim_end_matches('/')))
 }
 
 /// Stores what needs storing, one image after another so that two of the same
 /// name do not race for it, and then writes a link per image, one per line,
 /// over `targets`. With `separate_from_words`, a space is put between the
 /// links and any word they would otherwise touch.
+///
+/// When the links cannot go in after all (the editor was closed while the
+/// images were stored, or turned read-only), the images stored for them are
+/// taken away again, so nothing is left in `images` without a link to it.
 fn insert_image_links(
     editor: &mut Editor,
     project: Entity<Project>,
@@ -387,133 +491,135 @@ fn insert_image_links(
         );
         return;
     }
-    cx.spawn_in(window, async move |this, cx| {
+    let window_handle = window.window_handle();
+    cx.spawn(async move |this, cx| {
         let mut links = Vec::new();
         let mut failures = Vec::new();
+        // Images stored by this insert, which go again if their links do not
+        // make it into the document.
+        let mut stored_images = Vec::new();
+        let mut unlinked_images = Vec::new();
         for source in sources {
+            if this.upgrade().is_none() {
+                break;
+            }
             let stored = match source {
                 LinkSource::Existing(project_path)
                     if project_path.worktree_id == document.worktree_id =>
                 {
-                    Ok(project_path)
+                    Ok((project_path, false))
                 }
                 // A link cannot leave the document's worktree, so an image
                 // of another one is copied next to the document instead.
                 LinkSource::Existing(project_path) => {
-                    let copied = match cx
-                        .update(|_, cx| image_in_project(&project, &project_path, cx))?
-                        .await
-                    {
-                        Ok((image, preferred_name)) => {
-                            cx.update(|_, cx| {
-                                store_image_next_to(&project, &document, image, preferred_name, cx)
-                            })?
-                            .await
-                        }
-                        Err(error) => Err(error),
-                    };
-                    copied.with_context(|| project_path.path.as_unix_str().to_string())
+                    let source_name = project_path.path.as_unix_str().to_string();
+                    cx.update(|cx| {
+                        store_image_next_to(
+                            &project,
+                            &document,
+                            ImageData::ProjectFile(project_path),
+                            None,
+                            cx,
+                        )
+                    })
+                    .await
+                    .with_context(|| source_name)
+                    .map(|stored| (stored, true))
                 }
                 LinkSource::Store {
                     image,
                     preferred_name,
-                } => {
-                    cx.update(|_, cx| {
+                } => cx
+                    .update(|cx| {
                         store_image_next_to(&project, &document, image, preferred_name, cx)
-                    })?
+                    })
                     .await
-                }
+                    .map(|stored| (stored, true)),
             };
             match stored {
-                Ok(image_path) => {
+                Ok((image_path, is_stored)) => {
                     let destination =
-                        cx.update(|_, cx| link_destination(&document, &image_path, true, cx))?;
+                        cx.update(|cx| link_destination(&document, &image_path, true, cx));
                     match destination {
                         Some(destination) => {
-                            links.push(format!("![{}]({destination})", alt_text(&image_path.path)))
+                            links.push(format!("![{}]({destination})", alt_text(&image_path.path)));
+                            if is_stored {
+                                stored_images.push(image_path);
+                            }
                         }
-                        None => failures.push(format!(
-                            "{}: ドキュメントからの相対パスを作れません",
-                            image_path.path.as_unix_str()
-                        )),
+                        None => {
+                            failures.push(format!(
+                                "{}: ドキュメントからの相対パスを作れません",
+                                image_path.path.as_unix_str()
+                            ));
+                            if is_stored {
+                                unlinked_images.push(image_path);
+                            }
+                        }
                     }
                 }
                 Err(error) => failures.push(format!("{error:#}")),
             }
         }
-        this.update_in(cx, |editor, window, cx| {
-            cx.global_mut::<PendingImageInserts>().0.remove(&editor_id);
-            if !failures.is_empty() {
-                show_notice(
-                    editor,
-                    format!("画像を保存できませんでした: {}", failures.join(" / ")),
-                    cx,
-                );
-            }
-            if links.is_empty() {
-                return;
-            }
-            if editor.read_only(cx) {
-                show_notice(
-                    editor,
-                    "バッファーが読み取り専用になったため、画像のリンクを挿入できませんでした。"
-                        .to_string(),
-                    cx,
-                );
-                return;
-            }
-            let mut inserted = links.join("\n");
-            if separate_from_words && let Some(target) = targets.first() {
-                let snapshot = editor.buffer().read(cx).snapshot(cx);
-                let touches_word =
-                    |character: Option<char>| character.is_some_and(|c| !c.is_whitespace());
-                if touches_word(snapshot.reversed_chars_at(target.start).next()) {
-                    inserted.insert(0, ' ');
+        let inserted = cx.update_window(window_handle, |_, window, cx| {
+            this.update(cx, |editor, cx| {
+                if !failures.is_empty() {
+                    show_notice(
+                        editor,
+                        format!("画像を保存できませんでした: {}", failures.join(" / ")),
+                        cx,
+                    );
                 }
-                if touches_word(snapshot.chars_at(target.end).next()) {
-                    inserted.push(' ');
+                if links.is_empty() {
+                    return false;
                 }
-            }
-            editor.change_selections(SelectionEffects::default(), window, cx, |selections| {
-                selections.select_anchor_ranges(targets)
-            });
-            editor.insert(&inserted, window, cx);
-        })
+                if editor.read_only(cx) {
+                    show_notice(
+                        editor,
+                        "バッファーが読み取り専用になったため、画像のリンクを挿入できませんでした。"
+                            .to_string(),
+                        cx,
+                    );
+                    return false;
+                }
+                let mut inserted = links.join("\n");
+                if separate_from_words && let Some(target) = targets.first() {
+                    let snapshot = editor.buffer().read(cx).snapshot(cx);
+                    let touches_word =
+                        |character: Option<char>| character.is_some_and(|c| !c.is_whitespace());
+                    if touches_word(snapshot.reversed_chars_at(target.start).next()) {
+                        inserted.insert(0, ' ');
+                    }
+                    if touches_word(snapshot.chars_at(target.end).next()) {
+                        inserted.push(' ');
+                    }
+                }
+                editor.change_selections(SelectionEffects::default(), window, cx, |selections| {
+                    selections.select_anchor_ranges(targets)
+                });
+                editor.insert(&inserted, window, cx);
+                true
+            })
+        });
+        let inserted = matches!(inserted, Ok(Ok(true)));
+        cx.update(|cx| {
+            cx.default_global::<PendingImageInserts>()
+                .0
+                .remove(&editor_id)
+        });
+        if !inserted {
+            unlinked_images.append(&mut stored_images);
+        }
+        for image in unlinked_images {
+            cx.update(|cx| remove_stored_image(&project, &document, &image, cx))
+                .await
+                .with_context(|| {
+                    format!("removing the unlinked image {}", image.path.as_unix_str())
+                })
+                .log_err();
+        }
     })
-    .detach_and_log_err(cx);
-}
-
-/// The image at `project_path` as something `store_image_next_to` can copy:
-/// the file itself on this machine, or its bytes read through the project
-/// when it lives on a remote host.
-fn image_in_project(
-    project: &Entity<Project>,
-    project_path: &ProjectPath,
-    cx: &mut App,
-) -> Task<anyhow::Result<(ImageData, Option<String>)>> {
-    let file_name = project_path.path.file_name().map(str::to_string);
-    if project.read(cx).is_local() {
-        return Task::ready(
-            project
-                .read(cx)
-                .absolute_path(project_path, cx)
-                .map(|path| (ImageData::LocalFile(path), file_name))
-                .context("画像のファイルが見つかりません"),
-        );
-    }
-    let extension = project_path
-        .path
-        .extension()
-        .unwrap_or_default()
-        .to_string();
-    let image = project.update(cx, |project, cx| {
-        project.open_image(project_path.clone(), cx)
-    });
-    cx.spawn(async move |cx| {
-        let image = image.await?;
-        let bytes = image.read_with(cx, |image, _| image.image.bytes.clone());
-        Ok((ImageData::Bytes { bytes, extension }, file_name))
-    })
+    .detach();
 }
 
 /// Which kind of path the cursor is in, which decides what is offered first
@@ -720,10 +826,79 @@ fn relative_display(from: &[&str], file: &RelPath) -> (String, usize) {
     (parts.join("/"), ups + downs)
 }
 
+#[derive(Clone)]
 struct PathCandidate {
     display: String,
     path: Arc<RelPath>,
     rank: String,
+}
+
+/// The paths offered for one document and slot, made from the files of one
+/// version of its worktree.
+struct CandidateList {
+    candidates: Vec<PathCandidate>,
+    match_candidates: Vec<StringMatchCandidate>,
+}
+
+impl CandidateList {
+    fn new(candidates: Vec<PathCandidate>) -> Self {
+        let match_candidates = candidates
+            .iter()
+            .enumerate()
+            .map(|(id, candidate)| StringMatchCandidate::new(id, &candidate.display))
+            .collect();
+        Self {
+            candidates,
+            match_candidates,
+        }
+    }
+}
+
+/// What a [`CandidateList`] was made from. Any change to the worktree's files
+/// starts a new scan, so the same scan with the same number of files lists the
+/// same files.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CandidateKey {
+    worktree_id: WorktreeId,
+    scan_id: usize,
+    file_count: usize,
+    document: Arc<RelPath>,
+    slot: PathSlot,
+}
+
+impl CandidateKey {
+    /// `None` while the worktree is still being scanned, when its files change
+    /// without a new scan.
+    fn for_worktree(worktree: &Worktree, document: &Arc<RelPath>, slot: PathSlot) -> Option<Self> {
+        (worktree.completed_scan_id() >= worktree.scan_id()).then(|| Self {
+            worktree_id: worktree.id(),
+            scan_id: worktree.scan_id(),
+            file_count: worktree.file_count(),
+            document: document.clone(),
+            slot,
+        })
+    }
+}
+
+/// The list made for the latest request, which the next keystrokes in the
+/// same path reuse instead of walking every file of the worktree again.
+#[derive(Default)]
+struct CandidateCache {
+    latest: Option<(CandidateKey, Arc<CandidateList>)>,
+}
+
+impl CandidateCache {
+    fn get(&self, key: &CandidateKey) -> Option<Arc<CandidateList>> {
+        self.latest
+            .as_ref()
+            .filter(|(latest_key, _)| latest_key == key)
+            .map(|(_, list)| list.clone())
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static CANDIDATE_LISTS_BUILT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// The files of the document's worktree as paths from the document, ranked
@@ -764,7 +939,11 @@ fn wrap_completion_provider(editor: &mut Editor) {
     else {
         return;
     };
-    editor.set_completion_provider(Some(Rc::new(PathCompletionProvider { inner, project })));
+    editor.set_completion_provider(Some(Rc::new(PathCompletionProvider {
+        inner,
+        project,
+        candidates: Rc::default(),
+    })));
 }
 
 /// Adds the project's files to what the editor's own provider offers while the
@@ -772,6 +951,7 @@ fn wrap_completion_provider(editor: &mut Editor) {
 struct PathCompletionProvider {
     inner: Rc<dyn CompletionProvider>,
     project: Entity<Project>,
+    candidates: Rc<RefCell<CandidateCache>>,
 }
 
 impl PathCompletionProvider {
@@ -826,63 +1006,77 @@ impl PathCompletionProvider {
             .project
             .read(cx)
             .worktree_for_id(document.worktree_id, cx)?;
-        let files: Vec<Arc<RelPath>> = worktree
-            .read(cx)
-            .files(false, 0)
-            .map(|entry| entry.path.clone())
-            .collect();
+        let slot = query.slot;
+        let key = CandidateKey::for_worktree(worktree.read(cx), &document.path, slot);
+        let cached = key
+            .as_ref()
+            .and_then(|key| self.candidates.borrow().get(key));
+        let list_task = match cached {
+            Some(list) => Task::ready(list),
+            None => {
+                let files: Vec<Arc<RelPath>> = worktree
+                    .read(cx)
+                    .files(false, 0)
+                    .map(|entry| entry.path.clone())
+                    .collect();
+                #[cfg(test)]
+                CANDIDATE_LISTS_BUILT.with(|built| built.set(built.get() + 1));
+                let document = document.path.clone();
+                cx.background_spawn(async move {
+                    Arc::new(CandidateList::new(path_candidates(
+                        &document,
+                        files.into_iter(),
+                        slot,
+                    )))
+                })
+            }
+        };
         let snapshot = buffer.read(cx).snapshot();
         let cursor = position.to_offset(&snapshot);
         let typed: String = snapshot.text_for_range(range.start..cursor).collect();
         let replace_range = snapshot.anchor_before(range.start)..snapshot.anchor_after(range.end);
         let match_start = snapshot.anchor_before(range.start);
-        let slot = query.slot;
-        let executor = cx.background_executor().clone();
-        let candidates_task = cx.background_spawn({
-            let document = document.path.clone();
-            async move {
-                let candidates = path_candidates(&document, files.into_iter(), slot);
-                let match_candidates: Vec<StringMatchCandidate> = candidates
-                    .iter()
-                    .enumerate()
-                    .map(|(id, candidate)| StringMatchCandidate::new(id, &candidate.display))
-                    .collect();
-                let matches = fuzzy::match_strings(
-                    &match_candidates,
-                    &typed,
-                    false,
-                    true,
-                    usize::MAX,
-                    &AtomicBool::new(false),
-                    executor,
-                )
-                .await;
-                let total = matches.len();
-                let mut chosen: Vec<(f64, PathCandidate)> = Vec::new();
-                let mut candidates: Vec<Option<PathCandidate>> =
-                    candidates.into_iter().map(Some).collect();
-                for found in matches {
-                    if let Some(candidate) = candidates
-                        .get_mut(found.candidate_id)
-                        .and_then(Option::take)
-                    {
-                        chosen.push((found.score, candidate));
-                    }
-                }
-                chosen.sort_by(|(left_score, left), (right_score, right)| {
-                    right_score
-                        .total_cmp(left_score)
-                        .then_with(|| left.rank.cmp(&right.rank))
-                });
-                chosen.truncate(MAXIMUM_PATH_COMPLETIONS);
-                (
-                    chosen.into_iter().map(|(_, candidate)| candidate).collect(),
-                    total > MAXIMUM_PATH_COMPLETIONS,
-                )
-            }
-        });
+        let cache = self.candidates.clone();
         Some(cx.spawn(async move |_, cx| {
-            let (chosen, is_incomplete): (Vec<PathCandidate>, bool) = candidates_task.await;
+            let list = list_task.await;
+            if let Some(key) = key {
+                cache.borrow_mut().latest = Some((key, list.clone()));
+            }
+            let executor = cx.background_executor().clone();
+            let (chosen, is_incomplete) = cx
+                .background_spawn(async move {
+                    let matches = fuzzy::match_strings(
+                        &list.match_candidates,
+                        &typed,
+                        false,
+                        true,
+                        usize::MAX,
+                        &AtomicBool::new(false),
+                        executor,
+                    )
+                    .await;
+                    let total = matches.len();
+                    let mut chosen: Vec<(f64, &PathCandidate)> = matches
+                        .iter()
+                        .filter_map(|found| {
+                            list.candidates
+                                .get(found.candidate_id)
+                                .map(|candidate| (found.score, candidate))
+                        })
+                        .collect();
+                    chosen.sort_by(|(left_score, left), (right_score, right)| {
+                        right_score
+                            .total_cmp(left_score)
+                            .then_with(|| left.rank.cmp(&right.rank))
+                    });
+                    chosen.truncate(MAXIMUM_PATH_COMPLETIONS);
+                    let chosen: Vec<PathCandidate> = chosen
+                        .into_iter()
+                        .map(|(_, candidate)| candidate.clone())
+                        .collect();
+                    (chosen, total > MAXIMUM_PATH_COMPLETIONS)
+                })
+                .await;
             let completions = cx.update(|cx| {
                 chosen
                     .into_iter()

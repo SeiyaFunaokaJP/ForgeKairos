@@ -180,6 +180,12 @@ function BuildRemoteServer {
     Write-Output "Compressing remote_server to $remoteServerDst"
     Compress-Archive -Path $remoteServerSrc -DestinationPath $remoteServerDst -Force
 
+    # SSH-to-Windows remoting uploads this zip from {app}\bin (crates/remote's
+    # bundled_server_search_dirs); without it the connection falls back to a
+    # download, which this fork's egress policy blocks by default. The copy in
+    # target\ stays for release uploads.
+    Copy-Item -Path $remoteServerDst -Destination "$innoDir\bin\zed-remote-server-windows-$Architecture.zip" -Force
+
     Write-Output "Remote server compressed successfully"
 }
 
@@ -472,6 +478,21 @@ function CollectFiles {
     }
 }
 
+function AssertBundledRemoteArtifacts {
+    # Each of these is what crates/remote looks for in {app}\bin when connecting
+    # without network access; a missing one only shows up on the user's machine as
+    # a blocked download, so refuse to build an installer without it.
+    $required = @(
+        "$innoDir\bin\zed-remote-server-windows-$Architecture.zip",
+        "$innoDir\bin\zed-remote-server-linux-x86_64.gz",
+        "$innoDir\bin\slirp4netns-linux-x86_64"
+    )
+    $missing = @($required | Where-Object { -not (Test-Path $_ -PathType Leaf) -or (Get-Item $_).Length -eq 0 })
+    if ($missing.Count -gt 0) {
+        throw "Bundled remote artifacts missing or empty: $($missing -join ', ')"
+    }
+}
+
 function BuildInstaller {
     $issFilePath = "$innoDir\zed.iss"
     switch ($channel) {
@@ -651,6 +672,7 @@ DownloadSlirp4netns
 # Ships the C/C++ default formatter's binary in {app}\bin, resolved there at
 # runtime by crates/util's resolve_command_next_to_current_exe.
 CopyClangFormat
+AssertBundledRemoteArtifacts
 BuildInstaller
 
 if($env:CI) {

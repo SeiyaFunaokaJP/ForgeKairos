@@ -3,13 +3,14 @@ use editor::actions::{
 };
 use editor::{Editor, EditorEvent, EditorSettings, actions as editor_actions};
 use gpui::{
-    Action, AnyElement, Entity, EventEmitter, FocusHandle, Focusable, FontWeight, Stateful,
-    Subscription, WeakEntity,
+    Action, AnyElement, Entity, EventEmitter, FocusHandle, Focusable, FontWeight, Modifiers,
+    Stateful, Subscription, WeakEntity,
 };
 use markdown_preview::markdown_preview_view::MarkdownPreviewView;
 use settings::{Settings, SettingsStore, update_settings_file};
 use ui::{
-    ButtonLike, ContextMenu, Divider, PopoverMenu, Switch, SwitchLabelPosition, Tooltip, prelude::*,
+    ButtonLike, ContextMenu, Divider, PopoverMenu, Switch, SwitchLabelPosition, Tooltip,
+    prelude::*, text_for_keystroke,
 };
 use workspace::{ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView, Workspace};
 
@@ -209,6 +210,48 @@ fn icon_format_button(
             .color(Color::Default)
             .into_any_element(),
     )
+}
+
+/// Opens the preview as a tab of the editor's own pane; Ctrl-click (Cmd on
+/// macOS) opens it beside the source instead.
+fn preview_button(focus_handle: &FocusHandle, cx: &App) -> ButtonLike {
+    let to_the_side_meta = format!(
+        "{} で横に開く",
+        text_for_keystroke(&Modifiers::secondary_key(), "click", cx)
+    );
+    ButtonLike::new("markdown-preview")
+        .style(ButtonStyle::Subtle)
+        .child(
+            Icon::new(IconName::Eye)
+                .size(IconSize::Small)
+                .color(Color::Default),
+        )
+        .tooltip({
+            let focus_handle = focus_handle.clone();
+            move |_window, cx| {
+                Tooltip::with_meta_in(
+                    "プレビューを開く",
+                    Some(&markdown_preview::OpenPreview),
+                    to_the_side_meta.clone(),
+                    &focus_handle,
+                    cx,
+                )
+            }
+        })
+        .on_click({
+            let focus_handle = focus_handle.clone();
+            move |_, window, cx| {
+                if window.modifiers().secondary() {
+                    focus_handle.dispatch_action(
+                        &markdown_preview::OpenPreviewToTheSide,
+                        window,
+                        cx,
+                    )
+                } else {
+                    focus_handle.dispatch_action(&markdown_preview::OpenPreview, window, cx)
+                }
+            }
+        })
 }
 
 /// A button that opens a menu instead of dispatching one action. The menu is
@@ -546,13 +589,11 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
                 )
             },
         ))
-        .child(icon_format_button(
-            "markdown-preview",
-            IconName::Eye,
-            "プレビューを横に開く",
-            markdown_preview::OpenPreviewToTheSide.boxed_clone(),
-            &focus_handle,
-        ))
+        .child(
+            div()
+                .debug_selector(|| "markdown_preview_button".into())
+                .child(preview_button(&focus_handle, cx)),
+        )
         // Folding by heading level lives on in the gutter arrows, the
         // editor's own "…" fold submenu and the command palette, so this
         // slot carries the disclosure the headings cannot express instead.
@@ -711,6 +752,65 @@ mod tests {
             inserted_images.get(),
             1,
             "clicking the button hands `markdown::InsertImage` to the editor"
+        );
+    }
+
+    /// Renders the row over a focus handle that records which preview action
+    /// the eye button hands to the editor.
+    struct PreviewButtonTestView {
+        focus_handle: FocusHandle,
+        opened: std::rc::Rc<std::cell::RefCell<Vec<&'static str>>>,
+    }
+
+    impl Render for PreviewButtonTestView {
+        fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            v_flex()
+                .track_focus(&self.focus_handle)
+                .on_action({
+                    let opened = self.opened.clone();
+                    move |_: &markdown_preview::OpenPreview, _window, _cx| {
+                        opened.borrow_mut().push("same pane")
+                    }
+                })
+                .on_action({
+                    let opened = self.opened.clone();
+                    move |_: &markdown_preview::OpenPreviewToTheSide, _window, _cx| {
+                        opened.borrow_mut().push("to the side")
+                    }
+                })
+                .child(format_bar_row(&self.focus_handle, cx))
+        }
+    }
+
+    #[gpui::test]
+    fn format_bar_preview_button_opens_in_the_same_pane_unless_secondary_clicked(
+        cx: &mut TestAppContext,
+    ) {
+        open_format_bar(cx);
+        let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let (_view, cx) = cx.add_window_view({
+            let opened = opened.clone();
+            move |_window, cx| PreviewButtonTestView {
+                focus_handle: cx.focus_handle(),
+                opened,
+            }
+        });
+        cx.simulate_resize(size(px(1600.), px(600.)));
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        let bounds = cx
+            .debug_bounds("markdown_preview_button")
+            .expect("the preview button is drawn in the row");
+        cx.simulate_click(bounds.center(), gpui::Modifiers::none());
+        cx.run_until_parked();
+        cx.simulate_click(bounds.center(), gpui::Modifiers::secondary_key());
+        cx.run_until_parked();
+        assert_eq!(
+            *opened.borrow(),
+            ["same pane", "to the side"],
+            "a plain click opens the preview as a tab of the editor's pane, \
+             and only Ctrl-click (Cmd on macOS) splits it off"
         );
     }
 

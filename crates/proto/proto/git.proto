@@ -886,6 +886,15 @@ message SearchCommits {
   optional string change = 13;
   optional SearchCommitsMerges merges = 14;
   optional string sha_prefix = 15;
+  // Names this search for `CancelSearchCommits`; unique per client.
+  optional uint64 search_id = 16;
+}
+
+// Stops the server's `SearchCommits` with this `search_id` from the same client, and its git.
+message CancelSearchCommits {
+  uint64 project_id = 1;
+  uint64 repository_id = 2;
+  uint64 search_id = 3;
 }
 
 message SearchCommitsCommitSet {
@@ -902,4 +911,6 @@ message SearchCommitsResponse {
   repeated string shas = 1;
   // Set on the first response by a server that applies every filter of `SearchCommits`.
   optional uint32 filters_version = 2;
+  // Set on the first response by a server that stops the search on `CancelSearchCommits`.
+  optional bool cancellable = 3;
 }

@@ -485,20 +485,38 @@ impl ToTaffy<taffy::style::Style> for Style {
             .unwrap_or_default()
         }
 
-        // grid-template-columns: minmax(<width>, max-content) ... , one track per
-        // entry, so each column keeps its own floor and the grid overflows its own
-        // box once those floors no longer fit.
-        fn to_grid_min_widths<T: taffy::style::CheapCloneStr>(
-            min_widths: &[Pixels],
+        // grid-template-columns: one track per entry, so each column keeps its
+        // own floor and the grid overflows its own box once those floors no
+        // longer fit.
+        fn to_grid_widths<T: taffy::style::CheapCloneStr>(
+            widths: &[crate::GridColumnWidth],
             scale_factor: f32,
         ) -> Vec<taffy::GridTemplateComponent<T>> {
-            min_widths
+            use taffy::style_helpers::percent;
+
+            widths
                 .iter()
-                .map(|min_width| {
-                    taffy::GridTemplateComponent::Single(minmax(
-                        length(round_to_device_pixel(min_width.0, scale_factor)),
-                        max_content(),
-                    ))
+                .map(|width| {
+                    taffy::GridTemplateComponent::Single(match *width {
+                        crate::GridColumnWidth::Content { min } => minmax(
+                            length(round_to_device_pixel(min.0, scale_factor)),
+                            max_content(),
+                        ),
+                        crate::GridColumnWidth::Fraction(fraction) => {
+                            minmax(min_content(), percent(fraction.clamp(0.0, 1.0)))
+                        }
+                        // With no floor of its own the column still keeps its
+                        // content's narrowest wrapping, or percentages that
+                        // take the whole grid would squeeze it to nothing and
+                        // its content would spill over the next column.
+                        crate::GridColumnWidth::Remainder { min } if min <= Pixels::ZERO => {
+                            minmax(min_content(), fr(1.0_f32))
+                        }
+                        crate::GridColumnWidth::Remainder { min } => minmax(
+                            length(round_to_device_pixel(min.0, scale_factor)),
+                            fr(1.0_f32),
+                        ),
+                    })
                 })
                 .collect()
         }
@@ -527,8 +545,8 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_grow: self.flex_grow,
             flex_shrink: self.flex_shrink,
             grid_template_rows: to_grid_repeat(&self.grid_rows),
-            grid_template_columns: match self.grid_cols_min_widths.as_deref() {
-                Some(min_widths) => to_grid_min_widths(min_widths, scale_factor),
+            grid_template_columns: match self.grid_cols_widths.as_deref() {
+                Some(widths) => to_grid_widths(widths, scale_factor),
                 None => to_grid_repeat(&self.grid_cols),
             },
             grid_row: self

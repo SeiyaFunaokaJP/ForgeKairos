@@ -1,16 +1,17 @@
 use std::{ops::Range, sync::Arc};
 
 use gpui::{
-    App, FontStyle, FontWeight, StrikethroughStyle, TextAlign, TextStyleRefinement, UnderlineStyle,
+    App, FontStyle, FontWeight, GridColumnWidth, StrikethroughStyle, TextAlign,
+    TextStyleRefinement, UnderlineStyle,
 };
 use pulldown_cmark::Alignment;
 use ui::{ScrollAxes, Scrollbars, WithScrollbar, prelude::*};
 
 use crate::html::html_parser::{
-    HtmlHighlightStyle, HtmlImage, HtmlParagraph, HtmlParagraphChunk, HtmlSpanningCell,
-    HtmlSpanningTable, HtmlTablePart, HtmlVerticalAlign, ParsedHtmlBlock, ParsedHtmlDetails,
-    ParsedHtmlElement, ParsedHtmlList, ParsedHtmlListItemType, ParsedHtmlTable, ParsedHtmlTableRow,
-    ParsedHtmlText, html_paragraph_text,
+    HtmlColumnWidth, HtmlHighlightStyle, HtmlImage, HtmlParagraph, HtmlParagraphChunk,
+    HtmlSpanningCell, HtmlSpanningTable, HtmlTablePart, HtmlVerticalAlign, ParsedHtmlBlock,
+    ParsedHtmlDetails, ParsedHtmlElement, ParsedHtmlList, ParsedHtmlListItemType, ParsedHtmlTable,
+    ParsedHtmlTableRow, ParsedHtmlText, html_paragraph_text,
 };
 use crate::{MarkdownElement, MarkdownElementBuilder, TableColumnMinWidths};
 
@@ -151,14 +152,7 @@ impl MarkdownElement {
                     }
                 }
                 HtmlTablePart::OpenTable(table) => {
-                    self.push_html_spanning_table(
-                        table,
-                        &block.source_range,
-                        builder,
-                        markdown_end,
-                        window,
-                        cx,
-                    );
+                    self.push_html_spanning_table(table, block, builder, markdown_end, window, cx);
                 }
                 HtmlTablePart::OpenCell(cell) => {
                     self.push_html_spanning_cell(
@@ -174,15 +168,21 @@ impl MarkdownElement {
                     builder.pop_div();
                     builder.pop_text_style();
                 }
-                HtmlTablePart::EndRow { row, used_columns } => {
+                HtmlTablePart::EndRow {
+                    row,
+                    occupied_columns,
+                } => {
                     let column_count = builder
                         .spanning_table_columns
                         .last()
                         .copied()
                         .unwrap_or_default();
-                    for column in *used_columns..column_count {
+                    for column in 0..column_count {
+                        if occupied_columns.get(column).copied().unwrap_or(false) {
+                            continue;
+                        }
                         builder.push_div(
-                            div()
+                            place_in_grid(div(), *row, column, 1, 1)
                                 .when(column > 0, |this| this.border_l_1())
                                 .when(*row > 0, |this| this.border_t_1())
                                 .border_color(cx.theme().colors().border)
@@ -195,8 +195,17 @@ impl MarkdownElement {
                         builder.pop_div();
                     }
                 }
-                HtmlTablePart::CloseTable => {
+                HtmlTablePart::CloseTable {
+                    has_caption,
+                    caption_below,
+                } => {
                     builder.pop_div();
+                    if let Some(range) = caption_below {
+                        self.render_html_caption(block, range, builder, markdown_end, window, cx);
+                    }
+                    if *has_caption {
+                        builder.pop_div();
+                    }
                     builder.pop_div();
                     builder.spanning_table_columns.pop();
                 }
@@ -212,38 +221,48 @@ impl MarkdownElement {
     fn push_html_spanning_table(
         &self,
         table: &HtmlSpanningTable,
-        source_range: &Range<usize>,
+        block: &ParsedHtmlBlock,
         builder: &mut MarkdownElementBuilder,
         markdown_end: usize,
         window: &mut Window,
         cx: &mut App,
     ) {
+        let source_range = &block.source_range;
+        let column_tracks = html_table_column_tracks(&table.column_widths, None);
+        let fills_width = column_tracks
+            .as_ref()
+            .is_some_and(|(_, fills_width)| *fills_width);
         let table_row = match table.text_align.or_else(|| builder.inherited_text_align()) {
             None | Some(TextAlign::Left) => div().flex(),
             Some(TextAlign::Center) => div().flex().justify_center(),
             Some(TextAlign::Right) => div().flex().justify_end(),
         };
         builder.push_div(table_row, source_range, markdown_end);
+        if table.has_caption {
+            builder.push_div(
+                html_captioned_table_box(fills_width),
+                source_range,
+                markdown_end,
+            );
+            if let Some(range) = &table.caption_above {
+                self.render_html_caption(block, range, builder, markdown_end, window, cx);
+            }
+        }
 
         let column_count = table.column_count as u16;
-        let has_column_widths = table.column_widths.iter().any(Option::is_some);
         builder.push_div(
             div()
                 .id(("html-spanning-table", table.source_start))
                 .debug_selector(|| "markdown_html_spanning_table".into())
                 .min_w_0()
+                .when(table.has_caption, |this| this.max_w_full())
                 .grid()
                 .map(|this| {
                     if self.style.table_columns_min_size {
                         this.w_full().grid_cols_min_content(column_count)
-                    } else if has_column_widths {
-                        this.grid_cols_min_widths(
-                            table
-                                .column_widths
-                                .iter()
-                                .map(|width| px(width.unwrap_or_default()))
-                                .collect::<Vec<_>>(),
-                        )
+                    } else if let Some((tracks, fills_width)) = column_tracks {
+                        this.when(fills_width, |this| this.w_full())
+                            .grid_cols_widths(tracks)
                     } else {
                         this.grid_cols_max_content(column_count)
                     }
@@ -271,6 +290,36 @@ impl MarkdownElement {
         builder.spanning_table_columns.push(table.column_count);
     }
 
+    /// Draws the elements of a table spanning blocks that make up its
+    /// `<caption>`, which the parser already centered.
+    fn render_html_caption(
+        &self,
+        block: &ParsedHtmlBlock,
+        range: &Range<usize>,
+        builder: &mut MarkdownElementBuilder,
+        markdown_end: usize,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let Some(elements) = block.children.get(range.clone()) else {
+            return;
+        };
+        let mut source_allocator = HtmlSourceAllocator::new(
+            elements
+                .first()
+                .and_then(ParsedHtmlElement::source_range)
+                .unwrap_or_else(|| block.source_range.clone()),
+        );
+        self.render_html_elements(
+            elements,
+            &mut source_allocator,
+            builder,
+            markdown_end,
+            window,
+            cx,
+        );
+    }
+
     fn push_html_spanning_cell(
         &self,
         cell: &HtmlSpanningCell,
@@ -293,8 +342,7 @@ impl MarkdownElement {
             ..Default::default()
         });
         builder.push_div(
-            div()
-                .col_span(col_span as u16)
+            place_in_grid(div(), cell.row, cell.column, cell.row_span, col_span)
                 .flex()
                 .flex_col()
                 .when(cell.column > 0, |this| this.border_l_1())
@@ -375,7 +423,7 @@ impl MarkdownElement {
                     markdown_end,
                 );
                 if paragraph.font_scale_percent.is_some() {
-                    builder.pop_div();
+                    self.pop_paragraph_scale(builder);
                 }
                 self.pop_markdown_paragraph(builder);
             }
@@ -387,6 +435,9 @@ impl MarkdownElement {
                     markdown_end,
                     heading.text_align,
                 );
+                // A heading keeps the size of its level, the way the Markdown
+                // path leaves a `font-size` in a heading alone.
+                builder.html_heading_depth += 1;
                 self.render_html_paragraph(
                     &heading.contents,
                     source_allocator,
@@ -394,6 +445,7 @@ impl MarkdownElement {
                     cx,
                     markdown_end,
                 );
+                builder.html_heading_depth -= 1;
                 self.pop_markdown_heading(builder);
             }
             ParsedHtmlElement::List(list) => {
@@ -602,22 +654,20 @@ impl MarkdownElement {
         window: &mut Window,
         cx: &mut App,
     ) {
-        if let Some(caption) = &table.caption {
-            builder.push_div(
-                div().when(!self.style.height_is_multiple_of_line_height, |el| {
-                    el.mb_2().line_height(rems(1.3))
-                }),
-                &table.source_range,
-                markdown_end,
-            );
-            self.render_html_paragraph(caption, source_allocator, builder, cx, markdown_end);
-            builder.pop_div();
-        }
-
         let grid = HtmlTableGrid::of(table);
         let max_column_count = grid.column_count();
 
         if max_column_count == 0 {
+            if let Some(caption) = &table.caption {
+                self.render_html_table_caption(
+                    caption,
+                    &table.source_range,
+                    source_allocator,
+                    builder,
+                    markdown_end,
+                    cx,
+                );
+            }
             return;
         }
 
@@ -635,21 +685,48 @@ impl MarkdownElement {
             )
         });
 
+        let column_tracks =
+            html_table_column_tracks(&grid.column_widths(table), column_min_widths.as_deref());
+        let fills_width = column_tracks
+            .as_ref()
+            .is_some_and(|(_, fills_width)| *fills_width);
+
         let table_row = match table.text_align {
             None | Some(TextAlign::Left) => div().flex(),
             Some(TextAlign::Center) => div().flex().justify_center(),
             Some(TextAlign::Right) => div().flex().justify_end(),
         };
         builder.push_div(table_row, &table.source_range, markdown_end);
+        if let Some(caption) = &table.caption {
+            builder.push_div(
+                html_captioned_table_box(fills_width),
+                &table.source_range,
+                markdown_end,
+            );
+            if !table.caption_below {
+                self.render_html_table_caption(
+                    caption,
+                    &table.source_range,
+                    source_allocator,
+                    builder,
+                    markdown_end,
+                    cx,
+                );
+            }
+        }
         builder.push_div(
             div()
                 .id(("html-table", table.source_range.start))
                 .debug_selector(|| "markdown_html_table".into())
                 .min_w_0()
+                .when(table.caption.is_some(), |this| this.max_w_full())
                 .grid()
                 .map(|this| {
                     if self.style.table_columns_min_size {
                         this.w_full().grid_cols_min_content(max_column_count as u16)
+                    } else if let Some((tracks, fills_width)) = column_tracks {
+                        this.when(fills_width, |this| this.w_full())
+                            .grid_cols_widths(tracks)
                     } else if let Some(column_min_widths) = column_min_widths {
                         this.grid_cols_min_widths(column_min_widths)
                     } else {
@@ -699,23 +776,27 @@ impl MarkdownElement {
                     _ => self.style.base_text_style.text_align,
                 };
 
-                let mut cell_div = div()
-                    .col_span(cell.col_span.min(max_span) as u16)
-                    .row_span(cell.row_span.min(total_rows - row_index) as u16)
-                    .flex()
-                    .flex_col()
-                    .when(column_index > 0, |this| this.border_l_1())
-                    .when(row_index > 0, |this| this.border_t_1())
-                    .border_color(cx.theme().colors().border)
-                    .px_2()
-                    .py_1()
-                    .h_full()
-                    .when(cell.is_header, |this| {
-                        this.bg(cx.theme().colors().title_bar_background)
-                    })
-                    .when(!cell.is_header && row_index % 2 == 1, |this| {
-                        this.bg(cx.theme().colors().panel_background)
-                    });
+                let mut cell_div = place_in_grid(
+                    div(),
+                    row_index,
+                    column_index,
+                    cell.row_span.min(total_rows - row_index),
+                    cell.col_span.min(max_span),
+                )
+                .flex()
+                .flex_col()
+                .when(column_index > 0, |this| this.border_l_1())
+                .when(row_index > 0, |this| this.border_t_1())
+                .border_color(cx.theme().colors().border)
+                .px_2()
+                .py_1()
+                .h_full()
+                .when(cell.is_header, |this| {
+                    this.bg(cx.theme().colors().title_bar_background)
+                })
+                .when(!cell.is_header && row_index % 2 == 1, |this| {
+                    this.bg(cx.theme().colors().panel_background)
+                });
 
                 cell_div = match alignment {
                     Alignment::Center => cell_div.items_center(),
@@ -760,7 +841,7 @@ impl MarkdownElement {
                 }
 
                 builder.push_div(
-                    div()
+                    place_in_grid(div(), row_index, column_index, 1, 1)
                         .when(column_index > 0, |this| this.border_l_1())
                         .when(row_index > 0, |this| this.border_t_1())
                         .border_color(cx.theme().colors().border)
@@ -775,7 +856,36 @@ impl MarkdownElement {
         }
 
         builder.pop_div();
+        if let Some(caption) = &table.caption {
+            if table.caption_below {
+                self.render_html_table_caption(
+                    caption,
+                    &table.source_range,
+                    source_allocator,
+                    builder,
+                    markdown_end,
+                    cx,
+                );
+            }
+            builder.pop_div();
+        }
         builder.pop_div();
+    }
+
+    /// Draws a table's `<caption>` as a centered paragraph, the way a browser
+    /// centers it over the table.
+    fn render_html_table_caption(
+        &self,
+        caption: &HtmlParagraph,
+        source_range: &Range<usize>,
+        source_allocator: &mut HtmlSourceAllocator,
+        builder: &mut MarkdownElementBuilder,
+        markdown_end: usize,
+        cx: &mut App,
+    ) {
+        self.push_markdown_paragraph(builder, source_range, markdown_end, Some(TextAlign::Center));
+        self.render_html_paragraph(caption, source_allocator, builder, cx, markdown_end);
+        self.pop_markdown_paragraph(builder);
     }
 
     fn render_html_paragraph(
@@ -839,14 +949,19 @@ impl MarkdownElement {
             let mut refinement = TextStyleRefinement::default();
             let mut has_refinement = false;
             let mut is_code = false;
+            let mut font_scale = 1.0_f32;
 
             for (highlight_range, style) in &text.highlights {
                 if highlight_range.start < end && highlight_range.end > start {
                     apply_html_highlight_style(&mut refinement, style);
                     has_refinement = true;
                     is_code |= style.code;
+                    if let Some(percent) = style.font_scale_percent {
+                        font_scale *= f32::from(percent) / 100.0;
+                    }
                 }
             }
+            let scales_text = font_scale != 1.0 && builder.html_heading_depth == 0;
 
             if is_code {
                 let mut code_style = self.style.inline_code.clone();
@@ -875,6 +990,9 @@ impl MarkdownElement {
 
             if has_refinement {
                 builder.push_text_style(refinement);
+            }
+            if scales_text {
+                builder.push_font_scale(font_scale);
             }
 
             // `<br>` reaches the renderer as a newline inside the paragraph's
@@ -906,6 +1024,9 @@ impl MarkdownElement {
                 builder.push_text(segment, source_start..source_end);
             }
 
+            if scales_text {
+                builder.pop_font_scale();
+            }
             if has_refinement {
                 builder.pop_text_style();
             }
@@ -1081,6 +1202,25 @@ impl HtmlTableGrid {
             .unwrap_or(false)
     }
 
+    /// The width each column asks for through the cells that sit in it alone.
+    fn column_widths(&self, table: &ParsedHtmlTable) -> Vec<Option<HtmlColumnWidth>> {
+        let mut widths = vec![None; self.column_count];
+        for (row_index, row) in table.header.iter().chain(table.body.iter()).enumerate() {
+            for (cell_index, cell) in row.columns.iter().enumerate() {
+                let Some(column_index) = self.cell_column(row_index, cell_index) else {
+                    break;
+                };
+                if cell.col_span == 1
+                    && let Some(width) = cell.width
+                    && let Some(known) = widths.get_mut(column_index)
+                {
+                    *known = Some(HtmlColumnWidth::merge(*known, width));
+                }
+            }
+        }
+        widths
+    }
+
     /// The column the `cell_index`th cell of `row_index` starts at, or `None`
     /// when the grid has no such cell.
     fn cell_column(&self, row_index: usize, cell_index: usize) -> Option<usize> {
@@ -1102,6 +1242,65 @@ impl HtmlTableGrid {
             }
         }
     }
+}
+
+/// Puts a table's cell at its own row and column of the grid, rather than
+/// leaving it to the grid to find a place, which with `rowspan`s could differ
+/// from where the table's own counting put it.
+fn place_in_grid(cell: Div, row: usize, column: usize, row_span: usize, col_span: usize) -> Div {
+    let span = |span: usize| u16::try_from(span).unwrap_or(u16::MAX).max(1);
+    let cell = cell.col_span(span(col_span)).row_span(span(row_span));
+    match (i16::try_from(row + 1), i16::try_from(column + 1)) {
+        (Ok(row_line), Ok(column_line)) => cell.row_start(row_line).col_start(column_line),
+        _ => cell,
+    }
+}
+
+/// The box a table with a `<caption>` is drawn in together with it, as wide
+/// as the table so the caption centers over the table rather than the page.
+fn html_captioned_table_box(fills_width: bool) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .min_w_0()
+        .when(fills_width, |this| this.w_full())
+}
+
+/// The grid tracks of a table whose cells ask for widths, and whether the
+/// table has to take the whole width for its percentages to have something to
+/// be a part of. The columns that ask for none are sized to their content, or
+/// share out the width the percentages leave. `floors` are the narrowest the
+/// columns get to keep their text readable.
+fn html_table_column_tracks(
+    widths: &[Option<HtmlColumnWidth>],
+    floors: Option<&[Pixels]>,
+) -> Option<(Vec<GridColumnWidth>, bool)> {
+    if widths.iter().all(Option::is_none) {
+        return None;
+    }
+    let fills_width = widths
+        .iter()
+        .any(|width| matches!(width, Some(HtmlColumnWidth::Fraction(_))));
+    let tracks = widths
+        .iter()
+        .enumerate()
+        .map(|(column, width)| {
+            let floor = floors
+                .and_then(|floors| floors.get(column))
+                .copied()
+                .unwrap_or_default();
+            match width {
+                Some(HtmlColumnWidth::Fraction(fraction)) => GridColumnWidth::Fraction(*fraction),
+                Some(HtmlColumnWidth::Pixels(pixels)) => GridColumnWidth::Content {
+                    min: floor.max(px(*pixels)),
+                },
+                None if fills_width => GridColumnWidth::Remainder { min: floor },
+                None => GridColumnWidth::Content { min: floor },
+            }
+        })
+        .collect();
+    Some((tracks, fills_width))
 }
 
 /// Floors for an HTML table's columns, the same ones a markdown table gets, so
@@ -1610,6 +1809,75 @@ mod tests {
             .font_size
     }
 
+    /// The size the first glyph of `needle` in the line was drawn at.
+    fn glyph_font_size(line: &crate::RenderedLine, needle: &str) -> Pixels {
+        let mut offset = line
+            .layout
+            .text()
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle:?} is not in the line"));
+        // Each of the text's `\n`-separated lines is laid out on its own.
+        for wrapped in line.layout.line_layouts() {
+            let layout = &wrapped.unwrapped_layout;
+            if offset > layout.len {
+                offset -= layout.len + 1;
+                continue;
+            }
+            let run = layout
+                .runs
+                .iter()
+                .find(|run| run.glyphs.iter().any(|glyph| glyph.index == offset))
+                .unwrap_or_else(|| panic!("no glyph of {needle:?} was laid out"));
+            return layout.run_font_size(run);
+        }
+        panic!("{needle:?} is past the laid out lines");
+    }
+
+    #[gpui::test]
+    fn test_font_sizes_on_part_of_a_paragraph_are_drawn_in_the_line(cx: &mut TestAppContext) {
+        let source = "並\n\n<p>前<span style=\"font-size: 2em\">大</span>後</p>\n\n<h2>見<span style=\"font-size: 2em\">出</span>しA</h2>\n\n# 見<span style=\"font-size: 2em\">出</span>しB\n\n小<span style=\"font-size: 50%\">さ<span style=\"font-size: 200%\">戻</span></span>る\n\n改行前  \nの後<span style=\"font-size: 2em\">大</span>
+
+深<span style=\"font-size: 400%\"><span style=\"font-size: 400%\"><span style=\"font-size: 400%\">い</span></span></span>入れ子
+
+<p>深<span style=\"font-size: 400%\"><span style=\"font-size: 400%\">い</span></span>HTML</p>";
+        let rendered = render_html_preview_text(source, cx);
+        let normal = line_font_size(line_containing(&rendered, "並"));
+
+        let html = line_containing(&rendered, "前大後");
+        assert_eq!(glyph_font_size(html, "前"), normal);
+        assert_eq!(glyph_font_size(html, "大"), normal * 2.);
+        assert_eq!(glyph_font_size(html, "後"), normal);
+
+        // A heading keeps the size of its level.
+        for heading in ["見出しA", "見出しB"] {
+            let line = line_containing(&rendered, heading);
+            assert_eq!(
+                glyph_font_size(line, "出"),
+                glyph_font_size(line, "見"),
+                "{heading}"
+            );
+        }
+
+        // Sizes inside sizes are relative to the text around them.
+        let nested = line_containing(&rendered, "小さ戻る");
+        assert_eq!(glyph_font_size(nested, "小"), normal);
+        assert_eq!(glyph_font_size(nested, "さ"), normal * 0.5);
+        assert_eq!(glyph_font_size(nested, "戻"), normal);
+        assert_eq!(glyph_font_size(nested, "る"), normal);
+
+        // A hard break starts another line of the same text.
+        let broken = line_containing(&rendered, "改行前");
+        assert_eq!(glyph_font_size(broken, "改行前"), normal);
+        assert_eq!(glyph_font_size(broken, "の後"), normal);
+        assert_eq!(glyph_font_size(broken, "大"), normal * 2.);
+
+        // Sizes inside sizes stop at the largest size a single one may ask for.
+        for text in ["深い入れ子", "深いHTML"] {
+            let deep = line_containing(&rendered, text);
+            assert_eq!(glyph_font_size(deep, "い"), normal * 4., "{text}");
+        }
+    }
+
     #[gpui::test]
     fn test_a_paragraph_wrapped_in_a_font_size_span_is_laid_out_larger(cx: &mut TestAppContext) {
         let source = "並の段落\n\n<span style=\"font-size: 1.5em\">大きい段落</span>\n\n一部だけ<span style=\"font-size: 1.5em\">大</span>きい\n\n<p style=\"font-size: 1.5em\">HTML の段落</p>";
@@ -1628,8 +1896,13 @@ mod tests {
         );
         assert!(large.layout.line_height() > normal.layout.line_height() * 1.4);
         assert!(line_font_size(html) > line_font_size(normal) * 1.4);
-        // Part of a paragraph cannot be drawn at another size.
+        // Part of a paragraph is drawn at its size within the paragraph's
+        // lines, which grow tall enough for it.
         assert_eq!(line_font_size(partial), line_font_size(normal));
+        assert_eq!(glyph_font_size(partial, "一部"), line_font_size(normal));
+        assert_eq!(glyph_font_size(partial, "きい"), line_font_size(normal));
+        assert!(glyph_font_size(partial, "大") > line_font_size(normal) * 1.4);
+        assert!(partial.layout.line_height() > normal.layout.line_height() * 1.4);
 
         // The tags are not drawn, and the text still maps back to its source,
         // which is what copying and clicking through to the editor rely on.
@@ -1640,6 +1913,34 @@ mod tests {
             rendered.text_for_range(start..start + "大きい段落".len()),
             "大きい段落"
         );
+    }
+
+    #[gpui::test]
+    fn test_font_sizes_inside_a_sized_paragraph_stop_at_the_largest(cx: &mut TestAppContext) {
+        let source = "並
+
+<span style=\"font-size: 400%\"><span style=\"font-size: 400%\"><span style=\"font-size: 400%\">三重</span></span></span>
+
+<span style=\"font-size: 400%\">段落と<span style=\"font-size: 400%\">一部</span></span>
+
+<p style=\"font-size: 400%\">HTML と<span style=\"font-size: 400%\">内側</span></p>
+
+<span style=\"font-size: 200%\">倍と<span style=\"font-size: 150%\">更に</span></span>";
+        let rendered = render_html_preview_text(source, cx);
+        let normal = line_font_size(line_containing(&rendered, "並"));
+
+        let nested = line_containing(&rendered, "三重");
+        assert_eq!(glyph_font_size(nested, "三重"), normal * 4.);
+        for (line, part) in [("段落と一部", "一部"), ("HTML と内側", "内側")] {
+            let line = line_containing(&rendered, line);
+            assert_eq!(line_font_size(line), normal * 4.);
+            assert_eq!(glyph_font_size(line, part), normal * 4., "{part}");
+        }
+        // Below the limit, a size inside a sized paragraph is still relative
+        // to the paragraph's.
+        let moderate = line_containing(&rendered, "倍と更に");
+        assert_eq!(glyph_font_size(moderate, "倍と"), normal * 2.);
+        assert_eq!(glyph_font_size(moderate, "更に"), normal * 3.);
     }
 
     /// The run the first occurrence of `needle` in the line was drawn with.
@@ -1701,7 +2002,7 @@ mod tests {
         let refinement = crate::inline_span_text_style(&crate::parser::InlineSpanStyle {
             color: Some(0xd44c47),
             background: Some(0xffff00),
-            paragraph_scale_percent: None,
+            ..Default::default()
         });
         assert_eq!(refinement.color, Some(gpui::rgb(0xd44c47).into()));
         assert_eq!(
@@ -2016,6 +2317,17 @@ mod tests {
         width: Pixels,
         cx: &mut TestAppContext,
     ) -> (crate::RenderedText, Option<gpui::Bounds<Pixels>>) {
+        render_table_preview(source, width, "markdown_html_spanning_table", cx)
+    }
+
+    /// Like [`render_spanning_table_preview`], for the table drawn with the
+    /// debug selector `table_selector`.
+    fn render_table_preview(
+        source: &str,
+        width: Pixels,
+        table_selector: &'static str,
+        cx: &mut TestAppContext,
+    ) -> (crate::RenderedText, Option<gpui::Bounds<Pixels>>) {
         struct SpanningTableView {
             markdown: Entity<Markdown>,
             rendered_text: Rc<RefCell<Option<crate::RenderedText>>>,
@@ -2058,8 +2370,8 @@ mod tests {
         });
         cx.run_until_parked();
 
-        let table_bounds = gpui::VisualTestContext::from_window(window.into(), cx)
-            .debug_bounds("markdown_html_spanning_table");
+        let table_bounds =
+            gpui::VisualTestContext::from_window(window.into(), cx).debug_bounds(table_selector);
         let rendered_text = rendered_text
             .borrow()
             .clone()
@@ -2253,5 +2565,148 @@ mod tests {
             wrapped(&long_item).contains('\n') && long.right() <= table.right(),
             "a long item should wrap inside the table: {long:?} {table:?}"
         );
+    }
+
+    /// Where the line holding `needle` was laid out. Unlike [`text_bounds`] it
+    /// does not go through the source, which a table in one block hands out
+    /// to its text in drawing order rather than where each text is written.
+    fn line_bounds(rendered: &crate::RenderedText, needle: &str) -> gpui::Bounds<Pixels> {
+        rendered
+            .lines
+            .iter()
+            .find(|line| line.layout.wrapped_text().contains(needle))
+            .map(|line| line.layout.bounds())
+            .unwrap_or_else(|| panic!("{needle:?} should have been laid out"))
+    }
+
+    const IN_ONE_BLOCK: &str = "markdown_html_table";
+    const SPANNING_BLOCKS: &str = "markdown_html_spanning_table";
+
+    #[gpui::test]
+    fn test_row_spans_place_the_cells_beside_them(cx: &mut TestAppContext) {
+        for (source, selector) in [
+            (
+                "<table><tr><td rowspan=\"2\">結合した列</td><td>右上</td></tr><tr><td>右下</td></tr><tr><td>左下</td><td>最後</td></tr></table>\n",
+                IN_ONE_BLOCK,
+            ),
+            (
+                "<table>\n<tr>\n<td rowspan=\"2\">\n\n結合した列\n\n</td>\n<td>\n\n右上\n\n</td>\n</tr>\n<tr>\n<td>\n\n右下\n\n</td>\n</tr>\n<tr>\n<td>\n\n左下\n\n</td>\n<td>\n\n最後\n\n</td>\n</tr>\n</table>\n",
+                SPANNING_BLOCKS,
+            ),
+        ] {
+            let (rendered, table) = render_table_preview(source, px(600.), selector, cx);
+            let table = table.unwrap_or_else(|| panic!("the table should be drawn: {source:?}"));
+            let joined = line_bounds(&rendered, "結合した列");
+            let upper = line_bounds(&rendered, "右上");
+            let lower = line_bounds(&rendered, "右下");
+            let left_below = line_bounds(&rendered, "左下");
+            let last = line_bounds(&rendered, "最後");
+            for bounds in [joined, upper, lower, left_below, last] {
+                assert!(table.contains(&bounds.center()), "{bounds:?} {table:?}");
+            }
+            assert!(
+                (lower.left() - upper.left()).abs() < px(1.) && lower.top() >= upper.bottom(),
+                "the cell under the joined one's row goes in the next column: {upper:?} {lower:?} ({source:?})"
+            );
+            assert!(
+                lower.left() > joined.right(),
+                "{joined:?} {lower:?} ({source:?})"
+            );
+            assert!(
+                left_below.left() < upper.left()
+                    && left_below.top() >= lower.bottom()
+                    && (last.left() - upper.left()).abs() < px(1.),
+                "the row after the span starts at the left again: {left_below:?} {last:?} ({source:?})"
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn test_percentage_widths_take_their_share_of_the_table(cx: &mut TestAppContext) {
+        for (source, selector) in [
+            (
+                "<table><tr><td width=\"75%\">左</td><td>右</td></tr></table>\n",
+                IN_ONE_BLOCK,
+            ),
+            (
+                "<table>\n<tr>\n<td style=\"width: 75%\">\n\n左\n\n</td>\n<td>\n\n右\n\n</td>\n</tr>\n</table>\n",
+                SPANNING_BLOCKS,
+            ),
+        ] {
+            let (rendered, table) = render_table_preview(source, px(600.), selector, cx);
+            let table = table.unwrap_or_else(|| panic!("the table should be drawn: {source:?}"));
+            assert!(
+                table.size.width > px(500.),
+                "a table with a percentage takes the width it is a part of: {table:?} ({source:?})"
+            );
+            let right = line_bounds(&rendered, "右");
+            let share = (right.left() - table.left()) / table.size.width;
+            assert!(
+                (0.72..0.8).contains(&share),
+                "the second column starts three quarters across: {share} ({source:?})"
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn test_pixel_widths_keep_their_columns_open(cx: &mut TestAppContext) {
+        let source = "<table><tr><td width=\"300\">左</td><td>右</td></tr></table>\n";
+        let (rendered, table) = render_table_preview(source, px(600.), IN_ONE_BLOCK, cx);
+        let table = table.expect("the table should be drawn");
+        let right = line_bounds(&rendered, "右");
+        assert!(
+            right.left() - table.left() >= px(300.),
+            "{right:?} {table:?}"
+        );
+        assert!(
+            table.size.width < px(400.),
+            "without a percentage the table stays as wide as its columns: {table:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn test_a_caption_is_centered_over_or_under_its_table(cx: &mut TestAppContext) {
+        for (source, selector, below) in [
+            (
+                "<table><caption>表の題</caption><tr><td>とても長いセルの本文です</td></tr></table>\n",
+                IN_ONE_BLOCK,
+                false,
+            ),
+            (
+                "<table><caption style=\"caption-side: bottom\">表の題</caption><tr><td>とても長いセルの本文です</td></tr></table>\n",
+                IN_ONE_BLOCK,
+                true,
+            ),
+            (
+                "<table>\n<caption>表の題</caption>\n<tr>\n<td>\n\nとても長いセルの本文です\n\n</td>\n</tr>\n</table>\n\n後ろ\n",
+                SPANNING_BLOCKS,
+                false,
+            ),
+            (
+                "<table>\n<caption align=\"bottom\">表の題</caption>\n<tr>\n<td>\n\nとても長いセルの本文です\n\n</td>\n</tr>\n</table>\n\n後ろ\n",
+                SPANNING_BLOCKS,
+                true,
+            ),
+        ] {
+            let (rendered, table) = render_table_preview(source, px(600.), selector, cx);
+            let table = table.unwrap_or_else(|| panic!("the table should be drawn: {source:?}"));
+            let caption = line_bounds(&rendered, "表の題");
+            assert!(
+                (caption.center().x - table.center().x).abs() < px(2.),
+                "the caption is centered on the table: {caption:?} {table:?} ({source:?})"
+            );
+            if below {
+                assert!(caption.top() >= table.bottom(), "{caption:?} {table:?}");
+            } else {
+                assert!(caption.bottom() <= table.top(), "{caption:?} {table:?}");
+            }
+            if selector == SPANNING_BLOCKS {
+                let after = line_bounds(&rendered, "後ろ");
+                assert!(
+                    after.top() >= table.bottom().max(caption.bottom()),
+                    "{after:?} {table:?} {caption:?}"
+                );
+            }
+        }
     }
 }

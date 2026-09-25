@@ -207,6 +207,10 @@ pub fn initial_project_settings_content() -> Cow<'static, str> {
     asset_str::<SettingsAssets>("settings/initial_local_settings.json")
 }
 
+pub fn mcp_server_templates_content() -> Cow<'static, str> {
+    asset_str::<SettingsAssets>("settings/mcp_server_templates.json")
+}
+
 pub fn initial_keymap_content() -> Cow<'static, str> {
     asset_str::<SettingsAssets>("keymaps/initial.json")
 }

@@ -3508,6 +3508,13 @@ impl GitPanel {
             this.update_in(cx, |this, window, cx| {
                 this.pending_commit.take();
 
+                let result = match result {
+                    Err(error) if git::repository::is_committed_without_signature(&error) => {
+                        this.show_committed_without_signature_notice(cx);
+                        Ok(())
+                    }
+                    result => result,
+                };
                 match result {
                     Ok(()) => {
                         this.set_skip_hooks_enabled(false, cx);
@@ -6402,6 +6409,22 @@ impl GitPanel {
         show_error_toast(workspace, action, e, cx)
     }
 
+    fn show_committed_without_signature_notice(&self, cx: &mut App) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        workspace.update(cx, |workspace, cx| {
+            struct CommittedWithoutSignatureToast;
+            workspace.show_toast(
+                workspace::Toast::new(
+                    NotificationId::unique::<CommittedWithoutSignatureToast>(),
+                    git::repository::UNTRUSTED_GPG_CONFIG_IGNORED,
+                ),
+                cx,
+            );
+        });
+    }
+
     /// The peer's server was too old to be told to drop the lease, so the push kept it. Said out
     /// loud because the push may then have refused the very commits it was meant to overwrite.
     fn show_old_server_push_warning(&self, cx: &mut App) {
@@ -8407,6 +8430,15 @@ impl GitPanel {
                 repository.work_directory_abs_path.clone(),
             )
         };
+        let remote_machine = self
+            .project
+            .read(cx)
+            .remote_connection_options(cx)
+            .map(|options| options.machine_key());
+        let merge_request_location = crate::merge_request_box::merge_request_storage_location(
+            &work_directory_abs_path,
+            remote_machine.as_deref(),
+        );
         let leave_scratch_branch = (step == SequencerStep::Abort)
             .then(|| self.rewrite_scratch_origin.clone())
             .flatten()
@@ -8462,7 +8494,7 @@ impl GitPanel {
                 if git::repository::is_merge_request_scratch_branch(&scratch_branch) {
                     cx.update(|cx| {
                         crate::merge_request_box::forget_pending(
-                            &work_directory_abs_path,
+                            &merge_request_location,
                             &scratch_branch,
                             cx,
                         )
@@ -13033,7 +13065,6 @@ mod tests {
     /// history `PARENT ← OLD_SHA ← … ← HEAD_SHA` where nothing is stopped and OLD_SHA is pushed.
     fn script_fixup_of_old_sha(fs: &FakeFs) {
         const PARENT: &str = "2222222222222222222222222222222222222222";
-        let replayed = format!("{HEAD_SHA}\n{OLD_SHA}");
         for (args, stdout, exit_code) in [
             (
                 format!("rev-parse --verify --quiet {OLD_SHA}^{{commit}}"),
@@ -13075,8 +13106,8 @@ mod tests {
                 0,
             ),
             (
-                format!("log --format=%H {PARENT}..HEAD"),
-                replayed.as_str(),
+                "rev-parse --symbolic-full-name HEAD".to_string(),
+                "refs/heads/main",
                 0,
             ),
             (format!("commit --fixup={OLD_SHA} -a"), "", 0),
@@ -13153,6 +13184,8 @@ mod tests {
             );
             assert_eq!(modal.target_for_test().subject, "first");
             assert!(modal.target_for_test().pushed);
+            assert!(modal.target_for_test().has_upstream);
+            assert_eq!(modal.target_for_test().branch, "refs/heads/main");
         });
         cx.simulate_keystrokes("escape");
         cx.run_until_parked();

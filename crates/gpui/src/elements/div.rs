@@ -4241,8 +4241,8 @@ impl ScrollHandle {
 mod tests {
     use super::*;
     use crate::{
-        AnyWindowHandle, AppContext as _, Context, InputEvent, Keystroke, MouseMoveEvent,
-        TestAppContext, canvas, util::FluentBuilder as _,
+        AnyWindowHandle, AppContext as _, Context, GridColumnWidth, InputEvent, Keystroke,
+        MouseMoveEvent, TestAppContext, canvas, util::FluentBuilder as _,
     };
     use std::{cell::Cell, rc::Weak};
 
@@ -5252,6 +5252,102 @@ mod tests {
         assert_eq!(
             column_origins(Some(vec![px(60.), px(80.), px(10.)])),
             vec![px(0.), px(60.), px(140.)]
+        );
+    }
+
+    struct FractionGrid {
+        widths: Vec<GridColumnWidth>,
+        cell_widths: [Pixels; 3],
+    }
+
+    impl Render for FractionGrid {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                div()
+                    .w(px(400.))
+                    .grid()
+                    .grid_cols_widths(self.widths.clone())
+                    .children(
+                        self.cell_widths
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, width)| {
+                                div()
+                                    .debug_selector(move || format!("fraction-cell-{index}"))
+                                    .min_w(width)
+                                    .h(px(10.))
+                            }),
+                    ),
+            )
+        }
+    }
+
+    #[gpui::test]
+    fn grid_cols_widths_give_fractions_of_the_grid_and_share_out_the_rest(cx: &mut TestAppContext) {
+        let mut column_origins = |widths: Vec<GridColumnWidth>, cell_widths: [Pixels; 3]| {
+            let window = cx.add_window(|_, _| FractionGrid {
+                widths,
+                cell_widths,
+            });
+            cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+                .unwrap();
+            cx.update_window(window.into(), |_, window, _| {
+                (0..3)
+                    .map(|index| {
+                        window
+                            .rendered_frame
+                            .debug_bounds
+                            .get(&format!("fraction-cell-{index}"))
+                            .copied()
+                            .unwrap_or_else(|| panic!("fraction-cell-{index} was not rendered"))
+                            .origin
+                            .x
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap()
+        };
+
+        let widths = vec![
+            GridColumnWidth::Fraction(0.5),
+            GridColumnWidth::Remainder { min: px(0.) },
+            GridColumnWidth::Remainder { min: px(0.) },
+        ];
+        // Half of the grid's 400px for the first column, the rest shared out.
+        assert_eq!(
+            column_origins(widths.clone(), [px(10.), px(10.), px(10.)]),
+            vec![px(0.), px(200.), px(300.)]
+        );
+        // Content that cannot be narrower than the fraction widens its column.
+        assert_eq!(
+            column_origins(widths, [px(250.), px(10.), px(10.)]),
+            vec![px(0.), px(250.), px(325.)]
+        );
+        // A column sized to its content keeps its size beside a fraction.
+        assert_eq!(
+            column_origins(
+                vec![
+                    GridColumnWidth::Fraction(0.25),
+                    GridColumnWidth::Content { min: px(0.) },
+                    GridColumnWidth::Remainder { min: px(0.) },
+                ],
+                [px(10.), px(30.), px(10.)]
+            ),
+            vec![px(0.), px(100.), px(130.)]
+        );
+        // Percentages that take the whole grid still leave the other columns
+        // their content, rather than squeezing them to nothing on top of each
+        // other.
+        assert_eq!(
+            column_origins(
+                vec![
+                    GridColumnWidth::Fraction(1.0),
+                    GridColumnWidth::Remainder { min: px(0.) },
+                    GridColumnWidth::Remainder { min: px(0.) },
+                ],
+                [px(10.), px(50.), px(50.)]
+            ),
+            vec![px(0.), px(300.), px(350.)]
         );
     }
 }

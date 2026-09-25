@@ -1,5 +1,6 @@
 mod daemon;
 mod headless_project;
+mod stale_files;
 pub mod terminal_session;
 
 #[cfg(test)]
@@ -614,6 +615,7 @@ pub fn execute_daemon(log_file: PathBuf, state_dir: PathBuf) -> Result<()> {
         languages.set_language_server_download_dir(paths::languages_dir().clone());
         let languages = Arc::new(languages);
 
+        let sweep_fs = fs.clone();
         let host = cx.new(|cx| {
             HeadlessHost::new(
                 HeadlessHostState {
@@ -674,6 +676,25 @@ pub fn execute_daemon(log_file: PathBuf, state_dir: PathBuf) -> Result<()> {
             cleanup_old_binaries()
         })
         .detach_and_log_err(cx);
+        cx.background_spawn({
+            let daemon_paths = daemon_paths.clone();
+            async move { sweep_stale_state_and_logs(sweep_fs.as_ref(), &daemon_paths).await }
+        })
+        .detach();
+        cx.background_spawn({
+            let daemon_paths = daemon_paths.clone();
+            let executor = cx.background_executor().clone();
+            async move {
+                loop {
+                    executor.timer(stale_files::STATE_DIR_HEARTBEAT).await;
+                    daemon_paths
+                        .mark_in_use_by(std::process::id())
+                        .context("marking the daemon's state directory as in use")
+                        .log_err();
+                }
+            }
+        })
+        .detach();
     };
     // We do not reuse any of the state after unwinding, so we don't run risk of observing broken invariants.
     let app = std::panic::AssertUnwindSafe(app);
@@ -685,6 +706,42 @@ pub fn execute_daemon(log_file: PathBuf, state_dir: PathBuf) -> Result<()> {
     } else {
         log::info!("gpui app is shut down. quitting.");
         Ok(())
+    }
+}
+
+/// Clears out what daemons of other builds and other client machines left
+/// behind (F21). Never stops this daemon from serving: whatever cannot be
+/// removed is logged and kept.
+async fn sweep_stale_state_and_logs(fs: &dyn Fs, daemon_paths: &DaemonPaths) {
+    // Only the pids the pid files name are looked up: listing every process
+    // on a busy shared host costs far more than the handful of files here.
+    let pid_is_alive = |pid: u32| {
+        let pid = sysinfo::Pid::from_u32(pid);
+        let mut system = sysinfo::System::new();
+        system.refresh_processes_specifics(
+            sysinfo::ProcessesToUpdate::Some(&[pid]),
+            false,
+            sysinfo::ProcessRefreshKind::nothing(),
+        );
+        system.process(pid).is_some()
+    };
+    let outcome = stale_files::StaleFileSweep {
+        state_root: paths::remote_server_state_dir(),
+        logs_dir: logs_dir(),
+        own_state_dir: &daemon_paths.state_dir,
+        own_log_file: &daemon_paths.log_file,
+        now: std::time::SystemTime::now(),
+        pid_is_alive: &pid_is_alive,
+        lock_is_held: &stale_files::lock_file_is_held,
+    }
+    .run(fs)
+    .await;
+    if !outcome.removed_state_dirs.is_empty() || !outcome.removed_logs.is_empty() {
+        log::info!(
+            "removed {} stale state directories and {} stale logs",
+            outcome.removed_state_dirs.len(),
+            outcome.removed_logs.len()
+        );
     }
 }
 
@@ -818,6 +875,21 @@ impl DaemonPaths {
             state_dir,
             log_dir.join(format!("server-d-{key}.log")),
         ))
+    }
+
+    /// Refreshes the modification time of the pid file, provided it still
+    /// names `pid`. A daemon connected to for longer than the sweep's age limit
+    /// changes nothing else in its directory, and a daemon on another host
+    /// sharing this home directory has a pid no process check here can see.
+    fn mark_in_use_by(&self, pid: u32) -> Result<()> {
+        if read_pid(&self.pid_file) != Some(pid) {
+            return Ok(());
+        }
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&self.pid_file)?
+            .set_modified(std::time::SystemTime::now())?;
+        Ok(())
     }
 
     /// Removes the socket and the pid file, provided the pid file still names
@@ -1884,6 +1956,58 @@ mod tests {
             .expect("the first proxy should get the lock");
         let second = smol::block_on(DaemonLock::acquire(&lock_path, Duration::from_millis(200)));
         assert!(matches!(second, Err(ExecuteProxyError::DaemonLock { .. })));
+    }
+
+    #[test]
+    fn the_sweep_sees_a_proxy_holding_the_daemon_lock() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let lock_path = temp_dir.path().join("daemon.lock");
+        let held = smol::block_on(DaemonLock::acquire(&lock_path, Duration::from_secs(5)))
+            .expect("the proxy should get the lock");
+        assert!(stale_files::lock_file_is_held(&lock_path));
+        drop(held);
+        assert!(!stale_files::lock_file_is_held(&lock_path));
+    }
+
+    #[test]
+    fn a_running_daemon_keeps_its_state_directory_fresh() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let paths = DaemonPaths::new(temp_dir.path().to_path_buf(), temp_dir.path().join("log"));
+        let long_ago = std::time::SystemTime::now() - Duration::from_secs(90 * 24 * 60 * 60);
+        let modified = || {
+            std::fs::metadata(&paths.pid_file)
+                .and_then(|metadata| metadata.modified())
+                .expect("read the pid file's modification time")
+        };
+        let age_pid_file = || {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&paths.pid_file)
+                .and_then(|file| file.set_modified(long_ago))
+                .expect("age the pid file");
+        };
+        std::fs::write(&paths.pid_file, "4242").expect("write the pid file");
+
+        age_pid_file();
+        paths.mark_in_use_by(4343).expect("mark for another daemon");
+        assert_eq!(
+            modified(),
+            long_ago,
+            "another daemon's pid file is left alone"
+        );
+
+        paths.mark_in_use_by(4242).expect("mark for this daemon");
+        assert!(
+            modified() > long_ago + Duration::from_secs(60 * 24 * 60 * 60),
+            "this daemon's pid file is freshly modified"
+        );
+        assert_eq!(read_pid(&paths.pid_file), Some(4242));
+
+        std::fs::remove_file(&paths.pid_file).expect("remove the pid file");
+        paths
+            .mark_in_use_by(4242)
+            .expect("a missing pid file is not an error");
+        assert!(!paths.pid_file.exists(), "no pid file is written back");
     }
 
     #[test]

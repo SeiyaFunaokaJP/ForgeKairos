@@ -63,6 +63,7 @@ pub struct ThreadItem {
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
     on_hover: Box<dyn Fn(&bool, &mut Window, &mut App) + 'static>,
     action_slot: Option<AnyElement>,
+    badge: Option<AnyElement>,
     base_bg: Option<Hsla>,
 }
 
@@ -98,6 +99,7 @@ impl ThreadItem {
             on_click: None,
             on_hover: Box::new(|_, _, _| {}),
             action_slot: None,
+            badge: None,
             base_bg: None,
         }
     }
@@ -239,6 +241,13 @@ impl ThreadItem {
 
     pub fn action_slot(mut self, element: impl IntoElement) -> Self {
         self.action_slot = Some(element.into_any_element());
+        self
+    }
+
+    /// A small mark drawn between the icon and the title, where a long title
+    /// cannot push it out of sight.
+    pub fn badge(mut self, element: impl IntoElement) -> Self {
+        self.badge = Some(element.into_any_element());
         self
     }
 
@@ -455,6 +464,9 @@ impl RenderOnce for ThreadItem {
                             .flex_1()
                             .gap_1p5()
                             .child(icon)
+                            .when_some(self.badge, |this, badge| {
+                                this.child(h_flex().flex_none().child(badge))
+                            })
                             .child(title_label),
                     )
                     .when(self.is_truncated && opaque_window, |this| {

@@ -22,7 +22,7 @@ use smol::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use text::LineEnding;
 
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::sync::atomic::AtomicBool;
 
@@ -1442,9 +1442,14 @@ fn names_a_path_outside_the_repository(argument: &str) -> bool {
 
 fn is_refused_git_argument(argument: &str) -> bool {
     if let Some(long_option) = argument.strip_prefix("--") {
-        let name = long_option
+        let (name, value) = long_option
             .split_once('=')
-            .map_or(long_option, |(name, _)| name);
+            .map_or((long_option, None), |(name, value)| (name, Some(value)));
+        // `--submodule=diff` runs `git diff` inside each submodule, which runs the submodule's own
+        // textconv programs whatever `--no-textconv` says.
+        if !name.is_empty() && "submodule".starts_with(name) && value == Some("diff") {
+            return true;
+        }
         // git takes any unambiguous prefix of a long option for the option itself (`rebase --exe
         // <cmd>`, `add --pathspec-from=<path>`), so a prefix is refused as well. `--text` is the
         // one real option (`diff -a`) that is also a prefix of a refused one, and git reads an
@@ -2021,9 +2026,24 @@ pub fn pushed_probe_args(sha: &str) -> Vec<String> {
 /// it leaves the branch needing a force push.
 ///
 /// A branch without an upstream (and a detached HEAD) makes git refuse `@{upstream}`, and counts
-/// as not pushed.
+/// as not pushed; [`has_upstream_from_probe`] tells that case apart.
 pub fn is_pushed_from_probe(output: &GitCommandOutput) -> bool {
     output.succeeded() && output.stdout.trim().is_empty()
+}
+
+/// Whether the branch [`pushed_probe_args`] asked on has an upstream to compare with. Without one
+/// nothing says whether the commit is on a remote, so it is not called pushed or unpushed.
+pub fn has_upstream_from_probe(output: &GitCommandOutput) -> bool {
+    output.succeeded()
+}
+
+/// Whether the `git log --format=%s` of a fixup's range, run after its rebase finished, still
+/// holds a commit waiting to be folded. The range held none before (such a range is refused), so
+/// one there now is the fixup's own that `--autosquash` could not pair with its target. Counting
+/// the commits instead would take one that the rebase dropped for having become empty for a
+/// `fixup!` left standing.
+pub fn fixup_left_unfolded(subjects_after: &str) -> bool {
+    subjects_after.lines().any(is_autosquash_subject)
 }
 
 /// What `Repository::fixup_target` found out about the commit changes are about to be folded into.
@@ -2035,6 +2055,12 @@ pub struct FixupTarget {
     /// The current branch's upstream already has the commit, so folding into it rewrites pushed
     /// history.
     pub pushed: bool,
+    /// The current branch has an upstream; without one, `pushed` is `false` for want of anything
+    /// to compare with, not because the commit is known to be only here.
+    pub has_upstream: bool,
+    /// The full ref of the branch the fixup rewrites (`refs/heads/…`), so that taking it back
+    /// later moves that branch and no other that happens to point at the same commit.
+    pub branch: String,
 }
 
 /// How a fixup ended.
@@ -4643,7 +4669,9 @@ impl GitRepository for RealGitRepository {
             let git = git?;
             git.ensure_hooks_are_disabled_if_untrusted("コミット")
                 .await?;
-            let mut cmd = git.build_command(&["commit", "--quiet", "-m"]).await;
+            let (mut cmd, untrusted_overrides) = git
+                .build_command_with_overrides(&["commit", "--quiet", "-m"])
+                .await;
             cmd.envs(env.iter())
                 .arg(&message.to_string())
                 .arg("--cleanup=strip")
@@ -4672,6 +4700,9 @@ impl GitRepository for RealGitRepository {
 
             run_git_command(env, ask_pass, cmd, executor).await?;
 
+            if untrusted_overrides.is_some_and(|overrides| overrides.signing_is_skipped()) {
+                return Err(CommittedWithoutSignature.into());
+            }
             Ok(())
         }
         .boxed()
@@ -5882,6 +5913,8 @@ enum GitFeature {
     PickaxeRegex,
     /// The `:(literal)` and `:(glob)` pathspec magic.
     PathspecMagic,
+    /// `git config --show-scope`.
+    ConfigShowScope,
 }
 
 impl GitFeature {
@@ -5917,6 +5950,7 @@ impl GitFeature {
             Self::StatusNoRenames | Self::StashPushWithUntrackedPaths => GitVersion::new(2, 18, 0),
             Self::SwitchAndRestore => GitVersion::new(2, 23, 0),
             Self::WorktreeRepair => GitVersion::new(2, 29, 0),
+            Self::ConfigShowScope => GitVersion::new(2, 26, 0),
             Self::DiffMergeBase => GitVersion::new(2, 30, 0),
             Self::StashStaged => GitVersion::new(2, 35, 0),
         }
@@ -5984,6 +6018,11 @@ fn git_global_args(version: Option<GitVersion>, is_trusted: bool) -> Vec<&'stati
             args.extend(["-c", "credential.helper="]);
         }
         args.extend(["-c", "protocol.ext.allow=never"]);
+        // The signature checks run the program the `gpg.*` settings name.
+        args.extend(["-c", "merge.verifySignatures=false"]);
+        // `diff.submodule=diff` runs `git diff` inside a submodule, which is not told
+        // `--no-textconv` and so runs the submodule's own textconv programs.
+        args.extend(["-c", "diff.submodule=short"]);
         if has_empty_config_values {
             args.extend(["-c", "diff.external="]);
         }
@@ -5999,12 +6038,526 @@ fn git_global_args(version: Option<GitVersion>, is_trusted: bool) -> Vec<&'stati
 /// `--no-textconv`). `git_global_args` also empties `diff.external`, which a recent git (2.47)
 /// reads as a program named "", failing every patch with `cannot spawn :` unless `--no-ext-diff`
 /// is given.
+///
+/// `status` and a working-tree `diff` also ask each submodule whether its files changed, which
+/// runs git there under the submodule's own configuration, and `submodule.<name>.ignore` can ask
+/// for the check whatever `diff.ignoreSubmodules` says. `--ignore-submodules=dirty` still reports
+/// a submodule at another commit, without looking inside it, which spares these frequent commands
+/// finding every submodule's filter drivers (see `command_may_look_inside_submodules`).
 fn untrusted_subcommand_guards(subcommand: &OsStr) -> &'static [&'static str] {
     match subcommand.to_str() {
-        Some("diff" | "log" | "show") => &["--no-ext-diff", "--no-textconv"],
+        Some("diff") => &[
+            "--no-ext-diff",
+            "--no-textconv",
+            "--ignore-submodules=dirty",
+        ],
+        Some("log" | "show") => &["--no-ext-diff", "--no-textconv"],
         Some("blame") => &["--no-textconv"],
+        Some("status") => &["--ignore-submodules=dirty"],
         _ => &[],
     }
+}
+
+/// Whether a command can convert file contents between the working tree and the object
+/// database, which runs the `filter.<driver>.clean`, `smudge` or `process` program that
+/// `.gitattributes` picks. Only the subcommands known never to do so are listed, so that a new
+/// caller is protected by default.
+///
+/// `ls-files` and `describe` are not among them: `ls-files -m` and `describe --dirty` hash a
+/// file whose timestamps changed to tell whether its contents did, which runs `clean`, and both
+/// are reachable with any flags through `run_command`. `cat-file` converts only with
+/// `--filters` or `--textconv` (or an abbreviation of either), so it counts as safe only with the
+/// flags this fork gives it.
+fn command_may_run_filters<S: AsRef<OsStr>>(args: &[S]) -> bool {
+    let Some((subcommand, rest)) = args.split_first() else {
+        return false;
+    };
+    if subcommand.as_ref() == "cat-file" {
+        return !rest
+            .iter()
+            .all(|argument| match argument.as_ref().to_str() {
+                Some(argument) => {
+                    !argument.starts_with('-')
+                        || argument.starts_with("--batch")
+                        || matches!(argument, "-e" | "-p" | "-s" | "-t" | "--buffer")
+                }
+                None => false,
+            });
+    }
+    !matches!(
+        subcommand.as_ref().to_str(),
+        Some(
+            "branch"
+                | "check-attr"
+                | "check-ignore"
+                | "commit-tree"
+                | "config"
+                | "count-objects"
+                | "diff-tree"
+                | "fetch"
+                | "for-each-ref"
+                | "log"
+                | "ls-remote"
+                | "ls-tree"
+                | "merge-base"
+                | "name-rev"
+                | "pack-refs"
+                | "push"
+                | "reflog"
+                | "remote"
+                | "rev-list"
+                | "rev-parse"
+                | "show"
+                | "show-ref"
+                | "symbolic-ref"
+                | "tag"
+                | "update-ref"
+                | "var"
+                | "version"
+                | "--version"
+                | "write-tree"
+        )
+    )
+}
+
+/// Whether a command can verify or make a signature, which runs the program the `gpg.*` settings
+/// name. Git verifies for a `%G` placeholder, `--show-signature` and ref-filter's `%(signature)`,
+/// and signs for `commit.gpgSign`, `tag.gpgSign` and `push.gpgSign`. Only the subcommands known
+/// never to do so are listed, so that a new caller is protected by default.
+///
+/// A `log` (or `diff-tree`) without its format spelled out takes one from `format.pretty`, and
+/// `--format=<name>` can name a `pretty.<name>` alias, both of which the repository can set.
+fn command_may_run_signature_programs<S: AsRef<OsStr>>(args: &[S]) -> bool {
+    let Some((subcommand, rest)) = args.split_first() else {
+        return false;
+    };
+    let rest = rest.iter().map(|argument| argument.as_ref().to_str());
+    match subcommand.as_ref().to_str() {
+        Some("log" | "show" | "rev-list" | "reflog" | "whatchanged" | "diff-tree") => {
+            !log_format_verifies_no_signature(rest)
+        }
+        Some("branch" | "for-each-ref") => rest
+            .into_iter()
+            .any(|argument| argument.is_none_or(|argument| argument.contains("%(signature"))),
+        Some(
+            "cat-file" | "check-attr" | "check-ignore" | "config" | "count-objects" | "fetch"
+            | "ls-remote" | "ls-tree" | "merge-base" | "name-rev" | "pack-refs" | "remote"
+            | "rev-parse" | "show-ref" | "symbolic-ref" | "update-ref" | "var" | "version"
+            | "--version" | "write-tree",
+        ) => false,
+        _ => true,
+    }
+}
+
+/// Whether the arguments of a `log`-like command pick a format that never asks for a signature,
+/// without leaving the choice to the repository's configuration.
+fn log_format_verifies_no_signature<'a>(
+    arguments: impl IntoIterator<Item = Option<&'a str>>,
+) -> bool {
+    const BUILT_IN_FORMATS: &[&str] = &[
+        "oneline",
+        "short",
+        "medium",
+        "full",
+        "fuller",
+        "reference",
+        "email",
+        "raw",
+        "mboxrd",
+    ];
+    let mut has_format = false;
+    for argument in arguments {
+        let Some(argument) = argument else {
+            return false;
+        };
+        if argument.contains("%G") || argument.starts_with("--show-sig") {
+            return false;
+        }
+        if argument == "--oneline" || argument == "--pretty" {
+            has_format = true;
+        } else if let Some(format) = argument
+            .strip_prefix("--format=")
+            .or_else(|| argument.strip_prefix("--pretty="))
+        {
+            // Anything else is looked up among the `pretty.<name>` aliases, by prefix.
+            let names_no_alias = format.is_empty()
+                || format.contains('%')
+                || format.starts_with("format:")
+                || format.starts_with("tformat:")
+                || BUILT_IN_FORMATS.contains(&format);
+            if !names_no_alias {
+                return false;
+            }
+            has_format = true;
+        }
+    }
+    has_format
+}
+
+/// Whether a command that may run filter or signature programs can also run git inside a
+/// submodule, under the submodule's own configuration.
+/// `status` and `diff` get `--ignore-submodules=dirty` (see `untrusted_subcommand_guards`); the
+/// others listed were seen not to look inside a submodule (git 2.47) unless asked to recurse.
+/// `reset` is not among them because the repository's `submodule.recurse` turns recursion on
+/// for it without any flag, `push` can recurse into submodules and sign there, and `fetch`
+/// fetches inside a submodule whose recorded commit changed unless told otherwise, connecting
+/// with the submodule's own `remote.<name>.uploadpack`.
+fn command_may_look_inside_submodules<S: AsRef<OsStr>>(args: &[S]) -> bool {
+    let Some((subcommand, rest)) = args.split_first() else {
+        return false;
+    };
+    if matches!(subcommand.as_ref().to_str(), Some("push" | "fetch")) {
+        return true;
+    }
+    let asks_to_recurse = rest.iter().any(|argument| {
+        argument
+            .as_ref()
+            .to_str()
+            .is_none_or(|argument| argument.starts_with("--recurse-submodules"))
+    });
+    command_may_run_filters(args)
+        && (asks_to_recurse
+            || !matches!(
+                subcommand.as_ref().to_str(),
+                Some(
+                    "status"
+                        | "diff"
+                        | "hash-object"
+                        | "cat-file"
+                        | "check-attr"
+                        | "update-index"
+                        | "ls-files"
+                )
+            ))
+}
+
+/// Whether a command can connect to another repository, which for a local path or a `file://`
+/// URL runs the program named by `remote.<name>.uploadpack` (fetching) or `receivepack`
+/// (pushing). Git takes the first of several values of these, so a `-c` option cannot replace the
+/// repository's own. A lazy fetch of a partial clone's missing objects connects too, from any
+/// command; `build_command` stops that with `GIT_NO_LAZY_FETCH` instead.
+fn command_may_contact_remotes<S: AsRef<OsStr>>(args: &[S]) -> bool {
+    let Some((subcommand, rest)) = args.split_first() else {
+        return false;
+    };
+    match subcommand.as_ref().to_str() {
+        Some("fetch" | "pull" | "push" | "ls-remote" | "submodule" | "clone") => true,
+        Some("remote") => rest
+            .iter()
+            .map(|argument| argument.as_ref().to_str())
+            .find(|argument| argument.is_none_or(|argument| !argument.starts_with('-')))
+            .is_some_and(|argument| {
+                argument.is_none_or(|argument| {
+                    matches!(argument, "show" | "update" | "prune" | "set-head")
+                })
+            }),
+        _ => false,
+    }
+}
+
+/// What a git command refused for [`GitBinary::untrusted_config_overrides`] failing says, as the
+/// `-c` key without a section that makes git stop before running anything.
+const UNTRUSTED_FILTERS_NOT_DISABLED: &str =
+    "未信頼のリポジトリの filter を無効化できなかったため、git を実行しませんでした";
+
+/// What a command that may connect to another repository says when the untrusted repository (or
+/// a submodule) sets `remote.<name>.uploadpack` or `receivepack`, as a `-c` key without a
+/// section, like [`UNTRUSTED_FILTERS_NOT_DISABLED`].
+const UNTRUSTED_REMOTE_PROGRAMS_REFUSED: &str = "未信頼のリポジトリの uploadpack / receivepack 設定はプログラムを起動しうるため、リモートに接続する git を実行しませんでした";
+
+/// Why a commit in an untrusted repository was made without the signature its configuration asks
+/// for. The commit itself was made.
+pub const UNTRUSTED_GPG_CONFIG_IGNORED: &str =
+    "未信頼のリポジトリの gpg 設定は使いません。署名せずにコミットしました。";
+
+/// A commit that worked, but unsigned for [`UNTRUSTED_GPG_CONFIG_IGNORED`]. Returned as an error so
+/// that the reason reaches the user, also from a remote server, which sends errors as text.
+#[derive(Debug, Error)]
+#[error("{UNTRUSTED_GPG_CONFIG_IGNORED}")]
+pub struct CommittedWithoutSignature;
+
+/// Whether an error from a commit is [`CommittedWithoutSignature`], also when it came from a
+/// remote server as text.
+pub fn is_committed_without_signature(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<CommittedWithoutSignature>().is_some()
+        || format!("{error:#}").contains(UNTRUSTED_GPG_CONFIG_IGNORED)
+}
+
+/// The value git uses for a signing setting nobody set, for each setting that names a program
+/// to run or decides which one runs or what it trusts.
+fn signing_setting_default(key: &str) -> Option<&'static str> {
+    match key {
+        "gpg.program" | "gpg.openpgp.program" => Some("gpg"),
+        "gpg.x509.program" => Some("gpgsm"),
+        "gpg.ssh.program" => Some("ssh-keygen"),
+        "gpg.format" => Some("openpgp"),
+        // Empty stops git from running a key command and makes it trust no signer.
+        "gpg.ssh.defaultkeycommand" | "gpg.ssh.allowedsignersfile" | "gpg.ssh.revocationfile" => {
+            Some("")
+        }
+        _ => None,
+    }
+}
+
+/// How `build_command` keeps an untrusted repository's own configuration from making git run a
+/// program.
+#[derive(Debug, Default, PartialEq)]
+struct UntrustedConfigOverrides {
+    /// Filter drivers to disable.
+    filter_drivers: BTreeSet<String>,
+    /// The repository's `merge.<driver>.driver` settings, each with the program to run instead:
+    /// the user's own (system or global) one, or `false`, which leaves the file conflicted rather
+    /// than merged.
+    merge_drivers: BTreeMap<String, String>,
+    /// The repository's `remote.<name>.uploadpack` and `receivepack` settings, which `-c` cannot
+    /// replace (see [`command_may_contact_remotes`]).
+    remote_programs: BTreeSet<String>,
+    /// The repository's signing settings, each with the value to use instead: the user's own
+    /// (system or global) one, or git's default.
+    signing_settings: BTreeMap<String, String>,
+    /// Some signing setting of the repository has no value of the user's own, so signing would
+    /// not go through the program the user chose.
+    signing_disabled: bool,
+    /// `commit.gpgSign` is on.
+    signing_requested: bool,
+}
+
+impl UntrustedConfigOverrides {
+    /// A submodule's drivers and signing settings, which reach git running inside it through
+    /// `GIT_CONFIG_PARAMETERS`. Whether the superproject signs stays the superproject's.
+    fn add_submodule(&mut self, submodule: Self) {
+        self.filter_drivers.extend(submodule.filter_drivers);
+        for (key, value) in submodule.merge_drivers {
+            self.merge_drivers.entry(key).or_insert(value);
+        }
+        self.remote_programs.extend(submodule.remote_programs);
+        for (key, value) in submodule.signing_settings {
+            self.signing_settings.entry(key).or_insert(value);
+        }
+    }
+
+    fn signing_is_skipped(&self) -> bool {
+        self.signing_disabled && self.signing_requested
+    }
+
+    fn args(&self) -> Vec<String> {
+        let mut args = filter_driver_overrides(&self.filter_drivers);
+        for (key, value) in &self.merge_drivers {
+            args.extend(["-c".to_string(), format!("{key}={value}")]);
+        }
+        for (key, value) in &self.signing_settings {
+            args.extend(["-c".to_string(), format!("{key}={value}")]);
+        }
+        if self.signing_disabled {
+            for key in ["commit.gpgSign", "tag.gpgSign", "push.gpgSign"] {
+                args.extend(["-c".to_string(), format!("{key}=false")]);
+            }
+        }
+        args
+    }
+}
+
+/// Git's reading of a boolean setting; a key without `=` is true.
+fn config_bool(value: Option<&[u8]>) -> bool {
+    let Some(value) = value else {
+        return true;
+    };
+    let value = String::from_utf8_lossy(value).trim().to_ascii_lowercase();
+    match value.as_str() {
+        "true" | "yes" | "on" => true,
+        "false" | "no" | "off" | "" => false,
+        number => number.parse::<i64>().is_ok_and(|number| number != 0),
+    }
+}
+
+/// What [`GitBinary::read_untrusted_config`] asks `git config --get-regexp` for.
+const UNTRUSTED_CONFIG_PATTERN: &str =
+    r"^(filter|gpg)\.|^commit\.gpgsign$|^merge\..+\.driver$|^remote\..+\.(uploadpack|receivepack)$";
+
+/// The subsection of `key` (`<section>.<subsection>.<variable>`) if its section and variable are
+/// the ones given; the subsection may itself hold dots.
+fn config_subsection<'a>(key: &'a str, section: &str, variable: &str) -> Option<&'a str> {
+    key.strip_prefix(section)?
+        .strip_prefix('.')?
+        .strip_suffix(variable)?
+        .strip_suffix('.')
+        .filter(|subsection| !subsection.is_empty())
+}
+
+/// [`UntrustedConfigOverrides`] from the output of
+/// `git config -z [--show-scope] --get-regexp` [`UNTRUSTED_CONFIG_PATTERN`].
+///
+/// The user's own (system and global) filter drivers, such as Git LFS, stay: the repository
+/// cannot change them. Without `--show-scope` (git before 2.26) every driver is disabled and
+/// every signing setting counts as the repository's. A driver name `-c` cannot carry (one holding
+/// `=`, which ends the key) or that is not UTF-8 is an error, so that the caller refuses the
+/// command rather than lets it run the driver.
+fn untrusted_config_overrides(output: &[u8], with_scope: bool) -> Result<UntrustedConfigOverrides> {
+    let mut overrides = UntrustedConfigOverrides::default();
+    let mut users_signing_settings = HashMap::<String, Option<String>>::default();
+    let mut repository_signing_settings = BTreeSet::new();
+    let mut users_merge_drivers = HashMap::<String, String>::default();
+    let mut repository_merge_drivers = BTreeSet::new();
+    let mut records = output
+        .split(|byte| *byte == b'\0')
+        .filter(|record| !record.is_empty());
+    loop {
+        let scope = if with_scope {
+            match records.next() {
+                Some(scope) => Some(scope),
+                None => break,
+            }
+        } else {
+            None
+        };
+        let Some(record) = records.next() else {
+            anyhow::ensure!(scope.is_none(), "a config scope without a key");
+            break;
+        };
+        let is_users_own = matches!(scope, Some(b"system" | b"global"));
+        let (key, value) = match record.iter().position(|byte| *byte == b'\n') {
+            Some(newline) => (&record[..newline], Some(&record[newline + 1..])),
+            None => (record, None),
+        };
+        if key == b"commit.gpgsign" {
+            overrides.signing_requested = config_bool(value);
+        } else if key.starts_with(b"filter.") {
+            if is_users_own {
+                continue;
+            }
+            let key = std::str::from_utf8(key)
+                .context("a filter driver whose name is not UTF-8 cannot be disabled")?;
+            let Some((name, _variable)) = key
+                .strip_prefix("filter.")
+                .and_then(|rest| rest.rsplit_once('.'))
+            else {
+                continue;
+            };
+            anyhow::ensure!(
+                !name.contains('='),
+                "the filter driver {name:?} cannot be disabled with -c"
+            );
+            overrides.filter_drivers.insert(name.to_string());
+        } else if key.starts_with(b"merge.") {
+            let key = std::str::from_utf8(key)
+                .context("a merge driver whose name is not UTF-8 cannot be disabled")?;
+            let Some(name) = config_subsection(key, "merge", "driver") else {
+                continue;
+            };
+            anyhow::ensure!(
+                !name.contains('='),
+                "the merge driver {name:?} cannot be disabled with -c"
+            );
+            if is_users_own {
+                // A driver set without `=` names no program; git then leaves the file conflicted.
+                let value = value
+                    .and_then(|value| std::str::from_utf8(value).ok())
+                    .unwrap_or("false");
+                users_merge_drivers.insert(key.to_string(), value.to_string());
+            } else {
+                repository_merge_drivers.insert(key.to_string());
+            }
+        } else if key.starts_with(b"remote.") {
+            if !is_users_own {
+                overrides
+                    .remote_programs
+                    .insert(String::from_utf8_lossy(key).into_owned());
+            }
+        } else if let Ok(key) = std::str::from_utf8(key)
+            && signing_setting_default(key).is_some()
+        {
+            if is_users_own {
+                let value = value.and_then(|value| std::str::from_utf8(value).ok());
+                users_signing_settings.insert(key.to_string(), value.map(str::to_string));
+            } else {
+                repository_signing_settings.insert(key.to_string());
+            }
+        }
+    }
+    for key in repository_signing_settings {
+        let users_value = users_signing_settings.get(&key).cloned().flatten();
+        let value = match users_value {
+            Some(value) => value,
+            None => {
+                overrides.signing_disabled = true;
+                signing_setting_default(&key)
+                    .unwrap_or_default()
+                    .to_string()
+            }
+        };
+        overrides.signing_settings.insert(key, value);
+    }
+    for key in repository_merge_drivers {
+        let value = users_merge_drivers
+            .remove(&key)
+            .unwrap_or_else(|| "false".to_string());
+        overrides.merge_drivers.insert(key, value);
+    }
+    Ok(overrides)
+}
+
+/// How deep [`GitBinary::untrusted_config_overrides`] follows submodules inside submodules before
+/// refusing the command.
+const MAX_UNTRUSTED_SUBMODULE_DEPTH: usize = 8;
+
+/// A path as `git ls-files -z` prints it: unquoted, relative, and UTF-8 on Windows.
+fn path_from_git_output(bytes: &[u8]) -> Result<PathBuf> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt as _;
+        Ok(PathBuf::from(OsStr::from_bytes(bytes)))
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(PathBuf::from(
+            std::str::from_utf8(bytes).context("a path git printed is not UTF-8")?,
+        ))
+    }
+}
+
+/// The `-c` options that stop `drivers` from running anything. An empty program is no filter,
+/// and `required` is reset because a required driver without a program fails the command.
+fn filter_driver_overrides(drivers: &BTreeSet<String>) -> Vec<String> {
+    drivers
+        .iter()
+        .flat_map(|name| {
+            ["clean=", "smudge=", "process=", "required=false"]
+                .into_iter()
+                .flat_map(move |setting| ["-c".to_string(), format!("filter.{name}.{setting}")])
+        })
+        .collect()
+}
+
+/// Whether the repository with `git_directory` is a partial clone, from the `.promisor` file
+/// beside each pack its promisor remote sent. It only decides whether reading the configuration
+/// is worth it to let lazy fetches through; a partial clone it misses just fetches nothing.
+async fn is_partial_clone(git_directory: &Path) -> bool {
+    use futures::StreamExt as _;
+
+    // A linked worktree keeps its objects in the main repository.
+    let common_directory = match smol::fs::read_to_string(git_directory.join("commondir")).await {
+        Ok(common_directory) => git_directory.join(common_directory.trim()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => git_directory.to_path_buf(),
+        Err(error) => {
+            log::warn!("reading the commondir of {git_directory:?}: {error}");
+            return false;
+        }
+    };
+    let Ok(mut entries) = smol::fs::read_dir(common_directory.join("objects").join("pack")).await
+    else {
+        return false;
+    };
+    while let Some(entry) = entries.next().await {
+        if entry.is_ok_and(|entry| {
+            entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "promisor")
+        }) {
+            return true;
+        }
+    }
+    false
 }
 
 fn git_status_args(
@@ -6759,8 +7312,164 @@ impl GitBinary {
         Ok(String::from_utf8(output.stdout)?)
     }
 
+    /// A command that reads the configuration or the index of this repository, or of the
+    /// submodule checked out at `directory`, for [`Self::untrusted_config_overrides`].
     #[allow(clippy::disallowed_methods)]
+    fn untrusted_probe_command(
+        &self,
+        directory: &Path,
+        is_submodule: bool,
+    ) -> util::command::Command {
+        let mut command = new_command(&self.git_binary_path);
+        command
+            .current_dir(directory)
+            .envs(&self.envs)
+            .stdin(Stdio::null());
+        if is_submodule {
+            // Any of these would point git back at the superproject.
+            for variable in [
+                "GIT_DIR",
+                "GIT_WORK_TREE",
+                "GIT_INDEX_FILE",
+                "GIT_COMMON_DIR",
+                "GIT_OBJECT_DIRECTORY",
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+            ] {
+                command.env_remove(variable);
+            }
+        } else if let Some(index_file_path) = self.index_file_path.as_ref() {
+            command.env("GIT_INDEX_FILE", index_file_path);
+        }
+        command
+    }
+
+    /// The configuration of the repository at `directory` that must not get to run a program.
+    async fn read_untrusted_config(
+        &self,
+        directory: &Path,
+        is_submodule: bool,
+        version: Option<GitVersion>,
+    ) -> Result<UntrustedConfigOverrides> {
+        let with_scope = GitFeature::ConfigShowScope.is_supported_by(version);
+        // Not `build_command`, which asks for these; reading the configuration runs nothing.
+        let mut command = self.untrusted_probe_command(directory, is_submodule);
+        command.args(["config", "-z"]);
+        if with_scope {
+            command.arg("--show-scope");
+        }
+        let output = command
+            .args(["--get-regexp", UNTRUSTED_CONFIG_PATTERN])
+            .output()
+            .await?;
+        match output.status.code() {
+            Some(0) => untrusted_config_overrides(&output.stdout, with_scope),
+            // What `--get-regexp` says when nothing matches.
+            Some(1) => Ok(UntrustedConfigOverrides::default()),
+            _ => Err(GitBinaryCommandError {
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                status: output.status,
+            }
+            .into()),
+        }
+    }
+
+    /// The submodules checked out in the repository at `directory`: the gitlinks of its index
+    /// whose directory holds a `.git`, which is where git looks inside for changes.
+    async fn checked_out_submodules(
+        &self,
+        directory: &Path,
+        is_submodule: bool,
+        version: Option<GitVersion>,
+    ) -> Result<Vec<PathBuf>> {
+        let output = self
+            .untrusted_probe_command(directory, is_submodule)
+            // Reading the index would otherwise ask the repository's fsmonitor hook.
+            .args(git_global_args(version, false))
+            .args(["ls-files", "-z", "--stage"])
+            .output()
+            .await?;
+        anyhow::ensure!(
+            output.status.success(),
+            GitBinaryCommandError {
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                status: output.status,
+            }
+        );
+        let mut submodules = BTreeSet::new();
+        for entry in output
+            .stdout
+            .split(|byte| *byte == b'\0')
+            .filter(|entry| !entry.is_empty())
+        {
+            // `<mode> <object> <stage>\t<path>`
+            let Some(tab) = entry.iter().position(|byte| *byte == b'\t') else {
+                bail!(
+                    "unexpected ls-files entry {:?}",
+                    String::from_utf8_lossy(entry)
+                );
+            };
+            if !entry.starts_with(b"160000 ") {
+                continue;
+            }
+            let path = directory.join(path_from_git_output(&entry[tab + 1..])?);
+            if smol::fs::metadata(path.join(".git")).await.is_ok() {
+                submodules.insert(path);
+            }
+        }
+        Ok(submodules.into_iter().collect())
+    }
+
+    /// What keeps this untrusted repository's own configuration from running a program. With
+    /// `include_submodules`, also the configuration of every submodule checked out inside it,
+    /// however deep, since `-c` reaches git running there through `GIT_CONFIG_PARAMETERS`.
+    async fn untrusted_config_overrides(
+        &self,
+        version: Option<GitVersion>,
+        include_submodules: bool,
+    ) -> Result<UntrustedConfigOverrides> {
+        let mut overrides = self
+            .read_untrusted_config(&self.working_directory, false, version)
+            .await?;
+        // A bare repository has no submodules checked out.
+        if !include_submodules || self.working_directory == self.git_directory {
+            return Ok(overrides);
+        }
+        let mut pending = vec![(self.working_directory.clone(), 0)];
+        while let Some((directory, depth)) = pending.pop() {
+            let submodules = self
+                .checked_out_submodules(&directory, depth > 0, version)
+                .await?;
+            for submodule in submodules {
+                anyhow::ensure!(
+                    depth < MAX_UNTRUSTED_SUBMODULE_DEPTH,
+                    "submodules nested more than {MAX_UNTRUSTED_SUBMODULE_DEPTH} deep at {submodule:?}"
+                );
+                overrides.add_submodule(
+                    self.read_untrusted_config(&submodule, true, version)
+                        .await?,
+                );
+                pending.push((submodule, depth + 1));
+            }
+        }
+        Ok(overrides)
+    }
+
     pub(crate) async fn build_command<S>(&self, args: &[S]) -> util::command::Command
+    where
+        S: AsRef<OsStr>,
+    {
+        self.build_command_with_overrides(args).await.0
+    }
+
+    /// [`Self::build_command`], also returning what it disabled of an untrusted repository's
+    /// configuration.
+    #[allow(clippy::disallowed_methods)]
+    async fn build_command_with_overrides<S>(
+        &self,
+        args: &[S],
+    ) -> (util::command::Command, Option<UntrustedConfigOverrides>)
     where
         S: AsRef<OsStr>,
     {
@@ -6777,6 +7486,53 @@ impl GitBinary {
             global_args.retain(|argument| *argument != "--no-pager");
         }
         command.args(global_args);
+        let mut applied_overrides = None;
+        let may_contact_remotes = command_may_contact_remotes(args);
+        let mut lazy_fetch_is_safe = false;
+        if !self.is_trusted
+            && (command_may_run_filters(args)
+                || command_may_run_signature_programs(args)
+                || may_contact_remotes)
+        {
+            match self
+                .untrusted_config_overrides(version, command_may_look_inside_submodules(args))
+                .await
+            {
+                Ok(overrides) => {
+                    lazy_fetch_is_safe = overrides.remote_programs.is_empty();
+                    if !lazy_fetch_is_safe && may_contact_remotes {
+                        log::error!(
+                            "refusing a git command in an untrusted repository that sets {:?}",
+                            overrides.remote_programs
+                        );
+                        command.args(["-c", UNTRUSTED_REMOTE_PROGRAMS_REFUSED]);
+                    }
+                    command.args(overrides.args());
+                    applied_overrides = Some(overrides);
+                }
+                Err(error) => {
+                    log::error!(
+                        "refusing a git command in an untrusted repository whose filter drivers could not be disabled: {error:#}"
+                    );
+                    // A key without a section fails the command before it can start a driver,
+                    // and git's error quotes the key, so it says why.
+                    command.args(["-c", UNTRUSTED_FILTERS_NOT_DISABLED]);
+                }
+            }
+        } else if !self.is_trusted && is_partial_clone(&self.git_directory).await {
+            // Reading the objects a partial clone lacks, such as the older contents in a commit's
+            // diff (`cat-file --batch`), needs a lazy fetch; refusing it where the repository sets
+            // no program would break those views for every partial clone.
+            match self
+                .read_untrusted_config(&self.working_directory, false, version)
+                .await
+            {
+                Ok(overrides) => lazy_fetch_is_safe = overrides.remote_programs.is_empty(),
+                Err(error) => log::error!(
+                    "disabling lazy fetches in an untrusted partial clone whose configuration could not be read: {error:#}"
+                ),
+            }
+        }
         match args.split_first() {
             // Right after the subcommand rather than at the end, where a `--` before it would
             // turn the option into a pathspec and leave the repository's diff programs enabled.
@@ -6790,11 +7546,26 @@ impl GitBinary {
             }
         }
 
+        if !self.is_trusted {
+            // Unless the repository is known to set no `uploadpack`, a lazy fetch of a partial
+            // clone's missing object must not connect (git 2.45.1 and later honor this).
+            if !lazy_fetch_is_safe {
+                command.env("GIT_NO_LAZY_FETCH", "1");
+            }
+            // Either variable, even empty, keeps git from reading the repository's `core.askPass`
+            // or `core.gitProxy`; `-c` cannot replace the latter, of which git takes the first
+            // matching value. One set for Zed itself is the user's and is left alone.
+            for variable in ["GIT_ASKPASS", "GIT_PROXY_COMMAND"] {
+                if std::env::var_os(variable).is_none() {
+                    command.env(variable, "");
+                }
+            }
+        }
         if let Some(index_file_path) = self.index_file_path.as_ref() {
             command.env("GIT_INDEX_FILE", index_file_path);
         }
         command.envs(&self.envs);
-        command
+        (command, applied_overrides)
     }
 }
 
@@ -8611,6 +9382,8 @@ mod tests {
             // Runs whatever the repository's own configuration names.
             vec!["show", "--ext-diff"],
             vec!["log", "--help"],
+            vec!["log", "-p", "--submodule=diff"],
+            vec!["diff", "--submod=diff"],
             // git accepts any unambiguous prefix of a long option as the option itself.
             vec!["rebase", "--exe", "touch /tmp/pwned", "HEAD~2"],
             vec!["rebase", "--exe=touch /tmp/pwned", "HEAD~2"],
@@ -8968,6 +9741,1660 @@ mod tests {
             !marker.exists(),
             "blame ran the repository's textconv filter"
         );
+    }
+
+    /// An untrusted repository's own configuration names programs for `.gitattributes` to run on
+    /// file contents (`filter.<driver>.clean`, `smudge`, `process`), and marks the driver
+    /// `required` so that one which does not run fails the command. None of them may start, and
+    /// the commands still succeed.
+    #[gpui::test]
+    async fn test_untrusted_repository_runs_no_filter_programs(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        fs::write(repo_dir.join("f.txt"), "one\n").unwrap();
+        git_command(&repo_dir, ["add", "f.txt"]);
+        git_command(&repo_dir, ["commit", "-m", "first"]);
+
+        let marker = temp_dir.path().join("program-ran");
+        let record_run = |what: &str| {
+            format!(
+                "sh -c 'echo {what} >> \"{}\"; cat'",
+                marker.to_string_lossy().replace('\\', "/")
+            )
+        };
+        for (name, variable) in [
+            ("evil", "clean"),
+            ("evil", "smudge"),
+            ("evil.dotted", "clean"),
+            ("proc", "process"),
+        ] {
+            git_command(
+                &repo_dir,
+                [
+                    "config",
+                    &format!("filter.{name}.{variable}"),
+                    record_run(variable).as_str(),
+                ],
+            );
+        }
+        git_command(&repo_dir, ["config", "filter.evil.required", "true"]);
+        fs::write(
+            repo_dir.join(".git/info/attributes"),
+            "*.txt filter=evil\n*.md filter=evil.dotted\n*.bin filter=proc\n",
+        )
+        .unwrap();
+        fs::write(repo_dir.join("f.txt"), "two\n").unwrap();
+        fs::write(repo_dir.join("g.md"), "md\n").unwrap();
+        fs::write(repo_dir.join("h.bin"), "bin\n").unwrap();
+        for args in [
+            vec!["hash-object", "--path", "f.txt", "f.txt"],
+            vec!["hash-object", "--path", "g.md", "g.md"],
+        ] {
+            git_command_output(&repo_dir, &args);
+            assert!(
+                marker.exists(),
+                "the installed git runs the repository's filter for {args:?}"
+            );
+            fs::remove_file(&marker).unwrap();
+        }
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        for args in [
+            // Same size as what was committed, so git reads the file to tell.
+            vec!["ls-files", "-m"],
+            vec!["describe", "--dirty", "--always"],
+            vec!["hash-object", "--path", "f.txt", "f.txt"],
+            vec!["hash-object", "--path", "g.md", "g.md"],
+            vec!["hash-object", "--path", "h.bin", "h.bin"],
+            vec!["status", "--porcelain"],
+            vec!["add", "f.txt", "g.md", "h.bin"],
+            vec!["checkout", "HEAD", "--", "f.txt"],
+        ] {
+            let output = git.build_command(&args).await.output().await.unwrap();
+            assert!(
+                output.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                !marker.exists(),
+                "{args:?} ran the repository's filter program"
+            );
+        }
+        assert_eq!(fs::read_to_string(repo_dir.join("f.txt")).unwrap(), "one\n");
+    }
+
+    /// A submodule's own configuration can name a filter too, which the drivers disabled for the
+    /// superproject do not cover; `status` and `diff` look inside a submodule by running git
+    /// there, so they must not.
+    #[gpui::test]
+    async fn test_untrusted_repository_runs_no_submodule_filter_programs(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        let submodule_dir = repo_dir.join("sub");
+        git_init_repo(&repo_dir);
+        git_init_repo(&submodule_dir);
+        fs::write(submodule_dir.join("f.txt"), "one\n").unwrap();
+        git_command(&submodule_dir, ["add", "f.txt"]);
+        git_command(&submodule_dir, ["commit", "-m", "inner"]);
+        git_command(&repo_dir, ["add", "sub"]);
+        git_command(&repo_dir, ["commit", "-m", "outer"]);
+
+        let marker = temp_dir.path().join("program-ran");
+        git_command(
+            &submodule_dir,
+            [
+                "config",
+                "filter.evil.clean",
+                &format!(
+                    "sh -c 'echo clean >> \"{}\"; cat'",
+                    marker.to_string_lossy().replace('\\', "/")
+                ),
+            ],
+        );
+        git_command(&repo_dir, ["config", "submodule.sub.ignore", "none"]);
+        fs::write(
+            submodule_dir.join(".git/info/attributes"),
+            "*.txt filter=evil\n",
+        )
+        .unwrap();
+        // Same size, so the submodule's git reads the file to tell whether it changed.
+        fs::write(submodule_dir.join("f.txt"), "two\n").unwrap();
+        git_command_output(&repo_dir, &["status", "--porcelain"]);
+        assert!(
+            marker.exists(),
+            "the installed git runs the submodule's filter for the superproject's status"
+        );
+        fs::remove_file(&marker).unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        for args in [vec!["status", "--porcelain"], vec!["diff", "--stat"]] {
+            let output = git.build_command(&args).await.output().await.unwrap();
+            assert!(
+                output.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                !marker.exists(),
+                "{args:?} ran the submodule's filter program"
+            );
+        }
+    }
+
+    /// When the filter drivers cannot be listed in a form `-c` can disable, the command is not
+    /// run at all, and git's error says why.
+    #[gpui::test]
+    async fn test_untrusted_repository_refuses_filters_it_cannot_disable(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        let marker = temp_dir.path().join("program-ran");
+        git_command(
+            &repo_dir,
+            [
+                "config",
+                "filter.x=y.clean",
+                &format!(
+                    "sh -c 'echo clean >> \"{}\"; cat'",
+                    marker.to_string_lossy().replace('\\', "/")
+                ),
+            ],
+        );
+        fs::write(repo_dir.join(".git/info/attributes"), "*.txt filter=x=y\n").unwrap();
+        fs::write(repo_dir.join("f.txt"), "one\n").unwrap();
+        git_command_output(&repo_dir, &["hash-object", "--path", "f.txt", "f.txt"]);
+        assert!(marker.exists(), "the installed git runs a driver named so");
+        fs::remove_file(&marker).unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        let output = git
+            .build_command(&["hash-object", "--path", "f.txt", "f.txt"])
+            .await
+            .output()
+            .await
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(!marker.exists());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(UNTRUSTED_FILTERS_NOT_DISABLED),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// A program for `gpg.program` that records each run in `marker` and fails, as a signature
+    /// program that could not verify anything would.
+    fn write_recording_signature_program(directory: &Path, name: &str, marker: &Path) -> String {
+        let program = directory.join(name);
+        fs::write(
+            &program,
+            format!(
+                "#!/bin/sh\necho ran >> \"{}\"\nexit 1\n",
+                marker.to_string_lossy().replace('\\', "/")
+            ),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        program.to_string_lossy().replace('\\', "/")
+    }
+
+    /// Moves `HEAD` of the repository at `repo_dir` onto a new commit whose `gpgsig` header asks
+    /// for the signature to be checked.
+    fn commit_with_signature_header(repo_dir: &Path) {
+        let tree = git_command_output(repo_dir, ["rev-parse", "HEAD^{tree}"]);
+        let parent = git_command_output(repo_dir, ["rev-parse", "HEAD"]);
+        let commit_file = repo_dir.join(".git/signed-commit");
+        fs::write(
+            &commit_file,
+            format!(
+                "tree {tree}\nparent {parent}\n\
+                 author a <a@b> 1700000000 +0000\ncommitter a <a@b> 1700000000 +0000\n\
+                 gpgsig -----BEGIN PGP SIGNATURE-----\n \n iQEzBAABCAAdFiEE\n -----END PGP SIGNATURE-----\n\
+                 \nsigned\n"
+            ),
+        )
+        .unwrap();
+        let commit = git_command_output(
+            repo_dir,
+            [
+                OsString::from("hash-object"),
+                OsString::from("-t"),
+                OsString::from("commit"),
+                OsString::from("-w"),
+                commit_file.into_os_string(),
+            ],
+        );
+        git_command(repo_dir, ["update-ref", "HEAD", &commit]);
+    }
+
+    /// The repository's own configuration can name the program git runs to check a signature,
+    /// and ask for the check on every `log`. Neither the graph's `log` nor a `log` or ref listing
+    /// that asks for signatures may run it in an untrusted repository.
+    #[gpui::test]
+    async fn test_untrusted_repository_runs_no_signature_programs(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        git_command(&repo_dir, ["commit", "--allow-empty", "-m", "first"]);
+        commit_with_signature_header(&repo_dir);
+        let marker = temp_dir.path().join("program-ran");
+        let program = write_recording_signature_program(temp_dir.path(), "evil-gpg", &marker);
+        git_command(&repo_dir, ["config", "log.showSignature", "true"]);
+        git_command(&repo_dir, ["config", "gpg.program", &program]);
+        git_command(&repo_dir, ["config", "pretty.sig", "%G?"]);
+        git_command_output(&repo_dir, ["log", "-1", "--format=%s"]);
+        assert!(
+            marker.exists(),
+            "the installed git runs the repository's signature program for a log"
+        );
+        fs::remove_file(&marker).unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        for (args, must_succeed) in [
+            (
+                vec!["log", GRAPH_COMMIT_FORMAT, "--date-order", "HEAD"],
+                true,
+            ),
+            (vec!["log", "-1"], true),
+            (vec!["show", "--no-patch", "HEAD"], true),
+            (vec!["log", "-1", "--format=%G?"], false),
+            (vec!["log", "-1", "--pretty=sig"], false),
+            (vec!["show", "--show-signature", "HEAD"], false),
+            (vec!["rev-list", "-1", "--format=%G?", "HEAD"], false),
+            (vec!["for-each-ref", "--format=%(signature)"], false),
+            (vec!["verify-commit", "HEAD"], false),
+        ] {
+            let output = git.build_command(&args).await.output().await.unwrap();
+            if must_succeed {
+                assert!(
+                    output.status.success(),
+                    "{args:?}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            assert!(
+                !marker.exists(),
+                "{args:?} ran the repository's signature program"
+            );
+        }
+    }
+
+    /// The user's own signature program keeps working in an untrusted repository whose
+    /// configuration names another one.
+    #[gpui::test]
+    async fn test_untrusted_repository_keeps_the_users_signature_program(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        git_command(&repo_dir, ["commit", "--allow-empty", "-m", "first"]);
+        commit_with_signature_header(&repo_dir);
+        let repository_marker = temp_dir.path().join("repository-program-ran");
+        let users_marker = temp_dir.path().join("users-program-ran");
+        let repository_program =
+            write_recording_signature_program(temp_dir.path(), "evil-gpg", &repository_marker);
+        let users_program =
+            write_recording_signature_program(temp_dir.path(), "my-gpg", &users_marker);
+        git_command(&repo_dir, ["config", "gpg.program", &repository_program]);
+        let global_config = temp_dir.path().join("global-config");
+        fs::write(
+            &global_config,
+            format!("[gpg]\n\tprogram = \"{users_program}\"\n"),
+        )
+        .unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        )
+        .envs(HashMap::from_iter([(
+            "GIT_CONFIG_GLOBAL".to_string(),
+            global_config.to_string_lossy().into_owned(),
+        )]));
+        let output = git
+            .build_command(&["log", "-1", "--format=%G?"])
+            .await
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!repository_marker.exists());
+        assert!(
+            users_marker.exists(),
+            "the user's global gpg.program should check the signature"
+        );
+    }
+
+    /// A commit the repository's configuration asks to sign with its own program is made
+    /// unsigned in an untrusted repository, and says so.
+    #[gpui::test]
+    async fn test_untrusted_repository_commits_without_its_signature_program(
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        git_command(&repo_dir, ["commit", "--allow-empty", "-m", "first"]);
+        let marker = temp_dir.path().join("program-ran");
+        let program = write_recording_signature_program(temp_dir.path(), "evil-gpg", &marker);
+        git_command(&repo_dir, ["config", "gpg.program", &program]);
+        git_command(&repo_dir, ["config", "commit.gpgSign", "true"]);
+
+        let repo = RealGitRepository::new(
+            &repo_dir.join(".git"),
+            None,
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
+        let result = repo
+            .commit(
+                "unsigned".into(),
+                None,
+                CommitOptions {
+                    allow_empty: true,
+                    ..CommitOptions::default()
+                },
+                AskPassDelegate::new(&mut cx.to_async(), |_, _, _| {}),
+                Arc::new(test_commit_envs()),
+            )
+            .await;
+        let error = result.expect_err("signing was skipped, which the caller must hear about");
+        assert!(is_committed_without_signature(&error), "{error:#}");
+        assert!(is_committed_without_signature(&anyhow!("{error:#}")));
+        assert!(!marker.exists(), "the commit ran the repository's program");
+        assert_eq!(
+            git_command_output(&repo_dir, ["log", "-1", "--format=%s"]),
+            "unsigned"
+        );
+    }
+
+    /// Git running inside a submodule, which `add -A` and `describe --dirty` start in order to
+    /// tell whether the submodule changed, gets the superproject's `-c` options: they must also
+    /// disable the filter drivers of every submodule, however deep.
+    #[gpui::test]
+    async fn test_untrusted_repository_runs_no_filter_programs_inside_submodules(
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        let submodule_dir = repo_dir.join("sub");
+        let nested_dir = submodule_dir.join("nested");
+        git_init_repo(&repo_dir);
+        git_init_repo(&submodule_dir);
+        git_init_repo(&nested_dir);
+        for directory in [&nested_dir, &submodule_dir] {
+            fs::write(directory.join("f.txt"), "one\n").unwrap();
+        }
+        git_command(&nested_dir, ["add", "f.txt"]);
+        git_command(&nested_dir, ["commit", "-m", "nested"]);
+        git_command(&submodule_dir, ["add", "f.txt", "nested"]);
+        git_command(&submodule_dir, ["commit", "-m", "inner"]);
+        fs::write(repo_dir.join("top.txt"), "one\n").unwrap();
+        git_command(&repo_dir, ["add", "top.txt", "sub"]);
+        git_command(&repo_dir, ["commit", "-m", "outer"]);
+
+        let marker = temp_dir.path().join("program-ran");
+        for (directory, driver) in [(&submodule_dir, "evil"), (&nested_dir, "deep")] {
+            git_command(
+                directory,
+                [
+                    "config",
+                    &format!("filter.{driver}.clean"),
+                    &format!(
+                        "sh -c 'echo {driver} >> \"{}\"; cat'",
+                        marker.to_string_lossy().replace('\\', "/")
+                    ),
+                ],
+            );
+            git_command(
+                directory,
+                ["config", &format!("filter.{driver}.required"), "true"],
+            );
+            fs::write(
+                directory.join(".git/info/attributes"),
+                format!("*.txt filter={driver}\n"),
+            )
+            .unwrap();
+            // Same size, so git inside reads the file to tell whether it changed.
+            fs::write(directory.join("f.txt"), "two\n").unwrap();
+        }
+        let add_all = vec!["add", "-A"];
+        let describe_dirty = vec!["describe", "--dirty", "--always"];
+        git_command_output(&repo_dir, &describe_dirty);
+        let ran = fs::read_to_string(&marker).unwrap();
+        assert!(
+            ran.contains("evil") && ran.contains("deep"),
+            "the installed git runs the filters of nested submodules: {ran:?}"
+        );
+        fs::remove_file(&marker).unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        for args in [describe_dirty, add_all] {
+            let output = git.build_command(&args).await.output().await.unwrap();
+            assert!(
+                output.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                !marker.exists(),
+                "{args:?} ran a submodule's filter program: {:?}",
+                fs::read_to_string(&marker)
+            );
+        }
+    }
+
+    /// A checked-out submodule whose configuration cannot be read might name any filter, so the
+    /// command is not run.
+    #[gpui::test]
+    async fn test_untrusted_repository_refuses_submodules_it_cannot_read(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        let submodule_dir = repo_dir.join("sub");
+        git_init_repo(&repo_dir);
+        git_init_repo(&submodule_dir);
+        git_command(&submodule_dir, ["commit", "--allow-empty", "-m", "inner"]);
+        git_command(&repo_dir, ["add", "sub"]);
+        git_command(&repo_dir, ["commit", "-m", "outer"]);
+        fs::remove_dir_all(submodule_dir.join(".git")).unwrap();
+        fs::write(submodule_dir.join(".git"), "gitdir: ../missing\n").unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        let output = git
+            .build_command(&["add", "-A"])
+            .await
+            .output()
+            .await
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(UNTRUSTED_FILTERS_NOT_DISABLED),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let output = git
+            .build_command(&["status", "--porcelain"])
+            .await
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains(UNTRUSTED_FILTERS_NOT_DISABLED),
+            "status does not look inside submodules, so it needs no submodule's configuration"
+        );
+    }
+
+    fn forward_slashes(path: &Path) -> String {
+        path.to_string_lossy().replace('\\', "/")
+    }
+
+    /// A program that notes it ran in `marker` and fails, for settings git runs directly rather
+    /// than through a shell.
+    fn write_marker_program(path: &Path, marker: &Path) {
+        fs::write(
+            path,
+            format!(
+                "#!/bin/sh\necho ran >> \"{}\"\nexit 1\n",
+                forward_slashes(marker)
+            ),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+
+    /// `git` run directly, without the guards, for what they stand in the way of.
+    #[allow(clippy::disallowed_methods)]
+    fn unguarded_git_output(
+        working_directory: &Path,
+        arguments: &[&str],
+        stdin: &str,
+    ) -> std::process::Output {
+        use std::io::Write as _;
+        let mut child = std::process::Command::new("git")
+            .args(arguments)
+            .current_dir(working_directory)
+            .env("GIT_CONFIG_GLOBAL", "")
+            .env("GIT_CONFIG_SYSTEM", "")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(stdin.as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
+    }
+
+    /// `.gitattributes` can pick a merge driver whose program the repository's configuration
+    /// names, for `merge`, `cherry-pick`, `rebase`, `revert` and `stash apply`. It is replaced by
+    /// one that always fails, which leaves the file conflicted for the user to resolve.
+    #[gpui::test]
+    async fn test_untrusted_repository_runs_no_merge_drivers(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        // `merge` wants an identity before it merges anything.
+        git_command(&repo_dir, ["config", "user.name", "test"]);
+        git_command(&repo_dir, ["config", "user.email", "test@zed.dev"]);
+        fs::write(repo_dir.join(".gitattributes"), "*.txt merge=evil\n").unwrap();
+        fs::write(repo_dir.join("f.txt"), "base\n").unwrap();
+        git_command(&repo_dir, ["add", "."]);
+        git_command(&repo_dir, ["commit", "-m", "base"]);
+        git_command(&repo_dir, ["checkout", "-b", "other"]);
+        fs::write(repo_dir.join("f.txt"), "theirs\n").unwrap();
+        git_command(&repo_dir, ["commit", "-am", "theirs"]);
+        git_command(&repo_dir, ["checkout", "main"]);
+        fs::write(repo_dir.join("f.txt"), "ours\n").unwrap();
+        git_command(&repo_dir, ["commit", "-am", "ours"]);
+        let marker = temp_dir.path().join("program-ran");
+        git_command(
+            &repo_dir,
+            [
+                "config",
+                "merge.evil.driver",
+                &format!("echo merge >> \"{}\"", forward_slashes(&marker)),
+            ],
+        );
+
+        git_command(&repo_dir, ["merge", "--no-commit", "--no-ff", "other"]);
+        assert!(marker.exists(), "the installed git runs the merge driver");
+        git_command(&repo_dir, ["merge", "--abort"]);
+        fs::remove_file(&marker).unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        let output = git
+            .build_command(&["merge", "other"])
+            .await
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            !marker.exists(),
+            "the repository's merge driver ran: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !output.status.success(),
+            "the merge must not look clean: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("CONFLICT"),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            git_command_output(&repo_dir, ["status", "--porcelain"]),
+            "UU f.txt"
+        );
+    }
+
+    /// For a local path or `file://` URL, `fetch`, `ls-remote` and `pull` run the program
+    /// `remote.<name>.uploadpack` names, and `push` the one `receivepack` names. Git takes the
+    /// first of several values, so `-c` cannot replace the repository's; the command is refused.
+    #[gpui::test]
+    async fn test_untrusted_repository_runs_no_remote_programs(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        let destination_dir = temp_dir.path().join("destination.git");
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&source_dir);
+        git_command(&source_dir, ["commit", "--allow-empty", "-m", "source"]);
+        git_command(
+            temp_dir.path(),
+            [
+                OsString::from("init"),
+                OsString::from("--bare"),
+                destination_dir.as_os_str().into(),
+            ],
+        );
+        git_init_repo(&repo_dir);
+        git_command(&repo_dir, ["commit", "--allow-empty", "-m", "repo"]);
+        git_command(
+            &repo_dir,
+            [
+                OsString::from("remote"),
+                OsString::from("add"),
+                OsString::from("source"),
+                source_dir.as_os_str().into(),
+            ],
+        );
+        git_command(
+            &repo_dir,
+            [
+                OsString::from("remote"),
+                OsString::from("add"),
+                OsString::from("destination"),
+                destination_dir.as_os_str().into(),
+            ],
+        );
+        let marker = temp_dir.path().join("program-ran");
+        let marker_path = forward_slashes(&marker);
+        git_command(
+            &repo_dir,
+            [
+                "config",
+                "remote.source.uploadpack",
+                &format!("echo uploadpack >> \"{marker_path}\"; git-upload-pack"),
+            ],
+        );
+        git_command(
+            &repo_dir,
+            [
+                "config",
+                "remote.destination.receivepack",
+                &format!("echo receivepack >> \"{marker_path}\"; git-receive-pack"),
+            ],
+        );
+
+        git_command(&repo_dir, ["fetch", "source"]);
+        git_command(&repo_dir, ["push", "destination", "main"]);
+        let ran = fs::read_to_string(&marker).unwrap();
+        assert!(
+            ran.contains("uploadpack") && ran.contains("receivepack"),
+            "the installed git runs both programs: {ran:?}"
+        );
+        fs::remove_file(&marker).unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        for args in [
+            vec!["fetch", "source"],
+            vec!["ls-remote", "source"],
+            vec!["pull", "source", "main"],
+            vec!["push", "destination", "main:other"],
+        ] {
+            let output = git.build_command(&args).await.output().await.unwrap();
+            assert!(
+                !marker.exists(),
+                "{args:?} ran {:?}",
+                fs::read_to_string(&marker)
+            );
+            assert!(!output.status.success(), "{args:?}");
+            assert!(
+                String::from_utf8_lossy(&output.stderr).contains(UNTRUSTED_REMOTE_PROGRAMS_REFUSED),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        git_command(&repo_dir, ["config", "--unset", "remote.source.uploadpack"]);
+        git_command(
+            &repo_dir,
+            ["config", "--unset", "remote.destination.receivepack"],
+        );
+        for args in [
+            vec!["fetch", "source"],
+            vec!["push", "destination", "main:other"],
+        ] {
+            let output = git.build_command(&args).await.output().await.unwrap();
+            assert!(
+                output.status.success(),
+                "{args:?} without the repository's programs: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    /// Any command reading an object a partial clone lacks fetches it from the promisor remote,
+    /// which runs the repository's `remote.<name>.uploadpack` for a local one.
+    #[gpui::test]
+    async fn test_untrusted_partial_clone_fetches_nothing_lazily(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        git_init_repo(&source_dir);
+        fs::write(source_dir.join("f.txt"), "hello\n").unwrap();
+        git_command(&source_dir, ["add", "f.txt"]);
+        git_command(&source_dir, ["commit", "-m", "source"]);
+        git_command(&source_dir, ["config", "uploadpack.allowFilter", "true"]);
+        git_command(
+            &source_dir,
+            ["config", "uploadpack.allowAnySHA1InWant", "true"],
+        );
+        let source_path = forward_slashes(&source_dir);
+        let source_url = if source_path.starts_with('/') {
+            format!("file://{source_path}")
+        } else {
+            format!("file:///{source_path}")
+        };
+        let marker = temp_dir.path().join("program-ran");
+        let clone = |name: &str| {
+            git_command(
+                temp_dir.path(),
+                [
+                    "clone",
+                    "--quiet",
+                    "--filter=blob:none",
+                    "--no-checkout",
+                    &source_url,
+                    name,
+                ],
+            );
+            let clone_dir = temp_dir.path().join(name);
+            git_command(
+                &clone_dir,
+                [
+                    "config",
+                    "remote.origin.uploadpack",
+                    &format!(
+                        "echo uploadpack >> \"{}\"; git-upload-pack",
+                        forward_slashes(&marker)
+                    ),
+                ],
+            );
+            clone_dir
+        };
+
+        let unguarded_dir = clone("unguarded");
+        assert_eq!(
+            git_command_output(&unguarded_dir, ["cat-file", "-p", "HEAD:f.txt"]),
+            "hello"
+        );
+        assert!(marker.exists(), "the installed git fetches lazily");
+        fs::remove_file(&marker).unwrap();
+
+        let repo_dir = clone("repo");
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        for args in [
+            vec!["cat-file", "-p", "HEAD:f.txt"],
+            vec!["log", "-p", "-1"],
+            vec!["checkout", "main", "--", "f.txt"],
+        ] {
+            let output = git.build_command(&args).await.output().await.unwrap();
+            if marker.exists() && !installed_git_supports_no_lazy_fetch() {
+                log::warn!("the installed git cannot turn lazy fetches off");
+                return;
+            }
+            assert!(
+                !marker.exists(),
+                "{args:?} fetched lazily: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    /// A partial clone that names no `uploadpack` of its own keeps fetching what it lacks, also for
+    /// the commands that do not otherwise read the configuration, such as the `cat-file` of a
+    /// commit's older contents, and also from a linked worktree.
+    #[gpui::test]
+    async fn test_untrusted_partial_clone_without_remote_programs_fetches_lazily(
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        git_init_repo(&source_dir);
+        fs::write(source_dir.join("f.txt"), "first\n").unwrap();
+        git_command(&source_dir, ["add", "f.txt"]);
+        git_command(&source_dir, ["commit", "-m", "first"]);
+        for contents in ["second", "third"] {
+            fs::write(source_dir.join("f.txt"), format!("{contents}\n")).unwrap();
+            git_command(&source_dir, ["commit", "-am", contents]);
+        }
+        git_command(&source_dir, ["config", "uploadpack.allowFilter", "true"]);
+        git_command(
+            &source_dir,
+            ["config", "uploadpack.allowAnySHA1InWant", "true"],
+        );
+        let source_path = forward_slashes(&source_dir);
+        let source_url = if source_path.starts_with('/') {
+            format!("file://{source_path}")
+        } else {
+            format!("file:///{source_path}")
+        };
+        git_command(
+            temp_dir.path(),
+            [
+                "clone",
+                "--quiet",
+                "--filter=blob:none",
+                &source_url,
+                "repo",
+            ],
+        );
+        let repo_dir = temp_dir.path().join("repo");
+        let worktree_dir = temp_dir.path().join("linked");
+        git_command(
+            &repo_dir,
+            [
+                OsString::from("worktree"),
+                OsString::from("add"),
+                OsString::from("--detach"),
+                worktree_dir.as_os_str().into(),
+            ],
+        );
+
+        // Each reads a blob that only the promisor remote has.
+        for (working_directory, git_directory, revision, contents) in [
+            (
+                repo_dir.clone(),
+                repo_dir.join(".git"),
+                "HEAD~1:f.txt",
+                "second\n",
+            ),
+            (
+                worktree_dir.clone(),
+                repo_dir.join(".git").join("worktrees").join("linked"),
+                "HEAD~2:f.txt",
+                "first\n",
+            ),
+        ] {
+            let git = GitBinary::new(
+                PathBuf::from("git"),
+                working_directory,
+                git_directory,
+                cx.executor(),
+                false,
+            );
+            let output = git
+                .build_command(&["cat-file", "-p", revision])
+                .await
+                .output()
+                .await
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{revision} from {:?}: {}",
+                git.git_directory,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(String::from_utf8_lossy(&output.stdout), contents);
+        }
+    }
+
+    /// `GIT_NO_LAZY_FETCH` came with git 2.45.1 (and the security releases of that day).
+    fn installed_git_supports_no_lazy_fetch() -> bool {
+        installed_git_version() >= GitVersion::new(2, 45, 1)
+    }
+
+    /// `core.gitProxy` (for `git://`) and `core.askPass` (for credentials) name programs git runs
+    /// directly. `-c` cannot replace the first, of which git takes the first matching value.
+    #[gpui::test]
+    async fn test_untrusted_repository_runs_no_proxy_or_askpass_program(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        let marker = temp_dir.path().join("program-ran");
+        let program = temp_dir.path().join("program.sh");
+        write_marker_program(&program, &marker);
+        let program_path = forward_slashes(&program);
+        git_command(&repo_dir, ["config", "core.gitProxy", &program_path]);
+        git_command(&repo_dir, ["config", "core.askPass", &program_path]);
+        git_command(
+            &repo_dir,
+            ["remote", "add", "proxied", "git://127.0.0.1:9/repository"],
+        );
+        let credential_request = "protocol=https\nhost=example.invalid\n\n";
+
+        unguarded_git_output(&repo_dir, &["ls-remote", "proxied"], "");
+        assert!(marker.exists(), "the installed git runs core.gitProxy");
+        fs::remove_file(&marker).unwrap();
+        unguarded_git_output(&repo_dir, &["credential", "fill"], credential_request);
+        assert!(marker.exists(), "the installed git runs core.askPass");
+        fs::remove_file(&marker).unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        let output = git
+            .build_command(&["ls-remote", "proxied"])
+            .await
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            !marker.exists(),
+            "core.gitProxy ran: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let mut child = git
+            .build_command(&["credential", "fill"])
+            .await
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut child_stdin = child.stdin.take().unwrap();
+        child_stdin
+            .write_all(credential_request.as_bytes())
+            .await
+            .unwrap();
+        drop(child_stdin);
+        let output = child.output().await.unwrap();
+        assert!(
+            !marker.exists(),
+            "core.askPass ran: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// The empty `GIT_ASKPASS` of an untrusted repository's commands gives way to Zed's own for the
+    /// push, pull and fetch that `run_git_command` runs, and to one from the caller's environment;
+    /// a trusted repository's commands get neither empty variable nor `diff.submodule=short`.
+    #[gpui::test]
+    async fn test_untrusted_environment_keeps_zeds_askpass(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+        if ["GIT_ASKPASS", "GIT_PROXY_COMMAND"]
+            .iter()
+            .any(|variable| std::env::var_os(variable).is_some())
+        {
+            log::warn!("the test's own environment sets GIT_ASKPASS or GIT_PROXY_COMMAND");
+            return;
+        }
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        git_command(
+            &repo_dir,
+            [
+                "config",
+                "alias.envprobe",
+                "!echo \"[${GIT_ASKPASS-unset}][${GIT_PROXY_COMMAND-unset}]\"",
+            ],
+        );
+        let git_binary = |is_trusted| {
+            GitBinary::new(
+                PathBuf::from("git"),
+                repo_dir.clone(),
+                repo_dir.join(".git"),
+                cx.executor(),
+                is_trusted,
+            )
+        };
+        let probe = async |git: &GitBinary, env: HashMap<String, String>| {
+            let env = Arc::new(env);
+            let mut command = git.build_command(&["envprobe"]).await;
+            command
+                .envs(env.iter())
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            run_git_command(
+                env,
+                AskPassDelegate::new(&mut cx.to_async(), |_, _, _| {}),
+                command,
+                cx.executor(),
+            )
+            .await
+            .unwrap()
+            .stdout
+            .trim()
+            .to_string()
+        };
+        let direct_output = async |git: &GitBinary, args: &[&str]| {
+            let output = git.build_command(args).await.output().await.unwrap();
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        };
+
+        let untrusted = git_binary(false);
+        assert_eq!(direct_output(&untrusted, &["envprobe"]).await, "[][]");
+        let through_askpass = probe(&untrusted, HashMap::default()).await;
+        assert!(
+            through_askpass.ends_with("][]")
+                && !through_askpass.starts_with("[]")
+                && !through_askpass.starts_with("[unset]"),
+            "Zed's askpass must replace the empty GIT_ASKPASS: {through_askpass}"
+        );
+        assert_eq!(
+            probe(
+                &untrusted,
+                HashMap::from_iter([("GIT_ASKPASS".to_string(), "callers-askpass".to_string())])
+            )
+            .await,
+            "[callers-askpass][]"
+        );
+        assert_eq!(
+            direct_output(&untrusted, &["config", "--get", "diff.submodule"]).await,
+            "short"
+        );
+
+        let trusted = git_binary(true);
+        assert_eq!(
+            direct_output(&trusted, &["envprobe"]).await,
+            "[unset][unset]"
+        );
+        assert_eq!(
+            direct_output(&trusted, &["config", "--get", "diff.submodule"]).await,
+            ""
+        );
+    }
+
+    /// `diff.submodule=diff` shows a submodule's changes by running `git diff` inside it, which
+    /// the superproject's `--no-textconv` does not reach, so the submodule's textconv would run.
+    #[gpui::test]
+    async fn test_untrusted_repository_runs_no_submodule_textconv_programs(
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        let submodule_dir = repo_dir.join("sub");
+        git_init_repo(&repo_dir);
+        git_init_repo(&submodule_dir);
+        fs::write(submodule_dir.join("f.txt"), "one\n").unwrap();
+        git_command(&submodule_dir, ["add", "f.txt"]);
+        git_command(&submodule_dir, ["commit", "-m", "one"]);
+        fs::write(
+            repo_dir.join(".gitmodules"),
+            "[submodule \"sub\"]\n\tpath = sub\n\turl = ./sub\n",
+        )
+        .unwrap();
+        git_command(&repo_dir, ["add", ".gitmodules", "sub"]);
+        git_command(&repo_dir, ["commit", "-m", "add"]);
+        let marker = temp_dir.path().join("program-ran");
+        git_command(
+            &submodule_dir,
+            [
+                "config",
+                "diff.evil.textconv",
+                &format!("echo textconv >> \"{}\"; cat", forward_slashes(&marker)),
+            ],
+        );
+        fs::write(
+            submodule_dir.join(".git/info/attributes"),
+            "*.txt diff=evil\n",
+        )
+        .unwrap();
+        fs::write(submodule_dir.join("f.txt"), "two\n").unwrap();
+        git_command(&submodule_dir, ["commit", "-am", "two"]);
+        git_command(&repo_dir, ["config", "diff.submodule", "diff"]);
+        git_command(&repo_dir, ["commit", "-am", "bump"]);
+
+        git_command(&repo_dir, ["show", "HEAD"]);
+        assert!(
+            marker.exists(),
+            "the installed git runs the submodule's textconv"
+        );
+        fs::remove_file(&marker).unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        for args in [
+            vec!["show", "HEAD"],
+            vec!["log", "-p", "-1"],
+            vec!["diff", "HEAD~1", "HEAD"],
+        ] {
+            let output = git.build_command(&args).await.output().await.unwrap();
+            assert!(
+                output.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(!marker.exists(), "{args:?} ran the submodule's textconv");
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains("+Subproject commit"),
+                "{args:?} shows the submodule as a commit: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+        }
+    }
+
+    /// A `GIT_DIR` in the environment of Zed's git commands points at the superproject; reading a
+    /// submodule's configuration must not follow it, or the submodule's filters go unnoticed.
+    #[gpui::test]
+    async fn test_untrusted_repository_reads_submodule_config_despite_git_dir(
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        let submodule_dir = repo_dir.join("sub");
+        git_init_repo(&repo_dir);
+        git_init_repo(&submodule_dir);
+        fs::write(submodule_dir.join("f.txt"), "one\n").unwrap();
+        git_command(&submodule_dir, ["add", "f.txt"]);
+        git_command(&submodule_dir, ["commit", "-m", "inner"]);
+        git_command(&repo_dir, ["add", "sub"]);
+        git_command(&repo_dir, ["commit", "-m", "outer"]);
+        let marker = temp_dir.path().join("program-ran");
+        git_command(
+            &submodule_dir,
+            [
+                "config",
+                "filter.evil.clean",
+                &format!("sh -c 'echo evil >> \"{}\"; cat'", forward_slashes(&marker)),
+            ],
+        );
+        git_command(&submodule_dir, ["config", "filter.evil.required", "true"]);
+        fs::write(
+            submodule_dir.join(".git/info/attributes"),
+            "*.txt filter=evil\n",
+        )
+        .unwrap();
+        // Same size, so git inside reads the file to tell whether it changed.
+        fs::write(submodule_dir.join("f.txt"), "two\n").unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        )
+        .envs(HashMap::from_iter([(
+            "GIT_DIR".to_string(),
+            repo_dir.join(".git").to_string_lossy().into_owned(),
+        )]));
+        let output = git
+            .build_command(&["describe", "--dirty", "--always"])
+            .await
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("-dirty"),
+            "git looked inside the submodule: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert!(
+            !marker.exists(),
+            "the submodule's filter ran: {:?}",
+            fs::read_to_string(&marker)
+        );
+    }
+
+    #[test]
+    fn test_untrusted_signing_overrides_from_config_output() {
+        let output = b"global\0gpg.program\nmy-gpg\0\
+            local\0gpg.program\nevil\0\
+            local\0gpg.ssh.defaultkeycommand\nevil-key\0\
+            worktree\0gpg.format\nssh\0\
+            local\0gpg.mintrustlevel\nfully\0\
+            global\0commit.gpgsign\ntrue\0\
+            local\0filter.evil.clean\nx\0";
+        let overrides = untrusted_config_overrides(output, true).unwrap();
+        assert_eq!(
+            overrides,
+            UntrustedConfigOverrides {
+                filter_drivers: BTreeSet::from(["evil".to_string()]),
+                merge_drivers: BTreeMap::new(),
+                remote_programs: BTreeSet::new(),
+                signing_settings: BTreeMap::from_iter([
+                    ("gpg.format".to_string(), "openpgp".to_string()),
+                    ("gpg.program".to_string(), "my-gpg".to_string()),
+                    ("gpg.ssh.defaultkeycommand".to_string(), String::new()),
+                ]),
+                signing_disabled: true,
+                signing_requested: true,
+            }
+        );
+        assert!(overrides.signing_is_skipped());
+        assert_eq!(
+            overrides.args(),
+            [
+                "-c",
+                "filter.evil.clean=",
+                "-c",
+                "filter.evil.smudge=",
+                "-c",
+                "filter.evil.process=",
+                "-c",
+                "filter.evil.required=false",
+                "-c",
+                "gpg.format=openpgp",
+                "-c",
+                "gpg.program=my-gpg",
+                "-c",
+                "gpg.ssh.defaultkeycommand=",
+                "-c",
+                "commit.gpgSign=false",
+                "-c",
+                "tag.gpgSign=false",
+                "-c",
+                "push.gpgSign=false",
+            ]
+        );
+
+        let users_only = untrusted_config_overrides(
+            b"global\0gpg.program\nmy-gpg\0local\0gpg.program\nevil\0local\0commit.gpgsign\0",
+            true,
+        )
+        .unwrap();
+        assert!(
+            !users_only.signing_disabled,
+            "the user's program replaces it"
+        );
+        assert!(
+            users_only.signing_requested,
+            "a key without a value is true"
+        );
+        assert!(!users_only.signing_is_skipped());
+        assert!(
+            untrusted_config_overrides(b"global\0gpg.program\nmy-gpg\0", true)
+                .unwrap()
+                .args()
+                .is_empty(),
+            "the user's own settings are left alone"
+        );
+        assert_eq!(
+            untrusted_config_overrides(b"gpg.program\nmy-gpg\0", false)
+                .unwrap()
+                .signing_settings,
+            BTreeMap::from_iter([("gpg.program".to_string(), "gpg".to_string())]),
+            "without scopes every signing setting counts as the repository's"
+        );
+        assert!(
+            !untrusted_config_overrides(b"local\0commit.gpgsign\nfalse\0", true)
+                .unwrap()
+                .signing_requested
+        );
+    }
+
+    #[test]
+    fn test_command_may_run_signature_programs() {
+        for args in [
+            vec!["log", GRAPH_COMMIT_FORMAT, "--date-order"],
+            vec!["log", LEGACY_GRAPH_COMMIT_FORMAT],
+            vec!["log", SEARCH_COMMIT_FORMAT, "-G", "x"],
+            vec!["show", "--no-patch", "--format=%H%x00%B", "HEAD"],
+            vec!["show", "--format=", "-z", "--raw"],
+            vec!["log", "--oneline"],
+            vec!["log", "--pretty=format:%s"],
+            vec!["log", "--format=fuller"],
+            vec!["rev-parse", "HEAD"],
+            vec!["for-each-ref", "--format=%(refname)"],
+            vec!["branch", "--list"],
+            vec!["config", "--get", "user.name"],
+        ] {
+            assert!(!command_may_run_signature_programs(&args), "{args:?}");
+        }
+        for args in [
+            vec!["log"],
+            vec!["log", "-1", "--format=%G?"],
+            vec!["log", "--pretty=sig"],
+            vec!["log", "--format=one"],
+            vec!["log", "--oneline", "--show-signature"],
+            vec!["show", "HEAD"],
+            vec!["diff-tree", "--root", "-r", "HEAD"],
+            vec!["for-each-ref", "--format=%(signature:key)"],
+            vec!["branch", "--format=%(signature)"],
+            vec!["commit", "-m", "x"],
+            vec!["tag", "-a", "v1"],
+            vec!["merge", "--verify-signatures", "x"],
+            vec!["verify-commit", "HEAD"],
+            vec!["push"],
+            vec!["commit-tree", "HEAD^{tree}"],
+            vec!["-C", "elsewhere", "rev-parse"],
+        ] {
+            assert!(command_may_run_signature_programs(&args), "{args:?}");
+        }
+        assert!(!command_may_run_signature_programs::<&str>(&[]));
+
+        for args in [
+            vec!["add", "-A"],
+            vec!["stash", "push"],
+            vec!["describe", "--dirty"],
+            vec!["commit", "-a"],
+            vec!["diff-index", "HEAD"],
+            vec!["-C", "elsewhere", "status"],
+            vec!["reset", "--hard", "HEAD"],
+            vec!["reset", "--quiet", "--"],
+            vec!["ls-files", "--recurse-submodules", "-m"],
+            vec!["status", "--recurse-submodules=yes"],
+            vec!["push", "--recurse-submodules=on-demand"],
+            vec!["push"],
+            vec!["fetch", "--recurse-submodules"],
+            vec!["fetch", "origin"],
+            vec!["pull"],
+        ] {
+            assert!(command_may_look_inside_submodules(&args), "{args:?}");
+        }
+        for args in [
+            vec!["status", "--porcelain"],
+            vec!["diff"],
+            vec!["ls-files", "-m"],
+            vec!["update-index", "--add", "--remove", "--"],
+            vec!["ls-remote", "origin"],
+            vec!["log", "-1"],
+            vec!["hash-object", "--stdin"],
+        ] {
+            assert!(!command_may_look_inside_submodules(&args), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn test_untrusted_merge_drivers_and_remote_programs_from_config_output() {
+        let output = b"global\0merge.mine.driver\nmy-merge %O %A %B\0\
+            local\0merge.mine.driver\nevil\0\
+            local\0merge.evil.driver\nevil\0\
+            worktree\0merge.a.b.driver\nevil\0\
+            global\0merge.untouched.driver\nmine\0\
+            system\0remote.origin.uploadpack\nmine\0\
+            local\0remote.x.y.uploadpack\nevil\0\
+            command\0remote.origin.receivepack\nevil\0";
+        let overrides = untrusted_config_overrides(output, true).unwrap();
+        assert_eq!(
+            overrides.merge_drivers,
+            BTreeMap::from_iter([
+                ("merge.a.b.driver".to_string(), "false".to_string()),
+                ("merge.evil.driver".to_string(), "false".to_string()),
+                (
+                    "merge.mine.driver".to_string(),
+                    "my-merge %O %A %B".to_string()
+                ),
+            ]),
+            "the repository's drivers fail, or are the user's own of the same name"
+        );
+        assert_eq!(
+            overrides.remote_programs,
+            BTreeSet::from([
+                "remote.origin.receivepack".to_string(),
+                "remote.x.y.uploadpack".to_string(),
+            ])
+        );
+        assert_eq!(
+            overrides.args(),
+            [
+                "-c",
+                "merge.a.b.driver=false",
+                "-c",
+                "merge.evil.driver=false",
+                "-c",
+                "merge.mine.driver=my-merge %O %A %B",
+            ]
+        );
+        assert!(
+            untrusted_config_overrides(
+                b"global\0merge.mine.driver\nmine\0system\0remote.o.uploadpack\nx\0",
+                true
+            )
+            .unwrap()
+                == UntrustedConfigOverrides::default(),
+            "the user's own settings are left alone"
+        );
+        assert_eq!(
+            untrusted_config_overrides(
+                b"merge.mine.driver\nmine\0remote.o.receivepack\nx\0",
+                false
+            )
+            .unwrap(),
+            UntrustedConfigOverrides {
+                merge_drivers: BTreeMap::from_iter([(
+                    "merge.mine.driver".to_string(),
+                    "false".to_string()
+                )]),
+                remote_programs: BTreeSet::from(["remote.o.receivepack".to_string()]),
+                ..UntrustedConfigOverrides::default()
+            },
+            "without scopes every setting counts as the repository's"
+        );
+        assert!(untrusted_config_overrides(b"local\0merge.x=y.driver\nx\0", true).is_err());
+        assert!(untrusted_config_overrides(b"local\0merge.\xff.driver\nx\0", true).is_err());
+
+        let mut superproject =
+            untrusted_config_overrides(b"local\0merge.evil.driver\nx\0", true).unwrap();
+        superproject.add_submodule(
+            untrusted_config_overrides(
+                b"local\0merge.deep.driver\nx\0local\0remote.origin.uploadpack\nx\0",
+                true,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            superproject.merge_drivers.keys().collect::<Vec<_>>(),
+            ["merge.deep.driver", "merge.evil.driver"]
+        );
+        assert_eq!(superproject.remote_programs.len(), 1);
+    }
+
+    #[test]
+    fn test_command_may_contact_remotes() {
+        for args in [
+            vec!["fetch", "origin"],
+            vec!["pull"],
+            vec!["push"],
+            vec!["ls-remote", "origin"],
+            vec!["submodule", "update"],
+            vec!["remote", "update"],
+            vec!["remote", "-v", "show", "origin"],
+            vec!["remote", "prune", "origin"],
+        ] {
+            assert!(command_may_contact_remotes(&args), "{args:?}");
+        }
+        for args in [
+            vec!["remote", "-v"],
+            vec!["remote"],
+            vec!["remote", "add", "origin", "../x"],
+            vec!["remote", "remove", "origin"],
+            vec!["log"],
+            vec!["merge", "origin/main"],
+        ] {
+            assert!(!command_may_contact_remotes(&args), "{args:?}");
+        }
+        assert!(!command_may_contact_remotes::<&str>(&[]));
+    }
+
+    #[test]
+    fn test_untrusted_filter_drivers_from_config_output() {
+        let with_scope = b"system\0filter.lfs.clean\ngit-lfs clean -- %f\0\
+            global\0filter.mine.smudge\nmine\0\
+            local\0filter.evil.clean\nsh -c 'x\ny'\0\
+            worktree\0filter.a.b.process\nz\0\
+            command\0filter.evil.required\0";
+        assert_eq!(
+            untrusted_config_overrides(with_scope, true)
+                .map(|overrides| overrides.filter_drivers)
+                .unwrap()
+                .into_iter()
+                .collect::<Vec<_>>(),
+            ["a.b", "evil"],
+            "the user's own drivers stay; the repository's (with dots, valueless) go"
+        );
+        let without_scope = b"filter.lfs.clean\ngit-lfs clean -- %f\0filter.evil.clean\nx\0";
+        assert_eq!(
+            untrusted_config_overrides(without_scope, false)
+                .map(|overrides| overrides.filter_drivers)
+                .unwrap()
+                .into_iter()
+                .collect::<Vec<_>>(),
+            ["evil", "lfs"],
+            "without scopes every driver goes"
+        );
+        assert!(
+            untrusted_config_overrides(b"local\0filter.x=y.clean\nx\0", true)
+                .map(|overrides| overrides.filter_drivers)
+                .is_err()
+        );
+        assert!(
+            untrusted_config_overrides(b"local\0filter.\xff.clean\nx\0", true)
+                .map(|overrides| overrides.filter_drivers)
+                .is_err()
+        );
+        assert!(
+            untrusted_config_overrides(b"", true)
+                .map(|overrides| overrides.filter_drivers)
+                .unwrap()
+                .is_empty()
+        );
+
+        assert_eq!(
+            filter_driver_overrides(&BTreeSet::from(["evil".to_string()])),
+            [
+                "-c",
+                "filter.evil.clean=",
+                "-c",
+                "filter.evil.smudge=",
+                "-c",
+                "filter.evil.process=",
+                "-c",
+                "filter.evil.required=false",
+            ]
+        );
+        let oid = "a".repeat(40);
+        for args in [
+            vec!["status"],
+            vec!["hash-object"],
+            vec!["checkout"],
+            vec!["add"],
+            vec!["diff"],
+            vec!["stash"],
+            vec!["apply"],
+            vec!["rebase"],
+            vec!["cherry-pick"],
+            vec!["merge"],
+            vec!["ls-files", "-m"],
+            vec!["ls-files", "--others"],
+            vec!["describe", "--dirty"],
+            vec!["cat-file", "--filters", "HEAD:f.txt"],
+            vec!["cat-file", "--fil", "HEAD:f.txt"],
+            vec!["cat-file", "--batch", "--textconv"],
+            vec!["cat-file", "--path=f.txt", "blob", &oid],
+            vec!["-C", "elsewhere", "log"],
+        ] {
+            assert!(command_may_run_filters(&args), "{args:?}");
+        }
+        for args in [
+            vec!["log", "-p"],
+            vec!["for-each-ref"],
+            vec!["rev-parse", "HEAD"],
+            vec!["config", "--get", "user.name"],
+            vec!["cat-file", "blob", &oid],
+            vec!["cat-file", "--batch=%(objectsize)"],
+            vec!["cat-file", "--batch-check=%(objectname) %(objecttype)"],
+            vec!["cat-file", "-t", &oid],
+        ] {
+            assert!(!command_may_run_filters(&args), "{args:?}");
+        }
+        assert!(!command_may_run_filters::<&str>(&[]));
     }
 
     /// The plumbing `Repository::reword_commit` drives: an older commit is rebuilt with
@@ -11779,6 +14206,10 @@ mod tests {
                 "-c",
                 "protocol.ext.allow=never",
                 "-c",
+                "merge.verifySignatures=false",
+                "-c",
+                "diff.submodule=short",
+                "-c",
                 "diff.external=",
             ]
         );
@@ -11804,6 +14235,10 @@ mod tests {
                 "core.sshCommand=ssh",
                 "-c",
                 "protocol.ext.allow=never",
+                "-c",
+                "merge.verifySignatures=false",
+                "-c",
+                "diff.submodule=short",
             ]
         );
     }
@@ -13561,23 +15996,29 @@ mod tests {
     /// subcommand, never the arguments after it.
     #[test]
     fn test_untrusted_subcommand_guards() {
-        for subcommand in ["diff", "log", "show"] {
+        assert_eq!(
+            untrusted_subcommand_guards(OsStr::new("diff")),
+            [
+                "--no-ext-diff",
+                "--no-textconv",
+                "--ignore-submodules=dirty"
+            ]
+        );
+        for subcommand in ["log", "show"] {
             assert_eq!(
                 untrusted_subcommand_guards(OsStr::new(subcommand)),
                 ["--no-ext-diff", "--no-textconv"]
             );
         }
         assert_eq!(
+            untrusted_subcommand_guards(OsStr::new("status")),
+            ["--ignore-submodules=dirty"]
+        );
+        assert_eq!(
             untrusted_subcommand_guards(OsStr::new("blame")),
             ["--no-textconv"]
         );
-        for subcommand in [
-            "hash-object",
-            "status",
-            "format-patch",
-            "ls-files",
-            "rebase",
-        ] {
+        for subcommand in ["hash-object", "format-patch", "ls-files", "rebase"] {
             assert!(untrusted_subcommand_guards(OsStr::new(subcommand)).is_empty());
         }
     }
@@ -13979,11 +16420,31 @@ mod tests {
         assert!(is_pushed_from_probe(&output("", 0)));
         assert!(is_pushed_from_probe(&output("\n", 0)));
         assert!(!is_pushed_from_probe(&output("abc\n", 0)));
-        assert!(!is_pushed_from_probe(&GitCommandOutput {
+        let no_upstream = GitCommandOutput {
             stdout: String::new(),
             stderr: "fatal: no upstream configured for branch 'main'".to_string(),
             exit_code: Some(128),
-        }));
+        };
+        assert!(!is_pushed_from_probe(&no_upstream));
+        assert!(
+            !has_upstream_from_probe(&no_upstream),
+            "not pushed for want of an upstream is told apart"
+        );
+        assert!(has_upstream_from_probe(&output("", 0)));
+        assert!(has_upstream_from_probe(&output("abc\n", 0)));
+    }
+
+    /// A commit the rebase dropped for having become empty is not a `fixup!` left standing.
+    #[test]
+    fn test_fixup_left_unfolded() {
+        assert!(!fixup_left_unfolded("later\nfirst\n"));
+        assert!(
+            !fixup_left_unfolded("first\n"),
+            "one commit fewer, none left over"
+        );
+        assert!(!fixup_left_unfolded(""));
+        assert!(fixup_left_unfolded("fixup! first\nlater\nfirst\n"));
+        assert!(fixup_left_unfolded("later\nsquash! first\nfirst"));
     }
 
     #[gpui::test]

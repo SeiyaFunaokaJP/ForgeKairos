@@ -42,8 +42,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
 [Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl,{#ResourcesDir}\messages\en.isl"; LicenseFile: "script\terms\terms.rtf"
+; Listed first so Japanese is preselected when Windows' UI language matches none of these.
 Name: "japanese"; MessagesFile: "{#ResourcesDir}\messages\Default.ja.isl,{#ResourcesDir}\messages\ja.isl"; LicenseFile: "script\terms\terms.rtf"
+Name: "english"; MessagesFile: "compiler:Default.isl,{#ResourcesDir}\messages\en.isl"; LicenseFile: "script\terms\terms.rtf"
 Name: "simplifiedChinese"; MessagesFile: "{#ResourcesDir}\messages\Default.zh-cn.isl,{#ResourcesDir}\messages\zh-cn.isl"; LicenseFile: "script\terms\terms.rtf"
 
 [UninstallDelete]

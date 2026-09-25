@@ -207,6 +207,7 @@ impl WriteToolTest {
                 is_windows: cfg!(target_os = "windows"),
                 restricted_workspace: false,
                 repo_map: None,
+                code_display: false,
             };
             let templates = Templates::new();
             template.render(&templates)?

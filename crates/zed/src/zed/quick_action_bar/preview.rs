@@ -37,15 +37,15 @@ impl QuickActionBar {
             return None;
         };
 
-        // The button opens the preview beside the source, so both stay visible;
-        // the tooltip therefore advertises the "to the side" action's binding.
-        let (button_id, tooltip_text, open_action_for_tooltip, alt_click_meta) =
+        // SVG and tables open beside the source by default so both stay visible;
+        // Markdown opens as a tab of its own pane, and Ctrl-click splits it off.
+        let (button_id, tooltip_text, open_action_for_tooltip, modified_click_meta) =
             match &preview_target {
                 PreviewTarget::Markdown(_) => (
                     "toggle-markdown-preview",
-                    "Markdown をプレビュー",
-                    &markdown_preview::OpenPreviewToTheSide as &dyn gpui::Action,
-                    "{} で同じタブグループに開く",
+                    "Markdown プレビューを開く",
+                    &markdown_preview::OpenPreview as &dyn gpui::Action,
+                    "{} で横に開く",
                 ),
                 PreviewTarget::Svg(_) => (
                     "toggle-svg-preview",
@@ -63,9 +63,12 @@ impl QuickActionBar {
                 ),
             };
 
-        let alt_click = gpui::Keystroke {
+        let modified_click = gpui::Keystroke {
             key: "click".into(),
-            modifiers: Modifiers::alt(),
+            modifiers: match &preview_target {
+                PreviewTarget::Markdown(_) => Modifiers::secondary_key(),
+                PreviewTarget::Svg(_) | PreviewTarget::TabularData(_) => Modifiers::alt(),
+            },
             ..Default::default()
         };
 
@@ -76,9 +79,9 @@ impl QuickActionBar {
                 Tooltip::with_meta(
                     tooltip_text,
                     Some(open_action_for_tooltip),
-                    alt_click_meta.replace(
+                    modified_click_meta.replace(
                         "{}",
-                        &text_for_keystroke(&alt_click.modifiers, &alt_click.key, cx),
+                        &text_for_keystroke(&modified_click.modifiers, &modified_click.key, cx),
                     ),
                     cx,
                 )
@@ -94,18 +97,16 @@ impl QuickActionBar {
                         let Some(pane) = workspace.pane_for(active_item.as_ref()) else {
                             return;
                         };
-                        // Splitting is the default: opening the preview in the
-                        // same pane buries the source it was rendered from.
                         let open_in_same_pane = window.modifiers().alt;
                         match &preview_target {
                             PreviewTarget::Markdown(editor) => {
                                 let editor = editor.clone();
-                                if open_in_same_pane {
-                                    MarkdownPreviewView::open_preview_in_pane(
+                                if window.modifiers().secondary() {
+                                    MarkdownPreviewView::open_preview_to_the_side_of_pane(
                                         workspace, editor, pane, window, cx,
                                     );
                                 } else {
-                                    MarkdownPreviewView::open_preview_to_the_side_of_pane(
+                                    MarkdownPreviewView::open_preview_in_pane(
                                         workspace, editor, pane, window, cx,
                                     );
                                 }

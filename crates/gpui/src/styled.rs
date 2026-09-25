@@ -1,9 +1,9 @@
 use crate::{
     self as gpui, AbsoluteLength, AlignContent, AlignItems, AlignSelf, BorderStyle, CursorStyle,
     DefiniteLength, Display, Fill, FlexDirection, FlexWrap, Font, FontFeatures, FontStyle,
-    FontWeight, GridPlacement, GridTemplate, GridTemplateMinSize, Hsla, JustifyContent, Length,
-    Pixels, SharedString, StrikethroughStyle, StyleRefinement, TextAlign, TextOverflow,
-    TextStyleRefinement, UnderlineStyle, WhiteSpace, px, relative, rems,
+    FontWeight, GridColumnWidth, GridPlacement, GridTemplate, GridTemplateMinSize, Hsla,
+    JustifyContent, Length, Pixels, SharedString, StrikethroughStyle, StyleRefinement, TextAlign,
+    TextOverflow, TextStyleRefinement, UnderlineStyle, WhiteSpace, px, relative, rems,
 };
 pub use gpui_macros::{
     border_style_methods, box_shadow_style_methods, cursor_style_methods, margin_style_methods,
@@ -781,7 +781,21 @@ pub trait Styled: Sized {
     /// grid overflows its own box once the widths no longer fit; combine this with
     /// `overflow_x_scroll` so that overflow can be scrolled into view.
     fn grid_cols_min_widths(mut self, min_widths: impl Into<Vec<Pixels>>) -> Self {
-        self.style().grid_cols_min_widths = Some(min_widths.into());
+        self.style().grid_cols_widths = Some(
+            min_widths
+                .into()
+                .into_iter()
+                .map(|min| GridColumnWidth::Content { min })
+                .collect(),
+        );
+        self
+    }
+
+    /// Gives each grid column, in order, the width [`GridColumnWidth`] describes,
+    /// so columns that take a fraction of the grid's width can sit beside ones
+    /// sized to their content.
+    fn grid_cols_widths(mut self, widths: impl Into<Vec<GridColumnWidth>>) -> Self {
+        self.style().grid_cols_widths = Some(widths.into());
         self
     }
 

@@ -1,7 +1,10 @@
 mod launch_approval_prompts;
 mod mcp_json_import;
+mod mcp_server_templates;
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use collections::HashMap;
@@ -13,6 +16,7 @@ use gpui::{
     prelude::*,
 };
 use project::ProjectItem as _;
+use project::WorktreeId;
 use project::context_server_store::{
     ContextServerConfiguration, ContextServerSource, ContextServerStatus, ContextServerStore,
     ServerStatusChangedEvent, wait_for_context_server,
@@ -35,6 +39,7 @@ use zed_actions::ExtensionCategoryFilter;
 
 use crate::{PROJECT, SettingField, SettingItem, SettingsPageItem, SettingsWindow, USER};
 use mcp_json_import::{ImportedDefinition, ImportedServer, parse_mcp_json_snippet};
+use mcp_server_templates::{McpTemplatesState, open_mcp_templates_page};
 
 pub(crate) use launch_approval_prompts::{
     LaunchApprovalsPageState, init as init_launch_approval_prompts, open_launch_approvals_page,
@@ -57,6 +62,8 @@ pub(crate) struct McpPageState {
     /// Kept here rather than on the window because the paste page is only ever
     /// pushed on top of this one, and is gone whenever this state is reset.
     paste: Option<McpPasteState>,
+    /// Like `paste`, for the page listing the shipped templates.
+    templates: Option<McpTemplatesState>,
     /// The row a pending-launch notification sent the user to look at.
     focused_server: Option<ContextServerId>,
     /// Why storing a decision about a project-defined server failed.
@@ -555,10 +562,10 @@ fn render_context_server(
     let approval = launch.as_ref().map(|details| details.state);
     let project_definition = match server_source {
         Some(ContextServerSource::Project {
+            worktree_id,
             settings_file,
             host,
-            ..
-        }) => Some((settings_file, host)),
+        }) => Some((settings_file, host, worktree_id)),
         _ => None,
     };
     // A `remote: true` extension server whose command the SSH host resolved
@@ -609,8 +616,23 @@ fn render_context_server(
         render_connection_test_button(context_server_id, is_testing, waits_for_approval, cx);
     // A project's definition is changed where it lives: the edit form would
     // save the command into the user's settings, where it runs unapproved.
+    let edit_button = project_definition
+        .as_ref()
+        .and_then(|(settings_file, host, worktree_id)| {
+            let LaunchDefinitionFile::Worktree(_) = settings_file else {
+                return None;
+            };
+            project_file_entry(*worktree_id, context_server_id, cx)
+                .and_then(|entry| form_transport(&entry))?;
+            Some(render_edit_project_server_button(
+                context_server_id,
+                *worktree_id,
+                launch_approval_prompts::definition_file_label(settings_file, host).into(),
+                cx,
+            ))
+        });
     let (configure_button, remove_button, toggle_switch) = match &project_definition {
-        Some((settings_file, _)) => (
+        Some((settings_file, _, _)) => (
             // A command the SSH host resolved has no file behind it.
             (!matches!(settings_file, LaunchDefinitionFile::ResolvedOnRemoteHost)).then(|| {
                 render_open_definition_button(context_server_id, settings_file.clone(), cx)
@@ -662,7 +684,7 @@ fn render_context_server(
             launch.as_ref(),
             project_definition
                 .as_ref()
-                .map(|(settings_file, host)| (settings_file, host)),
+                .map(|(settings_file, host, _)| (settings_file, host)),
             server_settings.as_ref(),
             cx,
         )
@@ -706,6 +728,7 @@ fn render_context_server(
             this.badge("プロジェクト")
         })
         .action(test_button)
+        .when_some(edit_button, |this, button| this.action(button))
         .when_some(configure_button, |this, button| this.action(button))
         .when_some(remove_button, |this, button| this.action(button))
         .action(toggle_switch)
@@ -848,6 +871,109 @@ fn render_open_definition_button(
         open_project_definition(this, &settings_file, cx);
     }))
     .into_any_element()
+}
+
+/// The entry for `id` as the worktree's own `.zed/settings.json` has it, which
+/// is what an edit of a project's server starts from and writes back to.
+fn project_file_entry(
+    worktree_id: WorktreeId,
+    id: &ContextServerId,
+    cx: &App,
+) -> Option<ContextServerSettingsContent> {
+    cx.global::<settings::SettingsStore>()
+        .get_content_for_file(settings::SettingsFile::Project((
+            worktree_id,
+            util::rel_path::RelPath::empty_arc(),
+        )))?
+        .project
+        .context_servers
+        .get(&id.0)
+        .cloned()
+}
+
+/// The form an entry opens in. An extension's settings have no place in it.
+fn form_transport(entry: &ContextServerSettingsContent) -> Option<McpTransport> {
+    match entry {
+        ContextServerSettingsContent::Stdio { .. } => Some(McpTransport::Stdio),
+        ContextServerSettingsContent::Http { .. } => Some(McpTransport::Http),
+        ContextServerSettingsContent::Extension { .. } => None,
+    }
+}
+
+fn render_edit_project_server_button(
+    context_server_id: &ContextServerId,
+    worktree_id: WorktreeId,
+    file_label: SharedString,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    let context_server_id = context_server_id.clone();
+    IconButton::new(
+        format!("mcp-edit-project-{}", context_server_id.0),
+        IconName::Pencil,
+    )
+    .icon_size(IconSize::Small)
+    .tab_index(0isize)
+    .tooltip(Tooltip::text(
+        "フォームで編集 (このサーバーを定義しているプロジェクトの設定ファイルに保存します)",
+    ))
+    .on_click(cx.listener(move |this, _event, window, cx| {
+        open_project_server_form(
+            this,
+            context_server_id.clone(),
+            worktree_id,
+            file_label.clone(),
+            window,
+            cx,
+        );
+    }))
+    .into_any_element()
+}
+
+/// Opens the form on a server a project defines, set to save into the file
+/// that defines it.
+fn open_project_server_form(
+    settings_window: &mut SettingsWindow,
+    context_server_id: ContextServerId,
+    worktree_id: WorktreeId,
+    file_label: SharedString,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) {
+    match project_server_form(&context_server_id, worktree_id, file_label, window, cx) {
+        Some(form) => push_mcp_server_form(settings_window, form, window, cx),
+        None => {
+            settings_window
+                .mcp_page
+                .approval_errors
+                .insert(context_server_id, PROJECT_DEFINITION_CHANGED.into());
+            cx.notify();
+        }
+    }
+}
+
+fn project_server_form(
+    context_server_id: &ContextServerId,
+    worktree_id: WorktreeId,
+    file_label: SharedString,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) -> Option<McpServerForm> {
+    let loaded = project_file_entry(worktree_id, context_server_id, cx)?;
+    let transport = form_transport(&loaded)?;
+    let values = McpServerFormValues::from_existing(
+        transport,
+        Some((
+            context_server_id.clone(),
+            ContextServerSettings::from(loaded.clone()),
+        )),
+    );
+    let mut form = McpServerForm::from_values(values, None, window, cx);
+    form.destination = McpFormDestination::ProjectFile {
+        worktree_id,
+        file_label,
+        loaded,
+    };
+    Some(form)
 }
 
 fn open_project_definition(
@@ -2042,50 +2168,53 @@ pub(crate) fn render_add_server_popover(
             move |window, cx| {
                 let settings_window = settings_window.clone();
                 Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
-                    menu.entry("ローカルサーバーを追加", None, {
-                        let settings_window = settings_window.clone();
-                        move |window, cx| {
-                            settings_window
-                                .update(cx, |this, cx| {
-                                    open_mcp_server_form(
-                                        this,
-                                        McpTransport::Stdio,
-                                        None,
-                                        window,
-                                        cx,
-                                    );
-                                })
-                                .log_err();
-                        }
-                    })
-                    .entry("リモートサーバーを追加", None, {
-                        let settings_window = settings_window.clone();
-                        move |window, cx| {
-                            settings_window
-                                .update(cx, |this, cx| {
-                                    open_mcp_server_form(
-                                        this,
-                                        McpTransport::Http,
-                                        None,
-                                        window,
-                                        cx,
-                                    );
-                                })
-                                .log_err();
-                        }
-                    })
-                    .entry("JSON から貼り付け", None, {
-                        let settings_window = settings_window.clone();
-                        move |window, cx| {
-                            settings_window
-                                .update(cx, |this, cx| {
-                                    open_mcp_paste_page(this, window, cx);
-                                })
-                                .log_err();
-                        }
-                    })
+                    let open_in_settings_window =
+                        |open: fn(&mut SettingsWindow, &mut Window, &mut Context<SettingsWindow>)| {
+                            let settings_window = settings_window.clone();
+                            move |window: &mut Window, cx: &mut App| {
+                                settings_window
+                                    .update(cx, |this, cx| open(this, window, cx))
+                                    .log_err();
+                            }
+                        };
+                    menu.custom_entry(
+                        add_menu_entry(
+                            "テンプレートから追加",
+                            "ファイルシステム・GitHub など、よく使うサーバーの設定をフォームに読み込みます。",
+                        ),
+                        open_in_settings_window(open_mcp_templates_page),
+                    )
+                    .custom_entry(
+                        add_menu_entry(
+                            "ローカルサーバーを追加",
+                            "コマンド型: 実行ファイルを起動し、標準入出力でやり取りします。",
+                        ),
+                        open_in_settings_window(|this, window, cx| {
+                            open_mcp_server_form(this, McpTransport::Stdio, None, window, cx)
+                        }),
+                    )
+                    .custom_entry(
+                        add_menu_entry(
+                            "リモートサーバーを追加",
+                            "HTTP 型: URL で公開されているサーバーに HTTP で接続します。",
+                        ),
+                        open_in_settings_window(|this, window, cx| {
+                            open_mcp_server_form(this, McpTransport::Http, None, window, cx)
+                        }),
+                    )
+                    .custom_entry(
+                        add_menu_entry(
+                            "JSON から貼り付け",
+                            "README などに載っている mcpServers の JSON をフォームに読み込みます。",
+                        ),
+                        open_in_settings_window(open_mcp_paste_page),
+                    )
                     .separator()
-                    .entry("拡張機能からインストール", None, {
+                    .custom_entry(
+                        add_menu_entry(
+                            "拡張機能からインストール",
+                            "拡張機能由来: 拡張機能がコマンドを用意します。設定は拡張機能ごとのフォームで行います。",
+                        ),
                         move |_window, cx| {
                             if let Some(original_window) = original_window.as_ref() {
                                 cx.activate(true);
@@ -2105,8 +2234,8 @@ pub(crate) fn render_add_server_popover(
                                     })
                                     .log_err();
                             }
-                        }
-                    })
+                        },
+                    )
                 }))
             }
         });
@@ -2116,6 +2245,27 @@ pub(crate) fn render_add_server_popover(
         .border_1()
         .border_color(border_color)
         .child(popover)
+}
+
+/// One line saying what kind of server the entry adds: the three kinds differ
+/// in who starts the server and how Zed talks to it, which the labels alone
+/// do not say.
+fn add_menu_entry(
+    label: &'static str,
+    description: &'static str,
+) -> impl Fn(&mut Window, &mut App) -> AnyElement + 'static {
+    move |_window, _cx| {
+        v_flex()
+            .w(rems(22.))
+            .py_0p5()
+            .child(Label::new(label))
+            .child(
+                Label::new(description)
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
+            .into_any_element()
+    }
 }
 
 fn uninstall_server(
@@ -2211,6 +2361,9 @@ impl McpKvKind {
 struct KeyValueRow {
     key: Entity<Editor>,
     value: Entity<Editor>,
+    /// What a template asked the user to put in the value, which then may not
+    /// be saved empty.
+    prompt: Option<String>,
 }
 
 struct ArgumentRow {
@@ -2218,6 +2371,24 @@ struct ArgumentRow {
     /// Added with 追加 rather than loaded: left blank, it is not an argument,
     /// whereas an empty argument the settings already had is kept.
     added: bool,
+    /// As for [`KeyValueRow::prompt`].
+    prompt: Option<String>,
+}
+
+/// Which settings file saving the form writes to.
+enum McpFormDestination {
+    UserSettings,
+    /// The `.zed/settings.json` that defines the server. Only an edit there
+    /// takes effect: the project's entry replaces any entry of the user's with
+    /// the same name, so writing the user's file would only leave a copy
+    /// behind that nothing runs.
+    ProjectFile {
+        worktree_id: WorktreeId,
+        file_label: SharedString,
+        /// The entry as the file had it when the form opened; the save is
+        /// refused if the file no longer says this.
+        loaded: ContextServerSettingsContent,
+    },
 }
 
 /// Editor-backed state for the custom MCP server add/edit form.
@@ -2245,6 +2416,13 @@ pub(crate) struct McpServerForm {
     /// What a pasted snippet contained that the form could not take.
     import_note: Option<SharedString>,
     error: Option<SharedString>,
+    destination: McpFormDestination,
+    /// Set when the command could not be found; a second save of the same
+    /// command goes ahead regardless (it may only exist where the server runs).
+    command_warning: Option<(String, SharedString)>,
+    /// A save that has to wait (for the command lookup or the project file's
+    /// write) is under way.
+    saving: bool,
 }
 
 impl McpServerForm {
@@ -2262,9 +2440,22 @@ impl McpServerForm {
             args: values
                 .args
                 .iter()
-                .map(|arg| ArgumentRow {
-                    editor: new_arg_input(Some(arg.as_str()), window, cx),
-                    added: false,
+                .enumerate()
+                .map(|(index, arg)| {
+                    let prompt = values.prompts.args.get(index).cloned().flatten();
+                    ArgumentRow {
+                        editor: match &prompt {
+                            Some(prompt) => new_input(
+                                &prompt_placeholder(prompt),
+                                Some(arg.as_str()),
+                                window,
+                                cx,
+                            ),
+                            None => new_arg_input(Some(arg.as_str()), window, cx),
+                        },
+                        added: false,
+                        prompt,
+                    }
                 })
                 .collect(),
             url: new_input(
@@ -2283,15 +2474,19 @@ impl McpServerForm {
             env: values
                 .env
                 .iter()
-                .map(|(key, value)| {
-                    new_kv_row(Some(key.as_str()), Some(value.as_str()), window, cx)
+                .enumerate()
+                .map(|(index, (key, value))| {
+                    let prompt = values.prompts.env.get(index).cloned().flatten();
+                    new_kv_row(Some(key.as_str()), Some(value.as_str()), prompt, window, cx)
                 })
                 .collect(),
             headers: values
                 .headers
                 .iter()
-                .map(|(key, value)| {
-                    new_kv_row(Some(key.as_str()), Some(value.as_str()), window, cx)
+                .enumerate()
+                .map(|(index, (key, value))| {
+                    let prompt = values.prompts.headers.get(index).cloned().flatten();
+                    new_kv_row(Some(key.as_str()), Some(value.as_str()), prompt, window, cx)
                 })
                 .collect(),
             remote: values.remote,
@@ -2299,6 +2494,9 @@ impl McpServerForm {
             oauth_client_secret: values.oauth_client_secret,
             import_note,
             error: None,
+            destination: McpFormDestination::UserSettings,
+            command_warning: None,
+            saving: false,
         }
     }
 }
@@ -2319,6 +2517,7 @@ impl McpServerFormValues {
             headers: Vec::new(),
             remote: false,
             enabled: true,
+            prompts: TemplatePrompts::default(),
         }
     }
 
@@ -2446,13 +2645,22 @@ fn new_input(
 fn new_kv_row(
     key: Option<&str>,
     value: Option<&str>,
+    prompt: Option<String>,
     window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) -> KeyValueRow {
+    let value_placeholder = prompt
+        .as_deref()
+        .map_or_else(|| "値".to_string(), prompt_placeholder);
     KeyValueRow {
         key: new_input("キー", key, window, cx),
-        value: new_input("値", value, window, cx),
+        value: new_input(&value_placeholder, value, window, cx),
+        prompt,
     }
+}
+
+fn prompt_placeholder(prompt: &str) -> String {
+    format!("入力してください: {prompt}")
 }
 
 fn new_arg_input(
@@ -2518,14 +2726,50 @@ fn render_mcp_server_form_page(
     let transport = form.transport;
     let error = form.error.clone();
     let remote = form.remote;
+    let saving = form.saving;
+    let command_warning = form
+        .command_warning
+        .as_ref()
+        .map(|(_, message)| message.clone());
+    let project_file = match &form.destination {
+        McpFormDestination::UserSettings => None,
+        McpFormDestination::ProjectFile { file_label, .. } => Some(file_label.clone()),
+    };
     // Outside a remote project the setting has no effect (the server always runs
     // here), so offering the choice would only invite a wrong expectation.
     let show_execution_host = get_context_server_store(settings_window, cx)
         .is_some_and(|store| store.read(cx).is_remote_project());
+    let kind_description = match transport {
+        McpTransport::Stdio => {
+            "コマンド型のサーバーです。Zed が実行ファイルを起動し、標準入出力でやり取りします。"
+        }
+        McpTransport::Http => {
+            "HTTP 型のサーバーです。Zed が URL に接続し、HTTP でやり取りします。接続先のホストはネットワーク許可リストの対象です。"
+        }
+    };
+    let working_folder_notice = if project_file.is_some() {
+        "プロジェクトの設定で定義したサーバーは、許可するとプロジェクトのフォルダーで起動します。"
+    } else {
+        "このサーバーは Zed 専用の空のフォルダーで起動します (プロジェクトのフォルダーではありません)。プロジェクトを対象にするときは、引数にフォルダーの絶対パスを指定してください。"
+    };
 
     let fields = v_flex()
         .w_full()
         .gap_4()
+        .child(
+            Label::new(kind_description)
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+        )
+        .when_some(project_file, |this, file_label| {
+            this.child(launch_approval_prompts::render_notice(
+                IconName::Info,
+                Color::Warning,
+                format!(
+                    "このサーバーはプロジェクトの設定ファイル {file_label} で定義されています。保存するとこのファイルを書き換えます (ユーザー設定には書きません)。内容が変わるため、起動するにはもう一度許可が必要です。"
+                ),
+            ))
+        })
         .when_some(form.import_note.clone(), |this, note| {
             this.child(render_import_note(note))
         })
@@ -2550,13 +2794,12 @@ fn render_mcp_server_form_page(
                 .child(launch_approval_prompts::render_notice(
                     IconName::Info,
                     Color::Muted,
-                    "このサーバーは Zed 専用の空のフォルダーで起動します (プロジェクトのフォルダーではありません)。プロジェクトを対象にするときは、引数にフォルダーの絶対パスを指定してください。"
-                        .to_string(),
+                    working_folder_notice.to_string(),
                 ))
                 .child(render_kv_section(
                     settings_window,
                     "環境変数",
-                    "サーバーのプロセスに渡す環境変数です。",
+                    "サーバーのプロセスに渡す環境変数です。API キーやトークンなど、サーバーの説明書が求める値をここに入力します。",
                     &form.env,
                     McpKvKind::Env,
                     cx,
@@ -2575,14 +2818,14 @@ fn render_mcp_server_form_page(
                 .child(render_form_field(
                     settings_window,
                     "URL",
-                    "必須。リモート MCP サーバーのベース URL です。",
+                    "必須。リモート MCP サーバーのエンドポイントの URL です (例: https://example.com/mcp)。",
                     &form.url,
                     cx,
                 ))
                 .child(render_kv_section(
                     settings_window,
                     "ヘッダー",
-                    "サーバーへの各リクエストに付与する HTTP ヘッダーです。",
+                    "サーバーへの各リクエストに付与する HTTP ヘッダーです。トークンで認証するサーバーでは Authorization に「Bearer <トークン>」を指定します。",
                     &form.headers,
                     McpKvKind::Header,
                     cx,
@@ -2597,13 +2840,20 @@ fn render_mcp_server_form_page(
                 .child(render_form_field(
                     settings_window,
                     "OAuth クライアント ID",
-                    "サーバーの認証に使う OAuth クライアント ID です (省略可)。",
+                    "サーバーの認証に使う OAuth クライアント ID です (省略可)。サーバーが自動登録に対応していれば空欄のままで、接続時にブラウザーでの認証を求められます。",
                     &form.oauth_client_id,
                     cx,
                 )),
         })
+        .when_some(command_warning, |this, warning| {
+            this.child(launch_approval_prompts::render_notice(
+                IconName::Warning,
+                Color::Warning,
+                warning.to_string(),
+            ))
+        })
         .when_some(error, |this, error| this.child(render_form_error(error)))
-        .child(render_form_actions(cx));
+        .child(render_form_actions(saving, cx));
 
     v_flex()
         .id("mcp-server-form-page")
@@ -2764,7 +3014,7 @@ fn render_kv_section(
                         .color(Color::Muted),
                 )
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    let row = new_kv_row(None, None, window, cx);
+                    let row = new_kv_row(None, None, None, window, cx);
                     if let Some(form) = this.mcp_server_form.as_mut() {
                         kind.rows_mut(form).push(row);
                     }
@@ -2820,7 +3070,7 @@ fn render_command_field(
     crate::render_settings_item_layout(
         settings_window,
         "コマンド",
-        "必須。サーバーを起動する実行ファイルのパスです。",
+        "必須。サーバーを起動する実行ファイルのパス、または PATH にあるコマンドの名前 (npx・uvx など) です。保存するときに、見つかるかどうかだけを確かめます (実行はしません)。",
         control,
         None,
         None,
@@ -2993,6 +3243,7 @@ fn render_args_section(
                         form.args.push(ArgumentRow {
                             editor: arg,
                             added: true,
+                            prompt: None,
                         });
                     }
                     cx.notify();
@@ -3510,7 +3761,7 @@ fn render_form_error(error: SharedString) -> impl IntoElement {
         .child(Label::new(error).size(LabelSize::Small).color(Color::Error))
 }
 
-fn render_form_actions(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
+fn render_form_actions(saving: bool, cx: &mut Context<SettingsWindow>) -> impl IntoElement {
     h_flex()
         .w_full()
         .gap_2()
@@ -3525,11 +3776,19 @@ fn render_form_actions(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
                 })),
         )
         .child(
-            Button::new("mcp-form-save", "保存")
-                .style(ButtonStyle::Filled)
-                .on_click(cx.listener(|this, _, window, cx| {
-                    save_mcp_server_form(this, window, cx);
-                })),
+            Button::new(
+                "mcp-form-save",
+                if saving {
+                    "保存しています…"
+                } else {
+                    "保存"
+                },
+            )
+            .style(ButtonStyle::Filled)
+            .disabled(saving)
+            .on_click(cx.listener(|this, _, window, cx| {
+                save_mcp_server_form(this, window, cx);
+            })),
         )
 }
 
@@ -3542,6 +3801,9 @@ fn save_mcp_server_form(
         let Some(form) = settings_window.mcp_server_form.as_ref() else {
             return;
         };
+        if form.saving {
+            return;
+        }
         build_settings_from_form(form, cx)
     };
 
@@ -3572,21 +3834,401 @@ fn save_mcp_server_form(
         return;
     }
 
-    let fs = <dyn fs::Fs>::global(cx);
-    settings::update_settings_file(fs, cx, move |settings, _| {
-        if let Some(original_id) = &original_id
-            && original_id.0 != id.0
-        {
-            settings.project.context_servers.remove(&original_id.0);
-        }
-        settings
-            .project
-            .context_servers
-            .insert(id.0.clone(), content);
-    });
+    let is_remote_project = get_context_server_store(settings_window, cx)
+        .is_some_and(|store| store.read(cx).is_remote_project());
+    let Some(form) = settings_window.mcp_server_form.as_mut() else {
+        return;
+    };
+    let Some(command) = command_to_look_up(&content, is_remote_project).filter(|command| {
+        form.command_warning
+            .as_ref()
+            .is_none_or(|(warned_about, _)| warned_about != &command.program)
+    }) else {
+        write_mcp_server_form(settings_window, id, original_id, content, window, cx);
+        return;
+    };
 
-    settings_window.mcp_server_form = None;
-    settings_window.pop_sub_page(window, cx);
+    form.saving = true;
+    form.error = None;
+    let form_id = form.name.entity_id();
+    cx.notify();
+    let fs = <dyn fs::Fs>::global(cx);
+    let path_variable = command
+        .path_variable
+        .clone()
+        .or_else(|| std::env::var("PATH").ok());
+    let extensions = executable_extensions();
+    cx.spawn_in(window, async move |this, cx| {
+        let lookup = look_up_command(
+            &command.program,
+            path_variable.as_deref(),
+            &extensions,
+            fs.as_ref(),
+        )
+        .await;
+        this.update_in(cx, |this, window, cx| {
+            if !is_showing_form(this, form_id) {
+                return;
+            }
+            let Some(form) = this.mcp_server_form.as_mut() else {
+                return;
+            };
+            form.saving = false;
+            match lookup {
+                CommandLookup::Missing => {
+                    let message = missing_command_message(&command.program);
+                    form.command_warning = Some((command.program, message));
+                    cx.notify();
+                }
+                CommandLookup::Found | CommandLookup::NotChecked => {
+                    form.command_warning = None;
+                    write_mcp_server_form(this, id, original_id, content, window, cx);
+                }
+            }
+        })
+        .log_err();
+    })
+    .detach();
+}
+
+fn write_mcp_server_form(
+    settings_window: &mut SettingsWindow,
+    id: ContextServerId,
+    original_id: Option<ContextServerId>,
+    content: ContextServerSettingsContent,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let Some(form) = settings_window.mcp_server_form.as_ref() else {
+        return;
+    };
+    let (worktree_id, loaded) = match &form.destination {
+        McpFormDestination::UserSettings => {
+            let fs = <dyn fs::Fs>::global(cx);
+            settings::update_settings_file(fs, cx, move |settings, _| {
+                if let Some(original_id) = &original_id
+                    && original_id.0 != id.0
+                {
+                    settings.project.context_servers.remove(&original_id.0);
+                }
+                settings
+                    .project
+                    .context_servers
+                    .insert(id.0.clone(), content);
+            });
+            settings_window.mcp_server_form = None;
+            settings_window.pop_sub_page(window, cx);
+            return;
+        }
+        McpFormDestination::ProjectFile {
+            worktree_id,
+            loaded,
+            ..
+        } => (*worktree_id, loaded.clone()),
+    };
+
+    let written = write_project_server(
+        settings_window,
+        worktree_id,
+        original_id,
+        loaded,
+        id,
+        content,
+        cx,
+    );
+    let Some(form) = settings_window.mcp_server_form.as_mut() else {
+        return;
+    };
+    let done = match written {
+        Ok(done) => done,
+        Err(error) => {
+            form.error = Some(error);
+            cx.notify();
+            return;
+        }
+    };
+    form.saving = true;
+    form.error = None;
+    let form_id = form.name.entity_id();
+    cx.notify();
+    cx.spawn_in(window, async move |this, cx| {
+        let outcome = done.await;
+        this.update_in(cx, |this, window, cx| {
+            let showing = is_showing_form(this, form_id);
+            let Some(form) = this
+                .mcp_server_form
+                .as_mut()
+                .filter(|form| form.name.entity_id() == form_id)
+            else {
+                return;
+            };
+            form.saving = false;
+            match outcome {
+                Ok(()) => {
+                    this.mcp_server_form = None;
+                    if showing {
+                        this.pop_sub_page(window, cx);
+                    }
+                }
+                Err(error) => {
+                    form.error = Some(error);
+                    cx.notify();
+                }
+            }
+        })
+        .log_err();
+    })
+    .detach();
+}
+
+/// A save that had to wait finishes only on the form it was started from, and
+/// closes the page only while that page is still on top: the breadcrumb leaves
+/// the form without dropping it, and another form may have opened meanwhile.
+fn is_showing_form(settings_window: &SettingsWindow, form_id: EntityId) -> bool {
+    type RenderPage =
+        fn(&SettingsWindow, &ScrollHandle, &mut Window, &mut Context<SettingsWindow>) -> AnyElement;
+    settings_window
+        .mcp_server_form
+        .as_ref()
+        .is_some_and(|form| form.name.entity_id() == form_id)
+        && settings_window.sub_page_stack.last().is_some_and(|page| {
+            std::ptr::fn_addr_eq(page.link.render, render_mcp_server_form_page as RenderPage)
+        })
+}
+
+const PROJECT_DEFINITION_CHANGED: &str = "フォームを開いた後に、プロジェクトの設定ファイルでこのサーバーの定義が変わりました。フォームを開き直してください。";
+
+/// Writes an edit of a server a project defines back into the
+/// `.zed/settings.json` it came from, never into the user's settings. What
+/// comes back resolves once the file is saved.
+fn write_project_server(
+    settings_window: &SettingsWindow,
+    worktree_id: WorktreeId,
+    original_id: Option<ContextServerId>,
+    loaded: ContextServerSettingsContent,
+    id: ContextServerId,
+    content: ContextServerSettingsContent,
+    cx: &mut Context<SettingsWindow>,
+) -> Result<Task<Result<(), SharedString>>, SharedString> {
+    let original_id = original_id.ok_or_else(|| SharedString::from(PROJECT_DEFINITION_CHANGED))?;
+    let project = target_workspace(settings_window, cx)
+        .map(|workspace| workspace.read(cx).project().clone())
+        .ok_or_else(|| {
+            SharedString::from(
+                "プロジェクトが開かれていないため、プロジェクトの設定ファイルに保存できません。",
+            )
+        })?;
+
+    // Checked here as well as when the file is rewritten: what the file said a
+    // moment ago catches most changes before the save is shown as under way.
+    let current = cx
+        .global::<settings::SettingsStore>()
+        .get_content_for_file(settings::SettingsFile::Project((
+            worktree_id,
+            util::rel_path::RelPath::empty_arc(),
+        )))
+        .and_then(|file| file.project.context_servers.get(&original_id.0));
+    if current != Some(&loaded) {
+        return Err(PROJECT_DEFINITION_CHANGED.into());
+    }
+
+    // Stays `None` when the edit never ran: the queue leaves a file it cannot
+    // parse alone and still reports the save as done.
+    let applied = Rc::new(RefCell::new(None::<Result<(), SharedString>>));
+    let done = crate::update_project_setting_file_with_completion(
+        &project,
+        worktree_id,
+        paths::local_settings_file_relative_path().into_arc(),
+        {
+            let applied = applied.clone();
+            move |settings, _| {
+                applied.replace(Some(apply_project_server_edit(
+                    &mut settings.project.context_servers,
+                    &original_id,
+                    &loaded,
+                    &id,
+                    content,
+                )));
+            }
+        },
+        cx.entity().downgrade(),
+        cx,
+    )
+    .map_err(|error| {
+        SharedString::from(format!(
+            "プロジェクトの設定ファイルに保存できませんでした: {error}"
+        ))
+    })?;
+
+    Ok(cx.spawn(async move |_, _| match done.await {
+        Ok(Ok(())) => applied.take().unwrap_or_else(|| {
+            Err(
+                "プロジェクトの設定ファイルを読み取れないため、保存できませんでした。ファイルの JSON の誤りを直してから、もう一度保存してください。"
+                    .into(),
+            )
+        }),
+        Ok(Err(error)) => Err(format!(
+            "プロジェクトの設定ファイルに保存できませんでした: {error}"
+        )
+        .into()),
+        Err(_) => Err(
+            "プロジェクトの設定ファイルに保存できませんでした: 保存が取り消されました。".into(),
+        ),
+    }))
+}
+
+/// The edit itself, applied to the entries of the file being rewritten. The
+/// whole entry is replaced by one of the kind the form was opened on, and only
+/// if the file still holds what the form loaded: `context_servers` entries are
+/// told apart by their fields alone, so an entry merged with another kind's
+/// fields could read as a different server.
+fn apply_project_server_edit(
+    servers: &mut collections::HashMap<Arc<str>, ContextServerSettingsContent>,
+    original_id: &ContextServerId,
+    loaded: &ContextServerSettingsContent,
+    id: &ContextServerId,
+    content: ContextServerSettingsContent,
+) -> Result<(), SharedString> {
+    if servers.get(&original_id.0) != Some(loaded) {
+        return Err(PROJECT_DEFINITION_CHANGED.into());
+    }
+    if original_id.0 != id.0 {
+        if servers.contains_key(&id.0) {
+            return Err(format!("「{}」という名前のサーバーは既に存在します。", id.0).into());
+        }
+        servers.remove(&original_id.0);
+    }
+    servers.insert(id.0.clone(), content);
+    Ok(())
+}
+
+struct CommandToLookUp {
+    program: String,
+    /// The server's own `PATH`, which is the one its command is looked up in.
+    path_variable: Option<String>,
+}
+
+/// The command of a stdio server that starts on this machine; one that
+/// starts on the SSH host can only be looked up over there.
+fn command_to_look_up(
+    content: &ContextServerSettingsContent,
+    is_remote_project: bool,
+) -> Option<CommandToLookUp> {
+    let ContextServerSettingsContent::Stdio {
+        remote, command, ..
+    } = content
+    else {
+        return None;
+    };
+    if is_remote_project && *remote {
+        return None;
+    }
+    let path_variable = command.env.as_ref().and_then(|env| {
+        env.iter()
+            .find(|(name, _)| {
+                if cfg!(windows) {
+                    name.eq_ignore_ascii_case("PATH")
+                } else {
+                    name.as_str() == "PATH"
+                }
+            })
+            .map(|(_, value)| value.clone())
+    });
+    Some(CommandToLookUp {
+        program: command.path.to_string_lossy().trim().to_string(),
+        path_variable,
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CommandLookup {
+    Found,
+    Missing,
+    /// A relative path or a network path: where it points depends on things
+    /// this check does not look at.
+    NotChecked,
+}
+
+fn executable_extensions() -> Vec<String> {
+    if cfg!(windows) {
+        std::env::var("PATHEXT")
+            .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string())
+            .split(';')
+            .map(str::trim)
+            .filter(|extension| !extension.is_empty())
+            .map(str::to_string)
+            .collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Whether `program` names a file that exists, directly or in a folder of
+/// `path_variable`, the way the server's launch would find it. Nothing is run.
+async fn look_up_command(
+    program: &str,
+    path_variable: Option<&str>,
+    extensions: &[String],
+    fs: &dyn fs::Fs,
+) -> CommandLookup {
+    let program = program.trim();
+    if program.is_empty() {
+        return CommandLookup::NotChecked;
+    }
+    let candidates = |base: &Path| {
+        std::iter::once(base.to_path_buf())
+            .chain(extensions.iter().map(|extension| {
+                let mut with_extension = base.as_os_str().to_owned();
+                with_extension.push(extension);
+                PathBuf::from(with_extension)
+            }))
+            .collect::<Vec<_>>()
+    };
+    let path = Path::new(program);
+    if path.components().count() > 1 || path.is_absolute() {
+        // Looking up a UNC path would send the user's credentials to the host
+        // it names, as it would for the command picker.
+        if !util::paths::is_local_absolute_path(path) {
+            return CommandLookup::NotChecked;
+        }
+        for candidate in candidates(path) {
+            if fs.is_file(&candidate).await {
+                return CommandLookup::Found;
+            }
+        }
+        return CommandLookup::Missing;
+    }
+    let Some(path_variable) = path_variable else {
+        return CommandLookup::Missing;
+    };
+    for directory in std::env::split_paths(path_variable) {
+        if !util::paths::is_local_absolute_path(&directory) {
+            continue;
+        }
+        for candidate in candidates(&directory.join(path)) {
+            if fs.is_file(&candidate).await {
+                return CommandLookup::Found;
+            }
+        }
+    }
+    CommandLookup::Missing
+}
+
+fn missing_command_message(program: &str) -> SharedString {
+    let name = Path::new(program)
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    let hint = match name.as_str() {
+        "npx" | "npm" | "node" => "Node.js をインストールすると使えるようになります。",
+        "uvx" | "uv" => "uv をインストールすると使えるようになります。",
+        "docker" => "Docker をインストールすると使えるようになります。",
+        _ => "",
+    };
+    format!(
+        "コマンド「{program}」が見つかりません (PATH にも、指定した場所にもありません。コマンドは実行していません)。{hint}このまま保存する場合は、もう一度「保存」を押してください。"
+    )
+    .into()
 }
 
 /// Plain (editor-free) snapshot of the form's contents, so the validation /
@@ -3606,6 +4248,16 @@ struct McpServerFormValues {
     headers: Vec<(String, String)>,
     remote: bool,
     enabled: bool,
+    prompts: TemplatePrompts,
+}
+
+/// What a template asked for in each argument, environment variable and
+/// header, index for index with the values they belong to.
+#[derive(Debug, Default)]
+struct TemplatePrompts {
+    args: Vec<Option<String>>,
+    env: Vec<Option<String>>,
+    headers: Vec<Option<String>>,
 }
 
 fn build_settings_from_form(
@@ -3619,16 +4271,19 @@ fn build_settings_from_form(
     ),
     SharedString,
 > {
+    let (args, arg_prompts) = form
+        .args
+        .iter()
+        .map(|row| (row.editor.read(cx).text(cx), row.added, row.prompt.clone()))
+        .filter(|(text, added, _)| keeps_argument(text, *added))
+        .map(|(text, _, prompt)| (text, prompt))
+        .unzip();
     let values = McpServerFormValues {
         transport: form.transport,
         original_id: form.original_id.clone(),
         name: form.name.read(cx).text(cx),
         command: form.command.read(cx).text(cx),
-        args: arguments_to_save(
-            form.args
-                .iter()
-                .map(|row| (row.editor.read(cx).text(cx), row.added)),
-        ),
+        args,
         url: form.url.read(cx).text(cx),
         timeout: form.timeout.read(cx).text(cx),
         oauth_client_id: form.oauth_client_id.read(cx).text(cx),
@@ -3637,17 +4292,52 @@ fn build_settings_from_form(
         headers: read_kv(&form.headers, cx),
         remote: form.remote,
         enabled: form.enabled,
+        prompts: TemplatePrompts {
+            args: arg_prompts,
+            env: form.env.iter().map(|row| row.prompt.clone()).collect(),
+            headers: form.headers.iter().map(|row| row.prompt.clone()).collect(),
+        },
     };
     build_settings_from_values(&values)
 }
 
 /// A row added with 追加 and left blank is not an argument; an empty argument
 /// the settings already had is kept, since a server may expect `""`.
+fn keeps_argument(text: &str, added: bool) -> bool {
+    !(added && text.trim().is_empty())
+}
+
+#[cfg(test)]
 fn arguments_to_save(rows: impl IntoIterator<Item = (String, bool)>) -> Vec<String> {
     rows.into_iter()
-        .filter(|(text, added)| !(*added && text.trim().is_empty()))
+        .filter(|(text, added)| keeps_argument(text, *added))
         .map(|(text, _)| text)
         .collect()
+}
+
+/// The first blank a template asked the user to fill that is still empty.
+fn unfilled_template_input(values: &McpServerFormValues) -> Option<SharedString> {
+    let unfilled_value = |rows: &[(String, String)], prompts: &[Option<String>], label: &str| {
+        rows.iter()
+            .zip(prompts)
+            .find(|((_, value), prompt)| prompt.is_some() && value.trim().is_empty())
+            .map(|((key, _), _)| format!("{label}「{}」の値を入力してください。", key.trim()))
+    };
+    let message = match values.transport {
+        McpTransport::Stdio => values
+            .args
+            .iter()
+            .zip(&values.prompts.args)
+            .find_map(|(argument, prompt)| {
+                prompt
+                    .as_ref()
+                    .filter(|_| argument.trim().is_empty())
+                    .map(|prompt| format!("「{prompt}」を入力してください。"))
+            })
+            .or_else(|| unfilled_value(&values.env, &values.prompts.env, "環境変数")),
+        McpTransport::Http => unfilled_value(&values.headers, &values.prompts.headers, "ヘッダー"),
+    };
+    message.map(SharedString::from)
 }
 
 fn read_kv(rows: &[KeyValueRow], cx: &App) -> Vec<(String, String)> {
@@ -3669,6 +4359,9 @@ fn build_settings_from_values(
     let name = values.name.trim().to_string();
     if name.is_empty() {
         return Err("サーバー名を入力してください。".into());
+    }
+    if let Some(error) = unfilled_template_input(values) {
+        return Err(error);
     }
 
     let timeout = parse_timeout(&values.timeout)?;
@@ -4814,5 +5507,381 @@ mod tests {
             import_note(&["cwd".into(), "envFile".into()]).as_deref(),
             Some("次の項目は Zed では使わないため読み込みませんでした: cwd, envFile")
         );
+    }
+
+    fn stdio_content(command: &str, args: &[&str]) -> ContextServerSettingsContent {
+        ContextServerSettingsContent::Stdio {
+            enabled: true,
+            remote: false,
+            command: ContextServerCommand {
+                path: command.into(),
+                args: args.iter().map(|arg| arg.to_string()).collect(),
+                env: None,
+                timeout: None,
+            },
+        }
+    }
+
+    fn servers(
+        entries: &[(&str, ContextServerSettingsContent)],
+    ) -> collections::HashMap<Arc<str>, ContextServerSettingsContent> {
+        entries
+            .iter()
+            .map(|(name, content)| (Arc::from(*name), content.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn a_project_server_edit_replaces_only_the_entry_it_was_opened_on() {
+        let loaded = stdio_content("old-server", &["--stdio"]);
+        let other = ContextServerSettingsContent::Http {
+            enabled: true,
+            url: "https://example.com/mcp".into(),
+            headers: Default::default(),
+            timeout: None,
+            oauth: None,
+        };
+        let mut entries = servers(&[("shared", loaded.clone()), ("other", other.clone())]);
+        let edited = stdio_content("new-server", &["--stdio", "--verbose"]);
+
+        apply_project_server_edit(
+            &mut entries,
+            &id("shared"),
+            &loaded,
+            &id("shared"),
+            edited.clone(),
+        )
+        .expect("the file still has what the form loaded");
+        assert_eq!(
+            entries,
+            servers(&[("shared", edited.clone()), ("other", other.clone())])
+        );
+
+        apply_project_server_edit(
+            &mut entries,
+            &id("shared"),
+            &edited,
+            &id("renamed"),
+            edited.clone(),
+        )
+        .expect("renaming to a free name");
+        assert_eq!(
+            entries,
+            servers(&[("renamed", edited.clone()), ("other", other)])
+        );
+    }
+
+    #[test]
+    fn a_project_server_edit_is_refused_when_the_file_changed_underneath() {
+        let loaded = stdio_content("old-server", &[]);
+        let edited = stdio_content("new-server", &[]);
+
+        // Rewritten by something else since the form opened, including into
+        // another kind of server under the same name.
+        for current in [
+            stdio_content("planted-server", &[]),
+            ContextServerSettingsContent::Extension {
+                enabled: true,
+                remote: false,
+                settings: serde_json::json!({}),
+            },
+        ] {
+            let mut entries = servers(&[("shared", current.clone())]);
+            assert_eq!(
+                apply_project_server_edit(
+                    &mut entries,
+                    &id("shared"),
+                    &loaded,
+                    &id("shared"),
+                    edited.clone(),
+                ),
+                Err(SharedString::from(PROJECT_DEFINITION_CHANGED))
+            );
+            assert_eq!(entries, servers(&[("shared", current)]));
+        }
+
+        let mut entries = servers(&[]);
+        assert!(
+            apply_project_server_edit(&mut entries, &id("shared"), &loaded, &id("shared"), edited)
+                .is_err(),
+            "a removed entry is not brought back"
+        );
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn a_project_server_cannot_be_renamed_over_another_one_in_its_file() {
+        let loaded = stdio_content("old-server", &[]);
+        let taken = stdio_content("taken-server", &[]);
+        let mut entries = servers(&[("shared", loaded.clone()), ("taken", taken.clone())]);
+        assert!(
+            apply_project_server_edit(
+                &mut entries,
+                &id("shared"),
+                &loaded,
+                &id("taken"),
+                stdio_content("new-server", &[]),
+            )
+            .is_err()
+        );
+        assert_eq!(entries, servers(&[("shared", loaded), ("taken", taken)]));
+    }
+
+    #[gpui::test]
+    async fn editing_a_project_server_writes_the_project_file_and_not_the_users(
+        cx: &mut TestAppContext,
+    ) {
+        let fs = init_command_picker_test(cx);
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".zed": {
+                    "settings.json": r#"{
+  // Shared with the team.
+  "context_servers": {
+    "shared": { "command": "old-server", "args": ["--stdio"] }
+  }
+}"#
+                },
+                "src": {}
+            }),
+        )
+        .await;
+        fs.insert_tree(path!("/tools"), json!({ "new-server": "" }))
+            .await;
+        let project = project::Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        let multi_workspace = cx.add_window(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project should have its worktree")
+                .read(cx)
+                .id()
+        });
+
+        let (settings_window, cx) = cx.add_window_view(|window, cx| {
+            let mut settings_window = SettingsWindow::test(window, cx);
+            settings_window.original_window = Some(multi_workspace);
+            settings_window
+        });
+        settings_window.update_in(cx, |settings_window, window, cx| {
+            let form = project_server_form(
+                &id("shared"),
+                worktree_id,
+                path!("/project/.zed/settings.json").into(),
+                window,
+                cx,
+            )
+            .expect("the project's own entry opens in the form");
+            form.command.update(cx, |editor, cx| {
+                editor.set_text(path!("/tools/new-server"), window, cx);
+            });
+            push_mcp_server_form(settings_window, form, window, cx);
+            save_mcp_server_form(settings_window, window, cx);
+        });
+        cx.run_until_parked();
+
+        let form_error = settings_window.read_with(cx, |settings_window, _| {
+            settings_window
+                .mcp_server_form
+                .as_ref()
+                .and_then(|form| form.error.clone())
+        });
+        assert_eq!(form_error, None);
+        settings_window.read_with(cx, |settings_window, _| {
+            assert!(
+                settings_window.mcp_server_form.is_none()
+                    && settings_window.sub_page_stack.is_empty(),
+                "the form closes once the project file is saved"
+            );
+        });
+        let project_file = fs
+            .load(path!("/project/.zed/settings.json").as_ref())
+            .await
+            .expect("the project file is still there");
+        assert!(
+            project_file.contains(&serde_json::to_string(path!("/tools/new-server")).unwrap()),
+            "{project_file}"
+        );
+        assert!(!project_file.contains("old-server"), "{project_file}");
+        assert!(
+            project_file.contains("// Shared with the team."),
+            "the rest of the file is left as it was: {project_file}"
+        );
+
+        let user_file = fs.load(paths::settings_file()).await.unwrap_or_default();
+        assert!(!user_file.contains("shared"), "{user_file}");
+        let user_settings_have_it = cx.update(|_, cx| {
+            cx.global::<settings::SettingsStore>()
+                .raw_user_settings()
+                .is_some_and(|settings| {
+                    settings
+                        .content
+                        .project
+                        .context_servers
+                        .contains_key("shared")
+                })
+        });
+        assert!(!user_settings_have_it);
+    }
+
+    /// The command lookup makes the save wait; leaving the form meanwhile (the
+    /// breadcrumb keeps the form around) must not close whatever page is on
+    /// top by then, nor write what the user walked away from.
+    #[gpui::test]
+    async fn a_save_that_waited_finishes_only_on_the_form_it_started_from(cx: &mut TestAppContext) {
+        let fs = init_command_picker_test(cx);
+        fs.insert_tree(path!("/tools"), json!({ "new-server": "" }))
+            .await;
+        let (settings_window, cx) =
+            cx.add_window_view(|window, cx| SettingsWindow::test(window, cx));
+        let open_filled_form = |name: &'static str, cx: &mut gpui::VisualTestContext| {
+            settings_window.update_in(cx, |settings_window, window, cx| {
+                let mut values = McpServerFormValues::empty(McpTransport::Stdio);
+                values.name = name.into();
+                values.command = path!("/tools/new-server").into();
+                let form = McpServerForm::from_values(values, None, window, cx);
+                push_mcp_server_form(settings_window, form, window, cx);
+                save_mcp_server_form(settings_window, window, cx);
+            });
+        };
+        let user_file = |fs: Arc<FakeFs>| async move {
+            fs.load(paths::settings_file()).await.unwrap_or_default()
+        };
+
+        open_filled_form("stayed", cx);
+        cx.run_until_parked();
+        settings_window.read_with(cx, |settings_window, _| {
+            assert!(settings_window.sub_page_stack.is_empty());
+            assert!(settings_window.mcp_server_form.is_none());
+        });
+        assert!(user_file(fs.clone()).await.contains("stayed"));
+
+        open_filled_form("left", cx);
+        settings_window.update_in(cx, |settings_window, window, cx| {
+            settings_window.pop_sub_page(window, cx);
+            open_mcp_templates_page(settings_window, window, cx);
+        });
+        cx.run_until_parked();
+        settings_window.read_with(cx, |settings_window, _| {
+            assert_eq!(
+                settings_window
+                    .sub_page_stack
+                    .iter()
+                    .map(|page| page.link.title.clone())
+                    .collect::<Vec<_>>(),
+                vec![SharedString::from("テンプレートから MCP サーバーを追加")],
+                "the page opened meanwhile stays open"
+            );
+        });
+        assert!(!user_file(fs.clone()).await.contains("left"));
+    }
+
+    #[gpui::test]
+    async fn looks_up_a_command_without_running_it(cx: &mut TestAppContext) {
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/node"),
+            json!({ "npx.cmd": "", "node.exe": "", "tool": "" }),
+        )
+        .await;
+        let path_variable = std::env::join_paths([path!("/missing"), path!("/node")])
+            .expect("joinable")
+            .into_string()
+            .expect("unicode");
+        let extensions = vec![".exe".to_string(), ".cmd".to_string()];
+        let look_up = |program: &'static str, path_variable: Option<String>| {
+            let fs = fs.clone();
+            let extensions = extensions.clone();
+            async move {
+                look_up_command(program, path_variable.as_deref(), &extensions, fs.as_ref()).await
+            }
+        };
+
+        assert_eq!(
+            look_up("npx", Some(path_variable.clone())).await,
+            CommandLookup::Found
+        );
+        assert_eq!(
+            look_up("tool", Some(path_variable.clone())).await,
+            CommandLookup::Found
+        );
+        assert_eq!(
+            look_up("uvx", Some(path_variable.clone())).await,
+            CommandLookup::Missing
+        );
+        assert_eq!(look_up("npx", None).await, CommandLookup::Missing);
+        assert_eq!(
+            look_up(path!("/node/node"), None).await,
+            CommandLookup::Found
+        );
+        assert_eq!(
+            look_up(path!("/node/python"), None).await,
+            CommandLookup::Missing
+        );
+        assert_eq!(
+            look_up("bin/server", Some(path_variable.clone())).await,
+            CommandLookup::NotChecked
+        );
+        assert_eq!(look_up("  ", None).await, CommandLookup::NotChecked);
+        #[cfg(windows)]
+        assert_eq!(
+            look_up(r"\\host\share\server.exe", None).await,
+            CommandLookup::NotChecked
+        );
+    }
+
+    #[test]
+    fn only_a_server_that_starts_here_has_its_command_looked_up() {
+        let mut content = stdio_content("npx", &[]);
+        assert_eq!(
+            command_to_look_up(&content, false).map(|command| command.program),
+            Some("npx".to_string())
+        );
+        if let ContextServerSettingsContent::Stdio {
+            remote, command, ..
+        } = &mut content
+        {
+            *remote = true;
+            command.env = Some(
+                [("Path".to_string(), "C:\\node".to_string())]
+                    .into_iter()
+                    .collect(),
+            );
+        }
+        assert!(
+            command_to_look_up(&content, true).is_none(),
+            "it starts on the SSH host"
+        );
+        let local = command_to_look_up(&content, false).expect("it starts here");
+        assert_eq!(
+            local.path_variable,
+            cfg!(windows).then(|| "C:\\node".to_string()),
+            "Windows names are case-insensitive"
+        );
+        assert!(
+            command_to_look_up(
+                &ContextServerSettingsContent::Http {
+                    enabled: true,
+                    url: "https://example.com/mcp".into(),
+                    headers: Default::default(),
+                    timeout: None,
+                    oauth: None,
+                },
+                false
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn a_missing_command_says_what_would_provide_it() {
+        assert!(missing_command_message("npx").contains("Node.js"));
+        assert!(missing_command_message("uvx.exe").contains("uv をインストール"));
+        assert!(!missing_command_message("my-server").contains("インストール"));
     }
 }

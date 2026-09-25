@@ -8664,7 +8664,7 @@ fn collaboration_page() -> SettingsPage {
 }
 
 fn ai_page(cx: &App) -> SettingsPage {
-    fn general_section() -> [SettingsPageItem; 14] {
+    fn general_section() -> [SettingsPageItem; 16] {
         [
             SettingsPageItem::SectionHeader("全般"),
             // The only UI writer of `agent.enabled` (ADR-F13, `docs/jp-enhance/DESIGN.md`):
@@ -8858,6 +8858,21 @@ fn ai_page(cx: &App) -> SettingsPage {
                 files: USER,
                 render: render_external_agents_page,
             }),
+            SettingsPageItem::ActionLink(ActionLink {
+                title: "サンドボックスの外での起動の同意".into(),
+                description: Some(
+                    "スレッドごとに「サンドボックスの外で起動」に同意した記録を取り消し、次の起動の前にもう一度確認するようにします。動いているエージェントは止めません。「常にサンドボックスの外で起動」の設定は変わりません。"
+                        .into(),
+                ),
+                button_text: "同意を取り消す".into(),
+                on_click: Arc::new(|_settings_window, window, cx| {
+                    window.dispatch_action(
+                        zed_actions::agent::RevokeOutsideSandboxConsents.boxed_clone(),
+                        cx,
+                    );
+                }),
+                files: USER,
+            }),
             SettingsPageItem::SubPageLink(SubPageLink {
                 title: "MCP サーバー".into(),
                 r#type: SubPageType::McpServers,
@@ -8914,6 +8929,25 @@ fn ai_page(cx: &App) -> SettingsPage {
                             .ide_server
                             .get_or_insert_default()
                             .share_active_file = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "失敗したタスクの出力をエージェントに渡す",
+                description: "最後に失敗したタスク (0 以外で終了) の出力の末尾 (最大 4 KB) を、IDE サーバーのツール getLastTaskOutput でエージェントが読めるようにします。",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("ide_server.share_task_output"),
+                    pick: |settings_content| {
+                        settings_content.ide_server.as_ref()?.share_task_output.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .ide_server
+                            .get_or_insert_default()
+                            .share_task_output = value;
                     },
                 }),
                 metadata: None,

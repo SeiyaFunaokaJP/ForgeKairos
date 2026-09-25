@@ -7,7 +7,6 @@ use language::{Buffer, BufferSnapshot, LanguageRegistry, OutlineItem, Point, Rop
 use project::Project;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use util::markdown::MarkdownInlineCode;
@@ -27,8 +26,9 @@ use util::rel_path::{RelPath, RelPathBuf};
 /// without an outline grammar, files that are too large, and binary files are
 /// listed by path only.
 ///
-/// The result is truncated to fit a byte budget. When it is truncated, narrow it
-/// down with `path` rather than raising `max_bytes`.
+/// The result is truncated to fit a byte budget: first the functions of the
+/// later files lose their parameters, then files are listed by path only. When
+/// it is truncated, narrow it down with `path` rather than raising `max_bytes`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RepoMapToolInput {
     /// Optional path prefix to restrict the map to. Like other tools, the first
@@ -159,17 +159,20 @@ impl RepoMapTool {
         let mut output = String::with_capacity(max_bytes.min(1 << 16));
         output.push_str(HEADER);
 
-        let mut expanded_files = 0;
         let mut parsed_files = 0;
         let mut budget_exhausted = false;
         let mut unexpanded = Vec::new();
+        let mut blocks = Vec::new();
+        // Admission is decided on the compact form, so that spelling out
+        // parameters never costs a file its place in the map.
+        let mut compact_length = output.len();
 
         for candidate in &candidates {
             if budget_exhausted
                 || !candidate.has_language
                 || candidate.size > MAX_FILE_SIZE
                 || parsed_files >= MAX_FILES_PARSED
-                || output.len() >= expanded_budget
+                || compact_length >= expanded_budget
             {
                 unexpanded.push(candidate.display_path.as_str());
                 continue;
@@ -184,15 +187,27 @@ impl RepoMapTool {
                 }
             };
 
-            if output.len() + block.len() > expanded_budget {
+            if compact_length + block.compact.len() > expanded_budget {
                 budget_exhausted = true;
                 unexpanded.push(candidate.display_path.as_str());
                 continue;
             }
 
-            output.push_str(&block);
-            expanded_files += 1;
+            compact_length += block.compact.len();
+            blocks.push(block);
         }
+
+        let expanded_files = blocks.len();
+        let files_with_parameters =
+            files_keeping_parameters(&blocks, expanded_budget.saturating_sub(compact_length));
+        for (index, block) in blocks.iter().enumerate() {
+            if index < files_with_parameters {
+                output.push_str(&block.detailed);
+            } else {
+                output.push_str(&block.compact);
+            }
+        }
+        let files_without_parameters = expanded_files - files_with_parameters;
 
         let mut listed_paths = 0;
         if !unexpanded.is_empty() {
@@ -209,18 +224,41 @@ impl RepoMapTool {
         }
 
         let omitted = unexpanded.len() - listed_paths;
-        let _ = write!(
-            output,
-            "\n{expanded_files} of {total_files} files expanded with symbols, \
-             {listed_paths} listed by path only",
-        );
+        output.push_str(&format!(
+            "\n{expanded_files} of {total_files} files expanded with symbols"
+        ));
+        if files_without_parameters > 0 {
+            output.push_str(&format!(
+                " (the last {files_without_parameters} without parameters)"
+            ));
+        }
+        output.push_str(&format!(", {listed_paths} listed by path only"));
         if omitted > 0 {
-            let _ = write!(output, ", {omitted} omitted to stay within the byte budget");
+            output.push_str(&format!(
+                ", {omitted} omitted to stay within the byte budget"
+            ));
         }
         output.push_str(".\n");
 
         Ok(output)
     }
+}
+
+/// How many of the leading blocks can show their parameters within `spare`
+/// bytes on top of the compact map. Upgrading stops at the first block that
+/// does not fit, so parameters survive for the trunk of the tree and the map
+/// can say where they stop.
+fn files_keeping_parameters(blocks: &[FileBlock], mut spare: usize) -> usize {
+    let mut count = 0;
+    for block in blocks {
+        let extra = block.detailed.len().saturating_sub(block.compact.len());
+        if extra > spare {
+            break;
+        }
+        spare -= extra;
+        count += 1;
+    }
+    count
 }
 
 fn collect_candidates(
@@ -286,7 +324,7 @@ async fn file_block(
     language_registry: &Arc<LanguageRegistry>,
     fs: &dyn Fs,
     cx: &mut AsyncApp,
-) -> Option<String> {
+) -> Option<FileBlock> {
     let language = language_registry
         .load_language_for_file_path(&candidate.abs_path)
         .await
@@ -312,38 +350,57 @@ async fn file_block(
         return None;
     }
 
-    let mut block = String::new();
-    block.push_str(&candidate.display_path);
-    block.push('\n');
+    let mut block = FileBlock {
+        detailed: String::new(),
+        compact: String::new(),
+    };
+    block.push_both(&candidate.display_path);
+    block.push_both("\n");
     for item in items.iter().take(MAX_SYMBOLS_PER_FILE) {
         if item.text.is_empty() {
             continue;
         }
-        block.push_str("  ");
+        block.push_both("  ");
         for _ in 0..item.depth {
-            block.push(' ');
+            block.push_both(" ");
         }
         match signature_for_item(&snapshot, item) {
-            Some(signature) => block.push_str(&signature),
-            None => block.push_str(&item.text),
+            Some(signature) => {
+                block.detailed.push_str(&signature);
+                block.compact.push_str(&item.text);
+            }
+            None => block.push_both(&item.text),
         }
         let start_row = item.range.start.row + 1;
         let end_row = item.range.end.row + 1;
         if start_row == end_row {
-            let _ = writeln!(block, " [L{start_row}]");
+            block.push_both(&format!(" [L{start_row}]\n"));
         } else {
-            let _ = writeln!(block, " [L{start_row}-{end_row}]");
+            block.push_both(&format!(" [L{start_row}-{end_row}]\n"));
         }
     }
     if items.len() > MAX_SYMBOLS_PER_FILE {
-        let _ = writeln!(
-            block,
-            "  … {} more symbols",
+        block.push_both(&format!(
+            "  … {} more symbols\n",
             items.len() - MAX_SYMBOLS_PER_FILE
-        );
+        ));
     }
-    block.push('\n');
+    block.push_both("\n");
     Some(block)
+}
+
+/// A file's entry in the map, in the two forms the budget chooses between:
+/// callables spelled out with their parameters, or named by the outline text.
+struct FileBlock {
+    detailed: String,
+    compact: String,
+}
+
+impl FileBlock {
+    fn push_both(&mut self, text: &str) {
+        self.detailed.push_str(text);
+        self.compact.push_str(text);
+    }
 }
 
 /// How a declaration header is separated from the body it introduces.
@@ -396,7 +453,11 @@ fn signature_for_item(snapshot: &BufferSnapshot, item: &OutlineItem<Point>) -> O
         .map(|language| language.name());
     let delimiter = body_delimiter(language_name.as_ref().map(|name| name.0.as_ref()));
 
-    let start = item.range.start;
+    // C++ member declarations put the item on the declarator alone, leaving
+    // the return type — part of the outline text — in front of the item, and
+    // the terminating `;` after it.
+    let item_is_declarator = item.source_range_for_text.start < item.range.start;
+    let start = item.range.start.min(item.source_range_for_text.start);
     let window_end = item
         .range
         .end
@@ -405,12 +466,14 @@ fn signature_for_item(snapshot: &BufferSnapshot, item: &OutlineItem<Point>) -> O
     if window_end <= start {
         return None;
     }
+    let header_ends_with_window = item_is_declarator && window_end == item.range.end;
 
     collapse_declaration_header(
         snapshot
             .text_for_range(start..window_end)
             .flat_map(|chunk| chunk.chars()),
         delimiter,
+        header_ends_with_window,
     )
 }
 
@@ -474,8 +537,13 @@ impl SignatureWriter {
 fn collapse_declaration_header(
     characters: impl Iterator<Item = char>,
     delimiter: BodyDelimiter,
+    header_ends_with_characters: bool,
 ) -> Option<String> {
-    let mut characters = characters.take(MAX_SIGNATURE_SCAN_CHARS).peekable();
+    let scanned = std::cell::Cell::new(0_usize);
+    let mut characters = characters
+        .inspect(|_| scanned.set(scanned.get() + 1))
+        .take(MAX_SIGNATURE_SCAN_CHARS)
+        .peekable();
     let mut writer = SignatureWriter::new();
     let mut depth: usize = 0;
     let mut string_delimiter: Option<char> = None;
@@ -560,6 +628,13 @@ fn collapse_declaration_header(
         }
     }
 
+    if !terminated
+        && header_ends_with_characters
+        && parameters_closed
+        && scanned.get() < MAX_SIGNATURE_SCAN_CHARS
+    {
+        terminated = true;
+    }
     if !terminated || depth != 0 || string_delimiter.is_some() {
         return None;
     }
@@ -949,7 +1024,7 @@ mod tests {
             "}\n",
         );
         assert_eq!(
-            collapse_declaration_header(source.chars(), BodyDelimiter::Brace).as_deref(),
+            collapse_declaration_header(source.chars(), BodyDelimiter::Brace, false).as_deref(),
             Some("pub fn merge(&mut self, other: &Config, strict: bool) -> Result<(), String>")
         );
     }
@@ -957,8 +1032,12 @@ mod tests {
     #[test]
     fn a_rust_declaration_without_a_body_ends_at_its_semicolon() {
         assert_eq!(
-            collapse_declaration_header("fn drop(&mut self);\n".chars(), BodyDelimiter::Brace)
-                .as_deref(),
+            collapse_declaration_header(
+                "fn drop(&mut self);\n".chars(),
+                BodyDelimiter::Brace,
+                false
+            )
+            .as_deref(),
             Some("fn drop(&mut self)")
         );
     }
@@ -974,7 +1053,7 @@ mod tests {
             "    return {}\n",
         );
         assert_eq!(
-            collapse_declaration_header(source.chars(), BodyDelimiter::Colon).as_deref(),
+            collapse_declaration_header(source.chars(), BodyDelimiter::Colon, false).as_deref(),
             Some("def load(path: Path, *, encoding: str = 'utf-8') -> dict[str, int]")
         );
     }
@@ -984,7 +1063,8 @@ mod tests {
         assert_eq!(
             collapse_declaration_header(
                 "def load(options={'a': 1}):\n".chars(),
-                BodyDelimiter::Colon
+                BodyDelimiter::Colon,
+                false
             )
             .as_deref(),
             Some("def load(options={'a': 1})")
@@ -996,6 +1076,7 @@ mod tests {
         let signature = collapse_declaration_header(
             "def render(template=\"\"\"\nhello\n\"\"\"):\n".chars(),
             BodyDelimiter::Colon,
+            false,
         )
         .expect("the header ends at the colon");
         assert!(!signature.contains('\n'), "{signature}");
@@ -1012,7 +1093,8 @@ mod tests {
         assert_eq!(
             collapse_declaration_header(
                 "def load(path)\n  File.read(path)\nend\n".chars(),
-                BodyDelimiter::LineEnd
+                BodyDelimiter::LineEnd,
+                false
             )
             .as_deref(),
             Some("def load(path)")
@@ -1024,14 +1106,19 @@ mod tests {
         // A declaration wrapped over several lines in a language whose body
         // delimiter is unknown would read as a broken `def load(`.
         assert_eq!(
-            collapse_declaration_header("def load(\n  path\n)\n".chars(), BodyDelimiter::LineEnd),
+            collapse_declaration_header(
+                "def load(\n  path\n)\n".chars(),
+                BodyDelimiter::LineEnd,
+                false
+            ),
             None
         );
         // Nor does a header that never ends within the scanned window.
         assert_eq!(
             collapse_declaration_header(
                 "pub fn merge(\n  &mut self,\n".chars(),
-                BodyDelimiter::Brace
+                BodyDelimiter::Brace,
+                false
             ),
             None
         );
@@ -1040,7 +1127,8 @@ mod tests {
         assert_eq!(
             collapse_declaration_header(
                 "fn map<\n    F: Fn(&str) -> bool,\n>(\n    predicate: F,\n) {\n".chars(),
-                BodyDelimiter::Brace
+                BodyDelimiter::Brace,
+                false
             ),
             None
         );
@@ -1058,13 +1146,226 @@ mod tests {
         }
         source.push_str(") {}\n");
 
-        let signature = collapse_declaration_header(source.chars(), BodyDelimiter::Brace)
+        let signature = collapse_declaration_header(source.chars(), BodyDelimiter::Brace, false)
             .expect("the header ends at the body brace");
         assert_eq!(signature.chars().count(), MAX_SIGNATURE_CHARS);
         assert!(signature.ends_with('…'), "{signature}");
         assert!(
             signature.starts_with("pub fn wide(argument_0: u32, argument_1: u32,"),
             "{signature}"
+        );
+    }
+
+    fn bundled_language(name: &str) -> Arc<language::Language> {
+        let grammar = grammars::native_grammars()
+            .into_iter()
+            .find_map(|(grammar_name, grammar)| (grammar_name == name).then_some(grammar))
+            .unwrap_or_else(|| panic!("no bundled grammar named {name}"));
+        Arc::new(
+            language::Language::new(grammars::load_config(name), Some(grammar))
+                .with_queries(grammars::load_queries(name))
+                .unwrap_or_else(|error| panic!("queries for {name} do not parse: {error}")),
+        )
+    }
+
+    #[gpui::test]
+    async fn test_repo_map_spells_out_parameters_in_every_outlined_language(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                "store.ts": concat!(
+                    "export class Store {\n",
+                    "  async load(path: string, retries = 3): Promise<void> {\n",
+                    "  }\n",
+                    "}\n",
+                    "\n",
+                    "export function merge<T>(\n",
+                    "  left: T,\n",
+                    "  right: Partial<T>,\n",
+                    "): T {\n",
+                    "  return left;\n",
+                    "}\n",
+                ),
+                "loader.py": concat!(
+                    "class Loader:\n",
+                    "    @staticmethod\n",
+                    "    async def load(path: str, *, encoding: str = \"utf-8\") -> bytes:\n",
+                    "        return b\"\"\n",
+                ),
+                "server.go": concat!(
+                    "package main\n",
+                    "\n",
+                    "type Server struct {\n",
+                    "\taddr string\n",
+                    "}\n",
+                    "\n",
+                    "func (s *Server) Serve(ctx context.Context, port int) error {\n",
+                    "\treturn nil\n",
+                    "}\n",
+                    "\n",
+                    "func New(addr string) *Server {\n",
+                    "\treturn &Server{addr: addr}\n",
+                    "}\n",
+                ),
+                "parse.c": concat!(
+                    "struct point {\n",
+                    "    int x;\n",
+                    "};\n",
+                    "\n",
+                    "static int parse(const char *source, size_t length)\n",
+                    "{\n",
+                    "    return 0;\n",
+                    "}\n",
+                    "\n",
+                    "int count(void);\n",
+                ),
+                "widget.cpp": concat!(
+                    "class Widget {\n",
+                    "public:\n",
+                    "    Widget(int width, int height);\n",
+                    "    int area() const;\n",
+                    "    virtual void draw(Canvas &canvas) = 0;\n",
+                    "};\n",
+                    "\n",
+                    "int Widget::area() const {\n",
+                    "    return 0;\n",
+                    "}\n",
+                ),
+            }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.update(|cx| {
+            let languages = project.read(cx).languages();
+            for name in ["typescript", "python", "go", "c", "cpp"] {
+                languages.add(bundled_language(name));
+            }
+        });
+        cx.executor().run_until_parked();
+
+        let output = run_tool(
+            project,
+            RepoMapToolInput {
+                path: None,
+                max_bytes: None,
+            },
+            cx,
+        )
+        .await
+        .unwrap();
+
+        for expected in [
+            "async load(path: string, retries = 3): Promise<void> [L2-3]",
+            "function merge<T>(left: T, right: Partial<T>): T [L6-11]",
+            "async def load(path: str, *, encoding: str = \"utf-8\") -> bytes [L3-4]",
+            "func (s *Server) Serve(ctx context.Context, port int) error [L7-9]",
+            "func New(addr string) *Server [L11-13]",
+            "static int parse(const char *source, size_t length) [L5-8]",
+            "int count(void) [L10]",
+            "Widget(int width, int height) [L3]",
+            // Member declarations put the outline item on the declarator, so
+            // the return type in front of it and the `;` after it lie outside.
+            "int area() const [L4]",
+            "void draw(Canvas &canvas) [L5]",
+            "int Widget::area() const [L8-10]",
+        ] {
+            // Whole lines, so that a header scan starting too early (an
+            // `export`, a class name) cannot hide behind a substring match.
+            assert!(
+                output.lines().any(|line| line.trim_start() == expected),
+                "missing {expected:?} in:\n{output}"
+            );
+        }
+        assert!(
+            output.contains("5 of 5 files expanded with symbols, 0 listed"),
+            "{output}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_repo_map_drops_parameters_before_files(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let mut tree = serde_json::Map::new();
+        for file in 0..10 {
+            let mut source = String::new();
+            for function in 0..3 {
+                source.push_str(&format!(
+                    "pub fn function_{file}_{function}(first_argument: u32, second_argument: u32) -> u32 {{ 0 }}\n"
+                ));
+            }
+            tree.insert(format!("file_{file}.rs"), json!(source));
+        }
+        fs.insert_tree(path!("/project"), serde_json::Value::Object(tree))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.update(|cx| project.read(cx).languages().add(language::rust_lang()));
+        cx.executor().run_until_parked();
+
+        let output = run_tool(
+            project,
+            RepoMapToolInput {
+                path: None,
+                max_bytes: Some(2_048),
+            },
+            cx,
+        )
+        .await
+        .unwrap();
+
+        assert!(output.len() <= 2_048, "map was {} bytes", output.len());
+        // Every file fits once its functions are named without parameters,
+        // which the full signatures (about 2.5 KB here) would not allow.
+        assert!(
+            output.contains("10 of 10 files expanded with symbols (the last "),
+            "{output}"
+        );
+        assert!(
+            output.contains(
+                "pub fn function_0_0(first_argument: u32, second_argument: u32) -> u32 [L1]"
+            ),
+            "the trunk keeps its parameters: {output}"
+        );
+        assert!(
+            output.contains("  pub fn function_9_2 [L3]"),
+            "the last file is named only: {output}"
+        );
+        let first_compact_file = (0..10)
+            .find(|file| output.contains(&format!("  pub fn function_{file}_0 [L1]")))
+            .expect("some file is compacted");
+        assert!(first_compact_file > 0, "{output}");
+        for file in first_compact_file..10 {
+            assert!(
+                !output.contains(&format!("pub fn function_{file}_0(")),
+                "parameters stop at a single point: {output}"
+            );
+        }
+        assert!(
+            output.contains(&format!(
+                "(the last {} without parameters)",
+                10 - first_compact_file
+            )),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn a_member_declarator_ends_where_its_item_ends() {
+        assert_eq!(
+            collapse_declaration_header("int area() const".chars(), BodyDelimiter::Brace, true)
+                .as_deref(),
+            Some("int area() const")
+        );
+        // Anywhere else, running out of characters means the header was cut.
+        assert_eq!(
+            collapse_declaration_header("int area() const".chars(), BodyDelimiter::Brace, false),
+            None
         );
     }
 

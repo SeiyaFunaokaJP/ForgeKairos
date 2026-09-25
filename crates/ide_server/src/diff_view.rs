@@ -2,7 +2,7 @@
 //!
 //! 差分の描画そのものは `git_ui_core` の [`FileDiffView`] をそのまま使う (左が旧内容 =
 //! `BufferDiff` の base text、右が新内容の作業用バッファー)。このタブはその上に
-//! 「受け入れる / 拒否」の 1 行を足し、押されるまで待つ `oneshot` を持つだけ。
+//! 「拒否の理由 (任意) / 拒否 / 採用」の 1 行を足し、押されるまで待つ `oneshot` を持つだけ。
 //!
 //! **このタブは実ファイルをいっさい書かない**。編集はスクラッチバッファーの上で
 //! 行われ、「採用」はその時点の本文を `FILE_SAVED` の 2 番目のテキストとして CLI に
@@ -21,6 +21,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
+use editor::Editor;
 use futures::channel::oneshot;
 use git_ui_core::file_diff_view::{FileDiffView, build_buffer_diff};
 use gpui::{
@@ -34,11 +35,11 @@ use workspace::item::ItemEvent;
 use workspace::{Item, Workspace};
 
 /// CLI が待っている結果。`FILE_SAVED` のときは承認された本文も返す (ディスクへ書くのは
-/// CLI 側)。
+/// CLI 側)。拒否には、ユーザーが書いた理由が付くことがある (モデルに戻す)。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IdeServerDiffOutcome {
     Accepted { contents: String },
-    Rejected,
+    Rejected { reason: Option<String> },
 }
 
 pub enum IdeServerDiffEvent {
@@ -50,6 +51,7 @@ pub struct IdeServerDiff {
     new_file_path: PathBuf,
     diff_view: Entity<FileDiffView>,
     new_buffer: Entity<Buffer>,
+    reason_editor: Entity<Editor>,
     outcome: Option<oneshot::Sender<IdeServerDiffOutcome>>,
 }
 
@@ -101,11 +103,21 @@ impl IdeServerDiff {
                         cx,
                     )
                 });
+                let reason_editor = cx.new(|cx| {
+                    let mut editor = Editor::single_line(window, cx);
+                    editor.set_placeholder_text(
+                        "拒否の理由 (任意。エージェントに伝えます)",
+                        window,
+                        cx,
+                    );
+                    editor
+                });
                 let diff_tab = cx.new(|_| Self {
                     tab_name: tab_name.into(),
                     new_file_path,
                     diff_view,
                     new_buffer,
+                    reason_editor,
                     outcome: Some(outcome_tx),
                 });
                 register(&diff_tab, cx)?;
@@ -139,9 +151,10 @@ impl IdeServerDiff {
         &self.tab_name
     }
 
-    /// 外から (`close_tab` / `closeAllDiffTabs`) 閉じるときの入口。
+    /// 外から (`close_tab` / `closeAllDiffTabs`) 閉じるときの入口。ユーザーが決めたのでは
+    /// ないので、書きかけの理由は送らない。
     pub fn dismiss(&mut self, cx: &mut Context<Self>) {
-        self.resolve(IdeServerDiffOutcome::Rejected, cx);
+        self.resolve(IdeServerDiffOutcome::Rejected { reason: None }, cx);
     }
 
     fn resolve(&mut self, outcome: IdeServerDiffOutcome, cx: &mut Context<Self>) {
@@ -156,8 +169,21 @@ impl IdeServerDiff {
         self.resolve(IdeServerDiffOutcome::Accepted { contents }, cx);
     }
 
-    fn reject(&mut self, cx: &mut Context<Self>) {
-        self.resolve(IdeServerDiffOutcome::Rejected, cx);
+    pub(crate) fn reject(&mut self, cx: &mut Context<Self>) {
+        let reason = self.reason_editor.read(cx).text(cx);
+        let reason = Some(reason.trim().to_string()).filter(|reason| !reason.is_empty());
+        self.resolve(IdeServerDiffOutcome::Rejected { reason }, cx);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_rejection_reason(
+        &mut self,
+        reason: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.reason_editor
+            .update(cx, |editor, cx| editor.set_text(reason, window, cx));
     }
 }
 
@@ -194,7 +220,9 @@ impl Drop for IdeServerDiff {
         // タブがボタンを経ずに閉じられたときは「拒否」として返す。CLI 側の
         // `TAB_CLOSED` は「提案どおり適用された」とみなされてしまうので使わない。
         if let Some(sender) = self.outcome.take() {
-            sender.send(IdeServerDiffOutcome::Rejected).ok();
+            sender
+                .send(IdeServerDiffOutcome::Rejected { reason: None })
+                .ok();
         }
     }
 }
@@ -232,6 +260,17 @@ impl Render for IdeServerDiff {
                     .child(
                         h_flex()
                             .gap_1()
+                            .when(!decided, |this| {
+                                this.child(
+                                    div()
+                                        .w(rems(20.))
+                                        .px_1()
+                                        .border_1()
+                                        .rounded_sm()
+                                        .border_color(cx.theme().colors().border_variant)
+                                        .child(self.reason_editor.clone()),
+                                )
+                            })
                             .child(
                                 Button::new("ide-server-diff-reject", "拒否")
                                     .disabled(decided)

@@ -2398,15 +2398,68 @@ mod tests {
         );
     }
 
+    /// The base of a merge-request check is asked for even when only one branch qualifies: taken
+    /// without asking, the user would not know which branch the check measured against.
+    #[gpui::test]
+    async fn test_merge_request_base_prompt_asks_even_for_one(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/project"), json!({ ".git": {}, "a.txt": "a" }))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+        let picker_open = |cx: &mut gpui::VisualTestContext| {
+            workspace.read_with(cx, |workspace, cx| {
+                workspace
+                    .active_modal::<crate::picker_prompt::PickerPrompt>(cx)
+                    .is_some()
+            })
+        };
+
+        let taken = cx.update(|window, cx| {
+            crate::picker_prompt::prompt(
+                "基点",
+                vec!["main".into()],
+                workspace.downgrade(),
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        assert!(!picker_open(cx));
+        assert_eq!(
+            taken.await,
+            Some(0),
+            "the plain prompt takes the only option"
+        );
+
+        let _asked = cx.update(|window, cx| {
+            crate::picker_prompt::prompt_even_for_one(
+                "MR の基点 (マージ先) のブランチ",
+                vec!["main".into()],
+                workspace.downgrade(),
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        assert!(picker_open(cx), "one candidate is still asked about");
+    }
+
     #[test]
     fn test_parse_commits_with_paths_reads_git_log_z_output() {
         let newest = "a".repeat(40);
         let merge = "b".repeat(40);
         let oldest = "c".repeat(40);
+        let empty = "d".repeat(40);
+        // What git 2.47 prints, subjects holding the separators of the old format included.
         let output = format!(
-            "\u{1e}{newest}\u{1f}dev two\0\nd1.txt\0資料/日本 語.txt\0\
-             \u{1e}{merge}\u{1f}Merge branch 'main' into dev\0\
-             \u{1e}{oldest}\u{1f}dev one\0\nd1.txt\0"
+            "\0{newest}\0dev \u{1e}two\u{1f}\0\nd1.txt\0資料/日本 語.txt\0\
+             \0{merge}\0Merge branch 'main' into dev\0\
+             \0{empty}\0\0\
+             \0{oldest}\0dev one\0\nd1.txt\0"
         );
         let commits = parse_commits_with_paths(&output);
         assert_eq!(
@@ -2425,7 +2478,7 @@ mod tests {
             vec![
                 (
                     newest,
-                    "dev two".to_string(),
+                    "dev \u{1e}two\u{1f}".to_string(),
                     vec!["d1.txt".to_string(), "資料/日本 語.txt".to_string()]
                 ),
                 (
@@ -2433,6 +2486,7 @@ mod tests {
                     "Merge branch 'main' into dev".to_string(),
                     Vec::new()
                 ),
+                (empty, String::new(), Vec::new()),
                 (oldest, "dev one".to_string(), vec!["d1.txt".to_string()]),
             ]
         );
@@ -3945,36 +3999,47 @@ fn commits_with_paths_args(
 ) -> Vec<String> {
     let mut args = vec!["log".to_string()];
     args.extend(leading.iter().map(|argument| argument.to_string()));
-    args.extend(["--no-renames", "--name-only", "-z", "--format=%x1e%H%x1f%s"].map(String::from));
+    args.extend(["--no-renames", "--name-only", "-z", "--format=%x00%H%x00%s"].map(String::from));
     args.extend(revisions);
     args
 }
 
-/// Reads the output of [`commits_with_paths_args`]: each commit is `\x1e<sha>\x1f<subject>\0`
-/// followed by its paths, each ending in `\0` (after a newline that separates them from the
-/// subject). A merge commit lists no paths.
+/// Reads the output of [`commits_with_paths_args`]: each commit is `\0<sha>\0<subject>\0`
+/// followed by its paths, each ending in `\0` (the first after a newline that separates them
+/// from the subject). A merge commit lists no paths.
+///
+/// NUL is the one byte neither a subject nor a path can hold, so every field ends at one: a
+/// commit starts at an empty field, since a path is never empty, and the field after its SHA is
+/// its subject even when that is empty.
 fn parse_commits_with_paths(output: &str) -> Vec<CommitWithPaths> {
-    output
-        .split('\u{1e}')
-        .filter_map(|record| {
-            let (sha, rest) = record.split_once('\u{1f}')?;
-            let sha = sha.trim().parse::<git::Oid>().ok()?;
-            let (subject, paths) = rest.split_once('\0').unwrap_or((rest, ""));
-            let paths = paths
-                .split('\0')
-                .map(|path| path.trim_start_matches('\n'))
-                .filter(|path| !path.is_empty())
-                .filter_map(|path| RepoPath::new(path).ok())
-                .collect();
-            Some(CommitWithPaths {
-                commit: MergeRequestCommit {
-                    sha,
-                    subject: subject.trim().to_string().into(),
-                },
-                paths,
-            })
-        })
-        .collect()
+    let mut commits = Vec::new();
+    let mut fields = output.split('\0').peekable();
+    while let Some(field) = fields.next() {
+        if !field.is_empty() {
+            continue;
+        }
+        let Some(sha) = fields.next() else {
+            break;
+        };
+        let Ok(sha) = sha.trim().parse::<git::Oid>() else {
+            continue;
+        };
+        let subject = fields.next().unwrap_or_default();
+        let mut paths = Vec::new();
+        while let Some(path) = fields.next_if(|field| !field.is_empty()) {
+            if let Ok(path) = RepoPath::new(path.trim_start_matches('\n')) {
+                paths.push(path);
+            }
+        }
+        commits.push(CommitWithPaths {
+            commit: MergeRequestCommit {
+                sha,
+                subject: subject.trim().to_string().into(),
+            },
+            paths,
+        });
+    }
+    commits
 }
 
 /// The merge base out of `git rev-parse <base>...<source>`, which prints both tips and then
@@ -4763,7 +4828,7 @@ impl RefComparison {
             &self.base,
             &self.head,
         );
-        let prompt = crate::picker_prompt::prompt(
+        let prompt = crate::picker_prompt::prompt_even_for_one(
             "MR の基点 (マージ先) のブランチ",
             options.clone(),
             workspace.downgrade(),

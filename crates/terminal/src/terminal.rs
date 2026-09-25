@@ -70,13 +70,13 @@ use crate::alacritty::{
     AlacrittyCell, AlacrittyGridIterator, AlacrittyHyperlink, AlacrittySearch, AlacrittyTerm,
     AlacrittyTermConfig, AlacrittyTermLock, HyperlinkMatch, PtySender, RegexSearches,
     append_text_to_term, apply_config, clear_saved_screen, content_text, display_offset,
-    display_only_term_config, find_from_terminal_point, full_content_range, last_non_empty_lines,
-    make_content, new_term, open_pty, pty_options, pty_term_config, resize, screen_lines,
-    scroll_display, scroll_to_point, search_matches, selection_text, set_default_cursor_style,
-    set_selection as set_term_selection, shrink_to_used, spawn_event_loop,
-    toggle_vi_mode as toggle_term_vi_mode, total_lines, update_selection as update_term_selection,
-    update_selection_to_vi_cursor, update_vi_cursor_for_scroll, used_lines, vi_goto_point,
-    vi_motion,
+    display_only_term_config, find_from_terminal_point, full_content_range,
+    last_lines_within_bytes, last_non_empty_lines, make_content, new_term, open_pty, pty_options,
+    pty_term_config, resize, screen_lines, scroll_display, scroll_to_point, search_matches,
+    selection_text, set_default_cursor_style, set_selection as set_term_selection, shrink_to_used,
+    spawn_event_loop, toggle_vi_mode as toggle_term_vi_mode, total_lines,
+    update_selection as update_term_selection, update_selection_to_vi_cursor,
+    update_vi_cursor_for_scroll, used_lines, vi_goto_point, vi_motion,
 };
 use crate::mappings::colors::to_vte_rgb;
 use crate::mappings::keys::to_esc_str;
@@ -2456,6 +2456,31 @@ impl Terminal {
         self.register_task_finished(Some(status), cx);
     }
 
+    /// Makes a display-only terminal look like it runs `spawned_task`, so tests
+    /// outside this crate can drive a task to completion without a PTY.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn start_task_for_test(&mut self, spawned_task: SpawnInTerminal) {
+        let (completion_tx, completion_rx) = async_channel::unbounded();
+        self.completion_tx = Some(completion_tx);
+        self.task = Some(TaskState {
+            status: TaskStatus::Running,
+            completion_rx,
+            spawned_task,
+        });
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn finish_task_for_test(&mut self, exit_code: u32, cx: &mut Context<Self>) {
+        #[cfg(unix)]
+        let exit_status = <ExitStatus as std::os::unix::process::ExitStatusExt>::from_raw(
+            i32::try_from(exit_code).unwrap_or(i32::MAX) << 8,
+        );
+        #[cfg(windows)]
+        let exit_status =
+            <ExitStatus as std::os::windows::process::ExitStatusExt>::from_raw(exit_code);
+        self.register_task_finished(Some(exit_status), cx);
+    }
+
     /// Whether anything has been typed into this terminal by hand. Automation
     /// (the macro engine, the quick-connect login watcher) checks this before
     /// writing, so it never types into the middle of what the user is doing.
@@ -2631,6 +2656,11 @@ impl Terminal {
     pub fn last_n_non_empty_lines(&self, n: usize) -> Vec<String> {
         let terminal = self.term.lock_unfair();
         last_non_empty_lines(&terminal, n)
+    }
+
+    pub fn last_lines_within_bytes(&self, max_bytes: usize) -> String {
+        let terminal = self.term.lock_unfair();
+        last_lines_within_bytes(&terminal, max_bytes)
     }
 
     pub fn focus_in(&self) {

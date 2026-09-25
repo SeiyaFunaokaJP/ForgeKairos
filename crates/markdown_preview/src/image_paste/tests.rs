@@ -604,12 +604,6 @@ async fn dropping_anything_but_images_opens_as_before(cx: &mut TestAppContext) {
     assert!(!drop_at(
         &opened,
         position,
-        &external(&[path!("/outside/pic.png"), path!("/outside/notes.txt")]),
-        cx
-    ));
-    assert!(!drop_at(
-        &opened,
-        position,
         &DraggedSelection {
             active_selection: folder,
             marked_selections: Arc::new([]),
@@ -953,8 +947,21 @@ async fn an_image_dropped_on_the_tab_bar_of_an_unsaved_document_opens(cx: &mut T
     assert_eq!(text(&untitled, cx), "");
 }
 
+/// The project paths of the items open in the pane the document is in.
+fn open_paths(opened: &Opened, cx: &mut VisualTestContext) -> Vec<String> {
+    let pane = opened
+        .workspace
+        .read_with(cx, |workspace, _| workspace.active_pane().clone());
+    pane.read_with(cx, |pane, cx| {
+        pane.items()
+            .filter_map(|item| item.project_path(cx))
+            .map(|project_path| project_path.path.as_unix_str().to_string())
+            .collect()
+    })
+}
+
 #[gpui::test]
-async fn a_project_panel_selection_with_more_than_images_opens_as_before(cx: &mut TestAppContext) {
+async fn a_mixed_drop_links_the_images_and_opens_the_rest(cx: &mut TestAppContext) {
     let (opened, _fs, cx) = open_local("ˇ\n", cx).await;
     let project = opened
         .workspace
@@ -974,25 +981,160 @@ async fn a_project_panel_selection_with_more_than_images_opens_as_before(cx: &mu
     };
     let photo = selected("docs/images/photo.png", cx);
     let notes = selected("notes.txt", cx);
+    let guide = selected("docs/guide.md", cx);
+    let folder = selected("assets/folder", cx);
     let position = editor_point(&opened, 0.5, cx);
 
-    // What the pane does with a selection: offer it whole, then its active
-    // entry alone before opening that entry.
+    assert!(drop_at(
+        &opened,
+        position,
+        &DraggedSelection {
+            active_selection: notes,
+            marked_selections: Arc::new([photo, notes, folder, guide]),
+        },
+        cx
+    ));
+    assert_eq!(text(&opened, cx), "![photo](images/photo.png)\n");
+    assert!(
+        opened
+            .workspace
+            .read_with(cx, |workspace, _| workspace.notification_ids().is_empty()),
+        "a folder selected alongside is not opened as a file"
+    );
+    let open = open_paths(&opened, cx);
+    assert!(
+        open.iter().any(|path| path == "notes.txt")
+            && open.iter().any(|path| path == "docs/guide.md"),
+        "every file besides the image opens: {open:?}"
+    );
+    assert!(
+        !open.iter().any(|path| path == "docs/images/photo.png"),
+        "the image is linked, not opened: {open:?}"
+    );
+
+    // From the OS as well: the image is copied and linked, the text opens.
+    opened.workspace.update_in(cx, |workspace, window, cx| {
+        workspace.activate_item(&opened.editor, true, true, window, cx);
+    });
+    select_marked(&opened.editor, "ˇ\n", cx);
+    let position = editor_point(&opened, 0.5, cx);
+    assert!(drop_at(
+        &opened,
+        position,
+        &external(&[path!("/outside/notes.txt"), path!("/outside/pic.png")]),
+        cx
+    ));
+    assert_eq!(text(&opened, cx), "![pic](images/pic.png)\n");
+    let absolute_paths: Vec<PathBuf> = opened.workspace.read_with(cx, |workspace, cx| {
+        let project = workspace.project().read(cx);
+        workspace
+            .items(cx)
+            .filter_map(|item| item.project_path(cx))
+            .filter_map(|project_path| project.absolute_path(&project_path, cx))
+            .collect()
+    });
+    assert!(
+        absolute_paths.contains(&PathBuf::from(path!("/outside/notes.txt"))),
+        "the dropped text file opens: {absolute_paths:?}"
+    );
+
+    // A selection with nothing but other files still opens as before.
+    opened.workspace.update_in(cx, |workspace, window, cx| {
+        workspace.activate_item(&opened.editor, true, true, window, cx);
+    });
+    let position = editor_point(&opened, 0.5, cx);
     assert!(!drop_at(
         &opened,
         position,
         &DraggedSelection {
-            active_selection: photo,
-            marked_selections: Arc::new([photo, notes]),
+            active_selection: notes,
+            marked_selections: Arc::new([notes, guide]),
         },
         cx
     ));
-    assert!(!drop_at(&opened, position, &photo.entry_id, cx));
-    assert_eq!(text(&opened, cx), "\n");
+    assert!(!drop_at(&opened, position, &notes.entry_id, cx));
+}
 
-    // An entry dragged on its own is still linked.
-    assert!(drop_at(&opened, position, &photo.entry_id, cx));
-    assert_eq!(text(&opened, cx), "![photo](images/photo.png)\n");
+fn accepts(opened: &Opened, dropped: &dyn Any, cx: &mut VisualTestContext) -> bool {
+    let pane = opened
+        .workspace
+        .read_with(cx, |workspace, _| workspace.active_pane().clone());
+    pane.read_with(cx, |pane, cx| {
+        pane.active_item()
+            .expect("the document is open")
+            .accepts_drop(pane, dropped, cx)
+    })
+}
+
+/// What the pane asks while files are dragged over it, to show its drop
+/// target over SSH only when the document would take them.
+#[gpui::test]
+async fn tells_the_pane_which_drops_it_takes(cx: &mut TestAppContext) {
+    let (opened, _fs, cx) = open_local("ˇ\n", cx).await;
+    assert!(accepts(
+        &opened,
+        &external(&[path!("/outside/pic.png")]),
+        cx
+    ));
+    assert!(accepts(
+        &opened,
+        &external(&[path!("/outside/notes.txt"), path!("/outside/pic.png")]),
+        cx
+    ));
+    assert!(!accepts(
+        &opened,
+        &external(&[path!("/outside/notes.txt")]),
+        cx
+    ));
+
+    let pane = opened
+        .workspace
+        .read_with(cx, |workspace, _| workspace.active_pane().clone());
+    pane.update(cx, |pane, _| {
+        pane.drag_split_direction = Some(workspace::SplitDirection::Left)
+    });
+    assert!(!accepts(
+        &opened,
+        &external(&[path!("/outside/pic.png")]),
+        cx
+    ));
+    pane.update(cx, |pane, _| pane.drag_split_direction = None);
+
+    opened
+        .editor
+        .update(cx, |editor, _| editor.set_read_only(true));
+    assert!(!accepts(
+        &opened,
+        &external(&[path!("/outside/pic.png")]),
+        cx
+    ));
+}
+
+#[test]
+fn reads_windows_paths_into_the_wsl_distribution() {
+    let read = |path: &str| path_in_wsl_distribution(path, "Ubuntu-24.04");
+    assert_eq!(
+        read(r"\\wsl$\Ubuntu-24.04\home\me\pic.png").as_deref(),
+        Some("/home/me/pic.png")
+    );
+    assert_eq!(
+        read(r"\\wsl.localhost\ubuntu-24.04\home\me\写真 1.png").as_deref(),
+        Some("/home/me/写真 1.png"),
+        "the share name is compared without regard to case"
+    );
+    assert_eq!(
+        read(r"\\?\UNC\wsl.localhost\Ubuntu-24.04\srv\a.svg").as_deref(),
+        Some("/srv/a.svg")
+    );
+    assert_eq!(read("//wsl$/Ubuntu-24.04/").as_deref(), Some("/"));
+    assert_eq!(
+        read(r"\\wsl$\Debian\home\me\pic.png"),
+        None,
+        "another distribution"
+    );
+    assert_eq!(read(r"\\server\Ubuntu-24.04\pic.png"), None);
+    assert_eq!(read(r"C:\Users\me\pic.png"), None);
+    assert_eq!(read(r"\\wsl$\\pic.png"), None);
 }
 
 #[gpui::test]
@@ -1135,18 +1277,152 @@ async fn an_editor_released_while_the_image_is_stored_writes_nothing(cx: &mut Te
 ",
         "no link lands in another editor of the document"
     );
-    assert!(
+    assert_eq!(
         fs.files()
             .iter()
             .filter(|file| file.to_string_lossy().contains("image-"))
-            .count()
-            <= 1
+            .count(),
+        0,
+        "the image stored for the released editor is taken away again"
     );
 
     // The document takes images again once the released editor's store ended.
     paste(&opened, &image_item(gpui::ImageFormat::Png), cx);
     cx.run_until_parked();
     assert_eq!(text(&opened, cx).matches("![").count(), 1);
+}
+
+#[gpui::test]
+async fn an_image_whose_link_cannot_go_in_is_taken_away(cx: &mut TestAppContext) {
+    let (opened, fs, cx) = open_local("ˇ\n", cx).await;
+    paste(&opened, &image_item(gpui::ImageFormat::Png), cx);
+    opened
+        .editor
+        .update(cx, |editor, _| editor.set_read_only(true));
+    cx.run_until_parked();
+
+    assert_eq!(text(&opened, cx), "\n");
+    assert!(has_notice(&opened, cx), "the reason is told");
+    assert_eq!(
+        fs.files()
+            .iter()
+            .filter(|file| file.to_string_lossy().contains("image-"))
+            .count(),
+        0,
+        "no image is left without a link to it"
+    );
+
+    // One the link went in for stays.
+    opened
+        .editor
+        .update(cx, |editor, _| editor.set_read_only(false));
+    paste(&opened, &image_item(gpui::ImageFormat::Png), cx);
+    cx.run_until_parked();
+    assert_eq!(
+        fs.files()
+            .iter()
+            .filter(|file| file.to_string_lossy().contains("image-"))
+            .count(),
+        1
+    );
+}
+
+/// Only what the insert stored itself is taken away when the links do not go
+/// in: a file the project already had is linked where it is and never removed.
+#[gpui::test]
+async fn an_image_already_in_the_project_stays_when_its_link_cannot_go_in(cx: &mut TestAppContext) {
+    let (opened, fs, cx) = open_local("ˇ\n", cx).await;
+    let project = opened
+        .workspace
+        .read_with(cx, |workspace, _| workspace.project().clone());
+    let worktree_id = project.read_with(cx, |project, cx| {
+        project
+            .worktrees(cx)
+            .next()
+            .map(|worktree| worktree.read(cx).id())
+            .expect("the project has a worktree")
+    });
+    let document = ProjectPath {
+        worktree_id,
+        path: rel_path("docs/readme.md").into(),
+    };
+    let photo = ProjectPath {
+        worktree_id,
+        path: rel_path("docs/images/photo.png").into(),
+    };
+    opened.editor.update_in(cx, |editor, window, cx| {
+        let targets = editor.selections.disjoint_anchor_ranges().collect();
+        insert_image_links(
+            editor,
+            project.clone(),
+            document.clone(),
+            vec![
+                LinkSource::Existing(photo.clone()),
+                LinkSource::Store {
+                    image: ImageData::LocalFile(PathBuf::from(path!("/outside/pic.png"))),
+                    preferred_name: None,
+                },
+            ],
+            targets,
+            false,
+            window,
+            cx,
+        );
+        editor.set_read_only(true);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(text(&opened, cx), "\n");
+    assert_eq!(
+        fs.load(Path::new(path!("/project/docs/images/photo.png")))
+            .await
+            .ok()
+            .as_deref(),
+        Some("photo"),
+        "the project's own image is left alone"
+    );
+    assert!(
+        !fs.is_file(Path::new(path!("/project/docs/images/pic.png")))
+            .await,
+        "the copy made for the link is taken away"
+    );
+    assert!(
+        fs.is_file(Path::new(path!("/outside/pic.png"))).await,
+        "the dropped original stays"
+    );
+}
+
+#[gpui::test]
+async fn path_completions_reuse_the_files_until_they_change(cx: &mut TestAppContext) {
+    let (opened, fs, cx) = open_local("![](ˇ)\n", cx).await;
+    let built = || CANDIDATE_LISTS_BUILT.with(|built| built.get());
+    let before = built();
+
+    let labels = show_completions(&opened, cx);
+    assert!(labels.iter().any(|label| label == "images/photo.png"));
+    select_marked(&opened.editor, "![](imˇ)\n", cx);
+    let labels = show_completions(&opened, cx);
+    assert!(labels.iter().any(|label| label == "images/photo.png"));
+    assert_eq!(
+        built() - before,
+        1,
+        "typing on in the same path does not list the files again"
+    );
+
+    fs.insert_file(path!("/project/docs/images/new.png"), b"new".to_vec())
+        .await;
+    cx.run_until_parked();
+    select_marked(&opened.editor, "![](ˇ)\n", cx);
+    let labels = show_completions(&opened, cx);
+    assert!(
+        labels.iter().any(|label| label == "images/new.png"),
+        "a file added since is offered: {labels:?}"
+    );
+    assert_eq!(built() - before, 2);
+
+    select_marked(&opened.editor, "[](ˇ)\n", cx);
+    show_completions(&opened, cx);
+    assert_eq!(built() - before, 3, "a link ranks the files another way");
 }
 
 #[gpui::test]
@@ -1272,7 +1548,10 @@ async fn images_of_another_remote_worktree_are_copied_on_the_host(
     let server_fs = FakeFs::new(server_cx.executor());
     project_tree(&server_fs, "").await;
     server_fs
-        .insert_tree(path!("/other"), json!({"art.png": ""}))
+        .insert_tree(
+            path!("/other"),
+            json!({"art.png": "", "logo.svg": "<svg/>"}),
+        )
         .await;
     server_fs
         .write(Path::new(path!("/other/art.png")), &DECODABLE_PNG)
@@ -1309,6 +1588,25 @@ async fn images_of_another_remote_worktree_are_copied_on_the_host(
             .await
             .ok(),
         Some(DECODABLE_PNG.to_vec()),
-        "the bytes are read from the host and stored next to the document there"
+        "the file is copied on the host next to the document there"
+    );
+
+    // An SVG, which the host's image store cannot read, is copied all the same.
+    select_marked(&opened.editor, "ˇ\n", cx);
+    let logo = entry_in(&project, "other", "logo.svg", cx);
+    assert!(drop_at(&opened, position, &logo.entry_id, cx));
+    for _ in 0..3 {
+        server_cx.run_until_parked();
+        cx.run_until_parked();
+    }
+    assert!(!has_notice(&opened, cx));
+    assert_eq!(text(&opened, cx), "![logo](images/logo.svg)\n");
+    assert_eq!(
+        server_fs
+            .load(Path::new(path!("/project/docs/images/logo.svg")))
+            .await
+            .ok()
+            .as_deref(),
+        Some("<svg/>")
     );
 }

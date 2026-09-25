@@ -6,7 +6,10 @@ use agent_skills::SkillIndex;
 use anyhow::{Context as _, Result};
 use cloud_api_types::OrganizationConfiguration;
 use editor::{Editor, EditorEvent};
-use futures::{StreamExt, channel::mpsc};
+use futures::{
+    StreamExt,
+    channel::{mpsc, oneshot},
+};
 use fuzzy::StringMatchCandidate;
 use gpui::{
     Action, App, AsyncApp, ClipboardItem, DEFAULT_ADDITIONAL_WINDOW_SIZE, Div, Entity, FocusHandle,
@@ -4883,6 +4886,9 @@ struct ProjectSettingsUpdateEntry {
     project: WeakEntity<Project>,
     worktree: WeakEntity<Worktree>,
     update: Box<dyn FnOnce(&mut SettingsContent, &App)>,
+    /// Told how the write went, for callers that report a failure to the user
+    /// rather than only to the log.
+    completion: Option<oneshot::Sender<Result<()>>>,
 }
 
 struct ProjectSettingsUpdateQueue {
@@ -4894,11 +4900,18 @@ impl Global for ProjectSettingsUpdateQueue {}
 
 impl ProjectSettingsUpdateQueue {
     fn new(cx: &mut App) -> Self {
-        let (tx, mut rx) = mpsc::unbounded();
+        let (tx, mut rx) = mpsc::unbounded::<ProjectSettingsUpdateEntry>();
         let task = cx.spawn(async move |mut cx| {
-            while let Some(entry) = rx.next().await {
-                if let Err(err) = Self::process_entry(entry, &mut cx).await {
+            while let Some(mut entry) = rx.next().await {
+                let completion = entry.completion.take();
+                let result = Self::process_entry(entry, &mut cx).await;
+                if let Err(err) = &result {
                     log::error!("Failed to update project settings: {err:?}");
+                }
+                if let Some(completion) = completion
+                    && completion.send(result).is_err()
+                {
+                    log::debug!("nobody is waiting for the project settings update any more");
                 }
             }
         });
@@ -4921,6 +4934,7 @@ impl ProjectSettingsUpdateQueue {
             project,
             worktree,
             update,
+            completion: _,
         } = entry;
 
         let project_path = ProjectPath {
@@ -5019,11 +5033,40 @@ fn update_project_setting_file(
         project: project.downgrade(),
         worktree: worktree.downgrade(),
         update: Box::new(update),
+        completion: None,
     };
 
     ProjectSettingsUpdateQueue::enqueue(cx, entry);
 
     Ok(())
+}
+
+/// Writes a worktree's settings file of `project` through the same queue as
+/// [`update_project_setting_file`], and reports back how the write went.
+pub(crate) fn update_project_setting_file_with_completion(
+    project: &Entity<Project>,
+    worktree_id: WorktreeId,
+    rel_path: Arc<RelPath>,
+    update: impl 'static + FnOnce(&mut SettingsContent, &App),
+    settings_window: WeakEntity<SettingsWindow>,
+    cx: &mut App,
+) -> Result<oneshot::Receiver<Result<()>>> {
+    let worktree = project
+        .read(cx)
+        .worktree_for_id(worktree_id, cx)
+        .context("このプロジェクトのフォルダーはもう開かれていません。")?;
+    let (completion, done) = oneshot::channel();
+    let entry = ProjectSettingsUpdateEntry {
+        worktree_id,
+        rel_path,
+        settings_window,
+        project: project.downgrade(),
+        worktree: worktree.downgrade(),
+        update: Box::new(update),
+        completion: Some(completion),
+    };
+    ProjectSettingsUpdateQueue::enqueue(cx, entry);
+    Ok(done)
 }
 
 /// Derives a human-readable label for assistive technology from a setting's
@@ -6893,6 +6936,7 @@ mod project_settings_update_tests {
             update: Box::new(|content, _cx| {
                 content.project.all_languages.defaults.tab_size = Some(NonZeroU32::new(4).unwrap());
             }),
+            completion: None,
         };
 
         cx.update(|cx| ProjectSettingsUpdateQueue::enqueue(cx, entry));
@@ -6927,6 +6971,7 @@ mod project_settings_update_tests {
             update: Box::new(|content, _cx| {
                 content.project.all_languages.defaults.tab_size = Some(NonZeroU32::new(8).unwrap());
             }),
+            completion: None,
         };
 
         cx.update(|cx| ProjectSettingsUpdateQueue::enqueue(cx, entry));
@@ -6967,6 +7012,7 @@ mod project_settings_update_tests {
                     content.project.all_languages.defaults.tab_size =
                         Some(NonZeroU32::new(i).unwrap());
                 }),
+                completion: None,
             };
             cx.update(|cx| ProjectSettingsUpdateQueue::enqueue(cx, entry));
         }
@@ -7011,6 +7057,7 @@ mod project_settings_update_tests {
                     content.project.all_languages.defaults.tab_size =
                         Some(NonZeroU32::new(2).unwrap());
                 }),
+                completion: None,
             };
             cx.update(|cx| ProjectSettingsUpdateQueue::enqueue(cx, entry));
         }
@@ -7026,6 +7073,7 @@ mod project_settings_update_tests {
                     content.project.all_languages.defaults.tab_size =
                         Some(NonZeroU32::new(99).unwrap());
                 }),
+                completion: None,
             };
             cx.update(|cx| ProjectSettingsUpdateQueue::enqueue(cx, entry));
         }
@@ -7043,6 +7091,7 @@ mod project_settings_update_tests {
                     content.project.all_languages.defaults.tab_size =
                         Some(NonZeroU32::new(4).unwrap());
                 }),
+                completion: None,
             };
             cx.update(|cx| ProjectSettingsUpdateQueue::enqueue(cx, entry));
         }
@@ -7085,6 +7134,7 @@ mod project_settings_update_tests {
                 content.project.all_languages.defaults.tab_size =
                     Some(NonZeroU32::new(99).unwrap());
             }),
+            completion: None,
         };
 
         cx.update(|cx| ProjectSettingsUpdateQueue::enqueue(cx, entry));
@@ -7156,6 +7206,7 @@ mod project_settings_update_tests {
             update: Box::new(|content, _cx| {
                 content.project.all_languages.defaults.tab_size = Some(NonZeroU32::new(4).unwrap());
             }),
+            completion: None,
         };
 
         cx.update(|cx| ProjectSettingsUpdateQueue::enqueue(cx, entry));

@@ -393,6 +393,13 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
         false
     }
 
+    /// Whether [`Item::handle_drop`] would take `dropped` now, asked while it
+    /// is still being dragged. Where the pane itself does not take a kind of
+    /// drop, it only shows its drop target when the item does.
+    fn accepts_drop(&self, _active_pane: &Pane, _dropped: &dyn Any, _cx: &App) -> bool {
+        false
+    }
+
     /// Returns additional actions to add to the tab's context menu.
     /// Each entry is a label and an action to dispatch.
     fn tab_extra_context_menu_actions(
@@ -579,6 +586,7 @@ pub trait ItemHandle: 'static + Send {
         window: &mut Window,
         cx: &mut App,
     ) -> bool;
+    fn accepts_drop(&self, active_pane: &Pane, dropped: &dyn Any, cx: &App) -> bool;
     fn tab_extra_context_menu_actions(
         &self,
         window: &mut Window,
@@ -1170,6 +1178,10 @@ impl<T: Item> ItemHandle for Entity<T> {
         self.update(cx, |this, cx| {
             this.handle_drop(active_pane, dropped, window, cx)
         })
+    }
+
+    fn accepts_drop(&self, active_pane: &Pane, dropped: &dyn Any, cx: &App) -> bool {
+        self.read(cx).accepts_drop(active_pane, dropped, cx)
     }
 
     fn tab_extra_context_menu_actions(

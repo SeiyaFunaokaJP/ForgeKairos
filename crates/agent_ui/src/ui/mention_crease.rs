@@ -14,7 +14,10 @@ use theme_settings::ThemeSettings;
 use ui::{ButtonLike, ContextMenu, TintColor, Tooltip, prelude::*, right_click_menu};
 use workspace::{OpenOptions, Workspace};
 
-use crate::mention_set::{AttachmentEstimate, AttachmentMode, format_token_estimate};
+use crate::mention_set::{
+    AttachmentEstimate, AttachmentMode, AttachmentsEstimate, estimated_tokens,
+    format_token_estimate,
+};
 use crate::open_abs_path_at_point;
 
 #[derive(IntoElement)]
@@ -211,9 +214,12 @@ impl RenderOnce for MentionCrease {
 }
 
 /// `~4.1k`, with the mode when the user picked one. Attachments sent as a
-/// bare link (a directory the agent reads with its tools) have no size to
-/// show.
+/// bare link (a directory the agent reads with its tools) say so instead of a
+/// size.
 fn estimate_label(estimate: &AttachmentEstimate) -> Option<String> {
+    if estimate.link_only {
+        return Some("リンクのみ".to_string());
+    }
     let tokens = (estimate.bytes > 0).then(|| format_token_estimate(estimate.tokens()));
     let mode = match estimate.mode {
         AttachmentMode::Auto => None,
@@ -235,6 +241,11 @@ fn estimate_tooltip(
     let mut lines = tooltip
         .map(|tooltip| vec![tooltip.to_string()])
         .unwrap_or_default();
+    if estimate.link_only {
+        lines.push(
+            "リンクだけを送り、中身はエージェントがツールで読みます (見積もりなし)".to_string(),
+        );
+    }
     if estimate.bytes > 0 {
         lines.push(format!(
             "概算 {} トークン",
@@ -250,6 +261,44 @@ fn estimate_tooltip(
         lines.push("右クリックで全文 / 要約を切り替え".to_string());
     }
     (!lines.is_empty()).then(|| lines.join("\n").into())
+}
+
+/// The message-wide total ("添付 ~12.3k") shown next to a message editor.
+/// Nothing when no attachment adds content.
+pub fn attachment_total(
+    id: impl Into<ElementId>,
+    estimate: AttachmentsEstimate,
+) -> Option<AnyElement> {
+    if estimate.bytes == 0 {
+        return None;
+    }
+    let tokens = format_token_estimate(estimated_tokens(estimate.bytes));
+    let reduced_count = estimate.reduced_count;
+    let mut tooltip = "添付の概算トークン数です (4 バイトを 1 トークンとして概算)。".to_string();
+    if estimate.includes_active_file {
+        tooltip.push_str("\n自動で添付するアクティブなファイルを含みます。");
+    }
+    if reduced_count > 0 {
+        tooltip.push_str(&format!(
+            "\n1 メッセージの上限を超えるため、大きい添付 {reduced_count} 件をアウトラインや参照に減らして送ります。"
+        ));
+    }
+    Some(
+        div()
+            .id(id)
+            .flex_none()
+            .child(
+                Label::new(format!("添付 {tokens}"))
+                    .size(LabelSize::Small)
+                    .color(if reduced_count > 0 {
+                        Color::Warning
+                    } else {
+                        Color::Muted
+                    }),
+            )
+            .tooltip(Tooltip::text(tooltip))
+            .into_any_element(),
+    )
 }
 
 fn open_mention_uri(
@@ -493,4 +542,31 @@ fn open_thread(
             panel.open_thread(id, None, Some(name.into()), window, cx);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_estimate_label_says_when_only_a_link_is_sent() {
+        let estimate = AttachmentEstimate {
+            bytes: 0,
+            mode: AttachmentMode::Auto,
+            reduced_for_budget: false,
+            switchable: false,
+            link_only: true,
+        };
+        assert_eq!(estimate_label(&estimate).as_deref(), Some("リンクのみ"));
+        let tooltip = estimate_tooltip(None, &estimate).unwrap_or_default();
+        assert!(tooltip.contains("ツールで読みます"), "{tooltip}");
+
+        let measured = AttachmentEstimate {
+            bytes: 4_100,
+            link_only: false,
+            switchable: true,
+            ..estimate
+        };
+        assert_eq!(estimate_label(&measured).as_deref(), Some("~1.0k"));
+    }
 }

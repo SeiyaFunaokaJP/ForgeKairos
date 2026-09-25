@@ -1161,6 +1161,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ),
     ("agent::NewThread", "エージェント: 新規スレッド"),
     (
+        "agent::RevokeOutsideSandboxConsents",
+        "エージェント: サンドボックスの外での起動の同意を取り消す",
+    ),
+    (
         "agent::OpenThreadInTab",
         "エージェント: スレッドをタブで開く",
     ),

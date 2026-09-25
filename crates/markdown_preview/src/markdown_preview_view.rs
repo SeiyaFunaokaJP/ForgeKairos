@@ -4741,14 +4741,6 @@ mod tests {
     fn init_test(cx: &mut TestAppContext) -> Arc<AppState> {
         cx.update(|cx| {
             let state = AppState::test(cx);
-            // Without a per-App database, `AppDatabase::global` falls back to a single
-            // process-wide in-memory database shared by every test in this binary. Tests
-            // in this file open workspaces at the same fixture paths (e.g. "/dir"), and
-            // `WorkspaceDb::save_workspace` deletes other `workspaces` rows that share its
-            // paths, so a concurrently running test can delete another test's workspace
-            // row (cascading away its `markdown_previews` row, or tripping the FOREIGN KEY
-            // on a save still in flight).
-            cx.set_global(db::AppDatabase::test_new());
             editor::init(cx);
             crate::init(cx);
             state

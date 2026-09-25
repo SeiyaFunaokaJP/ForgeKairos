@@ -30,6 +30,9 @@ message Entry {
   optional string canonical_path = 12;
   bool is_hidden = 13;
   bool is_unloaded = 14;
+  // The host's `private_files` verdict, so that clients keep private entries
+  // away from agents and edit prediction. Older hosts leave it false.
+  bool is_private = 15;
 }
 
 message AddWorktree {

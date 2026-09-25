@@ -1032,6 +1032,12 @@ impl Project {
         &self.terminals.local_handles
     }
 
+    /// Lists a terminal built without a PTY as one of this project's terminals.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn add_terminal_handle_for_test(&mut self, terminal: &Entity<Terminal>) {
+        self.terminals.local_handles.push(terminal.downgrade());
+    }
+
     fn resolve_directory_environment(
         &self,
         shell: &str,

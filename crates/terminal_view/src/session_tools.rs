@@ -5,6 +5,7 @@
 //! (see [`terminal::terminal_macro`]); this module is only the UI over it.
 
 use std::{
+    cell::RefCell,
     path::PathBuf,
     rc::Rc,
     sync::{Arc, atomic::AtomicBool},
@@ -16,9 +17,9 @@ use editor::{Editor, EditorEvent};
 use futures::StreamExt as _;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
-    App, AsyncWindowContext, BackgroundExecutor, DismissEvent, ElementId, Entity, EventEmitter,
-    FocusHandle, Focusable, FutureExt as _, Render, ScrollHandle, Subscription, Task, WeakEntity,
-    Window, actions,
+    App, AsyncWindowContext, BackgroundExecutor, DismissEvent, ElementId, Entity, EntityId,
+    EventEmitter, FocusHandle, Focusable, FutureExt as _, Render, ScrollHandle, Subscription, Task,
+    WeakEntity, Window, actions,
 };
 use picker::{Picker, PickerDelegate};
 use project::Fs;
@@ -32,6 +33,7 @@ use terminal::{
         ConnectionProtocol, MacroFolder, MacroKey, MacroStep, MacroStepList, MatchScope,
         SavedConnection, TerminalMacro, TerminalSessionStore, TerminalSessionsFile,
         check_pattern_regex, normalize_folder, normalize_tags, referenced_variables,
+        references_followed_by_repetition,
     },
     terminal_settings::TerminalSettings,
 };
@@ -1845,6 +1847,37 @@ struct StepRow {
     else_children: Vec<StepRow>,
     /// The 「タイムアウト時」 steps of a 期待文字を待つ row.
     timeout_children: Vec<StepRow>,
+    /// A step this build cannot read ([`MacroStep::Unknown`]), kept so that
+    /// saving writes it back as it was. Such a row is drawn as a placeholder
+    /// with no fields; its `kind` is [`StepKind::Clear`] only so that every
+    /// helper reading the fields treats it as a step without any.
+    unknown: Option<MacroStep>,
+    /// The last pattern text compiled for the row, so drawing the form does
+    /// not compile every regular expression in it on every frame.
+    pattern_check: RefCell<Option<PatternCheck>>,
+    #[cfg(test)]
+    pattern_compilations: std::cell::Cell<usize>,
+}
+
+/// What compiling a row's pattern text (as [`check_pattern_regex`] does) came
+/// to.
+struct PatternCheck {
+    text: String,
+    /// The pattern's named groups, or why it does not compile.
+    outcome: Result<Vec<String>, String>,
+}
+
+/// The part of a `regex` error worth a line under the field: the crate's
+/// message quotes the pattern with a caret under the fault over several lines
+/// and ends with `error: <what is wrong>`.
+fn regex_error_summary(error: &regex::Error) -> String {
+    let message = error.to_string();
+    message
+        .lines()
+        .rev()
+        .find_map(|line| line.trim().strip_prefix("error: "))
+        .map(str::to_string)
+        .unwrap_or(message)
 }
 
 impl StepRow {
@@ -1860,11 +1893,13 @@ impl StepRow {
             MacroStep::Send { .. } => StepKind::Send,
             MacroStep::WaitFor { .. } => StepKind::WaitFor,
             MacroStep::Sleep { .. } => StepKind::Sleep,
-            MacroStep::Clear => StepKind::Clear,
+            MacroStep::Clear {} => StepKind::Clear,
             MacroStep::Repeat { .. } => StepKind::Repeat,
             MacroStep::If { .. } => StepKind::If,
             MacroStep::SetVariable { .. } => StepKind::SetVariable,
+            MacroStep::Unknown(_) => StepKind::Clear,
         };
+        let unknown = matches!(step, MacroStep::Unknown(_)).then(|| step.clone());
         let text_value = match step {
             MacroStep::Send { text, .. } | MacroStep::SetVariable { value: text, .. } => {
                 text.clone()
@@ -1960,7 +1995,60 @@ impl StepRow {
             children,
             else_children,
             timeout_children,
+            unknown,
+            pattern_check: RefCell::new(None),
+            #[cfg(test)]
+            pattern_compilations: std::cell::Cell::new(0),
         }
+    }
+
+    /// The named groups of the row's pattern text, or why it does not compile
+    /// as a regular expression. Compiled again only when the text changed
+    /// since the last call.
+    fn compiled_pattern(&self, cx: &App) -> Result<Vec<String>, String> {
+        let text = self.text.read(cx).text(cx);
+        let mut cache = self.pattern_check.borrow_mut();
+        if let Some(check) = cache.as_ref()
+            && check.text == text
+        {
+            return check.outcome.clone();
+        }
+        #[cfg(test)]
+        self.pattern_compilations
+            .set(self.pattern_compilations.get() + 1);
+        let outcome = check_pattern_regex(&text)
+            .map(|regex| {
+                regex
+                    .capture_names()
+                    .flatten()
+                    .map(str::to_string)
+                    .collect()
+            })
+            .map_err(|error| regex_error_summary(&error));
+        *cache = Some(PatternCheck {
+            text,
+            outcome: outcome.clone(),
+        });
+        outcome
+    }
+
+    /// Why the row's regular expression does not compile, for a regex row
+    /// with something typed in.
+    fn pattern_error(&self, cx: &App) -> Option<String> {
+        if !self.kind.has_pattern() || !self.regex || self.text.read(cx).text(cx).trim().is_empty()
+        {
+            return None;
+        }
+        self.compiled_pattern(cx).err()
+    }
+
+    /// References in the row's regular expression that a repetition follows
+    /// directly (`${p}+`).
+    fn repeated_references(&self, cx: &App) -> Vec<String> {
+        if !self.kind.has_pattern() || !self.regex {
+            return Vec::new();
+        }
+        references_followed_by_repetition(&self.text.read(cx).text(cx))
     }
 
     /// The row's identity for element ids: stable while the row lives, and
@@ -1998,6 +2086,9 @@ impl StepRow {
     }
 
     fn to_step(&self, label: &str, cx: &App) -> Result<MacroStep, String> {
+        if let Some(step) = &self.unknown {
+            return Ok(step.clone());
+        }
         let text = self.text.read(cx).text(cx);
         // `list` names which child list `rows` is, so a step inside 「それ以外」
         // or 「タイムアウト時」 gets a label ("2-e1", "2-t1") that cannot be
@@ -2050,7 +2141,7 @@ impl StepRow {
                 ms: parse_seconds(&self.number.read(cx).text(cx))
                     .ok_or_else(|| format!("ステップ {label}: 秒数が不正です。"))?,
             }),
-            StepKind::Clear => Ok(MacroStep::Clear),
+            StepKind::Clear => Ok(MacroStep::Clear {}),
             StepKind::Repeat => {
                 let count = self
                     .count
@@ -2200,11 +2291,76 @@ impl StepRow {
         }
         if self.kind.has_pattern()
             && self.regex
-            && let Ok(regex) = check_pattern_regex(&self.text.read(cx).text(cx))
+            && let Ok(groups) = self.compiled_pattern(cx)
         {
-            names.extend(regex.capture_names().flatten().map(str::to_string));
+            names.extend(groups);
         }
         names
+    }
+
+    /// Every variable this row and the rows under it give a value to.
+    fn variables_set_under(&self, cx: &App, names: &mut HashSet<String>) {
+        names.extend(self.own_variables(cx));
+        for list in self.live_lists() {
+            for child in self.list(*list) {
+                child.variables_set_under(cx, names);
+            }
+        }
+    }
+
+    /// Whether a 繰り返し row runs its body exactly once. Anything else — a
+    /// count, 0 (until cancelled) or a count not typed in properly yet — may
+    /// run the body again, with what its later steps set.
+    fn repeats_once(&self, cx: &App) -> bool {
+        self.count.read(cx).text(cx).trim().parse::<u32>() == Ok(1)
+    }
+
+    /// Records, for this row and the rows under it, what `available` holds
+    /// when the row runs, then adds what the row may set to `available`.
+    ///
+    /// A value set on one side of a 分岐, or by a wait that may time out and
+    /// carry on, counts as set from there on: the run may well take that path,
+    /// and warning about a reference that works is worse than keeping quiet
+    /// about one that may not.
+    fn record_reach(
+        &self,
+        available: &mut HashSet<String>,
+        before: &mut HashMap<EntityId, HashSet<String>>,
+        cx: &App,
+    ) {
+        before.insert(self.element_id(), available.clone());
+        match self.kind {
+            StepKind::Repeat => {
+                if !self.repeats_once(cx) {
+                    for child in &self.children {
+                        child.variables_set_under(cx, available);
+                    }
+                }
+                record_reach_of(&self.children, available, before, cx);
+            }
+            StepKind::If => {
+                // The 「そのとき」 side runs after the match was stored, the
+                // 「それ以外」 side with nothing stored.
+                let mut then_side = available.clone();
+                then_side.extend(self.own_variables(cx));
+                record_reach_of(&self.children, &mut then_side, before, cx);
+                let mut else_side = available.clone();
+                record_reach_of(&self.else_children, &mut else_side, before, cx);
+                available.extend(then_side);
+                available.extend(else_side);
+            }
+            StepKind::WaitFor => {
+                if self.continue_on_timeout {
+                    let mut timeout_side = available.clone();
+                    record_reach_of(&self.timeout_children, &mut timeout_side, before, cx);
+                    available.extend(timeout_side);
+                }
+                available.extend(self.own_variables(cx));
+            }
+            StepKind::Send | StepKind::Sleep | StepKind::Clear | StepKind::SetVariable => {
+                available.extend(self.own_variables(cx));
+            }
+        }
     }
 
     /// Adds every variable this row and the rows under it give a value to,
@@ -2223,29 +2379,29 @@ impl StepRow {
         }
     }
 
-    /// `${name}` references in the row's text that no step of the form gives a
-    /// value to. A run leaves them as written, which is rarely what was meant.
-    fn undefined_references(&self, known: &HashSet<String>, cx: &App) -> Vec<String> {
+    /// `${name}` references in the row's text that have no value yet when the
+    /// row runs. A run leaves them as written, which is rarely what was meant.
+    fn undefined_references(&self, reach: &VariableReach, cx: &App) -> Vec<Unset> {
         if !self.kind.has_text() {
             return Vec::new();
         }
         referenced_variables(&self.text.read(cx).text(cx))
             .into_iter()
-            .filter(|name| !known.contains(name))
+            .filter_map(|name| reach.unset_at(self, name))
             .collect()
     }
 
-    /// The 調べる変数名 of a 分岐 on a variable when no step of the form gives
-    /// it a value. Unlike a stray `${name}` in a text field, which at least
-    /// shows up as written, such a branch quietly takes 「それ以外」 every time.
-    fn undefined_scope_variable(&self, known: &HashSet<String>, cx: &App) -> Option<String> {
+    /// The 調べる変数名 of a 分岐 on a variable when it has no value yet as the
+    /// branch runs. Unlike a stray `${name}` in a text field, which at least
+    /// shows up as written, such a branch quietly takes 「それ以外」.
+    fn undefined_scope_variable(&self, reach: &VariableReach, cx: &App) -> Option<Unset> {
         if self.kind != StepKind::If || self.scope != ScopeChoice::Variable {
             return None;
         }
         parse_variable_name(&self.scope_variable.read(cx).text(cx))
             .ok()
             .flatten()
-            .filter(|name| !known.contains(name))
+            .and_then(|name| reach.unset_at(self, name))
     }
 
     /// Puts the cursor where a new row of this kind is filled in first.
@@ -2258,6 +2414,45 @@ impl StepRow {
             StepKind::Clear => return,
         };
         window.focus(&field.focus_handle(cx), cx);
+    }
+}
+
+fn record_reach_of(
+    rows: &[StepRow],
+    available: &mut HashSet<String>,
+    before: &mut HashMap<EntityId, HashSet<String>>,
+    cx: &App,
+) {
+    for row in rows {
+        row.record_reach(available, before, cx);
+    }
+}
+
+/// Which variables may hold a value by the time each row runs, following the
+/// order the steps run in rather than only asking whether some step sets them.
+struct VariableReach {
+    /// Per row, by [`StepRow::element_id`].
+    before: HashMap<EntityId, HashSet<String>>,
+    /// Every variable some step of the form sets.
+    anywhere: HashSet<String>,
+}
+
+/// A variable a row uses before anything gave it a value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Unset {
+    name: String,
+    /// Whether a step that runs later sets it, which usually means the steps
+    /// are in the wrong order rather than that the name is misspelt.
+    set_later: bool,
+}
+
+impl VariableReach {
+    fn unset_at(&self, row: &StepRow, name: String) -> Option<Unset> {
+        let available = self.before.get(&row.element_id()).unwrap_or(&self.anywhere);
+        (!available.contains(&name)).then(|| Unset {
+            set_later: self.anywhere.contains(&name),
+            name,
+        })
     }
 }
 
@@ -2832,7 +3027,7 @@ impl MacroEditor {
                 on_timeout: None,
             },
             StepKind::Sleep => MacroStep::Sleep { ms: 1000 },
-            StepKind::Clear => MacroStep::Clear,
+            StepKind::Clear => MacroStep::Clear {},
             StepKind::Repeat => MacroStep::Repeat {
                 count: 1,
                 steps: Vec::new(),
@@ -2890,6 +3085,25 @@ impl MacroEditor {
             row.collect_variables(&StepPath::top(index), &mut defined, cx);
         }
         defined
+    }
+
+    /// What each row can count on having a value when it runs. A macro that
+    /// runs its steps more than once gives every step what any step set on
+    /// the pass before.
+    fn variable_reach(&self, defined: &[(String, StepPath)], cx: &App) -> VariableReach {
+        let anywhere = defined
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect::<HashSet<_>>();
+        let runs_once = self.repeat.read(cx).text(cx).trim().parse::<u32>() == Ok(1);
+        let mut available = if runs_once {
+            HashSet::default()
+        } else {
+            anywhere.clone()
+        };
+        let mut before = HashMap::default();
+        record_reach_of(&self.steps, &mut available, &mut before, cx);
+        VariableReach { before, anywhere }
     }
 
     fn row(&self, path: &StepPath) -> Option<&StepRow> {
@@ -4009,7 +4223,7 @@ impl MacroEditor {
         path: &StepPath,
         list: StepList,
         heading: &'static str,
-        known: &HashSet<String>,
+        reach: &VariableReach,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -4036,7 +4250,7 @@ impl MacroEditor {
         }
 
         let child_rows = (0..child_count)
-            .map(|index| self.render_step(&path.child(list, index), known, window, cx))
+            .map(|index| self.render_step(&path.child(list, index), reach, window, cx))
             .collect::<Vec<_>>();
         let add_id = match list {
             StepList::Main => "add-main-step",
@@ -4177,7 +4391,7 @@ impl MacroEditor {
     fn render_step(
         &self,
         path: &StepPath,
-        known: &HashSet<String>,
+        reach: &VariableReach,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -4187,6 +4401,7 @@ impl MacroEditor {
         let kind = row.kind;
         let element_id = row.element_id();
         let index = path.index();
+        let unknown_kind = row.unknown.as_ref().map(|step| step.unknown_kind());
         let sibling_count = match path.0.split_last() {
             Some((_, [])) => self.steps.len(),
             Some((last, parent)) => self
@@ -4307,20 +4522,22 @@ impl MacroEditor {
         });
 
         let repeat_children = (kind == StepKind::Repeat).then(|| {
-            self.render_child_list(path, StepList::Main, "繰り返す内容", known, window, cx)
+            self.render_child_list(path, StepList::Main, "繰り返す内容", reach, window, cx)
         });
         let branch_children = (kind == StepKind::If).then(|| {
             [
-                self.render_child_list(path, StepList::Main, "そのとき", known, window, cx),
-                self.render_child_list(path, StepList::Else, "それ以外", known, window, cx),
+                self.render_child_list(path, StepList::Main, "そのとき", reach, window, cx),
+                self.render_child_list(path, StepList::Else, "それ以外", reach, window, cx),
             ]
         });
         let timeout_children = (kind == StepKind::WaitFor && row.continue_on_timeout).then(|| {
-            self.render_child_list(path, StepList::Timeout, "タイムアウト時", known, window, cx)
+            self.render_child_list(path, StepList::Timeout, "タイムアウト時", reach, window, cx)
         });
         let description = row.describe(cx);
-        let undefined = row.undefined_references(known, cx);
-        let undefined_scope = row.undefined_scope_variable(known, cx);
+        let undefined = row.undefined_references(reach, cx);
+        let undefined_scope = row.undefined_scope_variable(reach, cx);
+        let pattern_error = row.pattern_error(cx);
+        let repeated_references = row.repeated_references(cx);
 
         let move_up = path.clone();
         let move_down = path.clone();
@@ -4358,14 +4575,24 @@ impl MacroEditor {
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
-                            .child(
-                                DropdownMenu::new(
-                                    ("step-kind", element_id),
-                                    kind.label(),
-                                    kind_menu,
-                                )
-                                .style(DropdownStyle::Outlined),
-                            ),
+                            .map(|this| match unknown_kind {
+                                // Switching the kind would throw away what
+                                // the later version wrote, so the row only
+                                // offers moving and deleting.
+                                Some(_) => this.child(
+                                    Label::new("不明なステップ")
+                                        .size(LabelSize::Small)
+                                        .color(Color::Warning),
+                                ),
+                                None => this.child(
+                                    DropdownMenu::new(
+                                        ("step-kind", element_id),
+                                        kind.label(),
+                                        kind_menu,
+                                    )
+                                    .style(DropdownStyle::Outlined),
+                                ),
+                            }),
                     )
                     .child(
                         h_flex()
@@ -4416,6 +4643,18 @@ impl MacroEditor {
                             ),
                     ),
             )
+            .when_some(unknown_kind, |this, unknown_kind| {
+                let kind = unknown_kind
+                    .map(|kind| format!("「{kind}」"))
+                    .unwrap_or_default();
+                this.child(
+                    Label::new(format!(
+                        "この版では扱えない種類のステップ{kind}です。保存しても元の内容のまま残りますが、このステップを含むマクロは実行できません。"
+                    ))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+                )
+            })
             .when_some(description, |this, description| {
                 this.child(
                     Label::new(description)
@@ -4587,25 +4826,42 @@ impl MacroEditor {
                         }),
                 )
             })
-            .when(!undefined.is_empty(), |this| {
-                let names = undefined
-                    .iter()
-                    .map(|name| format!("${{{name}}}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
+            .when_some(pattern_error, |this, error| {
                 this.child(
-                    Label::new(format!(
-                        "{names} に値を入れるステップがありません。実行時は書いたままの文字になります。"
-                    ))
-                    .size(LabelSize::Small)
-                    .color(Color::Warning),
+                    Label::new(format!("正規表現が不正です: {error}"))
+                        .size(LabelSize::Small)
+                        .color(Color::Error),
                 )
             })
-            .when_some(undefined_scope, |this, name| {
+            .when(!repeated_references.is_empty(), |this| {
+                let warnings = repeated_references.iter().map(|name| {
+                    format!(
+                        "${{{name}}} の直後の繰り返し指定は値の最後の 1 文字にしか掛からず、値が空のときは前の文字に掛かるか、正規表現が不正になります。値全体に掛けるときは (?:${{{name}}}) と囲みます。"
+                    )
+                });
+                this.children(warnings.map(|warning| {
+                    Label::new(warning)
+                        .size(LabelSize::Small)
+                        .color(Color::Warning)
+                }))
+            })
+            .children(unset_reference_warnings(&undefined).into_iter().map(|warning| {
+                Label::new(warning)
+                    .size(LabelSize::Small)
+                    .color(Color::Warning)
+            }))
+            .when_some(undefined_scope, |this, unset| {
+                let name = unset.name;
                 this.child(
-                    Label::new(format!(
-                        "${{{name}}} に値を入れるステップがないため、この分岐は常に「それ以外」を実行します。"
-                    ))
+                    Label::new(if unset.set_later {
+                        format!(
+                            "${{{name}}} に値が入るのはこの分岐より後のため、ここでは「それ以外」を実行します。"
+                        )
+                    } else {
+                        format!(
+                            "${{{name}}} に値を入れるステップがないため、この分岐は常に「それ以外」を実行します。"
+                        )
+                    })
                     .size(LabelSize::Small)
                     .color(Color::Warning),
                 )
@@ -4615,6 +4871,33 @@ impl MacroEditor {
             .children(repeat_children)
             .into_any_element()
     }
+}
+
+/// The warnings for the `${name}` references of a row that have no value yet:
+/// one for the names nothing sets, one for the names only later steps set.
+fn unset_reference_warnings(unset: &[Unset]) -> Vec<String> {
+    let names = |set_later: bool| {
+        unset
+            .iter()
+            .filter(|unset| unset.set_later == set_later)
+            .map(|unset| format!("${{{}}}", unset.name))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let mut warnings = Vec::new();
+    let nowhere = names(false);
+    if !nowhere.is_empty() {
+        warnings.push(format!(
+            "{nowhere} に値を入れるステップがありません。実行時は書いたままの文字になります。"
+        ));
+    }
+    let later = names(true);
+    if !later.is_empty() {
+        warnings.push(format!(
+            "{later} に値が入るのはこのステップより後です。ここでは書いたままの文字になります。"
+        ));
+    }
+    warnings
 }
 
 /// How deep the form unfolds a step tree. Rows below this stay in the macro and
@@ -4639,12 +4922,9 @@ fn timeout_choice_label(continue_on_timeout: bool) -> &'static str {
 impl Render for MacroEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let defined = self.defined_variables(cx);
-        let known = defined
-            .iter()
-            .map(|(name, _)| name.clone())
-            .collect::<HashSet<_>>();
+        let reach = self.variable_reach(&defined, cx);
         let steps = (0..self.steps.len())
-            .map(|index| self.render_step(&StepPath::top(index), &known, window, cx))
+            .map(|index| self.render_step(&StepPath::top(index), &reach, window, cx))
             .collect::<Vec<_>>();
         let steps_header = self.render_steps_header(&defined, cx);
         let add_buttons = self.render_add_buttons(None, "add-top-step".into(), cx);
@@ -6986,7 +7266,7 @@ mod tests {
 
         let twice_nested = MacroStep::Repeat {
             count: 2,
-            steps: vec![MacroStep::Clear],
+            steps: vec![MacroStep::Clear {}],
         };
         let sent = MacroStep::Send {
             text: "show version".to_string(),
@@ -7044,7 +7324,7 @@ mod tests {
                     sent,
                     MacroStep::Repeat {
                         count: 2,
-                        steps: vec![MacroStep::Clear, MacroStep::Sleep { ms: 1_000 }],
+                        steps: vec![MacroStep::Clear {}, MacroStep::Sleep { ms: 1_000 }],
                     },
                 ],
             }]
@@ -7074,7 +7354,7 @@ mod tests {
                             regex: true,
                             timeout_ms: 3_000,
                             capture: Some("banner".to_string()),
-                            on_timeout: Some(vec![MacroStep::Clear]),
+                            on_timeout: Some(vec![MacroStep::Clear {}]),
                         }],
                     }],
                     else_steps: vec![MacroStep::Send {
@@ -7144,7 +7424,7 @@ mod tests {
                         regex: false,
                         timeout_ms: 1_000,
                         capture: None,
-                        on_timeout: Some(vec![MacroStep::Clear]),
+                        on_timeout: Some(vec![MacroStep::Clear {}]),
                     }],
                     ..TerminalMacro::default()
                 }),
@@ -7507,13 +7787,13 @@ mod tests {
                     ("fallback".to_string(), "2-e1".to_string()),
                 ]
             );
-            let known = defined
-                .into_iter()
-                .map(|(name, _)| name)
-                .collect::<HashSet<_>>();
+            let reach = editor.variable_reach(&editor.defined_variables(cx), cx);
             assert_eq!(
-                editor.steps[2].undefined_references(&known, cx),
-                vec!["typo".to_string()]
+                editor.steps[2].undefined_references(&reach, cx),
+                vec![Unset {
+                    name: "typo".to_string(),
+                    set_later: false,
+                }]
             );
             assert_eq!(
                 editor.steps[1].describe(cx).as_deref(),
@@ -7590,19 +7870,261 @@ mod tests {
             editor.steps[3].scope_variable.update(cx, |variable, cx| {
                 variable.set_text("hots", window, cx);
             });
-            let known = editor
-                .defined_variables(cx)
-                .into_iter()
-                .map(|(name, _)| name)
-                .collect::<HashSet<_>>();
+            let reach = editor.variable_reach(&editor.defined_variables(cx), cx);
             assert_eq!(
-                editor.steps[1].undefined_scope_variable(&known, cx),
-                Some("hots".to_string()),
+                editor.steps[1].undefined_scope_variable(&reach, cx),
+                Some(Unset {
+                    name: "hots".to_string(),
+                    set_later: false,
+                }),
                 "a misspelt 調べる変数名 would take 「それ以外」 every time without a word"
             );
-            assert_eq!(editor.steps[2].undefined_scope_variable(&known, cx), None);
-            assert_eq!(editor.steps[3].undefined_scope_variable(&known, cx), None);
+            assert_eq!(editor.steps[2].undefined_scope_variable(&reach, cx), None);
+            assert_eq!(editor.steps[3].undefined_scope_variable(&reach, cx), None);
         });
+    }
+
+    #[gpui::test]
+    async fn a_reference_is_flagged_by_what_the_steps_before_it_set(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let send = |text: &str| MacroStep::Send {
+            text: text.to_string(),
+            newline: true,
+        };
+        let set = |name: &str| MacroStep::SetVariable {
+            name: name.to_string(),
+            value: "v".to_string(),
+        };
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            let terminal_macro = TerminalMacro {
+                name: "順序".to_string(),
+                steps: vec![
+                    // 1: `late` is only set by step 5.
+                    send("show ${late}"),
+                    // 2: `branch_then` is set on the 「そのとき」 side only,
+                    // `own` by the branch's own capture.
+                    MacroStep::If {
+                        pattern: "${own}".to_string(),
+                        regex: false,
+                        scope: MatchScope::Variable("late".to_string()),
+                        capture: Some("own".to_string()),
+                        then_steps: vec![send("${own}"), set("branch_then")],
+                        else_steps: vec![send("${own}")],
+                    },
+                    // 3: whatever either side may set counts from here on.
+                    send("${branch_then} ${own}"),
+                    // 4: a repeat body sees what its later steps set on the
+                    // pass before; a body that runs once does not.
+                    MacroStep::Repeat {
+                        count: 3,
+                        steps: vec![send("${looped}"), set("looped")],
+                    },
+                    MacroStep::Repeat {
+                        count: 1,
+                        steps: vec![send("${once}"), set("once")],
+                    },
+                    set("late"),
+                ],
+                ..TerminalMacro::default()
+            };
+            editor.load_macro(Some(terminal_macro), window, cx);
+        });
+        cx.run_until_parked();
+
+        editor.read_with(cx, |editor, cx| {
+            let reach = editor.variable_reach(&editor.defined_variables(cx), cx);
+            let unset = |row: &StepRow| {
+                row.undefined_references(&reach, cx)
+                    .into_iter()
+                    .map(|unset| (unset.name, unset.set_later))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(
+                unset(&editor.steps[0]),
+                vec![("late".to_string(), true)],
+                "a value a later step sets is not there yet"
+            );
+            assert_eq!(
+                editor.steps[1].undefined_scope_variable(&reach, cx),
+                Some(Unset {
+                    name: "late".to_string(),
+                    set_later: true,
+                })
+            );
+            assert_eq!(
+                unset(&editor.steps[1]),
+                vec![("own".to_string(), true)],
+                "the branch's pattern is read before its own capture is stored"
+            );
+            assert_eq!(unset(&editor.steps[1].children[0]), Vec::new());
+            assert_eq!(
+                unset(&editor.steps[1].else_children[0]),
+                vec![("own".to_string(), true)],
+                "「それ以外」 runs with nothing captured"
+            );
+            assert_eq!(unset(&editor.steps[2]), Vec::new());
+            assert_eq!(unset(&editor.steps[3].children[0]), Vec::new());
+            assert_eq!(
+                unset(&editor.steps[4].children[0]),
+                vec![("once".to_string(), true)]
+            );
+        });
+
+        // A macro that runs its steps more than once gives the first step
+        // what the last one set on the pass before.
+        editor.update_in(cx, |editor, window, cx| {
+            editor.repeat.update(cx, |repeat, cx| {
+                repeat.set_text("2", window, cx);
+            });
+        });
+        editor.read_with(cx, |editor, cx| {
+            let reach = editor.variable_reach(&editor.defined_variables(cx), cx);
+            assert_eq!(editor.steps[0].undefined_references(&reach, cx), Vec::new());
+        });
+
+        assert_eq!(
+            unset_reference_warnings(&[
+                Unset {
+                    name: "typo".to_string(),
+                    set_later: false,
+                },
+                Unset {
+                    name: "late".to_string(),
+                    set_later: true,
+                },
+            ]),
+            vec![
+                "${typo} に値を入れるステップがありません。実行時は書いたままの文字になります。"
+                    .to_string(),
+                "${late} に値が入るのはこのステップより後です。ここでは書いたままの文字になります。"
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn a_regex_row_is_compiled_once_per_text_and_warns_about_a_repeated_reference(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            let terminal_macro = TerminalMacro {
+                name: "正規表現".to_string(),
+                steps: vec![MacroStep::If {
+                    pattern: r"^${p}+ (?<ver>\S+)".to_string(),
+                    regex: true,
+                    scope: MatchScope::Screen,
+                    capture: None,
+                    then_steps: Vec::new(),
+                    else_steps: Vec::new(),
+                }],
+                ..TerminalMacro::default()
+            };
+            editor.load_macro(Some(terminal_macro), window, cx);
+        });
+        for _ in 0..3 {
+            editor.update(cx, |_, cx| cx.notify());
+            cx.run_until_parked();
+        }
+
+        editor.read_with(cx, |editor, cx| {
+            let row = &editor.steps[0];
+            assert_eq!(
+                row.pattern_compilations.get(),
+                1,
+                "drawing the form again must not compile the pattern again"
+            );
+            assert_eq!(row.own_variables(cx), vec!["ver".to_string()]);
+            assert_eq!(row.pattern_compilations.get(), 1);
+            assert_eq!(row.repeated_references(cx), vec!["p".to_string()]);
+            assert_eq!(row.pattern_error(cx), None);
+        });
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.steps[0].text.update(cx, |text, cx| {
+                text.set_text("(?<ver>", window, cx);
+            });
+        });
+        cx.run_until_parked();
+        editor.read_with(cx, |editor, cx| {
+            let row = &editor.steps[0];
+            assert_eq!(
+                row.pattern_compilations.get(),
+                2,
+                "a new text is compiled once"
+            );
+            assert_eq!(row.own_variables(cx), Vec::<String>::new());
+            let error = row
+                .pattern_error(cx)
+                .expect("an unclosed group does not compile");
+            assert!(!error.contains('\n'), "one line under the field: {error}");
+            assert_eq!(row.pattern_compilations.get(), 2);
+        });
+    }
+
+    #[gpui::test]
+    async fn a_step_this_build_cannot_read_is_saved_back_untouched(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "name": "future", "steps": [
+                { "type": "send", "text": "show version" },
+                { "type": "beep", "pitch": 440 }
+            ] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let terminal_macro = stored_macro(&editor, None, "future", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(terminal_macro), window, cx);
+        });
+        cx.run_until_parked();
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.steps[1]
+                    .unknown
+                    .as_ref()
+                    .and_then(|step| step.unknown_kind()),
+                Some("beep")
+            );
+        });
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.steps[0].text.update(cx, |text, cx| {
+                text.set_text("show clock", window, cx);
+            });
+            editor.save(cx);
+            assert_eq!(editor.error, None);
+        });
+        cx.run_until_parked();
+
+        let saved = saved_file(&fs)
+            .await
+            .macro_named(None, "future")
+            .map(|terminal_macro| terminal_macro.steps.clone());
+        assert_eq!(
+            saved,
+            Some(vec![
+                MacroStep::Send {
+                    text: "show clock".to_string(),
+                    newline: true,
+                },
+                MacroStep::Unknown(serde_json::json!({ "type": "beep", "pitch": 440 })),
+            ])
+        );
     }
 
     #[gpui::test]
@@ -7808,9 +8330,9 @@ mod tests {
                         regex: false,
                         timeout_ms: 1_000,
                         capture: None,
-                        on_timeout: Some(vec![MacroStep::Clear, MacroStep::Sleep { ms: 500 }]),
+                        on_timeout: Some(vec![MacroStep::Clear {}, MacroStep::Sleep { ms: 500 }]),
                     },
-                    MacroStep::Clear,
+                    MacroStep::Clear {},
                     MacroStep::Sleep { ms: 2_000 },
                 ],
                 else_steps: vec![send("一"), send("二"), send("三")],
@@ -7869,7 +8391,7 @@ mod tests {
                         capture: None,
                         on_timeout: Some(vec![MacroStep::Sleep { ms: 500 }]),
                     },
-                    MacroStep::Clear,
+                    MacroStep::Clear {},
                     MacroStep::Sleep { ms: 2_000 },
                 ],
                 else_steps: vec![send("一"), send("三"), send("二")],
@@ -8132,7 +8654,7 @@ mod tests {
         );
         assert_eq!(written.repeat, 3);
         assert_eq!(written.repeat_interval_ms, 1_500);
-        assert_eq!(written.steps, vec![MacroStep::Clear]);
+        assert_eq!(written.steps, vec![MacroStep::Clear {}]);
         // The untouched macro keeps its shape, defaults and all.
         assert_eq!(saved.macros[0].folder, None);
         assert_eq!(saved.macros[0].repeat, 1);
@@ -9554,7 +10076,7 @@ mod tests {
         ClaudeCodeIdeTools {
             args: vec![
                 "--mcp-config".to_string(),
-                r#"{"mcpServers":{"zed":{"type":"http","url":"http://127.0.0.1:4000/mcp/zed?client=abc","headers":{"Authorization":"${ZED_IDE_BEARER}"}}}}"#.to_string(),
+                r#"{"mcpServers":{"zed":{"type":"http","url":"http://127.0.0.1:4000/mcp/zed","headers":{"Authorization":"${ZED_IDE_BEARER}"}}}}"#.to_string(),
                 "--allowedTools".to_string(),
                 "mcp__zed__highlightCode,mcp__zed__getHover".to_string(),
             ],

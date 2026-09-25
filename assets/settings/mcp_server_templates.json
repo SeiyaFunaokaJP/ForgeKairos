@@ -1,0 +1,62 @@
+[
+  {
+    "name": "filesystem",
+    "title": "ファイルシステム",
+    "description": "指定したフォルダーの中のファイルを読み書き・検索します。指定していないフォルダーには触れません。",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
+      { "prompt": "使わせるフォルダーの絶対パス" }
+    ],
+    "requires": "Node.js (npx)",
+    "hosts": ["registry.npmjs.org"]
+  },
+  {
+    "name": "github",
+    "title": "GitHub",
+    "description": "GitHub 公式のリモート MCP サーバーです。リポジトリ・Issue・プルリクエストを扱います。GitHub の個人用アクセストークンが必要です。",
+    "transport": "http",
+    "url": "https://api.githubcopilot.com/mcp/",
+    "headers": [
+      { "name": "Authorization", "prompt": "Bearer <GitHub の個人用アクセストークン>" }
+    ],
+    "hosts": ["api.githubcopilot.com"]
+  },
+  {
+    "name": "playwright",
+    "title": "Playwright (ブラウザー操作)",
+    "description": "ブラウザーを起動し、ページを開く・クリックする・入力するといった操作をします。",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"],
+    "requires": "Node.js (npx)、Google Chrome",
+    "hosts": ["registry.npmjs.org"],
+    "note": "ブラウザー自身の通信はプロキシの環境変数に従わないことがあり、その場合はネットワーク許可リストで統制されません。"
+  },
+  {
+    "name": "fetch",
+    "title": "Fetch (Web ページの取得)",
+    "description": "指定した URL の Web ページを取得し、Markdown に変換して渡します。",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-fetch"],
+    "requires": "uv (uvx)",
+    "hosts": ["pypi.org", "files.pythonhosted.org"],
+    "note": "取得するサイトのホストも、ネットワーク許可リストに追加する必要があります。"
+  },
+  {
+    "name": "memory",
+    "title": "Memory (知識グラフ)",
+    "description": "会話をまたいで覚えておきたい事柄を、知識グラフとしてファイルに保存します。",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-memory"],
+    "env": [
+      { "name": "MEMORY_FILE_PATH", "prompt": "記憶を保存するファイルの絶対パス" }
+    ],
+    "requires": "Node.js (npx)",
+    "hosts": ["registry.npmjs.org"]
+  }
+]

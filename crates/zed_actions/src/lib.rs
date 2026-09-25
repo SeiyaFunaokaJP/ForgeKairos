@@ -661,6 +661,9 @@ pub mod agent {
             ResetAgentZoom,
             /// Pastes clipboard content without any formatting.
             PasteRaw,
+            /// Takes back every start of an agent outside its sandbox that was
+            /// confirmed for a thread, so that each thread asks again.
+            RevokeOutsideSandboxConsents,
         ]
     );
 

@@ -37,7 +37,8 @@ pub struct DomainMigration {
 inventory::collect!(DomainMigration);
 
 /// The shared database connection backing all domain-specific DB wrappers.
-/// Set as a GPUI global per-App. Falls back to a shared LazyLock if not set.
+/// Set as a GPUI global per-App. In tests it falls back to a database of the
+/// test's own thread if not set.
 pub struct AppDatabase(pub ThreadSafeConnection);
 
 impl Global for AppDatabase {}
@@ -75,15 +76,15 @@ impl AppDatabase {
         Self(connection)
     }
 
-    /// Returns the per-App connection if set, otherwise falls back to
-    /// the shared LazyLock.
+    /// Returns the per-App connection if set. Otherwise tests fall back to a
+    /// database of their own thread and everything else panics.
     pub fn global(cx: &App) -> &ThreadSafeConnection {
         #[allow(unreachable_code)]
         if let Some(db) = cx.try_global::<Self>() {
             return &db.0;
         } else {
             #[cfg(any(feature = "test-support", test))]
-            return &TEST_APP_DATABASE.0;
+            return &test_thread_database().0;
 
             panic!("database not initialized")
         }
@@ -118,9 +119,26 @@ fn topological_sort<'a>(registrations: &[&'a DomainMigration]) -> Vec<&'a Domain
     sorted
 }
 
-/// Shared fallback `AppDatabase` used when no per-App global is set.
+/// A single process-wide fallback let tests running in parallel overwrite each
+/// other's rows (`save_workspace` deletes other workspaces with the same paths,
+/// cascading into every item table), so each test thread gets its own
+/// database. libtest runs every test on a thread of its own named after the
+/// test, and a GPUI test drives its `App`s on that thread; the database is
+/// leaked because `AppDatabase::global` hands out references tied to `App`.
 #[cfg(any(test, feature = "test-support"))]
-static TEST_APP_DATABASE: LazyLock<AppDatabase> = LazyLock::new(AppDatabase::test_new);
+fn test_thread_database() -> &'static AppDatabase {
+    thread_local! {
+        static TEST_THREAD_DATABASE: &'static AppDatabase = {
+            log::warn!(
+                "{} has no per-App `AppDatabase` and falls back to a database of its thread; \
+                 set `db::AppDatabase::test_new()` as a global in the test's setup",
+                std::thread::current().name().unwrap_or("unnamed thread")
+            );
+            Box::leak(Box::new(AppDatabase::test_new()))
+        };
+    }
+    TEST_THREAD_DATABASE.with(|database| *database)
+}
 
 const CONNECTION_INITIALIZE_QUERY: &str = sql!(
     PRAGMA foreign_keys=TRUE;
@@ -269,7 +287,7 @@ macro_rules! static_connection {
 
         impl $t {
             /// Returns an instance backed by the per-App database if set,
-            /// or the shared fallback connection otherwise.
+            /// or, in tests, the fallback database of the test's thread.
             pub fn global(cx: &$crate::gpui::App) -> Self {
                 $t($crate::AppDatabase::global(cx).clone())
             }
@@ -423,5 +441,61 @@ mod tests {
         for guard in guards.into_iter() {
             assert!(guard.join().is_ok());
         }
+    }
+
+    #[gpui::test]
+    async fn a_database_set_on_the_app_is_used_instead_of_the_fallback(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| cx.set_global(crate::AppDatabase::test_new()));
+        assert!(cx.read(|cx| std::ptr::eq(
+            crate::AppDatabase::global(cx),
+            &cx.global::<crate::AppDatabase>().0
+        )));
+
+        let key = "app-database-probe".to_string();
+        cx.read(crate::kvp::KeyValueStore::global)
+            .write_kvp(key.clone(), "written".to_string())
+            .await
+            .unwrap();
+        assert_eq!(
+            cx.read(|cx| crate::kvp::KeyValueStore::global(cx).read_kvp(&key))
+                .unwrap(),
+            Some("written".to_string())
+        );
+
+        let app_without_database = gpui::TestAppContext::single();
+        assert_eq!(
+            app_without_database
+                .read(|cx| crate::kvp::KeyValueStore::global(cx).read_kvp(&key))
+                .unwrap(),
+            None
+        );
+    }
+
+    #[gpui::test]
+    async fn apps_without_a_database_share_one_per_test_thread_only(cx: &mut gpui::TestAppContext) {
+        let key = "fallback-database-probe".to_string();
+        cx.read(crate::kvp::KeyValueStore::global)
+            .write_kvp(key.clone(), "written".to_string())
+            .await
+            .unwrap();
+
+        let another_app_on_this_thread = gpui::TestAppContext::single();
+        assert_eq!(
+            another_app_on_this_thread
+                .read(|cx| crate::kvp::KeyValueStore::global(cx).read_kvp(&key))
+                .unwrap(),
+            Some("written".to_string())
+        );
+
+        let value_on_another_thread = thread::spawn(move || {
+            let app_on_another_thread = gpui::TestAppContext::single();
+            app_on_another_thread.read(|cx| crate::kvp::KeyValueStore::global(cx).read_kvp(&key))
+        })
+        .join()
+        .unwrap()
+        .unwrap();
+        assert_eq!(value_on_another_thread, None);
     }
 }

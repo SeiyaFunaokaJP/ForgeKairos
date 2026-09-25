@@ -250,6 +250,21 @@ pub fn runs_outside_sandbox_by_user_choice(agent_id: &str, cx: &App) -> bool {
     project::agent_sandbox::runs_outside_sandbox_by_user_choice(agent_id, cx)
 }
 
+fn log_overridden_legacy_outside_sandbox_choice(agent_id: &str, cx: &App) {
+    let Some(choice) = project::agent_sandbox::user_choice_to_run_outside_sandbox(agent_id, cx)
+    else {
+        return;
+    };
+    if let Some(legacy) = choice.ignored_legacy_entry {
+        log::warn!(
+            "agent_servers.{agent_id}.run_outside_sandbox ({}) is used; agent_servers.{}.run_outside_sandbox ({}) under the old extension id is ignored",
+            choice.run_outside_sandbox,
+            legacy.legacy_id,
+            legacy.run_outside_sandbox,
+        );
+    }
+}
+
 /// What the IDE adds to a registry agent's environment for that agent in
 /// particular.
 ///
@@ -489,6 +504,7 @@ impl AgentServer for CustomAgentServer {
             add_registry_agent_environment(agent_id.as_ref(), &mut extra_env);
         }
         let store = delegate.store.downgrade();
+        log_overridden_legacy_outside_sandbox_choice(agent_id.as_ref(), cx);
         let run_outside_sandbox = delegate.starts_outside_sandbox(agent_id.as_ref(), cx);
         // ADR-F49 第 2b 段: on Windows the sandbox is the WSL distro of the
         // project's folders, so the command is resolved for it.
@@ -895,6 +911,68 @@ mod tests {
             assert!(
                 !starts_outside_sandbox(false, CLAUDE_AGENT_ID, cx),
                 "turned off again, in the other shape of the entry"
+            );
+        });
+    }
+
+    /// Both the registry id and the old extension id carry a value: the
+    /// registry id's wins, whichever way round the two disagree, and the
+    /// overridden entry is reported. Only the old id: it still counts.
+    #[gpui::test]
+    fn test_the_registry_ids_choice_wins_over_the_old_extension_ids(cx: &mut TestAppContext) {
+        init_test(cx);
+        let set_user_settings = |settings: &str, cx: &mut App| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(settings, cx)
+                    .result()
+                    .expect("valid user settings");
+            });
+        };
+        cx.update(|cx| {
+            set_user_settings(
+                r#"{ "agent_servers": {
+                    "codebuddy": { "type": "registry", "run_outside_sandbox": true },
+                    "codebuddy-code": { "type": "registry", "run_outside_sandbox": false }
+                } }"#,
+                cx,
+            );
+            assert!(!runs_outside_sandbox_by_user_choice("codebuddy-code", cx));
+            assert_eq!(
+                project::agent_sandbox::user_choice_to_run_outside_sandbox("codebuddy-code", cx),
+                Some(project::agent_sandbox::OutsideSandboxChoice {
+                    run_outside_sandbox: false,
+                    ignored_legacy_entry: Some(project::agent_sandbox::IgnoredLegacyChoice {
+                        legacy_id: "codebuddy".to_string(),
+                        run_outside_sandbox: true,
+                    }),
+                })
+            );
+
+            set_user_settings(
+                r#"{ "agent_servers": {
+                    "codebuddy": { "type": "registry", "run_outside_sandbox": false },
+                    "codebuddy-code": { "type": "registry", "run_outside_sandbox": true }
+                } }"#,
+                cx,
+            );
+            assert!(runs_outside_sandbox_by_user_choice("codebuddy-code", cx));
+
+            set_user_settings(
+                r#"{ "agent_servers": {
+                    "codebuddy": { "type": "registry", "run_outside_sandbox": true },
+                    "codebuddy-code": { "type": "registry" }
+                } }"#,
+                cx,
+            );
+            assert!(runs_outside_sandbox_by_user_choice("codebuddy-code", cx));
+            assert_eq!(
+                project::agent_sandbox::user_choice_to_run_outside_sandbox("codebuddy-code", cx),
+                Some(project::agent_sandbox::OutsideSandboxChoice {
+                    run_outside_sandbox: true,
+                    ignored_legacy_entry: None,
+                }),
+                "a value only under the old id overrides nothing"
             );
         });
     }

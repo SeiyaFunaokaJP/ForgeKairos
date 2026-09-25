@@ -71,6 +71,10 @@ pub struct SystemPromptTemplate<'a> {
     /// for one with `agent.system_prompt_repo_map_bytes`. `None` — the default
     /// — leaves the prompt exactly as upstream renders it.
     pub repo_map: Option<SharedString>,
+    /// Whether an editor is registered to show highlights, annotations and
+    /// tours. Headless hosts register the display tools too, but every call
+    /// fails there, so the prompt must not invite the model to use them.
+    pub code_display: bool,
 }
 
 impl Template for SystemPromptTemplate<'_> {
@@ -120,6 +124,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: false,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -134,7 +139,7 @@ mod tests {
     #[test]
     fn test_system_prompt_mentions_the_ide_tools_only_when_available() {
         let project = prompt_store::ProjectContext::default();
-        let render = |available_tools: Vec<SharedString>| {
+        let render = |available_tools: Vec<SharedString>, code_display: bool| {
             SystemPromptTemplate {
                 project: &project,
                 available_tools,
@@ -146,22 +151,27 @@ mod tests {
                 is_windows: false,
                 restricted_workspace: false,
                 repo_map: None,
+                code_display,
             }
             .render(&Templates::new())
             .unwrap()
         };
+        let ide_tools = || -> Vec<SharedString> {
+            vec!["grep".into(), "search_symbols".into(), "code_tour".into()]
+        };
 
-        let with_tools = render(vec![
-            "grep".into(),
-            "search_symbols".into(),
-            "code_tour".into(),
-        ]);
+        let with_tools = render(ide_tools(), true);
         assert!(with_tools.contains("`search_symbols` is usually more direct than `grep`"));
         assert!(with_tools.contains("You run inside the Zed editor the user is looking at"));
 
-        let without_tools = render(vec!["grep".into()]);
+        let without_tools = render(vec!["grep".into()], true);
         assert!(!without_tools.contains("search_symbols"));
         assert!(!without_tools.contains("code_tour"));
+
+        let headless = render(ide_tools(), false);
+        assert!(headless.contains("`search_symbols` is usually more direct than `grep`"));
+        assert!(!headless.contains("You run inside the Zed editor the user is looking at"));
+        assert!(!headless.contains("code_tour"));
     }
 
     #[test]
@@ -178,6 +188,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: false,
             repo_map: Some("# Repository map\nsrc/main.rs\n  fn main [L1-3]".into()),
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -208,6 +219,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: true,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -243,6 +255,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: false,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -274,6 +287,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: false,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -309,6 +323,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: false,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -356,6 +371,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: false,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -395,6 +411,7 @@ mod tests {
             is_windows: true,
             restricted_workspace: false,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -436,6 +453,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: false,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -460,6 +478,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: false,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -482,6 +501,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: false,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -502,6 +522,7 @@ mod tests {
             is_windows: false,
             restricted_workspace: false,
             repo_map: None,
+            code_display: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();

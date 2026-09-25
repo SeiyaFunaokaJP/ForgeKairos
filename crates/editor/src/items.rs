@@ -62,7 +62,8 @@ use workspace::{
 };
 use zed_actions::preview::{
     markdown::{
-        ExportToPdf as ExportMarkdownToPdf, OpenPreviewToTheSide as OpenMarkdownPreviewToTheSide,
+        ExportToPdf as ExportMarkdownToPdf, OpenPreview as OpenMarkdownPreview,
+        OpenPreviewToTheSide as OpenMarkdownPreviewToTheSide,
     },
     svg::OpenPreviewToTheSide as OpenSvgPreviewToTheSide,
 };
@@ -70,14 +71,18 @@ use zed_actions::preview::{
 pub const MAX_TAB_TITLE_LEN: usize = 24;
 
 /// Takes over a drop onto an editor (files from the OS or the project panel),
-/// for a crate the editor cannot depend on (the Markdown image drop). It runs
-/// while the editor is being updated, so it gets the editor to read and a weak
-/// handle to edit it through later. Returns whether it consumed the drop; when
-/// it did not, the pane handles it as usual.
+/// for a crate the editor cannot depend on (the Markdown image drop).
 #[derive(Clone)]
-pub struct EditorDropHandler(
-    pub Rc<dyn Fn(&Editor, WeakEntity<Editor>, &Pane, &dyn Any, &mut Window, &mut App) -> bool>,
-);
+pub struct EditorDropHandler {
+    /// Runs while the editor is being updated, so it gets the editor to read
+    /// and a weak handle to edit it through later. Returns whether it consumed
+    /// the drop; when it did not, the pane handles it as usual.
+    pub handle:
+        Rc<dyn Fn(&Editor, WeakEntity<Editor>, &Pane, &dyn Any, &mut Window, &mut App) -> bool>,
+    /// Whether `handle` would consume what is being dragged, for the pane to
+    /// decide whether to show its drop target.
+    pub accepts: Rc<dyn Fn(&Editor, &Pane, &dyn Any, &App) -> bool>,
+}
 
 impl gpui::Global for EditorDropHandler {}
 
@@ -1181,7 +1186,12 @@ impl Item for Editor {
         else {
             return false;
         };
-        (handler.0)(self, this.downgrade(), active_pane, dropped, window, cx)
+        (handler.handle)(self, this.downgrade(), active_pane, dropped, window, cx)
+    }
+
+    fn accepts_drop(&self, active_pane: &Pane, dropped: &dyn Any, cx: &App) -> bool {
+        cx.try_global::<EditorDropHandler>()
+            .is_some_and(|handler| (handler.accepts)(self, active_pane, dropped, cx))
     }
 
     fn pane_changed(&mut self, new_pane_id: EntityId, cx: &mut Context<Self>) {
@@ -1258,9 +1268,13 @@ impl Item for Editor {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
             });
 
-        // Opened beside the source rather than over it, matching the toolbar's
-        // preview button: a preview that replaces its own source is of little use.
+        // Markdown offers both placements, as the toolbar's preview button does
+        // with Ctrl-click, since a menu entry has no modifier to tell them apart.
         if is_markdown {
+            actions.push((
+                "Markdown プレビューを開く".into(),
+                Box::new(OpenMarkdownPreview) as Box<dyn gpui::Action>,
+            ));
             actions.push((
                 "Markdown プレビューを横に開く".into(),
                 Box::new(OpenMarkdownPreviewToTheSide) as Box<dyn gpui::Action>,

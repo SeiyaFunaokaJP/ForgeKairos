@@ -59,6 +59,9 @@ const OUTSIDE_SANDBOX_ONCE: &str = "今回の起動だけです。常に外で�
 const OUTSIDE_SANDBOX_NEW_SESSION: &str = "新しいセッションになります (この会話の続きには\
      なりません)。";
 const LAUNCH_ONCE_LABEL: &str = "起動 (今回のみ)";
+/// ACP のスレッドの同意は記録され、そのスレッドは次から聞かずに外で起動する。
+const OUTSIDE_SANDBOX_THIS_THREAD: &str = "このスレッドだけです (次からは確認しません。同意は設定の「AI」ページで取り消せます)。常に外で起動するには、設定の「AI」ページで切り替えます。";
+pub(crate) const LAUNCH_FOR_THIS_THREAD_LABEL: &str = "起動 (このスレッドのみ)";
 const CANCEL_LABEL: &str = "キャンセル";
 /// サンドボックスでの起動に失敗した通知のボタン。押すと「外で起動」の確認に進む。
 const LAUNCH_OUTSIDE_AFTER_FAILURE_LABEL: &str = "サンドボックスの外で起動…";
@@ -260,11 +263,23 @@ fn outside_sandbox_message(program: &str) -> String {
 /// What starting outside the sandbox is, beyond where it runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OutsideSandboxStart {
-    /// A start of its own: the launch actions, an agent's card.
+    /// A start of its own: the launch actions.
     Once,
+    /// An agent's thread started outside its sandbox from its card. The
+    /// consent is written down for the thread (td).
+    Thread,
     /// A connected thread started again outside its sandbox, whose session
     /// cannot follow it there.
     RestartingThread,
+}
+
+impl OutsideSandboxStart {
+    fn is_kept_for_the_thread(self) -> bool {
+        match self {
+            Self::Once => false,
+            Self::Thread | Self::RestartingThread => true,
+        }
+    }
 }
 
 /// On a remote project the CLI is the host's and runs with that user's
@@ -309,7 +324,14 @@ fn outside_sandbox_detail(
         }
         .to_string(),
     );
-    lines.push(OUTSIDE_SANDBOX_ONCE.to_string());
+    lines.push(
+        if start.is_kept_for_the_thread() {
+            OUTSIDE_SANDBOX_THIS_THREAD
+        } else {
+            OUTSIDE_SANDBOX_ONCE
+        }
+        .to_string(),
+    );
     if start == OutsideSandboxStart::RestartingThread {
         lines.push(OUTSIDE_SANDBOX_NEW_SESSION.to_string());
     }
@@ -353,7 +375,11 @@ pub(crate) fn confirm_starting_outside_sandbox(
         &message,
         Some(&detail),
         &[
-            PromptButton::ok(LAUNCH_ONCE_LABEL),
+            PromptButton::ok(if start.is_kept_for_the_thread() {
+                LAUNCH_FOR_THIS_THREAD_LABEL
+            } else {
+                LAUNCH_ONCE_LABEL
+            }),
             PromptButton::cancel(CANCEL_LABEL),
         ],
         cx,

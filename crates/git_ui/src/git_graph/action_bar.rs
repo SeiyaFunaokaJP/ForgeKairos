@@ -72,21 +72,35 @@ pub(super) enum CommitBarSelection {
     },
     Multiple {
         count: usize,
-        contiguous: bool,
-        on_current_branch: bool,
+        rewrite: RangeRewriteFacts,
     },
 }
 
+/// What decides whether the picked rows can be rewritten (reordered, squashed, dropped), known
+/// before the menu or the button row is drawn so that a refusal shows there rather than after
+/// the user picked the operation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct RangeRewriteFacts {
+    pub(super) contiguous: bool,
+    pub(super) on_current_branch: bool,
+    /// HEAD is a branch, which is what the rewrite moves at the end.
+    pub(super) head_is_branch: bool,
+    /// The working tree has uncommitted changes, which the replay could collide with.
+    pub(super) worktree_dirty: bool,
+}
+
 /// Why the todo editor (and squashing) cannot take the picked rows: both rewrite the checked-out
-/// branch from the oldest picked commit up, so the rows have to be one unbroken chain on it.
-pub(super) fn range_rewrite_refusal(
-    contiguous: bool,
-    on_current_branch: bool,
-) -> Option<&'static str> {
-    if !contiguous {
+/// branch from the oldest picked commit up, so the rows have to be one unbroken chain on it, and
+/// both replay commits over the working tree.
+pub(super) fn range_rewrite_refusal(facts: RangeRewriteFacts) -> Option<&'static str> {
+    if !facts.contiguous {
         Some("連続した範囲を選んでください")
-    } else if !on_current_branch {
+    } else if !facts.on_current_branch {
         Some("現在のブランチ上のコミットを選んでください")
+    } else if !facts.head_is_branch {
+        Some("detached HEAD では書き換えられません。先にブランチに切り替えてください")
+    } else if facts.worktree_dirty {
+        Some("未コミットの変更を先にコミットかスタッシュしてください")
     } else {
         None
     }
@@ -175,11 +189,7 @@ pub(super) fn commit_bar_buttons(
             ]);
             buttons
         }
-        CommitBarSelection::Multiple {
-            count,
-            contiguous,
-            on_current_branch,
-        } => vec![
+        CommitBarSelection::Multiple { count, rewrite } => vec![
             button(
                 CommitBarAction::CherryPickSelection,
                 &format!("{count} 件を取り込む"),
@@ -190,7 +200,7 @@ pub(super) fn commit_bar_buttons(
                 CommitBarAction::RewriteSelection,
                 "並べ替え / まとめる / 捨てる…",
                 "選んだ範囲のコミットの順番・まとめ方・メッセージを編集します",
-                range_rewrite_refusal(*contiguous, *on_current_branch)
+                range_rewrite_refusal(*rewrite)
                     .map(|reason| SharedString::from(format!("{reason}。"))),
             ),
             button(
@@ -306,8 +316,12 @@ impl GitGraph {
                 };
                 CommitBarSelection::Multiple {
                     count: picked.len(),
-                    contiguous,
-                    on_current_branch,
+                    rewrite: RangeRewriteFacts {
+                        contiguous,
+                        on_current_branch,
+                        head_is_branch: self.head_is_branch(cx),
+                        worktree_dirty: self.worktree_is_dirty(cx),
+                    },
                 }
             }
         }
@@ -889,8 +903,12 @@ mod tests {
     fn test_commit_bar_buttons_for_several_commits() {
         let selection = |contiguous, on_current_branch| CommitBarSelection::Multiple {
             count: 3,
-            contiguous,
-            on_current_branch,
+            rewrite: RangeRewriteFacts {
+                contiguous,
+                on_current_branch,
+                head_is_branch: true,
+                worktree_dirty: false,
+            },
         };
         let buttons = commit_bar_buttons(&selection(true, true), true);
         assert_eq!(
@@ -918,18 +936,48 @@ mod tests {
 
     #[test]
     fn test_range_rewrite_refusal() {
-        assert_eq!(range_rewrite_refusal(true, true), None);
+        let facts = |contiguous, on_current_branch| RangeRewriteFacts {
+            contiguous,
+            on_current_branch,
+            head_is_branch: true,
+            worktree_dirty: false,
+        };
+        assert_eq!(range_rewrite_refusal(facts(true, true)), None);
         assert_eq!(
-            range_rewrite_refusal(false, true),
+            range_rewrite_refusal(facts(false, true)),
             Some("連続した範囲を選んでください")
         );
         assert_eq!(
-            range_rewrite_refusal(false, false),
+            range_rewrite_refusal(facts(false, false)),
             Some("連続した範囲を選んでください")
         );
         assert_eq!(
-            range_rewrite_refusal(true, false),
+            range_rewrite_refusal(facts(true, false)),
             Some("現在のブランチ上のコミットを選んでください")
+        );
+        // What the rewrite would refuse only once asked is refused up front as well.
+        assert_eq!(
+            range_rewrite_refusal(RangeRewriteFacts {
+                head_is_branch: false,
+                ..facts(true, true)
+            }),
+            Some("detached HEAD では書き換えられません。先にブランチに切り替えてください")
+        );
+        assert_eq!(
+            range_rewrite_refusal(RangeRewriteFacts {
+                worktree_dirty: true,
+                ..facts(true, true)
+            }),
+            Some("未コミットの変更を先にコミットかスタッシュしてください")
+        );
+        assert_eq!(
+            range_rewrite_refusal(RangeRewriteFacts {
+                head_is_branch: false,
+                worktree_dirty: true,
+                ..facts(false, true)
+            }),
+            Some("連続した範囲を選んでください"),
+            "the selection itself is what to fix first"
         );
     }
 

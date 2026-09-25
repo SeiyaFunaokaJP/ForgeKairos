@@ -4573,6 +4573,7 @@ impl Thread {
                 .system_prompt_repo_map
                 .as_ref()
                 .map(|(_key, map)| map.clone()),
+            code_display: ide_query::code_display(cx).is_some(),
         }
         .render(&self.templates)
         .context("failed to build system prompt")

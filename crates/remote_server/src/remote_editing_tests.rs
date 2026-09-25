@@ -2900,6 +2900,61 @@ async fn test_remote_rescan_worktrees(cx: &mut TestAppContext, server_cx: &mut T
 }
 
 #[gpui::test]
+async fn test_remote_entries_carry_the_hosts_private_files_verdict(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".env": "SECRET=1",
+                "main.rs": "fn main() {}",
+            },
+        }),
+    )
+    .await;
+
+    let (project, _headless_project) = init_test(&fs, cx, server_cx).await;
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    let worktree_id = worktree.read_with(cx, |worktree, _| {
+        assert!(worktree.is_remote());
+        let env_entry = worktree.entry_for_path(rel_path(".env")).unwrap();
+        assert!(env_entry.is_private);
+        let main_entry = worktree.entry_for_path(rel_path("main.rs")).unwrap();
+        assert!(!main_entry.is_private);
+        worktree.id()
+    });
+
+    let env_buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path(".env")), cx)
+        })
+        .await
+        .unwrap();
+    let main_buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path("main.rs")), cx)
+        })
+        .await
+        .unwrap();
+    env_buffer.read_with(cx, |buffer, _| {
+        assert!(buffer.file().unwrap().is_private());
+    });
+    main_buffer.read_with(cx, |buffer, _| {
+        assert!(!buffer.file().unwrap().is_private());
+    });
+}
+
+#[gpui::test]
 async fn test_copy_file_into_remote_project(
     cx: &mut TestAppContext,
     server_cx: &mut TestAppContext,
@@ -3430,6 +3485,92 @@ async fn test_remote_search_commits_stops_at_the_result_limit(
     // The client cannot tell the server to stop, so the server stops at the limit itself rather
     // than sending the whole history over for the client to throw away.
     assert_eq!(found_count, limit);
+}
+
+#[gpui::test]
+async fn test_remote_search_commits_stops_the_servers_search_when_dropped(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".git": {},
+                "file.txt": "content",
+            },
+        }),
+    )
+    .await;
+    let dot_git = Path::new(path!("/code/project1/.git"));
+    // One chunk's worth, which the server sends on while its search goes on.
+    fs.set_commit_data(
+        dot_git,
+        (0..100).map(|index| {
+            (
+                CommitData {
+                    sha: Oid::from_str(&format!("{:040x}", index + 1)).unwrap(),
+                    parents: Default::default(),
+                    author_name: SharedString::from("Author"),
+                    author_email: SharedString::from("author@example.com"),
+                    commit_timestamp: index as i64,
+                    subject: SharedString::from("subject"),
+                    message: SharedString::from("needle"),
+                },
+                false,
+            )
+        }),
+    );
+    let hold = Arc::new(());
+    fs.set_commit_search_hold(dot_git, Some(hold.clone()));
+    let running_searches = |hold: &Arc<()>| Arc::strong_count(hold) - 2;
+
+    let (project, _headless) = init_test(&fs, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .expect("should open remote worktree");
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+    project
+        .update(cx, |project, cx| project.git_scans_complete(cx))
+        .await;
+    let repository = project.read_with(cx, |project, cx| {
+        project
+            .active_repository(cx)
+            .expect("remote project should have an active repository")
+    });
+
+    let (request_tx, request_rx) = smol::channel::unbounded();
+    let task = repository.update(cx, |repository, cx| {
+        repository.search_commits(
+            git::repository::LogSource::All,
+            git::repository::SearchCommitArgs {
+                query: "needle".into(),
+                ..Default::default()
+            },
+            request_tx,
+            cx,
+        )
+    });
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+    assert!(request_rx.try_recv().is_ok(), "the first chunk arrives");
+    assert_eq!(running_searches(&hold), 1, "the server is still searching");
+
+    // What the 中止 button and a new search do: drop the running search.
+    drop(task);
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+    assert_eq!(
+        running_searches(&hold),
+        0,
+        "dropping the search on the client stops the server's search"
+    );
 }
 
 #[gpui::test]

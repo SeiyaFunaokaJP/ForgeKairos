@@ -2475,6 +2475,13 @@ impl FakeFs {
         .unwrap();
     }
 
+    pub fn set_commit_search_hold(&self, dot_git: &Path, hold: Option<Arc<()>>) {
+        self.with_git_state(dot_git, true, |state| {
+            state.commit_search_hold = hold;
+        })
+        .unwrap();
+    }
+
     pub fn set_commit_data(
         &self,
         dot_git: &Path,

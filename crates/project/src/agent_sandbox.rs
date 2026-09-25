@@ -310,25 +310,76 @@ pub fn agent_config_dir(
 /// remote host's settings. Agents named by their old extension id are found
 /// under the registry id they are started by, as the merged settings do.
 pub fn runs_outside_sandbox_by_user_choice(agent_id: &str, cx: &App) -> bool {
+    user_choice_to_run_outside_sandbox(agent_id, cx)
+        .is_some_and(|choice| choice.run_outside_sandbox)
+}
+
+/// The value `agent_servers.<id>.run_outside_sandbox` takes for `agent_id` in
+/// the user's own settings file, and the entry under the agent's old extension
+/// id it overrode, if any.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutsideSandboxChoice {
+    pub run_outside_sandbox: bool,
+    pub ignored_legacy_entry: Option<IgnoredLegacyChoice>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IgnoredLegacyChoice {
+    pub legacy_id: String,
+    pub run_outside_sandbox: bool,
+}
+
+/// [`runs_outside_sandbox_by_user_choice`] with where the answer came from.
+///
+/// When both the registry id and an old extension id carry a value, the
+/// registry id's wins: it is the entry the settings migration keeps when it
+/// finds both (`migrate_agent_server_from_extensions`), and the settings map
+/// has no order that could otherwise decide between them.
+pub fn user_choice_to_run_outside_sandbox(
+    agent_id: &str,
+    cx: &App,
+) -> Option<OutsideSandboxChoice> {
     crate::worktree_code_execution::from_user_settings(cx, |content| {
-        content
-            .agent_servers
-            .as_ref()?
-            .0
-            .iter()
-            .filter(|(id, _)| crate::agent_server_store::registry_id_for(id) == agent_id)
-            .find_map(|(_, settings)| match settings {
-                settings::CustomAgentServerSettings::Custom {
-                    run_outside_sandbox,
-                    ..
-                }
-                | settings::CustomAgentServerSettings::Registry {
-                    run_outside_sandbox,
-                    ..
-                } => *run_outside_sandbox,
-            })
+        outside_sandbox_choice_in(content.agent_servers.as_ref()?, agent_id)
     })
-    .unwrap_or(false)
+}
+
+fn outside_sandbox_choice_in(
+    agent_servers: &settings::AllAgentServersSettings,
+    agent_id: &str,
+) -> Option<OutsideSandboxChoice> {
+    let choice_of = |settings: &settings::CustomAgentServerSettings| match settings {
+        settings::CustomAgentServerSettings::Custom {
+            run_outside_sandbox,
+            ..
+        }
+        | settings::CustomAgentServerSettings::Registry {
+            run_outside_sandbox,
+            ..
+        } => *run_outside_sandbox,
+    };
+    let legacy_choice = agent_servers
+        .0
+        .iter()
+        .filter(|(id, _)| {
+            id.as_str() != agent_id && crate::agent_server_store::registry_id_for(id) == agent_id
+        })
+        .filter_map(|(id, settings)| Some((id, choice_of(settings)?)))
+        .min_by(|(left, _), (right, _)| left.cmp(right))
+        .map(|(legacy_id, run_outside_sandbox)| IgnoredLegacyChoice {
+            legacy_id: legacy_id.clone(),
+            run_outside_sandbox,
+        });
+    match agent_servers.0.get(agent_id).and_then(choice_of) {
+        Some(run_outside_sandbox) => Some(OutsideSandboxChoice {
+            run_outside_sandbox,
+            ignored_legacy_entry: legacy_choice,
+        }),
+        None => legacy_choice.map(|legacy| OutsideSandboxChoice {
+            run_outside_sandbox: legacy.run_outside_sandbox,
+            ignored_legacy_entry: None,
+        }),
+    }
 }
 
 /// ADR-F49 decision 19: whether the user has chosen, in their own settings

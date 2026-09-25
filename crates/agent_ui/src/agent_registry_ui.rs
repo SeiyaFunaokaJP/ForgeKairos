@@ -13,7 +13,10 @@ use gpui::{
 };
 use http_client::{EgressPolicyHandle, RequestHost, hosts_required_to_download};
 use project::agent_registry_store::current_platform_key;
-use project::agent_server_store::{AllAgentServersSettings, CustomAgentServerSettings};
+use project::agent_server_store::{
+    AllAgentServersSettings, CustomAgentServerSettings, installed_registry_archive_versions,
+    registry_archive_version_matches,
+};
 use project::{AgentId, AgentRegistryStore, RegistryAgent};
 use settings::{Settings, SettingsStore, update_settings_file};
 use theme_settings::ThemeSettings;
@@ -290,32 +293,103 @@ fn fork_agent_note(agent_id: &str) -> Option<&'static str> {
     )
 }
 
-/// Marks an installed agent whose running connection reported a newer version.
-/// Deliberately not a button: updating an agent underneath a live session
-/// desyncs it, so the only supported update paths stay the thread's update
-/// banner and the vendor's own CLI (F2-5 follow-up).
-fn update_available_badge(agent_id: &str, version: &SharedString) -> impl IntoElement {
-    let label = if version.is_empty() {
-        "更新あり".to_string()
-    } else {
-        format!("更新あり (v{version})")
-    };
+/// What the registry page can say about updating an installed agent (F2-5
+/// follow-up).
+#[derive(Debug, Clone, PartialEq)]
+enum UpdateStatus {
+    Unknown,
+    UpToDate,
+    /// npm resolves an `npx` agent's version range at launch, so there is no
+    /// one installed version to compare against.
+    UnknownForNpx,
+    Available {
+        installed: Option<SharedString>,
+        latest: SharedString,
+    },
+}
+
+/// `cached_on_disk` is the host's archive cache, most recently written first
+/// ([`project::agent_server_store::installed_registry_archive_versions`]);
+/// `reported_by_connection` is a newer version a running connection announced
+/// during this session.
+fn update_status(
+    is_npx: bool,
+    registry_version: &SharedString,
+    cached_on_disk: &[String],
+    reported_by_connection: Option<&SharedString>,
+) -> UpdateStatus {
+    if is_npx {
+        return UpdateStatus::UnknownForNpx;
+    }
+    // The cache wins over the connection's report: that report is never
+    // withdrawn, so once a new thread has installed the version it announced,
+    // only the cache knows the update is done.
+    if let Some(newest_cached) = cached_on_disk.first() {
+        if cached_on_disk
+            .iter()
+            .any(|cached| registry_archive_version_matches(cached, registry_version))
+        {
+            return UpdateStatus::UpToDate;
+        }
+        return UpdateStatus::Available {
+            installed: Some(SharedString::from(newest_cached.clone())),
+            latest: registry_version.clone(),
+        };
+    }
+    match reported_by_connection {
+        Some(latest) => UpdateStatus::Available {
+            installed: None,
+            latest: latest.clone(),
+        },
+        None => UpdateStatus::Unknown,
+    }
+}
+
+fn update_badge_label(installed: Option<&SharedString>, latest: &SharedString) -> String {
+    match installed {
+        Some(installed) => format!("更新あり: v{installed} → v{latest}"),
+        None if latest.is_empty() => "更新あり".to_string(),
+        None => format!("更新あり: v{latest}"),
+    }
+}
+
+/// Marks an installed agent that has a newer version. It never updates
+/// anything itself: replacing an agent underneath a live session desyncs it,
+/// so a click only hands off to a thread with that agent ("受け渡し"), whose
+/// connection starts the newest version, or whose update banner does.
+fn update_available_badge(
+    agent_id: &str,
+    installed: Option<&SharedString>,
+    latest: &SharedString,
+) -> impl IntoElement {
+    let agent_id_for_click = agent_id.to_string();
     h_flex()
         .id(SharedString::from(format!("agent-update-badge-{agent_id}")))
         .gap_1()
+        .cursor_pointer()
         .child(
             Icon::new(IconName::Download)
                 .size(IconSize::XSmall)
                 .color(Color::Accent),
         )
         .child(
-            Label::new(label)
+            Label::new(update_badge_label(installed, latest))
                 .size(LabelSize::Small)
                 .color(Color::Accent),
         )
         .tooltip(Tooltip::text(
-            "更新は上部のバナーか、ターミナルの公式コマンドから行えます",
+            "クリックするとこのエージェントのスレッドを開きます。ここからは更新せず、\
+             実行中のセッションも止めません。新しく接続したスレッドは最新版で起動し、\
+             実行中のスレッドには更新バナーが出ます。",
         ))
+        .on_click(move |_, window, cx| {
+            window.dispatch_action(
+                Box::new(zed_actions::agent::SelectAgent {
+                    agent: agent_id_for_click.clone(),
+                }),
+                cx,
+            );
+        })
 }
 
 /// An install the user has to confirm before it proceeds (F2-5): the "Install"
@@ -556,6 +630,11 @@ pub struct AgentRegistryPage {
     /// itself belongs to the running agent connection (F2-5); this page only
     /// reports what that check already found.
     connection_store: Option<WeakEntity<AgentConnectionStore>>,
+    /// Registry id -> the versions the host's archive cache holds, as
+    /// [`project::agent_server_store::installed_registry_archive_versions`]
+    /// lists them.
+    installed_archive_versions: HashMap<String, Vec<String>>,
+    _installed_archive_versions_scan: Task<()>,
     list: UniformListScrollHandle,
     registry_agents: Vec<RegistryAgent>,
     filtered_registry_indices: Vec<usize>,
@@ -590,18 +669,26 @@ impl AgentRegistryPage {
             }));
             subscriptions.push(cx.observe_global::<SettingsStore>(|this, cx| {
                 this.filter_registry_agents(cx);
+                this.scan_installed_archive_versions(cx);
             }));
 
             if let Some(connection_store) = connection_store
                 .as_ref()
                 .and_then(|connection_store| connection_store.upgrade())
             {
-                subscriptions.push(cx.observe(&connection_store, |_this, _store, cx| cx.notify()));
+                // A connection that just started may have installed a new
+                // version, so the cache is read again as well.
+                subscriptions.push(cx.observe(&connection_store, |this, _store, cx| {
+                    this.scan_installed_archive_versions(cx);
+                    cx.notify();
+                }));
             }
 
             let mut this = Self {
                 registry_store,
                 connection_store,
+                installed_archive_versions: HashMap::default(),
+                _installed_archive_versions_scan: Task::ready(()),
                 list: UniformListScrollHandle::new(),
                 registry_agents: Vec::new(),
                 filtered_registry_indices: Vec::new(),
@@ -635,6 +722,7 @@ impl AgentRegistryPage {
                 })
         });
         self.filter_registry_agents(cx);
+        self.scan_installed_archive_versions(cx);
     }
 
     fn refresh_installed_statuses(&mut self, cx: &mut Context<Self>) {
@@ -660,19 +748,63 @@ impl AgentRegistryPage {
             .unwrap_or(RegistryInstallStatus::NotInstalled)
     }
 
-    /// The newer version the running agent reported for `id`, if any. Only
-    /// installed agents that have actually been connected to in this session
-    /// can have one — nothing here starts a check of its own.
-    fn available_update(&self, id: &str, cx: &App) -> Option<SharedString> {
+    fn update_status(&self, agent: &RegistryAgent, cx: &App) -> UpdateStatus {
+        let id = agent.id().as_ref();
         if !self.install_status(id).is_installed() {
-            return None;
+            return UpdateStatus::Unknown;
         }
-        let connection_store = self.connection_store.as_ref()?.upgrade()?;
-        let agent = Agent::from(AgentId::new(id.to_string()));
-        connection_store
-            .read(cx)
-            .new_version_available(&agent)
-            .cloned()
+        let reported_by_connection = self
+            .connection_store
+            .as_ref()
+            .and_then(|connection_store| connection_store.upgrade())
+            .and_then(|connection_store| {
+                connection_store
+                    .read(cx)
+                    .new_version_available(&Agent::from(AgentId::new(id.to_string())))
+                    .cloned()
+            });
+        update_status(
+            matches!(agent, RegistryAgent::Npx(_)),
+            agent.version(),
+            self.installed_archive_versions
+                .get(id)
+                .map(Vec::as_slice)
+                .unwrap_or_default(),
+            reported_by_connection.as_ref(),
+        )
+    }
+
+    /// Reads which version of each installed archive agent the host has cached,
+    /// for [`Self::update_status`]. Nothing is fetched: the registry's latest
+    /// version is already in memory.
+    fn scan_installed_archive_versions(&mut self, cx: &mut Context<Self>) {
+        let registry_ids = self
+            .registry_agents
+            .iter()
+            .filter(|agent| {
+                matches!(agent, RegistryAgent::Binary(_))
+                    && self.install_status(agent.id().as_ref())
+                        == RegistryInstallStatus::InstalledRegistry
+            })
+            .map(|agent| agent.id().to_string())
+            .collect::<Vec<_>>();
+        let fs = <dyn Fs>::global(cx);
+        self._installed_archive_versions_scan = cx.spawn(async move |this, cx| {
+            let mut versions = HashMap::default();
+            for registry_id in registry_ids {
+                let cached = installed_registry_archive_versions(fs.as_ref(), &registry_id).await;
+                if !cached.is_empty() {
+                    versions.insert(registry_id, cached);
+                }
+            }
+            this.update(cx, |this, cx| {
+                if this.installed_archive_versions != versions {
+                    this.installed_archive_versions = versions;
+                    cx.notify();
+                }
+            })
+            .log_err();
+        });
     }
 
     fn search_query(&self, cx: &mut App) -> Option<String> {
@@ -905,7 +1037,7 @@ impl AgentRegistryPage {
         let install_status = self.install_status(agent.id().as_ref());
         let supports_current_platform = agent.supports_current_platform();
         let pending_consent = self.pending_install_consent.get(agent.id().as_ref());
-        let available_update = self.available_update(agent.id().as_ref(), cx);
+        let update_status = self.update_status(agent, cx);
 
         let icon = match agent.icon_path() {
             Some(icon_path) => Icon::from_external_svg(icon_path.clone()),
@@ -969,9 +1101,30 @@ impl AgentRegistryPage {
                             .gap_2()
                             .child(icon)
                             .child(Headline::new(agent.name().clone()).size(HeadlineSize::Small))
-                            .child(Label::new(format!("v{}", agent.version())).color(Color::Muted))
-                            .when_some(available_update, |this, version| {
-                                this.child(update_available_badge(agent.id().as_ref(), &version))
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("agent-version-{}", agent.id())))
+                                    .child(
+                                        Label::new(format!("v{}", agent.version()))
+                                            .color(Color::Muted),
+                                    )
+                                    .when(update_status == UpdateStatus::UnknownForNpx, |this| {
+                                        this.tooltip(Tooltip::text(
+                                            "npx で配布されるエージェントは起動時に npm が版を\
+                                             決めるため、インストール済みの版を特定できません。\
+                                             更新の有無はここには表示しません。",
+                                        ))
+                                    }),
+                            )
+                            .map(|this| match &update_status {
+                                UpdateStatus::Available { installed, latest } => {
+                                    this.child(update_available_badge(
+                                        agent.id().as_ref(),
+                                        installed.as_ref(),
+                                        latest,
+                                    ))
+                                }
+                                _ => this,
                             })
                             .when(!supports_current_platform, |this| {
                                 this.child(
@@ -1480,6 +1633,111 @@ mod tests {
         assert_eq!(
             InstallConsentAction::Update.confirm_label(true),
             "了承して更新"
+        );
+    }
+
+    fn cached(versions: &[&str]) -> Vec<String> {
+        versions.iter().map(|version| version.to_string()).collect()
+    }
+
+    #[test]
+    fn update_badge_follows_the_cached_version() {
+        let latest = SharedString::from("1.3.0");
+
+        assert_eq!(
+            update_status(false, &latest, &cached(&["1.2.3"]), None),
+            UpdateStatus::Available {
+                installed: Some(SharedString::from("1.2.3")),
+                latest: latest.clone(),
+            }
+        );
+        assert_eq!(
+            update_badge_label(Some(&SharedString::from("1.2.3")), &latest),
+            "更新あり: v1.2.3 → v1.3.0"
+        );
+
+        assert_eq!(
+            update_status(false, &latest, &cached(&["1.3.0"]), None),
+            UpdateStatus::UpToDate
+        );
+        // The cache spells a version the way a directory name can hold it.
+        assert_eq!(
+            update_status(
+                false,
+                &SharedString::from("2.0.0+build_7"),
+                &cached(&["2.0.0-build_7"]),
+                None
+            ),
+            UpdateStatus::UpToDate
+        );
+        assert_eq!(
+            update_status(false, &latest, &[], None),
+            UpdateStatus::Unknown
+        );
+    }
+
+    /// An older build a running session held open survives the sweep with the
+    /// newest mtime; the latest version sitting beside it is still installed.
+    #[test]
+    fn update_badge_is_not_shown_when_the_latest_is_cached_behind_an_older_one() {
+        let latest = SharedString::from("1.3.0");
+        assert_eq!(
+            update_status(false, &latest, &cached(&["1.2.3", "1.3.0"]), None),
+            UpdateStatus::UpToDate
+        );
+        assert_eq!(
+            update_status(false, &latest, &cached(&["1.2.3", "1.1.0"]), None),
+            UpdateStatus::Available {
+                installed: Some(SharedString::from("1.2.3")),
+                latest: latest.clone(),
+            }
+        );
+    }
+
+    #[test]
+    fn update_badge_is_never_shown_for_npx_agents() {
+        let latest = SharedString::from("1.3.0");
+        assert_eq!(
+            update_status(true, &latest, &cached(&["1.2.3"]), Some(&latest)),
+            UpdateStatus::UnknownForNpx
+        );
+        assert_eq!(
+            update_status(true, &latest, &[], None),
+            UpdateStatus::UnknownForNpx
+        );
+    }
+
+    /// A running connection's report still counts when the host cache has
+    /// nothing to say, e.g. for an agent that only ever ran in the WSL sandbox.
+    #[test]
+    fn update_badge_falls_back_to_the_running_connection() {
+        let latest = SharedString::from("1.3.0");
+        let reported = SharedString::from("1.4.0");
+        assert_eq!(
+            update_status(false, &latest, &[], Some(&reported)),
+            UpdateStatus::Available {
+                installed: None,
+                latest: reported.clone(),
+            }
+        );
+        assert_eq!(update_badge_label(None, &reported), "更新あり: v1.4.0");
+        assert_eq!(
+            update_status(false, &latest, &cached(&["1.2.3"]), Some(&reported)),
+            UpdateStatus::Available {
+                installed: Some(SharedString::from("1.2.3")),
+                latest: latest.clone(),
+            }
+        );
+    }
+
+    /// The connection's report is never withdrawn, so after a new thread has
+    /// installed the announced version the badge must not linger.
+    #[test]
+    fn update_badge_clears_once_the_reported_version_is_cached() {
+        let latest = SharedString::from("1.3.0");
+        assert_eq!(
+            update_status(false, &latest, &cached(&["1.3.0"]), Some(&latest)),
+            UpdateStatus::UpToDate
         );
     }
 

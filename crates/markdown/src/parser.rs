@@ -914,8 +914,23 @@ fn link_html_aligned_spans(
                                 });
                             }
                             HtmlContainerTag::Close(name) => {
-                                let Some(position) =
-                                    open_containers.iter().rposition(|open| open.name == name)
+                                // A cell bounds what its tags can close, as it
+                                // bounds a browser's scope, so a `</div>` in it
+                                // leaves a `<div>` opened before the table open.
+                                let boundary = if name == HtmlContainerName::TableCell {
+                                    0
+                                } else {
+                                    open_containers
+                                        .iter()
+                                        .rposition(|open| open.name == HtmlContainerName::TableCell)
+                                        .map_or(0, |position| position + 1)
+                                };
+                                let Some(position) = open_containers
+                                    .get(boundary..)
+                                    .and_then(|above| {
+                                        above.iter().rposition(|open| open.name == name)
+                                    })
+                                    .map(|offset| boundary + offset)
                                 else {
                                     continue;
                                 };
@@ -1101,7 +1116,17 @@ struct HtmlTableRecord {
     current_row: usize,
     next_column: usize,
     column_count: usize,
-    column_widths: Vec<Option<f32>>,
+    column_widths: Vec<Option<html::html_parser::HtmlColumnWidth>>,
+    /// For each column, the first row a `rowspan` from above no longer covers.
+    covered_until: Vec<usize>,
+    caption: Option<HtmlTableCaption>,
+}
+
+struct HtmlTableCaption {
+    /// What the `<caption>` holds, between its tags, in the document.
+    range: Range<usize>,
+    below: bool,
+    text_align: Option<gpui::TextAlign>,
 }
 
 #[derive(Clone)]
@@ -1113,6 +1138,12 @@ enum HtmlLayoutEntryKind {
         vertical_align: Option<html::html_parser::HtmlVerticalAlign>,
     },
     Cell {
+        text_align: Option<gpui::TextAlign>,
+    },
+    Caption {
+        /// Where the caption's content starts in the document.
+        start: usize,
+        below: bool,
         text_align: Option<gpui::TextAlign>,
     },
     Container {
@@ -1133,7 +1164,10 @@ enum HtmlTableOp {
     OpenTable,
     OpenCell(html::html_parser::HtmlSpanningCell),
     CloseCell,
-    EndRow { row: usize, used_columns: usize },
+    EndRow {
+        row: usize,
+        occupied_columns: Vec<bool>,
+    },
     CloseTable,
 }
 
@@ -1230,7 +1264,7 @@ fn link_html_table_spans(
                                     &mut tables,
                                     kind,
                                     depth,
-                                    range.start + tag.range.start,
+                                    range.start + tag.range.start..range.start + tag.range.end,
                                 ) else {
                                     continue;
                                 };
@@ -1253,6 +1287,16 @@ fn link_html_table_spans(
                         source.get(gap_start..).unwrap_or_default(),
                         &mut tables,
                     );
+                    // A caption is drawn from its block's source, so one whose
+                    // content goes on into the next block cannot be.
+                    for entry in &stack {
+                        if matches!(entry.kind, HtmlLayoutEntryKind::Caption { .. })
+                            && let Some(record) =
+                                entry.table.and_then(|table| tables.get_mut(table))
+                        {
+                            record.broken = true;
+                        }
+                    }
                     if items
                         .iter()
                         .any(|item| matches!(item, HtmlTableBlockItem::Split(_)))
@@ -1433,7 +1477,7 @@ fn link_html_table_spans(
                 &valid,
             );
             for op in split.ops {
-                segments.parts.push(match op {
+                let part = match op {
                     HtmlTableOp::OpenTable => {
                         let Some(record) = tables.get(split.table) else {
                             continue;
@@ -1445,9 +1489,21 @@ fn link_html_table_spans(
                             column_count: record.column_count,
                             text_align: record.text_align,
                             column_widths,
+                            has_caption: record.caption.is_some(),
+                            caption_above: record
+                                .caption
+                                .as_ref()
+                                .filter(|caption| !caption.below)
+                                .and_then(|caption| segments.push_caption(text, caption)),
                         })
                     }
-                    HtmlTableOp::OpenCell(cell) => {
+                    HtmlTableOp::OpenCell(mut cell) => {
+                        // A `rowspan` past the last row would add rows of its
+                        // own below the table.
+                        let row_count =
+                            tables.get(split.table).map_or(1, |record| record.row_count);
+                        cell.row_span =
+                            cell.row_span.min(row_count.saturating_sub(cell.row)).max(1);
                         container_tags.push(HtmlContainerTag::Open {
                             name: HtmlContainerName::TableCell,
                             text_align: cell.text_align,
@@ -1458,11 +1514,26 @@ fn link_html_table_spans(
                         container_tags.push(HtmlContainerTag::Close(HtmlContainerName::TableCell));
                         HtmlTablePart::CloseCell
                     }
-                    HtmlTableOp::EndRow { row, used_columns } => {
-                        HtmlTablePart::EndRow { row, used_columns }
+                    HtmlTableOp::EndRow {
+                        row,
+                        occupied_columns,
+                    } => HtmlTablePart::EndRow {
+                        row,
+                        occupied_columns,
+                    },
+                    HtmlTableOp::CloseTable => {
+                        let caption = tables
+                            .get(split.table)
+                            .and_then(|record| record.caption.as_ref());
+                        HtmlTablePart::CloseTable {
+                            has_caption: caption.is_some(),
+                            caption_below: caption
+                                .filter(|caption| caption.below)
+                                .and_then(|caption| segments.push_caption(text, caption)),
+                        }
                     }
-                    HtmlTableOp::CloseTable => HtmlTablePart::CloseTable,
-                });
+                };
+                segments.parts.push(part);
             }
             segment_start = split.range.end;
             context = split.stack_after;
@@ -1578,6 +1649,27 @@ impl HtmlTableSegments {
             start..self.children.len(),
         ));
     }
+
+    /// Parses a table's `<caption>` into the block's children, centered the
+    /// way a browser centers it, and returns where it landed.
+    fn push_caption(&mut self, text: &str, caption: &HtmlTableCaption) -> Option<Range<usize>> {
+        let fragment = text.get(caption.range.clone())?;
+        if fragment.trim().is_empty() {
+            return None;
+        }
+        let parsed = html::html_parser::parse_html_block(fragment, caption.range.clone())?;
+        let mut elements = parsed.children;
+        if elements.is_empty() {
+            return None;
+        }
+        html::html_parser::inherit_text_align(
+            &mut elements,
+            caption.text_align.unwrap_or(gpui::TextAlign::Center),
+        );
+        let start = self.children.len();
+        self.children.extend(elements);
+        Some(start..self.children.len())
+    }
 }
 
 /// Whether a block may hold a table's tags, to spare reading every other
@@ -1605,7 +1697,9 @@ fn html_layout_text_align(
             HtmlLayoutEntryKind::Container { text_align, .. }
             | HtmlLayoutEntryKind::Cell { text_align }
             | HtmlLayoutEntryKind::Row { text_align, .. } => text_align,
-            HtmlLayoutEntryKind::Table | HtmlLayoutEntryKind::Section => None,
+            HtmlLayoutEntryKind::Table
+            | HtmlLayoutEntryKind::Section
+            | HtmlLayoutEntryKind::Caption { .. } => None,
         })
 }
 
@@ -1629,7 +1723,12 @@ fn mark_html_outside_cells(
         .iter()
         .rev()
         .find(|entry| entry.table.is_some())
-        .is_some_and(|entry| !matches!(entry.kind, HtmlLayoutEntryKind::Cell { .. }));
+        .is_some_and(|entry| {
+            !matches!(
+                entry.kind,
+                HtmlLayoutEntryKind::Cell { .. } | HtmlLayoutEntryKind::Caption { .. }
+            )
+        });
     if outside_cells
         && !fragment.trim().is_empty()
         && html::html_parser::parse_html_block(fragment, 0..fragment.len())
@@ -1686,7 +1785,7 @@ fn apply_html_table_tag(
     tables: &mut Vec<HtmlTableRecord>,
     kind: html::html_parser::HtmlLayoutTagKind,
     depth: usize,
-    source_start: usize,
+    tag_range: Range<usize>,
 ) -> Option<(usize, Vec<HtmlTableOp>)> {
     use html::html_parser::{HtmlLayoutTagKind, HtmlSpanningCell, MAX_SPANNING_TABLE_COLUMNS};
 
@@ -1698,7 +1797,7 @@ fn apply_html_table_tag(
         mark_markdown_outside_cells(stack, tables);
         let table = tables.len();
         tables.push(HtmlTableRecord {
-            source_start,
+            source_start: tag_range.start,
             text_align: text_align.or_else(|| html_layout_text_align(stack, None)),
             closed: false,
             broken: false,
@@ -1709,6 +1808,8 @@ fn apply_html_table_tag(
             next_column: 0,
             column_count: 0,
             column_widths: Vec::new(),
+            covered_until: Vec::new(),
+            caption: None,
         });
         stack.push(HtmlLayoutEntry {
             kind: HtmlLayoutEntryKind::Table,
@@ -1744,10 +1845,10 @@ fn apply_html_table_tag(
 
     match kind {
         HtmlLayoutTagKind::CloseTable => {
-            pop_html_table_entries(stack, table_position, record, &mut ops);
+            pop_html_table_entries(stack, table_position, record, &mut ops, tag_range.start);
         }
         HtmlLayoutTagKind::OpenSection => {
-            pop_html_table_entries(stack, above_table, record, &mut ops);
+            pop_html_table_entries(stack, above_table, record, &mut ops, tag_range.start);
             stack.push(HtmlLayoutEntry {
                 kind: HtmlLayoutEntryKind::Section,
                 table: Some(table),
@@ -1758,14 +1859,14 @@ fn apply_html_table_tag(
             if let Some(position) =
                 find_above(stack, |kind| matches!(kind, HtmlLayoutEntryKind::Section))
             {
-                pop_html_table_entries(stack, position, record, &mut ops);
+                pop_html_table_entries(stack, position, record, &mut ops, tag_range.start);
             }
         }
         HtmlLayoutTagKind::OpenRow {
             text_align,
             vertical_align,
         } => {
-            pop_html_table_entries(stack, row_anchor, record, &mut ops);
+            pop_html_table_entries(stack, row_anchor, record, &mut ops, tag_range.start);
             stack.push(HtmlLayoutEntry {
                 kind: HtmlLayoutEntryKind::Row {
                     text_align,
@@ -1779,7 +1880,7 @@ fn apply_html_table_tag(
             if let Some(position) = find_above(stack, |kind| {
                 matches!(kind, HtmlLayoutEntryKind::Row { .. })
             }) {
-                pop_html_table_entries(stack, position, record, &mut ops);
+                pop_html_table_entries(stack, position, record, &mut ops, tag_range.start);
             }
         }
         HtmlLayoutTagKind::OpenCell {
@@ -1787,18 +1888,19 @@ fn apply_html_table_tag(
             text_align,
             vertical_align,
             col_span,
+            row_span,
             width,
         } => {
             let row_position = match find_above(stack, |kind| {
                 matches!(kind, HtmlLayoutEntryKind::Row { .. })
             }) {
                 Some(position) => {
-                    pop_html_table_entries(stack, position + 1, record, &mut ops);
+                    pop_html_table_entries(stack, position + 1, record, &mut ops, tag_range.start);
                     position
                 }
                 // A cell with no row around it starts one, as in a browser.
                 None => {
-                    pop_html_table_entries(stack, row_anchor, record, &mut ops);
+                    pop_html_table_entries(stack, row_anchor, record, &mut ops, tag_range.start);
                     stack.push(HtmlLayoutEntry {
                         kind: HtmlLayoutEntryKind::Row {
                             text_align: None,
@@ -1828,7 +1930,16 @@ fn apply_html_table_tag(
                 record.next_column = 0;
                 record.row_has_cells = true;
             }
-            let column = record.next_column;
+            // The columns a `rowspan` from an earlier row still covers are
+            // skipped, the way a browser places the cell after them.
+            let mut column = record.next_column;
+            while record
+                .covered_until
+                .get(column)
+                .is_some_and(|until| *until > record.current_row)
+            {
+                column += 1;
+            }
             if column >= MAX_SPANNING_TABLE_COLUMNS {
                 record.broken = true;
                 return None;
@@ -1836,6 +1947,17 @@ fn apply_html_table_tag(
             let col_span = col_span.min(MAX_SPANNING_TABLE_COLUMNS - column);
             record.next_column = column + col_span;
             record.column_count = record.column_count.max(record.next_column);
+            if record.covered_until.len() < record.next_column {
+                record.covered_until.resize(record.next_column, 0);
+            }
+            for until in record
+                .covered_until
+                .get_mut(column..record.next_column)
+                .into_iter()
+                .flatten()
+            {
+                *until = record.current_row + row_span;
+            }
             if col_span == 1
                 && let Some(width) = width
             {
@@ -1843,7 +1965,10 @@ fn apply_html_table_tag(
                     record.column_widths.resize(column + 1, None);
                 }
                 if let Some(column_width) = record.column_widths.get_mut(column) {
-                    *column_width = Some(column_width.map_or(width, |known| known.max(width)));
+                    *column_width = Some(html::html_parser::HtmlColumnWidth::merge(
+                        *column_width,
+                        width,
+                    ));
                 }
             }
 
@@ -1859,6 +1984,7 @@ fn apply_html_table_tag(
                 row: record.current_row,
                 column,
                 col_span,
+                row_span,
                 is_header,
                 text_align,
                 vertical_align: vertical_align.or(row_vertical_align).unwrap_or_default(),
@@ -1868,7 +1994,31 @@ fn apply_html_table_tag(
             if let Some(position) = find_above(stack, |kind| {
                 matches!(kind, HtmlLayoutEntryKind::Cell { .. })
             }) {
-                pop_html_table_entries(stack, position, record, &mut ops);
+                pop_html_table_entries(stack, position, record, &mut ops, tag_range.start);
+            }
+        }
+        HtmlLayoutTagKind::OpenCaption { below, text_align } => {
+            pop_html_table_entries(stack, above_table, record, &mut ops, tag_range.start);
+            if record.caption.is_some() {
+                // Only one caption has a place beside the table.
+                record.broken = true;
+                return None;
+            }
+            stack.push(HtmlLayoutEntry {
+                kind: HtmlLayoutEntryKind::Caption {
+                    start: tag_range.end,
+                    below,
+                    text_align,
+                },
+                table: Some(table),
+                depth,
+            });
+        }
+        HtmlLayoutTagKind::CloseCaption => {
+            if let Some(position) = find_above(stack, |kind| {
+                matches!(kind, HtmlLayoutEntryKind::Caption { .. })
+            }) {
+                pop_html_table_entries(stack, position, record, &mut ops, tag_range.start);
             }
         }
         HtmlLayoutTagKind::OpenTable { .. } | HtmlLayoutTagKind::Container(_) => {}
@@ -1878,12 +2028,14 @@ fn apply_html_table_tag(
 }
 
 /// Closes everything of the innermost table above `keep`, the way the tag
-/// that closes an outer part of the table closes its inner parts.
+/// that closes an outer part of the table closes its inner parts. `at` is
+/// where the closing tag starts in the document.
 fn pop_html_table_entries(
     stack: &mut Vec<HtmlLayoutEntry>,
     keep: usize,
     record: &mut HtmlTableRecord,
     ops: &mut Vec<HtmlTableOp>,
+    at: usize,
 ) {
     while stack.len() > keep {
         let Some(entry) = stack.pop() else {
@@ -1893,12 +2045,28 @@ fn pop_html_table_entries(
             HtmlLayoutEntryKind::Cell { .. } => ops.push(HtmlTableOp::CloseCell),
             HtmlLayoutEntryKind::Row { .. } => {
                 if record.row_has_cells {
+                    let current_row = record.current_row;
                     ops.push(HtmlTableOp::EndRow {
-                        row: record.current_row,
-                        used_columns: record.next_column,
+                        row: current_row,
+                        occupied_columns: record
+                            .covered_until
+                            .iter()
+                            .map(|until| *until > current_row)
+                            .collect(),
                     });
                 }
                 record.row_has_cells = false;
+            }
+            HtmlLayoutEntryKind::Caption {
+                start,
+                below,
+                text_align,
+            } => {
+                record.caption = Some(HtmlTableCaption {
+                    range: start..at.max(start),
+                    below,
+                    text_align,
+                });
             }
             HtmlLayoutEntryKind::Table => {
                 ops.push(HtmlTableOp::CloseTable);
@@ -1984,6 +2152,7 @@ fn inline_html_style_tag(html: &str) -> Option<InlineHtmlTag> {
             paragraph_scale_percent: styles
                 .get("font-size")
                 .and_then(|value| html::html_parser::parse_css_font_scale(value)),
+            text_scale_percent: None,
         }
     } else {
         InlineSpanStyle::default()
@@ -2224,12 +2393,14 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
         span_style: InlineSpanStyle,
         index: usize,
         depth: usize,
+        in_heading: bool,
     }
 
     let mut open: Vec<OpenInlineTag> = Vec::new();
     let mut pairs = Vec::new();
     let mut depth = 0usize;
     let mut link_depth = 0usize;
+    let mut heading_depth = 0usize;
 
     for index in 0..events.len() {
         let Some((range, event)) = events.get(index) else {
@@ -2241,15 +2412,19 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
             MarkdownEvent::InlineHtml => true,
             MarkdownEvent::Start(tag) => {
                 depth += 1;
-                if matches!(tag, MarkdownTag::Link { .. }) {
-                    link_depth += 1;
+                match tag {
+                    MarkdownTag::Link { .. } => link_depth += 1,
+                    MarkdownTag::Heading { .. } => heading_depth += 1,
+                    _ => {}
                 }
                 false
             }
             MarkdownEvent::End(tag) => {
                 depth = depth.saturating_sub(1);
-                if matches!(tag, MarkdownTagEnd::Link) {
-                    link_depth = link_depth.saturating_sub(1);
+                match tag {
+                    MarkdownTagEnd::Link => link_depth = link_depth.saturating_sub(1),
+                    MarkdownTagEnd::Heading(_) => heading_depth = heading_depth.saturating_sub(1),
+                    _ => {}
                 }
                 open.retain(|open| open.depth <= depth);
                 false
@@ -2308,6 +2483,7 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
                 span_style,
                 index,
                 depth,
+                in_heading: heading_depth > 0,
             });
         }
     }
@@ -2348,6 +2524,12 @@ fn style_inline_html_tags(events: &mut [(Range<usize>, MarkdownEvent)], text: &s
                 if span_style.paragraph_scale_percent.is_some()
                     && !wraps_whole_block_content(events, open_index, close_index)
                 {
+                    // A heading is drawn at the size of its level, which a
+                    // browser would also give up for the span; keeping the
+                    // heading's own size keeps its levels telling apart.
+                    if !open.in_heading {
+                        span_style.text_scale_percent = span_style.paragraph_scale_percent;
+                    }
                     span_style.paragraph_scale_percent = None;
                 }
                 inline_html_style_events(name, span_style)
@@ -2588,30 +2770,20 @@ pub enum InlineHtmlStyle {
 }
 
 /// What a `<span>`, `<mark>` or `<font>` asks the preview to draw. Colors are
-/// `0xRRGGBB`, a translucent one with its transparency in the top byte (write
-/// one out with [`inline_span_css_color`]); a `<mark>` carries the yellow
-/// background and black text a browser gives it unless its `style` says
-/// otherwise.
+/// `0xRRGGBB`, a translucent one with its transparency in the top byte; a
+/// `<mark>` carries the yellow background and black text a browser gives it
+/// unless its `style` says otherwise.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InlineSpanStyle {
     pub color: Option<u32>,
     pub background: Option<u32>,
     /// The `font-size`, as a percentage of the surrounding text, of a span that
-    /// wraps a paragraph's whole content. A span over part of a paragraph
-    /// leaves this unset: a line is laid out at a single font size.
+    /// wraps a paragraph's whole content, which sizes the paragraph's lines.
     pub paragraph_scale_percent: Option<u16>,
-}
-
-/// A color of an [`InlineSpanStyle`] as CSS: `#rrggbb`, or `rgba()` for a
-/// translucent one.
-pub fn inline_span_css_color(color: u32) -> String {
-    match html::html_parser::css_color_channels(color) {
-        [red, green, blue, u8::MAX] => format!("#{red:02x}{green:02x}{blue:02x}"),
-        [red, green, blue, alpha] => {
-            let alpha = f32::from(alpha) / 255.0;
-            format!("rgba({red}, {green}, {blue}, {alpha:.3})")
-        }
-    }
+    /// The `font-size`, as a percentage of the surrounding text, of a span over
+    /// part of a paragraph, whose text is drawn at that size within its lines.
+    /// A span in a heading asks for neither size.
+    pub text_scale_percent: Option<u16>,
 }
 
 /// Tags for elements that can contain other elements.
@@ -2805,9 +2977,9 @@ mod tests {
     mod table_spans {
         use super::*;
         use html::html_parser::{
-            HtmlContainerName, HtmlContainerTag, HtmlParagraphChunk, HtmlSpanningCell,
-            HtmlSpanningTable, HtmlTablePart, HtmlVerticalAlign, ParsedHtmlElement,
-            html_details_key, html_paragraph_text,
+            HtmlColumnWidth, HtmlContainerName, HtmlContainerTag, HtmlParagraphChunk,
+            HtmlSpanningCell, HtmlSpanningTable, HtmlTablePart, HtmlVerticalAlign,
+            ParsedHtmlElement, html_details_key, html_paragraph_text,
         };
 
         fn table_parts(source: &str, block_source: &str) -> Vec<HtmlTablePart> {
@@ -2833,6 +3005,7 @@ mod tests {
                 row,
                 column,
                 col_span: 1,
+                row_span: 1,
                 is_header: false,
                 text_align: None,
                 vertical_align: HtmlVerticalAlign::Middle,
@@ -2845,6 +3018,15 @@ mod tests {
                 column_count,
                 text_align: None,
                 column_widths: vec![None; column_count],
+                has_caption: false,
+                caption_above: None,
+            }
+        }
+
+        fn close_table() -> HtmlTablePart {
+            HtmlTablePart::CloseTable {
+                has_caption: false,
+                caption_below: None,
             }
         }
 
@@ -2875,9 +3057,9 @@ mod tests {
                     HtmlTablePart::CloseCell,
                     HtmlTablePart::EndRow {
                         row: 0,
-                        used_columns: 2
+                        occupied_columns: vec![true, true],
                     },
-                    HtmlTablePart::CloseTable,
+                    close_table(),
                 ]
             );
         }
@@ -2890,7 +3072,7 @@ mod tests {
                 table_parts(source, "<table>"),
                 vec![
                     HtmlTablePart::OpenTable(HtmlSpanningTable {
-                        column_widths: vec![Some(120.0), None],
+                        column_widths: vec![Some(HtmlColumnWidth::Pixels(120.0)), None],
                         ..table(0, 2)
                     }),
                     HtmlTablePart::OpenCell(HtmlSpanningCell {
@@ -2907,7 +3089,7 @@ mod tests {
                     HtmlTablePart::CloseCell,
                     HtmlTablePart::EndRow {
                         row: 0,
-                        used_columns: 2
+                        occupied_columns: vec![true, true],
                     },
                     HtmlTablePart::OpenCell(HtmlSpanningCell {
                         vertical_align: HtmlVerticalAlign::Top,
@@ -2931,7 +3113,7 @@ mod tests {
                     HtmlTablePart::CloseCell,
                     HtmlTablePart::EndRow {
                         row: 1,
-                        used_columns: 2
+                        occupied_columns: vec![true, true],
                     },
                     HtmlTablePart::OpenCell(cell(2, 0)),
                 ]
@@ -2942,9 +3124,9 @@ mod tests {
                     HtmlTablePart::CloseCell,
                     HtmlTablePart::EndRow {
                         row: 2,
-                        used_columns: 1
+                        occupied_columns: vec![true, false],
                     },
-                    HtmlTablePart::CloseTable,
+                    close_table(),
                 ]
             );
         }
@@ -2967,9 +3149,9 @@ mod tests {
                     HtmlTablePart::CloseCell,
                     HtmlTablePart::EndRow {
                         row: 0,
-                        used_columns: 2
+                        occupied_columns: vec![true, true],
                     },
-                    HtmlTablePart::CloseTable,
+                    close_table(),
                 ]
             );
         }
@@ -3060,6 +3242,254 @@ mod tests {
             ));
         }
 
+        #[test]
+        fn test_row_spans_push_the_cells_below_them_to_the_right() {
+            let source = "<table>\n<tr>\n<td rowspan=\"2\">\n\nA\n\n</td>\n<td>\n\nB\n\n</td>\n</tr>\n<tr>\n<td rowspan=\"9\">\n\nC\n\n</td>\n</tr>\n<tr>\n<td>\n\nD\n\n</td>\n</tr>\n</table>\n";
+
+            assert_eq!(
+                table_parts(source, "<table>"),
+                vec![
+                    HtmlTablePart::OpenTable(table(0, 2)),
+                    HtmlTablePart::OpenCell(HtmlSpanningCell {
+                        row_span: 2,
+                        ..cell(0, 0)
+                    }),
+                ]
+            );
+            assert_eq!(
+                table_parts(source, "</td>\n</tr>\n<tr>\n<td rowspan"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::EndRow {
+                        row: 0,
+                        occupied_columns: vec![true, true],
+                    },
+                    HtmlTablePart::OpenCell(HtmlSpanningCell {
+                        // Past the last row the span stops at the table's end.
+                        row_span: 2,
+                        ..cell(1, 1)
+                    }),
+                ],
+                "the cell under `B` sits beside `A`, which still covers column 0"
+            );
+            assert_eq!(
+                table_parts(source, "</td>\n</tr>\n<tr>\n<td>\n\nD"),
+                vec![
+                    HtmlTablePart::CloseCell,
+                    HtmlTablePart::EndRow {
+                        row: 1,
+                        occupied_columns: vec![true, true],
+                    },
+                    HtmlTablePart::OpenCell(cell(2, 0)),
+                ],
+                "`A` no longer covers the third row"
+            );
+        }
+
+        /// Every cell's place and every row's taken columns, across all of the
+        /// table's blocks, in document order.
+        fn table_layout(source: &str) -> Vec<(&'static str, usize, usize, usize, usize)> {
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            let mut blocks = parsed.html_blocks.iter().collect::<Vec<_>>();
+            blocks.sort_by_key(|(start, _)| **start);
+            blocks
+                .into_iter()
+                .flat_map(|(_, block)| block.table_parts.iter())
+                .filter_map(|part| match part {
+                    HtmlTablePart::OpenCell(cell) => {
+                        Some(("cell", cell.row, cell.column, cell.row_span, cell.col_span))
+                    }
+                    HtmlTablePart::EndRow {
+                        row,
+                        occupied_columns,
+                    } => Some((
+                        "row",
+                        *row,
+                        occupied_columns
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, taken)| **taken)
+                            .map(|(column, _)| 1 << column)
+                            .sum(),
+                        occupied_columns.len(),
+                        0,
+                    )),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        #[test]
+        fn test_row_spans_with_col_spans_and_rows_that_end_early() {
+            let cell = |contents: &str, attributes: &str| {
+                format!("<td{attributes}>\n\n{contents}\n\n</td>\n")
+            };
+            let source = [
+                "<table>\n<tr>\n".to_string(),
+                cell("A", " rowspan=\"2\" colspan=\"2\""),
+                cell("B", ""),
+                "</tr>\n<tr>\n".to_string(),
+                cell("C", ""),
+                "</tr>\n<tr>\n".to_string(),
+                cell("D", ""),
+                cell("E", " rowspan=\"2\""),
+                cell("F", ""),
+                "</tr>\n<tr>\n".to_string(),
+                // Ends before the column `E` still covers, and the one after it.
+                cell("G", ""),
+                "</tr>\n<tr>\n".to_string(),
+                cell("H", ""),
+                cell("I", " rowspan=\"7\" colspan=\"2\""),
+                "</tr>\n</table>\n".to_string(),
+            ]
+            .concat();
+            // Columns taken in each ended row are a bit set: 0b111 is all three.
+            assert_eq!(
+                table_layout(&source),
+                vec![
+                    ("cell", 0, 0, 2, 2),
+                    ("cell", 0, 2, 1, 1),
+                    ("row", 0, 0b111, 3, 0),
+                    ("cell", 1, 2, 1, 1),
+                    ("row", 1, 0b111, 3, 0),
+                    ("cell", 2, 0, 1, 1),
+                    ("cell", 2, 1, 2, 1),
+                    ("cell", 2, 2, 1, 1),
+                    ("row", 2, 0b111, 3, 0),
+                    ("cell", 3, 0, 1, 1),
+                    ("row", 3, 0b011, 3, 0),
+                    ("cell", 4, 0, 1, 1),
+                    // Past the last row the span stops at the table's end.
+                    ("cell", 4, 1, 1, 2),
+                    ("row", 4, 0b111, 3, 0),
+                ]
+            );
+        }
+
+        #[test]
+        fn test_percentage_widths_reach_the_columns() {
+            let source = "<table>\n<tr>\n<td width=\"30%\">\n\nA\n\n</td>\n<td style=\"width: 200px\">\n\nB\n\n</td>\n<td>\n\nC\n\n</td>\n</tr>\n<tr>\n<td width=\"120\">\n\nD\n\n</td>\n</tr>\n</table>\n";
+            assert_eq!(
+                table_parts(source, "<table>").first(),
+                Some(&HtmlTablePart::OpenTable(HtmlSpanningTable {
+                    column_widths: vec![
+                        Some(HtmlColumnWidth::Fraction(0.3)),
+                        Some(HtmlColumnWidth::Pixels(200.0)),
+                        None,
+                    ],
+                    ..table(0, 3)
+                }))
+            );
+        }
+
+        fn caption_text(source: &str, block_source: &str, range: &Range<usize>) -> String {
+            let block_start = source
+                .find(block_source)
+                .expect("the block is in the source");
+            let parsed = parse_markdown_with_options(source, true, false, false);
+            let block = parsed
+                .html_blocks
+                .get(&block_start)
+                .expect("the block is an HTML block");
+            block
+                .children
+                .get(range.clone())
+                .unwrap_or_default()
+                .iter()
+                .map(|element| match element {
+                    ParsedHtmlElement::Paragraph(paragraph) => {
+                        assert_eq!(paragraph.text_align, Some(TextAlign::Center));
+                        html_paragraph_text(&paragraph.contents)
+                    }
+                    other => panic!("expected the caption's paragraph, got {other:?}"),
+                })
+                .collect()
+        }
+
+        #[test]
+        fn test_a_caption_keeps_the_table_and_is_drawn_above_or_below_it() {
+            let source = "<div align=\"right\">\n\n<table>\n<caption><b>表題</b></caption>\n<tr>\n<td>\n\nA\n\n</td>\n</tr>\n</table>\n\n</div>\n";
+            let parts = table_parts(source, "<table>");
+            let Some(HtmlTablePart::OpenTable(HtmlSpanningTable {
+                has_caption: true,
+                caption_above: Some(caption),
+                ..
+            })) = parts.first()
+            else {
+                panic!("expected a table with its caption above, got {parts:?}");
+            };
+            assert_eq!(
+                caption_text(source, "<table>", caption),
+                "表題",
+                "the caption is centered even where the div aligns right"
+            );
+            assert!(
+                !parts
+                    .iter()
+                    .any(|part| matches!(part, HtmlTablePart::Elements(_))),
+                "the caption is not drawn a second time as the table's HTML: {parts:?}"
+            );
+            assert_eq!(
+                table_parts(source, "</td>").last(),
+                Some(&HtmlTablePart::CloseTable {
+                    has_caption: true,
+                    caption_below: None,
+                })
+            );
+
+            let source = "<table>\n<caption align=\"bottom\">下の表題</caption>\n<tr>\n<td>\n\nA\n\n</td>\n</tr>\n</table>\n";
+            let parts = table_parts(source, "<table>");
+            assert!(
+                matches!(
+                    parts.first(),
+                    Some(HtmlTablePart::OpenTable(HtmlSpanningTable {
+                        has_caption: true,
+                        caption_above: None,
+                        ..
+                    }))
+                ),
+                "{parts:?}"
+            );
+            let parts = table_parts(source, "</td>");
+            let Some(HtmlTablePart::CloseTable {
+                has_caption: true,
+                caption_below: Some(caption),
+            }) = parts.last()
+            else {
+                panic!("expected the caption below the table, got {parts:?}");
+            };
+            assert_eq!(caption_text(source, "</td>", caption), "下の表題");
+
+            // A row closes a caption left open, as in a browser.
+            let source = "<table><caption>開いたまま<tr><td>\n\nA\n\n</td></tr></table>\n";
+            let parts = table_parts(source, "<table>");
+            let Some(HtmlTablePart::OpenTable(HtmlSpanningTable {
+                caption_above: Some(caption),
+                ..
+            })) = parts.first()
+            else {
+                panic!("expected a table with its caption above, got {parts:?}");
+            };
+            assert_eq!(caption_text(source, "<table>", caption), "開いたまま");
+        }
+
+        /// A cell bounds what its tags close, so a stray `</div>` in it leaves
+        /// the `<div>` opened before the table open around the cells after it.
+        #[test]
+        fn test_a_div_close_in_a_cell_leaves_a_div_around_the_table_open() {
+            let source = "<div align=\"center\">\n\n<table><tr><td>\n\nA\n\n</div>\n\nB\n\n</td><td>\n\nC\n\n</td></tr></table>\n\nD\n\n</div>\n\n後ろ\n";
+            assert_eq!(
+                aligned_texts(source),
+                vec![
+                    ("A", Some(TextAlign::Center)),
+                    ("B", Some(TextAlign::Center)),
+                    ("C", Some(TextAlign::Center)),
+                    ("D", Some(TextAlign::Center)),
+                    ("後ろ", None),
+                ]
+            );
+        }
+
         /// What cannot be paired is drawn as it was before rather than losing
         /// what does not fit in a cell.
         #[test]
@@ -3082,8 +3512,11 @@ mod tests {
                 "<table><tr><td>\n\n- </td></tr></table>\n",
                 // Whole in one block, which the HTML parser draws by itself.
                 "<table><tr><td>本文</td></tr></table>\n\n後ろ\n",
-                // A caption has no place among the cells, so it would be lost.
-                "<table>\n<caption>表題</caption>\n<tr>\n<td>\n\nA\n\n</td>\n</tr>\n</table>\n",
+                // A caption whose content goes on into the next blocks.
+                "<table>\n<caption>\n\n表題\n\n</caption>\n<tr>\n<td>\n\nA\n\n</td>\n</tr>\n</table>\n",
+                "<table>\n<caption>表題\n\n</caption>\n<tr>\n<td>\n\nA\n\n</td>\n</tr>\n</table>\n",
+                // A second caption has no place beside the table.
+                "<table>\n<caption>一</caption><caption>二</caption>\n<tr>\n<td>\n\nA\n\n</td>\n</tr>\n</table>\n",
             ] {
                 assert!(!has_table_parts(source), "{source:?}");
                 let parsed = parse_markdown_with_options(source, true, false, false);
@@ -3288,9 +3721,9 @@ mod tests {
                     HtmlTablePart::CloseCell,
                     HtmlTablePart::EndRow {
                         row: 0,
-                        used_columns: 1
+                        occupied_columns: vec![true],
                     },
-                    HtmlTablePart::CloseTable,
+                    close_table(),
                 ]
             );
             assert_eq!(
@@ -5702,7 +6135,7 @@ mod tests {
                     InlineSpanStyle {
                         color: Some(0x000000),
                         background: Some(0xffff00),
-                        paragraph_scale_percent: None,
+                        ..Default::default()
                     }
                 ),
                 (
@@ -5710,7 +6143,7 @@ mod tests {
                     InlineSpanStyle {
                         color: Some(0x000000),
                         background: Some(0xb7ebc6),
-                        paragraph_scale_percent: None,
+                        ..Default::default()
                     }
                 ),
                 (
@@ -5778,13 +6211,14 @@ mod tests {
         let [(_, translucent), (_, clear)] = styles.as_slice() else {
             panic!("expected two styled spans: {styles:?}");
         };
+        let channels = html::html_parser::css_color_channels;
         let color = translucent.color.expect("the span has a color");
-        assert_eq!(inline_span_css_color(color), "rgba(255, 0, 16, 0.502)");
+        assert_eq!(channels(color), [255, 0, 16, 128]);
         let background = translucent.background.expect("the span has a background");
         assert_eq!(background, 0xff0000);
-        assert_eq!(inline_span_css_color(background), "#ff0000");
+        assert_eq!(channels(background), [255, 0, 0, 255]);
         let clear = clear.background.expect("the mark has a background");
-        assert_eq!(inline_span_css_color(clear), "rgba(0, 0, 0, 0.000)");
+        assert_eq!(channels(clear), [0, 0, 0, 0]);
     }
 
     #[test]
@@ -5859,51 +6293,36 @@ mod tests {
         let scale = |source: &str| {
             span_styles(source)
                 .into_iter()
-                .map(|(_, style)| style.paragraph_scale_percent)
+                .map(|(_, style)| (style.paragraph_scale_percent, style.text_scale_percent))
                 .collect::<Vec<_>>()
         };
         let large = "<span style=\"font-size: 1.25em\">";
+        let whole = (Some(125), None);
+        let part = (None, Some(125));
 
         // Whitespace around the paragraph is not part of its text.
-        assert_eq!(scale(&format!("  {large}a</span>  ")), [Some(125)]);
-        assert_eq!(scale(&format!("{large}a\nb</span>")), [Some(125)]);
-        assert_eq!(scale(&format!("{large}a  \nb</span>")), [Some(125)]);
-        // Anything the span leaves out keeps the paragraph at its size.
-        assert_eq!(
-            scale(&format!("{large}a</span><br>")),
-            Vec::<Option<u16>>::new()
-        );
-        assert_eq!(
-            scale(&format!("<br>{large}a</span>")),
-            Vec::<Option<u16>>::new()
-        );
-        assert_eq!(
-            scale(&format!("{large}a</span>\nb")),
-            Vec::<Option<u16>>::new()
-        );
-        assert_eq!(
-            scale(&format!("a\n{large}b</span>")),
-            Vec::<Option<u16>>::new()
-        );
+        assert_eq!(scale(&format!("  {large}a</span>  ")), [whole]);
+        assert_eq!(scale(&format!("{large}a\nb</span>")), [whole]);
+        assert_eq!(scale(&format!("{large}a  \nb</span>")), [whole]);
+        // Anything the span leaves out keeps the paragraph at its size, and
+        // the span's text alone is drawn at the span's.
+        assert_eq!(scale(&format!("{large}a</span><br>")), [part]);
+        assert_eq!(scale(&format!("<br>{large}a</span>")), [part]);
+        assert_eq!(scale(&format!("{large}a</span>\nb")), [part]);
+        assert_eq!(scale(&format!("a\n{large}b</span>")), [part]);
         assert_eq!(
             scale(&format!("{large}a</span>{large}b</span>")),
-            Vec::<Option<u16>>::new()
+            [part, part]
         );
-        assert_eq!(
-            scale(&format!("{large}a</span> `code`")),
-            Vec::<Option<u16>>::new()
-        );
-        assert_eq!(
-            scale(&format!("{large}a</span>[link](x)")),
-            Vec::<Option<u16>>::new()
-        );
+        assert_eq!(scale(&format!("{large}a</span> `code`")), [part]);
+        assert_eq!(scale(&format!("{large}a</span>[link](x)")), [part]);
         // A size inside another span that holds the whole paragraph is not the
         // paragraph's.
         assert_eq!(
             scale(&format!(
                 "<span style=\"color: red\">{large}a</span> b</span>"
             )),
-            [None]
+            [(None, None), part]
         );
     }
 
@@ -5974,24 +6393,39 @@ mod tests {
             [Some(125)]
         );
 
-        // Part of a paragraph cannot change size, and a span that asks for
-        // nothing else is dropped altogether.
+        // Part of a paragraph is drawn at its size within the paragraph's
+        // lines instead.
+        let text_scale = |source: &str| {
+            span_styles(source)
+                .into_iter()
+                .map(|(_, style)| (style.paragraph_scale_percent, style.text_scale_percent))
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
-            scale("a <span style=\"font-size: 1.25em\">b</span>"),
-            Vec::<Option<u16>>::new()
+            text_scale("a <span style=\"font-size: 1.25em\">b</span>"),
+            [(None, Some(125))]
         );
         assert_eq!(
-            scale("<span style=\"font-size: 1.25em\">a</span> b"),
-            Vec::<Option<u16>>::new()
+            text_scale("<span style=\"font-size: 1.25em\">a</span> b"),
+            [(None, Some(125))]
         );
-        // Headings are sized by their level.
+        assert_eq!(
+            text_scale("- 項目の <span style=\"font-size: 24px\">一部</span>"),
+            [(None, Some(150))]
+        );
+        // Headings are sized by their level, and a span that asks for nothing
+        // else is dropped altogether.
         assert_eq!(
             scale("# <span style=\"font-size: 1.25em\">見出し</span>"),
             Vec::<Option<u16>>::new()
         );
-        // A color on the same span survives when the size cannot apply.
         assert_eq!(
-            span_styles("<span style=\"color: red; font-size: 1.25em\">a</span> b"),
+            scale("## 見出しの <span style=\"font-size: 1.25em\">一部</span>"),
+            Vec::<Option<u16>>::new()
+        );
+        // A color on the same span in a heading survives without the size.
+        assert_eq!(
+            span_styles("# <span style=\"color: red; font-size: 1.25em\">a</span> b"),
             vec![(
                 "<span style=\"color: red; font-size: 1.25em\">a</span>".to_string(),
                 InlineSpanStyle {

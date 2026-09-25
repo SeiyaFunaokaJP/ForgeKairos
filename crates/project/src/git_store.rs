@@ -80,7 +80,7 @@ use std::{
     str::FromStr,
     sync::{
         Arc,
-        atomic::{self, AtomicU64},
+        atomic::{self, AtomicBool, AtomicU64},
     },
     time::{Duration, Instant, SystemTime},
 };
@@ -115,6 +115,7 @@ pub struct GitStore {
     diffs: HashMap<BufferId, Entity<BufferGitState>>,
     buffer_ids_by_index_text_buffer_id: HashMap<BufferId, BufferId>,
     shared_diffs: HashMap<proto::PeerId, HashMap<BufferId, SharedDiffs>>,
+    commit_searches: HashMap<(proto::PeerId, u64), oneshot::Sender<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -1074,6 +1075,7 @@ impl GitStore {
             _subscriptions,
             loading_diffs: HashMap::default(),
             shared_diffs: HashMap::default(),
+            commit_searches: HashMap::default(),
             diffs: HashMap::default(),
             buffer_ids_by_index_text_buffer_id: HashMap::default(),
         }
@@ -1142,6 +1144,7 @@ impl GitStore {
         client.add_entity_request_handler(Self::handle_get_commit_data);
         client.add_entity_stream_request_handler(Self::handle_get_initial_graph_data);
         client.add_entity_stream_request_handler(Self::handle_search_commits);
+        client.add_entity_message_handler(Self::handle_cancel_search_commits);
     }
 
     pub fn is_local(&self) -> bool {
@@ -4144,6 +4147,11 @@ impl GitStore {
         let repository_id = RepositoryId::from_proto(envelope.payload.repository_id);
         let repository_handle = Self::repository_for_request(&this, repository_id, &mut cx)?;
         let search_args = search_commit_args_from_proto(&envelope.payload)?;
+        let sender_id = envelope.original_sender_id.unwrap_or(envelope.sender_id);
+        let search_key = envelope
+            .payload
+            .search_id
+            .map(|search_id| (sender_id, search_id));
         let log_source = log_source_from_proto(
             envelope
                 .payload
@@ -4157,13 +4165,14 @@ impl GitStore {
         });
 
         let (mut response_tx, response_rx) = mpsc::unbounded();
-        cx.background_spawn(async move {
+        let forward_task = cx.background_spawn(async move {
             // Said before any result, and even when there are none, so that the client can tell
             // this server applied every filter from an older one that dropped some.
             if response_tx
                 .send(Ok(proto::SearchCommitsResponse {
                     shas: Vec::new(),
                     filters_version: Some(SEARCH_COMMITS_FILTERS_VERSION),
+                    cancellable: Some(true),
                 }))
                 .await
                 .is_err()
@@ -4188,6 +4197,7 @@ impl GitStore {
                         .send(Ok(proto::SearchCommitsResponse {
                             shas: mem::take(&mut shas),
                             filters_version: None,
+                            cancellable: None,
                         }))
                         .await
                         .is_err()
@@ -4202,12 +4212,13 @@ impl GitStore {
                     .send(Ok(proto::SearchCommitsResponse {
                         shas,
                         filters_version: None,
+                        cancellable: None,
                     }))
                     .await
                     .ok();
             }
 
-            // The client stops listening at the same limit but cannot tell this server so; the
+            // A client too old to cancel stops listening at the same limit without saying so; the
             // search is dropped here, which stops git, instead of walking the rest of the history.
             if reached_limit {
                 drop(search_task);
@@ -4221,10 +4232,45 @@ impl GitStore {
                     .context("failed to send the commit search error")
                     .log_err();
             }
-        })
-        .detach();
+        });
+
+        match search_key {
+            None => forward_task.detach(),
+            Some(search_key) => {
+                let (cancel_tx, cancel_rx) = oneshot::channel();
+                this.update(&mut cx, |this, _| {
+                    this.commit_searches.insert(search_key, cancel_tx)
+                });
+                let this = this.downgrade();
+                // Winning the race drops the forwarding task, which drops the search (stopping
+                // git) and ends the response stream.
+                cx.spawn(async move |cx| {
+                    future::select(forward_task, cancel_rx).await;
+                    this.update(cx, |this, _| this.commit_searches.remove(&search_key))
+                        .ok();
+                })
+                .detach();
+            }
+        }
 
         Ok(response_rx)
+    }
+
+    async fn handle_cancel_search_commits(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::CancelSearchCommits>,
+        mut cx: AsyncApp,
+    ) -> Result<()> {
+        let search_key = (
+            envelope.original_sender_id.unwrap_or(envelope.sender_id),
+            envelope.payload.search_id,
+        );
+        this.update(&mut cx, |this, _| {
+            if let Some(cancel_tx) = this.commit_searches.remove(&search_key) {
+                cancel_tx.send(()).ok();
+            }
+        });
+        Ok(())
     }
 
     async fn handle_edit_ref(
@@ -7378,15 +7424,46 @@ impl Repository {
                 }
                 Ok(RepositoryState::Remote(RemoteRepositoryState { client, project_id })) => {
                     let requires_filters = search_args.uses_filters_beyond_author();
-                    let stream = client
-                        .request_stream(search_commit_args_to_proto(
-                            project_id.to_proto(),
-                            repository_id.to_proto(),
-                            &log_source,
-                            &search_args,
-                        ))
-                        .await?;
-                    forward_remote_commit_search(stream, requires_filters, request_tx).await
+                    let search_id = NEXT_COMMIT_SEARCH_ID.fetch_add(1, atomic::Ordering::Relaxed);
+                    let mut request = search_commit_args_to_proto(
+                        project_id.to_proto(),
+                        repository_id.to_proto(),
+                        &log_source,
+                        &search_args,
+                    );
+                    request.search_id = Some(search_id);
+                    let server_cancels = Arc::new(AtomicBool::new(false));
+                    // Runs when the search is dropped before the server finished it (stopped,
+                    // replaced, or past the limit), so that the server's git stops as well.
+                    // An older server would not know the message, so it only goes to one that
+                    // said it takes it.
+                    let cancel_on_drop = util::defer({
+                        let client = client.clone();
+                        let server_cancels = server_cancels.clone();
+                        move || {
+                            if server_cancels.load(atomic::Ordering::Relaxed) {
+                                client
+                                    .send(proto::CancelSearchCommits {
+                                        project_id: project_id.to_proto(),
+                                        repository_id: repository_id.to_proto(),
+                                        search_id,
+                                    })
+                                    .log_err();
+                            }
+                        }
+                    });
+                    let stream = client.request_stream(request).await?;
+                    let end = forward_remote_commit_search(
+                        stream,
+                        requires_filters,
+                        &server_cancels,
+                        request_tx,
+                    )
+                    .await;
+                    if matches!(end, Ok(RemoteCommitSearchEnd::ServerFinished)) {
+                        cancel_on_drop.abort();
+                    }
+                    end.map(|_| ())
                 }
                 Err(error) => Err(anyhow!(error)),
             }
@@ -11169,11 +11246,30 @@ impl Repository {
                 "コミットの件名を読めませんでした: {}",
                 subject.failure_message()
             );
-            let pushed = Self::commit_is_pushed_in_job(&repo, id, &target.sha).await?;
+            let pushed_probe =
+                Self::run_step_in_job(&repo, id, git::repository::pushed_probe_args(&target.sha))
+                    .await?;
+            let branch = Self::run_step_in_job(
+                &repo,
+                id,
+                vec![
+                    "rev-parse".into(),
+                    "--symbolic-full-name".into(),
+                    "HEAD".into(),
+                ],
+            )
+            .await?;
+            let branch = branch.stdout.trim().to_string();
+            anyhow::ensure!(
+                branch.starts_with("refs/heads/"),
+                "detached HEAD では使えません。先にブランチに切り替えてください。"
+            );
             Ok(git::repository::FixupTarget {
                 sha: target.sha,
                 subject: subject.stdout.trim_end_matches(['\r', '\n']).to_string(),
-                pushed,
+                pushed: git::repository::is_pushed_from_probe(&pushed_probe),
+                has_upstream: git::repository::has_upstream_from_probe(&pushed_probe),
+                branch,
             })
         })
     }
@@ -11209,7 +11305,6 @@ impl Repository {
                     git::repository::RewrittenCommits::Range(&target.range),
                 )
                 .await?;
-                let commits_before = Self::count_commits_in_job(&repo, id, &target.range).await?;
 
                 let steps =
                     git::repository::fixup_commit_commands(&target.sha, &changes, &untracked)?;
@@ -11302,8 +11397,18 @@ impl Repository {
                         new_head,
                     });
                 }
-                let commits_after = Self::count_commits_in_job(&repo, id, &target.range).await?;
-                if commits_after != commits_before {
+                let subjects_after = Self::run_step_in_job(
+                    &repo,
+                    id,
+                    vec!["log".into(), "--format=%s".into(), target.range.clone()],
+                )
+                .await?;
+                anyhow::ensure!(
+                    subjects_after.succeeded(),
+                    "書き換えた範囲を調べられませんでした: {}",
+                    subjects_after.failure_message()
+                );
+                if git::repository::fixup_left_unfolded(&subjects_after.stdout) {
                     return Ok(FixupOutcome::LeftUnfolded {
                         old_head: target.head,
                         new_head,
@@ -11751,29 +11856,6 @@ impl Repository {
             return Ok(true);
         }
         Self::head_is_detached_in_job(repo, id).await
-    }
-
-    async fn count_commits_in_job(
-        repo: &RepositoryState,
-        id: RepositoryId,
-        range: &str,
-    ) -> Result<usize> {
-        let output = Self::run_step_in_job(
-            repo,
-            id,
-            vec!["log".into(), "--format=%H".into(), range.to_string()],
-        )
-        .await?;
-        anyhow::ensure!(
-            output.succeeded(),
-            "書き換える範囲を調べられませんでした: {}",
-            output.failure_message()
-        );
-        Ok(output
-            .stdout
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .count())
     }
 
     async fn commit_is_pushed_in_job(
@@ -13449,6 +13531,7 @@ fn search_commit_args_to_proto(
             .sha_prefix
             .as_ref()
             .map(|sha_prefix| sha_prefix.to_string()),
+        search_id: None,
     }
 }
 
@@ -13497,17 +13580,29 @@ fn search_commit_args_from_proto(request: &proto::SearchCommits) -> Result<Searc
     Ok(search_args)
 }
 
+static NEXT_COMMIT_SEARCH_ID: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug, PartialEq, Eq)]
+enum RemoteCommitSearchEnd {
+    ServerFinished,
+    ReceiverClosed,
+}
+
 /// Passes a remote search's results on. When the search uses a filter an older server would drop,
 /// an answer from a server that does not say it applies them all is refused, not shown: it would
 /// hold more commits than were asked for.
 async fn forward_remote_commit_search(
     mut stream: impl Stream<Item = Result<proto::SearchCommitsResponse>> + Unpin,
     requires_filters: bool,
+    server_cancels: &AtomicBool,
     request_tx: async_channel::Sender<Oid>,
-) -> Result<()> {
+) -> Result<RemoteCommitSearchEnd> {
     let mut filters_checked = !requires_filters;
     while let Some(response) = stream.next().await {
         let response = response?;
+        if response.cancellable == Some(true) {
+            server_cancels.store(true, atomic::Ordering::Relaxed);
+        }
         if !filters_checked {
             anyhow::ensure!(
                 response
@@ -13520,12 +13615,12 @@ async fn forward_remote_commit_search(
         for sha in &response.shas {
             let oid = Oid::from_str(sha)?;
             if request_tx.send(oid).await.is_err() {
-                return Ok(());
+                return Ok(RemoteCommitSearchEnd::ReceiverClosed);
             }
         }
     }
     anyhow::ensure!(filters_checked, OLD_SERVER_COMMIT_SEARCH_MESSAGE);
-    Ok(())
+    Ok(RemoteCommitSearchEnd::ServerFinished)
 }
 
 fn log_order_to_proto(log_order: LogOrder) -> i32 {
@@ -13901,6 +13996,7 @@ mod tests {
             Ok(proto::SearchCommitsResponse {
                 shas: shas.iter().map(|byte| sha(*byte).to_string()).collect(),
                 filters_version,
+                cancellable: None,
             })
         };
         let forward = async |responses: Vec<Result<proto::SearchCommitsResponse>>,
@@ -13909,6 +14005,7 @@ mod tests {
             let result = forward_remote_commit_search(
                 futures::stream::iter(responses),
                 requires_filters,
+                &AtomicBool::new(false),
                 request_tx,
             )
             .await;
@@ -13966,6 +14063,58 @@ mod tests {
             "ブランチ「x」はありません。",
             "the server's reason reaches the search box"
         );
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn test_remote_commit_search_learns_whether_the_server_cancels(cx: &mut TestAppContext) {
+        let sha = |byte: u8| Oid::from_bytes(&[byte; 20]).unwrap();
+        let response = |shas: &[u8], cancellable: Option<bool>| {
+            Ok(proto::SearchCommitsResponse {
+                shas: shas.iter().map(|byte| sha(*byte).to_string()).collect(),
+                filters_version: Some(SEARCH_COMMITS_FILTERS_VERSION),
+                cancellable,
+            })
+        };
+
+        let server_cancels = AtomicBool::new(false);
+        let (request_tx, request_rx) = async_channel::unbounded();
+        let end = forward_remote_commit_search(
+            futures::stream::iter(vec![response(&[], Some(true)), response(&[1], None)]),
+            true,
+            &server_cancels,
+            request_tx,
+        )
+        .await;
+        assert_eq!(end.unwrap(), RemoteCommitSearchEnd::ServerFinished);
+        assert!(server_cancels.load(atomic::Ordering::Relaxed));
+        assert_eq!(request_rx.try_recv().ok(), Some(sha(1)));
+
+        // An older server does not say so, and is not sent a message it does not know.
+        let server_cancels = AtomicBool::new(false);
+        let (request_tx, _request_rx) = async_channel::unbounded();
+        forward_remote_commit_search(
+            futures::stream::iter(vec![response(&[1], None)]),
+            false,
+            &server_cancels,
+            request_tx,
+        )
+        .await
+        .unwrap();
+        assert!(!server_cancels.load(atomic::Ordering::Relaxed));
+
+        // The graph stopped listening while the server was still searching: that is the case
+        // the server has to be told about.
+        let (request_tx, request_rx) = async_channel::unbounded();
+        drop(request_rx);
+        let end = forward_remote_commit_search(
+            futures::stream::iter(vec![response(&[1, 2], Some(true))]),
+            true,
+            &AtomicBool::new(false),
+            request_tx,
+        )
+        .await;
+        assert_eq!(end.unwrap(), RemoteCommitSearchEnd::ReceiverClosed);
         cx.run_until_parked();
     }
 

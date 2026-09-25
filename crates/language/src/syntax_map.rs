@@ -102,6 +102,8 @@ pub struct SyntaxMapMatch<'a> {
 struct SyntaxMapCapturesLayer<'a> {
     depth: usize,
     captures: QueryCaptures<'a, 'a, 'static, TextProvider<'a>, &'a [u8]>,
+    query: &'a Query,
+    text: &'a Rope,
     next_capture: Option<QueryCapture<'a>>,
     grammar_index: usize,
     _query_cursor: QueryCursorHandle,
@@ -115,6 +117,7 @@ struct SyntaxMapMatchesLayer<'a> {
     has_next: bool,
     matches: QueryMatches<'a, 'a, 'static, TextProvider<'a>, &'a [u8]>,
     query: &'a Query,
+    text: &'a Rope,
     grammar_index: usize,
     _query_cursor: QueryCursorHandle,
 }
@@ -849,6 +852,12 @@ impl SyntaxSnapshot {
                                 text,
                             );
                         }
+                        let layer_ranges = included_ranges
+                            .iter()
+                            .map(|range| {
+                                step_start_byte + range.start_byte..step_start_byte + range.end_byte
+                            })
+                            .collect::<Vec<_>>();
                         get_injections(
                             config,
                             text,
@@ -857,6 +866,7 @@ impl SyntaxSnapshot {
                                 step_start_byte,
                                 step_start_point.to_ts_point(),
                             ),
+                            &layer_ranges,
                             registry,
                             step.depth + 1,
                             &expanded_ranges,
@@ -1161,6 +1171,8 @@ impl<'a> SyntaxMapCaptures<'a> {
                 grammar_index,
                 next_capture: None,
                 captures,
+                query,
+                text,
                 _query_cursor: query_cursor,
             };
 
@@ -1306,6 +1318,7 @@ impl<'a> SyntaxMapMatches<'a> {
                 grammar_index,
                 matches,
                 query,
+                text,
                 next_pattern_index: 0,
                 next_captures: Vec::new(),
                 has_next: false,
@@ -1388,7 +1401,17 @@ impl<'a> SyntaxMapMatches<'a> {
 
 impl SyntaxMapCapturesLayer<'_> {
     fn advance(&mut self) {
-        self.next_capture = self.captures.next().map(|(mat, ix)| mat.captures[*ix]);
+        let (query, text) = (self.query, self.text);
+        self.next_capture = loop {
+            match self.captures.next() {
+                Some((mat, ix)) => {
+                    if satisfies_custom_predicates(query, mat, text) {
+                        break Some(mat.captures[*ix]);
+                    }
+                }
+                None => break None,
+            }
+        };
     }
 
     fn sort_key(&self) -> (usize, Reverse<usize>, usize) {
@@ -1405,7 +1428,7 @@ impl SyntaxMapMatchesLayer<'_> {
     fn advance(&mut self) {
         loop {
             if let Some(mat) = self.matches.next() {
-                if !satisfies_custom_predicates(self.query, mat) {
+                if !satisfies_custom_predicates(self.query, mat, self.text) {
                     continue;
                 }
                 self.next_captures.clear();
@@ -1445,11 +1468,12 @@ impl<'a> Iterator for SyntaxMapCaptures<'a> {
     }
 }
 
-fn satisfies_custom_predicates(query: &Query, mat: &QueryMatch) -> bool {
+fn satisfies_custom_predicates(query: &Query, mat: &QueryMatch, text: &Rope) -> bool {
     for predicate in query.general_predicates(mat.pattern_index) {
         let satisfied = match predicate.operator.as_ref() {
             "has-parent?" => has_parent(&predicate.args, mat),
             "not-has-parent?" => !has_parent(&predicate.args, mat),
+            "not-followed-by?" => !is_followed_by(&predicate.args, mat, text),
             _ => true,
         };
         if !satisfied {
@@ -1476,6 +1500,24 @@ fn has_parent(args: &[QueryPredicateArg], mat: &QueryMatch) -> bool {
         .node
         .parent()
         .is_some_and(|p| p.kind() == parent_kind.as_ref())
+}
+
+/// Whether the character right after a node of the capture is one of the
+/// given characters. A grammar without text nodes (Markdown's inline one) has
+/// no node to match there, and a rule such as Pandoc's "no digit right after
+/// the closing `$`" is about exactly that character.
+fn is_followed_by(args: &[QueryPredicateArg], mat: &QueryMatch, text: &Rope) -> bool {
+    let (Some(QueryPredicateArg::Capture(capture_ix)), Some(QueryPredicateArg::String(characters))) =
+        (args.first(), args.get(1))
+    else {
+        return false;
+    };
+
+    mat.nodes_for_capture_index(*capture_ix).any(|node| {
+        text.chars_at(node.end_byte())
+            .next()
+            .is_some_and(|next| characters.contains(next))
+    })
 }
 
 fn join_ranges(
@@ -1580,6 +1622,7 @@ fn get_injections(
     text: &BufferSnapshot,
     outer_range: Range<Anchor>,
     node: Node,
+    layer_ranges: &[Range<usize>],
     language_registry: &Arc<LanguageRegistry>,
     depth: usize,
     changed_ranges: &[Range<usize>],
@@ -1607,6 +1650,9 @@ fn get_injections(
         query_cursor.set_byte_range(query_range.start.saturating_sub(1)..query_range.end + 1);
         let mut matches = query_cursor.matches(&config.query, node, TextProvider(text.as_rope()));
         while let Some(mat) = matches.next() {
+            if !satisfies_custom_predicates(&config.query, mat, text.as_rope()) {
+                continue;
+            }
             let content_ranges = if config.patterns[mat.pattern_index].exclude_children {
                 mat.nodes_for_capture_index(config.content_capture_ix)
                     .flat_map(ranges_outside_children)
@@ -1616,6 +1662,7 @@ fn get_injections(
                     .map(|node| node.range())
                     .collect::<Vec<_>>()
             };
+            let content_ranges = clip_to_layer_ranges(content_ranges, layer_ranges, text);
             if content_ranges.is_empty() {
                 continue;
             }
@@ -1709,6 +1756,58 @@ fn get_injections(
             },
         })
     }
+}
+
+/// The parts of `ranges` the layer they were found in was parsed from. A node
+/// of a layer parsed from several ranges spans the gaps between them, such as
+/// the `>` markers that start the later lines of a block quote, which its
+/// parser never saw and which are not the injected language's text.
+fn clip_to_layer_ranges(
+    ranges: Vec<tree_sitter::Range>,
+    layer_ranges: &[Range<usize>],
+    text: &BufferSnapshot,
+) -> Vec<tree_sitter::Range> {
+    let Some((first, last)) = layer_ranges.first().zip(layer_ranges.last()) else {
+        return ranges;
+    };
+    if layer_ranges.len() == 1
+        && ranges
+            .iter()
+            .all(|range| first.start <= range.start_byte && range.end_byte <= last.end)
+    {
+        return ranges;
+    }
+
+    let mut clipped = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        let first_overlapping =
+            layer_ranges.partition_point(|layer_range| layer_range.end <= range.start_byte);
+        for layer_range in layer_ranges.get(first_overlapping..).unwrap_or_default() {
+            if layer_range.start >= range.end_byte {
+                break;
+            }
+            let start_byte = range.start_byte.max(layer_range.start);
+            let end_byte = range.end_byte.min(layer_range.end);
+            if start_byte >= end_byte {
+                continue;
+            }
+            clipped.push(tree_sitter::Range {
+                start_byte,
+                end_byte,
+                start_point: if start_byte == range.start_byte {
+                    range.start_point
+                } else {
+                    text.offset_to_point(start_byte).to_ts_point()
+                },
+                end_point: if end_byte == range.end_byte {
+                    range.end_point
+                } else {
+                    text.offset_to_point(end_byte).to_ts_point()
+                },
+            });
+        }
+    }
+    clipped
 }
 
 /// The parts of `node` that none of its named children cover. Anonymous

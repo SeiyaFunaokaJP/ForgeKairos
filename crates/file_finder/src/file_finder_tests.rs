@@ -4508,13 +4508,6 @@ async fn test_reopen_with_preview_keeps_results_width(cx: &mut TestAppContext) {
         in_session_width, reopened_width,
         "reopening with the side preview must keep the same results width as the in-session toggle"
     );
-
-    // The preview layout is persisted in the key-value store, and tests in a
-    // process share one in-memory fallback store (no per-App `AppDatabase` is
-    // set in tests, so `AppDatabase::global` falls back to the shared static).
-    // Reset to the default layout so this write doesn't leak into other tests.
-    cx.dispatch_action(picker::SetPreviewHidden);
-    cx.run_until_parked();
 }
 
 async fn open_close_queried_buffer(

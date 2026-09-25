@@ -1576,6 +1576,29 @@ impl RemoteConnectionOptions {
         }
     }
 
+    /// Names the machine and account the connection reaches, whatever the connection is called,
+    /// for keeping what is saved about a remote path apart from the same path elsewhere.
+    pub fn machine_key(&self) -> String {
+        match self {
+            RemoteConnectionOptions::Ssh(opts) => format!(
+                "ssh:{}@{}:{}",
+                opts.username.as_deref().unwrap_or_default(),
+                opts.host.to_bracketed_string(),
+                opts.port.unwrap_or(22)
+            ),
+            RemoteConnectionOptions::Wsl(opts) => format!(
+                "wsl:{}@{}",
+                opts.user.as_deref().unwrap_or_default(),
+                opts.distro_name
+            ),
+            RemoteConnectionOptions::Docker(opts) => {
+                format!("{}:{}", self.connection_type(), opts.container_id)
+            }
+            #[cfg(any(test, feature = "test-support"))]
+            RemoteConnectionOptions::Mock(opts) => format!("mock:{}", opts.id),
+        }
+    }
+
     /// A stable identifier for the kind of remote connection, suitable for
     /// telemetry (e.g. `"ssh"`, `"wsl"`, `"docker"`, `"podman"`).
     pub fn connection_type(&self) -> &'static str {
@@ -1600,6 +1623,35 @@ mod tests {
     use super::*;
     use gpui::TestAppContext;
     use rpc::{ErrorCodeExt, proto::ErrorCode};
+
+    /// What is saved per remote machine follows the machine and account, not what the connection
+    /// is called.
+    #[test]
+    fn machine_key_names_the_machine_not_the_nickname() {
+        let ssh = |host: &str, port: Option<u16>, nickname: Option<&str>| {
+            RemoteConnectionOptions::Ssh(SshConnectionOptions {
+                host: host.into(),
+                username: Some("me".to_string()),
+                port,
+                nickname: nickname.map(str::to_string),
+                ..SshConnectionOptions::default()
+            })
+        };
+        assert_eq!(ssh("server", None, None).machine_key(), "ssh:me@server:22");
+        assert_eq!(
+            ssh("server", Some(22), Some("仕事用")).machine_key(),
+            ssh("server", None, None).machine_key()
+        );
+        assert_ne!(
+            ssh("server", Some(2222), None).machine_key(),
+            ssh("server", None, None).machine_key()
+        );
+        assert_ne!(
+            ssh("other", None, None).machine_key(),
+            ssh("server", None, None).machine_key()
+        );
+        assert_eq!(ssh("::1", None, None).machine_key(), "ssh:me@[::1]:22");
+    }
 
     /// ADR-F22: the push reads the live allowlist every time, so a second
     /// push after the policy file has been reloaded carries the new list.

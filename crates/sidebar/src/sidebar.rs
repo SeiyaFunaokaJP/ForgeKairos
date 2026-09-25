@@ -9,7 +9,8 @@ use agent_ui::terminal_thread_metadata_store::{
     TerminalThreadMetadata, TerminalThreadMetadataStore, terminal_title_prefix,
 };
 use agent_ui::thread_metadata_store::{
-    ThreadMetadata, ThreadMetadataStore, WorktreePaths, worktree_info_from_thread_paths,
+    ThreadMetadata, ThreadMetadataStore, WorktreePaths, thread_started_outside_sandbox,
+    worktree_info_from_thread_paths,
 };
 use agent_ui::threads_archive_view::{
     ThreadsArchiveView, ThreadsArchiveViewEvent, format_history_entry_timestamp,
@@ -104,6 +105,9 @@ gpui::actions!(
 const DEFAULT_WIDTH: Pixels = px(300.0);
 const MIN_WIDTH: Pixels = px(200.0);
 const MAX_WIDTH: Pixels = px(800.0);
+const OUTSIDE_SANDBOX_BADGE_TOOLTIP: &str = "サンドボックスの外で実行中";
+/// How a test finds the mark on a thread started outside its sandbox.
+const OUTSIDE_SANDBOX_BADGE_SELECTOR: &str = "SIDEBAR-OUTSIDE-SANDBOX-BADGE";
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum SerializedSidebarView {
@@ -6169,6 +6173,10 @@ impl Sidebar {
             || self
                 .regenerating_titles
                 .contains(&thread.metadata.thread_id);
+        // ADR-F49 決定 19: the thread's agent was started outside its sandbox,
+        // which is also where the thread comes back.
+        let outside_sandbox = thread.metadata.agent_id.as_ref() != ZED_AGENT_ID.as_ref()
+            && thread_started_outside_sandbox(thread.metadata.thread_id, cx);
 
         let thread_item = ThreadItem::new(id, title.clone())
             .base_bg(sidebar_bg)
@@ -6178,6 +6186,19 @@ impl Sidebar {
             })
             .status(thread.status)
             .is_remote(is_remote)
+            .when(outside_sandbox, |this| {
+                this.badge(
+                    div()
+                        .id(("outside-sandbox", ix))
+                        .debug_selector(|| OUTSIDE_SANDBOX_BADGE_SELECTOR.to_string())
+                        .child(
+                            Icon::new(IconName::LockOff)
+                                .size(IconSize::XSmall)
+                                .color(Color::Warning),
+                        )
+                        .tooltip(Tooltip::text(OUTSIDE_SANDBOX_BADGE_TOOLTIP)),
+                )
+            })
             .when_some(icon_svg, |this, svg| {
                 this.custom_icon_from_external_svg(svg)
             })

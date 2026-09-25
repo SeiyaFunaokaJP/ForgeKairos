@@ -75,8 +75,53 @@ pub const CLAUDE_CODE_AUTH_HEADER: &str = "x-claude-code-ide-authorization";
 pub const IDE_MCP_PATH: &str = "/mcp";
 /// アシストのツール (ADR-F56) だけを出す口。HTTP でだけ受ける。
 pub const ASSIST_MCP_PATH: &str = "/mcp/zed";
-/// ホストの口で、どのクライアント (CLI のタブ・ACP の接続) の要求かを表す問い合わせの名前。
-pub const CLIENT_QUERY_NAME: &str = "client";
+
+/// 接続を受けてよいトークン。
+#[derive(Clone)]
+pub enum Credentials {
+    /// 1 つのトークンだけ (サンドボックスのセッション)。
+    Single(Arc<str>),
+    /// ホストのサーバー: サーバー自身のトークン (ロックファイル・`.mcp.json`) と、登録された
+    /// アシストのクライアント (CLI のタブ・ACP の接続) ごとのトークン。クライアントは URL の
+    /// 申告ではなく、どのトークンを出したかで見分ける (ADR-F56)。
+    Host {
+        server_token: Arc<str>,
+        client_tokens: ClientTokens,
+    },
+}
+
+/// クライアントごとのトークン → クライアントの ID。登録と解除はフォアグラウンド、照合は
+/// トランスポートのバックグラウンドで行う。
+pub type ClientTokens = Arc<Mutex<collections::HashMap<String, String>>>;
+
+impl Credentials {
+    /// 受けてよいトークンなら `Some` で、クライアントのトークンならその ID を包んで返す
+    /// (サーバー自身のトークンは `Some(None)`)。
+    pub fn authenticate(&self, presented: &str) -> Option<Option<String>> {
+        match self {
+            Self::Single(token) => (presented == &**token).then_some(None),
+            Self::Host {
+                server_token,
+                client_tokens,
+            } => {
+                if presented == &**server_token {
+                    return Some(None);
+                }
+                client_tokens
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .get(presented)
+                    .map(|client_id| Some(client_id.clone()))
+            }
+        }
+    }
+}
+
+impl From<Arc<str>> for Credentials {
+    fn from(token: Arc<str>) -> Self {
+        Self::Single(token)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConnectionKind {
@@ -97,8 +142,8 @@ pub enum Endpoint {
 pub struct Route {
     pub kind: ConnectionKind,
     pub endpoint: Endpoint,
-    /// `?client=<id>`。ホストのサーバーが、表示の出どころ (CLI のタブ・ACP の接続) を
-    /// 見分けるのに使う。形の合わないものは無かったことにする。
+    /// 出されたトークンが登録されたアシストのクライアントのものなら、その ID。ホストの
+    /// サーバーが、表示の出どころ (CLI のタブ・ACP の接続) を見分けるのに使う。
     pub client: Option<String>,
 }
 
@@ -119,13 +164,12 @@ pub enum Refusal {
 }
 
 /// 要求の頭から、どの口のどの話し方かを決める。口の無いパスは `404`、HTTP の `POST` 以外は
-/// `405` の応答を返す。
-fn route_for(head: &HttpHead) -> std::result::Result<Route, String> {
-    let (path, query) = match head.path.split_once('?') {
-        Some((path, query)) => (path, Some(query)),
-        None => (head.path.as_str(), None),
-    };
-    let client = query.and_then(client_from_query);
+/// `405` の応答を返す。問い合わせ文字列は見ない。
+fn route_for(head: &HttpHead, client: Option<String>) -> std::result::Result<Route, String> {
+    let path = head
+        .path
+        .split_once('?')
+        .map_or(head.path.as_str(), |(path, _)| path);
     if head.is_websocket_upgrade() {
         // アシストの口は streamable HTTP だけ。WebSocket で来たら、CLI の IDE の口と
         // 取り違えないように断る。
@@ -154,19 +198,6 @@ fn route_for(head: &HttpHead) -> std::result::Result<Route, String> {
         kind: ConnectionKind::Http,
         endpoint,
         client,
-    })
-}
-
-/// 問い合わせ文字列の `client=<id>`。Zed が作る ID (英数字・`-`・`_`、64 文字まで) だけを受ける。
-fn client_from_query(query: &str) -> Option<String> {
-    query.split('&').find_map(|pair| {
-        let value = pair.strip_prefix(CLIENT_QUERY_NAME)?.strip_prefix('=')?;
-        let well_formed = !value.is_empty()
-            && value.len() <= 64
-            && value
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
-        well_formed.then(|| value.to_string())
     })
 }
 
@@ -502,7 +533,7 @@ async fn read_head<S: AsyncRead + Unpin>(stream: &mut S) -> Result<(HttpHead, Ve
 )]
 pub async fn serve_connection<S, A>(
     mut stream: S,
-    auth_token: Arc<str>,
+    credentials: impl Into<Credentials>,
     admit: A,
     incoming_tx: mpsc::Sender<String>,
     outgoing: OutboxReceiver,
@@ -517,16 +548,20 @@ where
     let (head, leftover) =
         before_deadline(read_head(&mut stream), handshake_deadline.as_mut()).await??;
 
-    if head.presented_token() != Some(&*auth_token) {
+    let credentials = credentials.into();
+    let Some(client) = head
+        .presented_token()
+        .and_then(|token| credentials.authenticate(token))
+    else {
         let body = "{\"error\":\"unauthorized\"}";
         stream
             .write_all(http_response("401 Unauthorized", Some("application/json"), body).as_bytes())
             .await?;
         stream.flush().await?;
         anyhow::bail!("rejected an IDE server connection with a bad or missing token");
-    }
+    };
 
-    let route = match route_for(&head) {
+    let route = match route_for(&head, client) {
         Ok(route) => route,
         Err(response) => {
             stream.write_all(response.as_bytes()).await?;
@@ -793,7 +828,7 @@ mod tests {
     /// アシストの口は WebSocket では受けない。WebSocket の IDE の口はパスを問わない (CLI は `/`)。
     #[test]
     fn routes_requests_to_the_ide_and_assist_endpoints() {
-        let route = |raw: &str| route_for(&head(raw));
+        let route = |raw: &str| route_for(&head(raw), None);
         let post = |path: &str| {
             route(&format!(
                 "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n"
@@ -807,7 +842,10 @@ mod tests {
 
         let assist = post("/mcp/zed?client=abc-123_x").expect("POST /mcp/zed is the assist one");
         assert_eq!(assist.endpoint, Endpoint::Assist);
-        assert_eq!(assist.client.as_deref(), Some("abc-123_x"));
+        assert_eq!(
+            assist.client, None,
+            "a client is known by its token, not by what the URL says"
+        );
 
         for refused in ["/", "/mcp/", "/mcp/zed/", "/mcp/other", "/mcpzed"] {
             let response = post(refused).expect_err(refused);
@@ -839,26 +877,43 @@ mod tests {
         );
     }
 
-    /// `client=` は Zed が作る形 (英数字・`-`・`_`、64 文字まで) だけを受け、ほかは無かったことにする。
+    /// ADR-F56: ホストのサーバーはサーバー自身のトークンと、登録されたクライアントごとの
+    /// トークンを受け、クライアントのトークンからそのクライアントを見分ける。登録を外した
+    /// トークンは受けない。
     #[test]
-    fn reads_only_well_formed_client_ids() {
-        assert_eq!(client_from_query("client=abc").as_deref(), Some("abc"));
-        assert_eq!(client_from_query("x=1&client=abc").as_deref(), Some("abc"));
-        for bad in [
-            "client=",
-            "client=a%20b",
-            "client=a/b",
-            "client=あ",
-            "clients=abc",
-            "",
-        ] {
-            assert_eq!(client_from_query(bad), None, "{bad:?}");
-        }
+    fn host_credentials_tell_the_clients_apart_by_their_tokens() {
+        let client_tokens = ClientTokens::default();
+        let credentials = Credentials::Host {
+            server_token: "server-token".into(),
+            client_tokens: client_tokens.clone(),
+        };
+        assert_eq!(credentials.authenticate("server-token"), Some(None));
+        assert_eq!(credentials.authenticate("client-token"), None);
+
+        client_tokens
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert("client-token".to_string(), "client-a".to_string());
         assert_eq!(
-            client_from_query(&format!("client={}", "a".repeat(65))),
-            None
+            credentials.authenticate("client-token"),
+            Some(Some("client-a".to_string()))
         );
-        assert!(client_from_query(&format!("client={}", "a".repeat(64))).is_some());
+        assert_eq!(
+            credentials.authenticate("client-a"),
+            None,
+            "the id is no token"
+        );
+        assert_eq!(credentials.authenticate(""), None);
+
+        client_tokens
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove("client-token");
+        assert_eq!(credentials.authenticate("client-token"), None);
+
+        let single = Credentials::from(Arc::<str>::from("session-token"));
+        assert_eq!(single.authenticate("session-token"), Some(None));
+        assert_eq!(single.authenticate("server-token"), None);
     }
 
     #[test]

@@ -5346,6 +5346,12 @@ impl GitGraph {
         commit_reaches(&self.graph_data.commits, head_sha, newest)
     }
 
+    /// Whether HEAD is a branch rather than detached, as the last status scan saw it.
+    fn head_is_branch(&self, cx: &App) -> bool {
+        self.get_repository(cx)
+            .is_some_and(|repository| repository.read(cx).branch.is_some())
+    }
+
     /// Refuses an operation that rewrites history while the working tree still
     /// has uncommitted changes, which is the most common way for it to fail
     /// half-way and leave a beginner stuck.
@@ -6349,8 +6355,12 @@ impl GitGraph {
     ) {
         let rows: BTreeSet<usize> = self.selected_rows().into_iter().collect();
         let count = rows.len();
-        let contiguous = is_contiguous_commit_range(&self.graph_data.commits, &rows);
-        let on_current_branch = self.selection_is_on_current_branch(cx);
+        let rewrite_facts = action_bar::RangeRewriteFacts {
+            contiguous: is_contiguous_commit_range(&self.graph_data.commits, &rows),
+            on_current_branch: self.selection_is_on_current_branch(cx),
+            head_is_branch: self.head_is_branch(cx),
+            worktree_dirty: self.worktree_is_dirty(cx),
+        };
         let focus_handle = self.focus_handle.clone();
         let graph = cx.entity();
         let context_menu = ContextMenu::build(window, cx, move |menu, _window, _cx| {
@@ -6370,7 +6380,7 @@ impl GitGraph {
             // Squashing rewrites the checked-out branch in place, so it is only
             // offered for an unbroken range that lives on that branch; the
             // disabled entry says which of the two is missing.
-            let range_refusal = action_bar::range_rewrite_refusal(contiguous, on_current_branch);
+            let range_refusal = action_bar::range_rewrite_refusal(rewrite_facts);
             menu = match range_refusal {
                 None => menu.entry(
                     format!("選択した {count} 件を 1 つにまとめる (squash)"),

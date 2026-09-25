@@ -15172,3 +15172,45 @@ async fn test_find_or_create_workspace_returns_the_created_remote_workspace(
         "the local workspace should have re-activated during the open"
     );
 }
+
+/// ADR-F49 決定 19: a thread whose agent was started outside its sandbox
+/// carries a mark in the sidebar; the others do not.
+#[gpui::test]
+async fn test_a_thread_started_outside_its_sandbox_is_marked(cx: &mut TestAppContext) {
+    let project = init_test_project("/my-project", cx).await;
+    let (multi_workspace, cx) =
+        cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let sidebar = setup_sidebar(&multi_workspace, cx);
+
+    let thread_id = ThreadId::new();
+    cx.update(|_window, cx| {
+        let metadata = ThreadMetadata {
+            thread_id,
+            session_id: Some(acp::SessionId::new(Arc::from("outside-thread"))),
+            agent_id: AgentId::new("claude-acp"),
+            title: Some("Started outside".into()),
+            title_override: None,
+            updated_at: chrono::TimeZone::with_ymd_and_hms(&Utc, 2024, 1, 3, 0, 0, 0).unwrap(),
+            created_at: None,
+            interacted_at: None,
+            worktree_paths: project.read(cx).worktree_paths(cx),
+            archived: false,
+            remote_connection: None,
+        };
+        ThreadMetadataStore::global(cx).update(cx, |store, cx| store.save(metadata, cx));
+    });
+    cx.run_until_parked();
+    sidebar.update(cx, |_, cx| cx.notify());
+    cx.run_until_parked();
+    assert!(
+        cx.debug_bounds(OUTSIDE_SANDBOX_BADGE_SELECTOR).is_none(),
+        "a thread in its sandbox carries no mark"
+    );
+
+    cx.update(|_window, cx| {
+        agent_ui::thread_metadata_store::record_thread_started_outside_sandbox(thread_id, cx)
+    });
+    sidebar.update(cx, |_, cx| cx.notify());
+    cx.run_until_parked();
+    assert!(cx.debug_bounds(OUTSIDE_SANDBOX_BADGE_SELECTOR).is_some());
+}

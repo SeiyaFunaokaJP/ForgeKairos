@@ -374,3 +374,117 @@ async fn stores_an_image_beside_a_document_opened_on_its_own(cx: &mut TestAppCon
             .await
     );
 }
+
+/// A picture in another folder open from the same host is copied there by
+/// the host itself, whatever its format: the host's image store reads no
+/// SVG or AVIF, and this machine never needs the bytes.
+#[gpui::test]
+async fn copies_a_file_of_another_remote_worktree_on_the_host(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let server_fs = FakeFs::new(server_cx.executor());
+    server_fs
+        .insert_tree(
+            path!("/project"),
+            json!({ "docs": { "readme.md": "# doc" } }),
+        )
+        .await;
+    server_fs
+        .insert_tree(
+            path!("/other"),
+            json!({ "logo.svg": "<svg/>", "photo.avif": "avif bytes" }),
+        )
+        .await;
+    let local_fs = FakeFs::new(cx.executor());
+    let (project, _headless) =
+        remote_project(server_fs.clone(), local_fs.clone(), cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/other"), true, cx)
+        })
+        .await
+        .unwrap_or_else(|error| panic!("the second remote folder should open: {error:#}"));
+    cx.run_until_parked();
+    let worktree_id = |root: &'static str, cx: &mut TestAppContext| {
+        project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .find(|worktree| worktree.read(cx).root_name_str() == root)
+                .map(|worktree| worktree.read(cx).id())
+                .unwrap_or_else(|| panic!("{root} is open"))
+        })
+    };
+    let document = ProjectPath {
+        worktree_id: worktree_id("project", cx),
+        path: rel_path("docs/readme.md").into(),
+    };
+    let other = worktree_id("other", cx);
+    let copy = |name: &'static str, cx: &mut TestAppContext| {
+        cx.update(|cx| {
+            store_image_next_to(
+                &project,
+                &document,
+                ImageData::ProjectFile(ProjectPath {
+                    worktree_id: other,
+                    path: rel_path(name).into(),
+                }),
+                None,
+                cx,
+            )
+        })
+    };
+
+    // Into an `images` folder the document does not have yet.
+    let stored = copy("logo.svg", cx)
+        .await
+        .unwrap_or_else(|error| panic!("the SVG should be copied on the host: {error:#}"));
+    assert_eq!(stored.path.as_ref(), rel_path("docs/images/logo.svg"));
+    assert_eq!(
+        server_fs
+            .load(Path::new(path!("/project/docs/images/logo.svg")))
+            .await
+            .ok()
+            .as_deref(),
+        Some("<svg/>")
+    );
+    let again = copy("logo.svg", cx)
+        .await
+        .unwrap_or_else(|error| panic!("a second copy should get its own name: {error:#}"));
+    assert_eq!(again.path.as_ref(), rel_path("docs/images/logo-1.svg"));
+    let avif = copy("photo.avif", cx)
+        .await
+        .unwrap_or_else(|error| panic!("the AVIF should be copied on the host: {error:#}"));
+    assert_eq!(
+        server_fs
+            .load(Path::new(path!("/project/docs/images/photo.avif")))
+            .await
+            .ok()
+            .as_deref(),
+        Some("avif bytes")
+    );
+
+    // A copy is taken away like any other stored picture.
+    cx.run_until_parked();
+    cx.update(|cx| remove_stored_image(&project, &document, &avif, cx))
+        .await
+        .unwrap_or_else(|error| panic!("the copy should be taken away: {error:#}"));
+    server_cx.run_until_parked();
+    assert!(
+        !server_fs
+            .is_file(Path::new(path!("/project/docs/images/photo.avif")))
+            .await
+    );
+    assert!(
+        server_fs
+            .is_file(Path::new(path!("/other/photo.avif")))
+            .await,
+        "the original stays"
+    );
+
+    let missing = copy("gone.png", cx).await;
+    assert!(
+        missing.is_err(),
+        "a file the project does not have is refused"
+    );
+}

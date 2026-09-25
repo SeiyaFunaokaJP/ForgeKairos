@@ -91,6 +91,14 @@ pub fn init(cx: &mut App) {
     migrate_thread_remote_connections(cx, migration_task);
     migrate_thread_ids(cx);
     load_threads_started_outside_sandbox(cx);
+    load_outside_sandbox_consents(cx);
+    register_revoke_outside_sandbox_consents(cx);
+}
+
+fn register_revoke_outside_sandbox_consents(cx: &mut App) {
+    cx.on_action(|_: &zed_actions::agent::RevokeOutsideSandboxConsents, cx| {
+        revoke_outside_sandbox_consents(cx).detach_and_log_err(cx);
+    });
 }
 
 /// ADR-F49 decision 19 (8c): where the threads whose agent was started outside
@@ -160,6 +168,109 @@ fn forget_thread_started_outside_sandbox(thread_id: ThreadId, cx: &mut App) {
         kvp.scoped(THREADS_STARTED_OUTSIDE_SANDBOX_NAMESPACE)
             .delete(key)
             .await
+    })
+    .detach_and_log_err(cx);
+}
+
+/// ADR-F49 decision 19 (td): where the starts outside the sandbox the user
+/// confirmed are written down, so that a thread read back after a restart of
+/// Zed goes back outside without asking again. Kept by thread and agent: a
+/// thread reopened with another agent is not a start the user confirmed.
+const OUTSIDE_SANDBOX_CONSENTS_NAMESPACE: &str = "agent_outside_sandbox_consents";
+
+#[derive(Default)]
+struct OutsideSandboxConsents(HashSet<(ThreadId, AgentId)>);
+
+impl Global for OutsideSandboxConsents {}
+
+fn outside_sandbox_consent_key(thread_id: ThreadId, agent_id: &AgentId) -> String {
+    format!("{}/{}", thread_id.to_key_string(), agent_id.0)
+}
+
+fn parse_outside_sandbox_consent_key(key: &str) -> Option<(ThreadId, AgentId)> {
+    let (thread_id, agent_id) = key.split_once('/')?;
+    let thread_id = uuid::Uuid::parse_str(thread_id).log_err()?;
+    if agent_id.is_empty() {
+        return None;
+    }
+    Some((ThreadId(thread_id), AgentId(agent_id.to_string().into())))
+}
+
+fn load_outside_sandbox_consents(cx: &mut App) {
+    let consents = KeyValueStore::global(cx)
+        .scoped(OUTSIDE_SANDBOX_CONSENTS_NAMESPACE)
+        .read_all()
+        .log_err()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(key, _)| parse_outside_sandbox_consent_key(&key))
+        .collect();
+    cx.set_global(OutsideSandboxConsents(consents));
+}
+
+/// Whether the user confirmed starting `agent_id` outside its sandbox for
+/// `thread_id`, in this session of Zed or an earlier one.
+pub fn outside_sandbox_consented(thread_id: ThreadId, agent_id: &AgentId, cx: &App) -> bool {
+    cx.try_global::<OutsideSandboxConsents>()
+        .is_some_and(|consents| consents.0.contains(&(thread_id, agent_id.clone())))
+}
+
+/// Writes down that the user confirmed starting `agent_id` outside its sandbox
+/// for `thread_id`.
+pub fn record_outside_sandbox_consent(thread_id: ThreadId, agent_id: AgentId, cx: &mut App) {
+    let key = outside_sandbox_consent_key(thread_id, &agent_id);
+    if !cx
+        .default_global::<OutsideSandboxConsents>()
+        .0
+        .insert((thread_id, agent_id))
+    {
+        return;
+    }
+    let kvp = KeyValueStore::global(cx);
+    cx.background_spawn(async move {
+        kvp.scoped(OUTSIDE_SANDBOX_CONSENTS_NAMESPACE)
+            .write(key, "1".to_string())
+            .await
+    })
+    .detach_and_log_err(cx);
+}
+
+/// Takes back every confirmed start outside the sandbox: each thread asks
+/// again before its agent starts there. Connections already outside keep
+/// running until they are closed; the user's settings to start an agent
+/// outside every time are not touched.
+pub fn revoke_outside_sandbox_consents(cx: &mut App) -> Task<anyhow::Result<()>> {
+    cx.default_global::<OutsideSandboxConsents>().0.clear();
+    let kvp = KeyValueStore::global(cx);
+    cx.background_spawn(async move {
+        kvp.scoped(OUTSIDE_SANDBOX_CONSENTS_NAMESPACE)
+            .delete_all()
+            .await
+    })
+}
+
+fn forget_outside_sandbox_consents_of_thread(thread_id: ThreadId, cx: &mut App) {
+    let mut forgotten = Vec::new();
+    cx.default_global::<OutsideSandboxConsents>()
+        .0
+        .retain(|(consented_thread_id, agent_id)| {
+            if *consented_thread_id == thread_id {
+                forgotten.push(outside_sandbox_consent_key(thread_id, agent_id));
+                false
+            } else {
+                true
+            }
+        });
+    if forgotten.is_empty() {
+        return;
+    }
+    let kvp = KeyValueStore::global(cx);
+    cx.background_spawn(async move {
+        let scoped = kvp.scoped(OUTSIDE_SANDBOX_CONSENTS_NAMESPACE);
+        for key in forgotten {
+            scoped.delete(key).await?;
+        }
+        anyhow::Ok(())
     })
     .detach_and_log_err(cx);
 }
@@ -1232,6 +1343,7 @@ impl ThreadMetadataStore {
             .log_err();
         crate::draft_prompt_store::delete(thread_id, cx).detach_and_log_err(cx);
         forget_thread_started_outside_sandbox(thread_id, cx);
+        forget_outside_sandbox_consents_of_thread(thread_id, cx);
         cx.notify();
     }
 
@@ -4383,5 +4495,75 @@ mod tests {
                 "retained thread A's stored path must not be updated while the project is via collab"
             );
         });
+    }
+
+    /// ADR-F49 決定 19 (td): a confirmed start outside the sandbox outlives
+    /// the session of Zed it was given in, by thread and agent; the settings
+    /// page takes every one of them back, and deleting a thread forgets its
+    /// own.
+    #[gpui::test]
+    async fn test_outside_sandbox_consents_are_kept_until_taken_back(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+        let kept = ThreadId::new();
+        let deleted = ThreadId::new();
+        let agent_id = AgentId("some-agent".into());
+        cx.update(|cx| {
+            record_outside_sandbox_consent(kept, agent_id.clone(), cx);
+            record_outside_sandbox_consent(deleted, agent_id.clone(), cx);
+        });
+        cx.run_until_parked();
+
+        cx.update(|cx| {
+            cx.remove_global::<OutsideSandboxConsents>();
+            assert!(!outside_sandbox_consented(kept, &agent_id, cx));
+            load_outside_sandbox_consents(cx);
+            assert!(
+                outside_sandbox_consented(kept, &agent_id, cx),
+                "read back as after a restart"
+            );
+            assert!(!outside_sandbox_consented(
+                kept,
+                &AgentId("another-agent".into()),
+                cx
+            ));
+            ThreadMetadataStore::global(cx).update(cx, |store, cx| store.delete(deleted, cx));
+        });
+        cx.run_until_parked();
+        cx.update(|cx| {
+            load_outside_sandbox_consents(cx);
+            assert!(!outside_sandbox_consented(deleted, &agent_id, cx));
+            assert!(outside_sandbox_consented(kept, &agent_id, cx));
+        });
+
+        cx.update(|cx| {
+            register_revoke_outside_sandbox_consents(cx);
+            cx.dispatch_action(&zed_actions::agent::RevokeOutsideSandboxConsents);
+            assert!(!outside_sandbox_consented(kept, &agent_id, cx));
+        });
+        cx.run_until_parked();
+        cx.update(|cx| {
+            load_outside_sandbox_consents(cx);
+            assert!(
+                !outside_sandbox_consented(kept, &agent_id, cx),
+                "taken back from the store too"
+            );
+        });
+    }
+
+    #[test]
+    fn test_outside_sandbox_consent_keys_round_trip() {
+        let thread_id = ThreadId::new();
+        let agent_id = AgentId("agent/with/slashes".into());
+        let key = outside_sandbox_consent_key(thread_id, &agent_id);
+        assert_eq!(
+            parse_outside_sandbox_consent_key(&key),
+            Some((thread_id, agent_id))
+        );
+        assert_eq!(parse_outside_sandbox_consent_key("not-a-uuid/agent"), None);
+        assert_eq!(
+            parse_outside_sandbox_consent_key(&format!("{}/", thread_id.to_key_string())),
+            None
+        );
     }
 }

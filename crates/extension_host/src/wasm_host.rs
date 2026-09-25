@@ -52,6 +52,7 @@ pub struct WasmHost {
     node_runtime: NodeRuntime,
     pub(crate) proxy: Arc<ExtensionHostProxy>,
     fs: Arc<dyn Fs>,
+    executor: BackgroundExecutor,
     pub work_dir: PathBuf,
     /// The capabilities granted to extensions running on the host.
     pub(crate) granted_capabilities: Vec<ExtensionCapability>,
@@ -91,10 +92,11 @@ impl extension::Extension for WasmExtension {
         language_name: LanguageName,
         worktree: Arc<dyn WorktreeDelegate>,
     ) -> Result<Command> {
+        let extension_work_dir = self.work_dir.clone();
         self.call(|extension, store| {
             async move {
                 let resource = store.data_mut().table.push(worktree)?;
-                let command = extension
+                let command: Command = extension
                     .call_language_server_command(
                         store,
                         &language_server_id,
@@ -102,9 +104,14 @@ impl extension::Extension for WasmExtension {
                         resource,
                     )
                     .await?
-                    .map_err(|err| store.data().extension_error(err))?;
+                    .map_err(|err| store.data().extension_error(err))?
+                    .into();
 
-                Ok(command.into())
+                store
+                    .data()
+                    .host
+                    .remove_superseded_language_servers(extension_work_dir, &command);
+                Ok(command)
             }
             .boxed()
         })
@@ -619,6 +626,7 @@ impl WasmHost {
         Arc::new(Self {
             engine: wasm_engine(cx.background_executor()),
             fs,
+            executor: cx.background_executor().clone(),
             work_dir,
             http_client,
             node_runtime,
@@ -748,6 +756,28 @@ impl WasmHost {
         ctx.preopened_dir(&path, &path, dir_perms, file_perms)?;
 
         Ok(ctx.build())
+    }
+
+    /// Clears out the older versions of the language server `command` runs
+    /// (F21), in the background: starting the server does not wait for it.
+    fn remove_superseded_language_servers(&self, extension_work_dir: Arc<Path>, command: &Command) {
+        let command_paths = std::iter::once(command.command.clone())
+            .chain(command.args.iter().map(PathBuf::from))
+            .collect::<Vec<_>>();
+        let fs = self.fs.clone();
+        self.executor
+            .spawn(async move {
+                let is_used_by_a_process = crate::language_server_versions::process_probe();
+                crate::language_server_versions::SupersededVersionSweep {
+                    extension_work_dir: &extension_work_dir,
+                    command_paths: &command_paths,
+                    now: std::time::SystemTime::now(),
+                    is_used_by_a_process: &is_used_by_a_process,
+                }
+                .run(fs.as_ref())
+                .await;
+            })
+            .detach();
     }
 
     pub async fn writeable_path_from_extension(

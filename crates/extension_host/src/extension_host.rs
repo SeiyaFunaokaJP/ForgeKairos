@@ -1,6 +1,7 @@
 mod capability_granter;
 pub mod extension_settings;
 pub mod headless_host;
+mod language_server_versions;
 pub mod wasm_host;
 
 #[cfg(test)]

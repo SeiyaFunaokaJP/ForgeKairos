@@ -188,6 +188,118 @@ fn rejects_an_http_request_with_the_wrong_token() {
     });
 }
 
+/// ADR-F56: ホストのサーバーの loopback の口は、サーバー自身のトークンと登録されたクライアントの
+/// トークンを受け、どのクライアントの接続かをトークンから決める (URL の `client=` は見ない)。
+/// 登録を外したクライアントのトークンは 401。
+#[test]
+fn the_host_tells_a_client_by_the_token_it_presents() {
+    smol::block_on(async {
+        let client_tokens = transport::ClientTokens::default();
+        client_tokens
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert("client-token".to_string(), "client-a".to_string());
+        let credentials = transport::Credentials::Host {
+            server_token: "server-token".into(),
+            client_tokens: client_tokens.clone(),
+        };
+        let post = |token: &'static str| {
+            let credentials = credentials.clone();
+            async move {
+                let listener = TcpListener::bind("127.0.0.1:0")
+                    .await
+                    .expect("binding the test listener");
+                let port = listener
+                    .local_addr()
+                    .expect("the listener has an address")
+                    .port();
+                let (route_tx, route_rx) = oneshot::channel();
+                let server = smol::spawn(async move {
+                    let (stream, _peer) = listener.accept().await?;
+                    let (incoming_tx, mut incoming_rx) = mpsc::channel::<String>(0);
+                    let (outbox, outgoing) = transport::outbox();
+                    let pump = smol::spawn(async move {
+                        while incoming_rx.next().await.is_some() {
+                            outbox.send_response(
+                                r#"{"jsonrpc":"2.0","id":1,"result":{}}"#.to_string(),
+                                None,
+                            );
+                        }
+                        outbox.finish();
+                    });
+                    let result = transport::serve_connection(
+                        stream,
+                        credentials,
+                        |_| {
+                            Ok(transport::Admitted {
+                                limits: transport::MessageLimits::same(
+                                    transport::HOST_MAX_MESSAGE_BYTES,
+                                ),
+                                hold: None,
+                            })
+                        },
+                        incoming_tx,
+                        outgoing,
+                        route_tx,
+                        futures::future::pending(),
+                    )
+                    .await;
+                    drop(pump);
+                    result
+                });
+                let body = r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#;
+                let mut client = TcpStream::connect(("127.0.0.1", port))
+                    .await
+                    .expect("connecting to the test server");
+                client
+                    .write_all(
+                        format!(
+                            "POST /mcp/zed?client=client-b HTTP/1.1\r\n\
+                             Host: 127.0.0.1\r\n\
+                             Authorization: Bearer {token}\r\n\
+                             Content-Type: application/json\r\n\
+                             Content-Length: {}\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .expect("writing the request");
+                let mut response = String::new();
+                client
+                    .read_to_string(&mut response)
+                    .await
+                    .expect("reading the response");
+                server.await.ok();
+                (response, route_rx.await.ok())
+            }
+        };
+
+        let (response, route) = post("client-token").await;
+        assert!(response.starts_with("HTTP/1.1 200 OK"), "{response:?}");
+        assert_eq!(
+            route.and_then(|route| route.client).as_deref(),
+            Some("client-a"),
+            "the token's client, not the one the URL names"
+        );
+
+        let (response, route) = post("server-token").await;
+        assert!(response.starts_with("HTTP/1.1 200 OK"), "{response:?}");
+        assert_eq!(route.map(|route| route.client), Some(None));
+
+        client_tokens
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove("client-token");
+        let (response, route) = post("client-token").await;
+        assert!(
+            response.starts_with("HTTP/1.1 401 Unauthorized"),
+            "{response:?}"
+        );
+        assert!(route.is_none());
+    });
+}
+
 #[test]
 fn answers_a_streamable_http_mcp_request() {
     smol::block_on(async {
@@ -4092,7 +4204,7 @@ async fn the_assist_tools_refuse_what_the_checks_refuse(cx: &mut TestAppContext)
 /// (Windows PowerShell 5.1 と npm の `claude.ps1` は空白を含む引数を割り、CLI が起動しない)。
 #[test]
 fn the_cli_arguments_hold_no_secret_and_no_blank() {
-    let arguments = crate::cli_assist_arguments("http://127.0.0.1:4000/mcp/zed?client=abc");
+    let arguments = crate::cli_assist_arguments("http://127.0.0.1:4000/mcp/zed");
     let [config_option, config, allowed_option, allowed] = arguments.as_slice() else {
         panic!("four arguments: {arguments:?}");
     };
@@ -4510,9 +4622,8 @@ async fn remote_assist_paths_are_checked_on_the_host(cx: &mut TestAppContext) {
     );
 }
 
-fn client_id_of(url: &str) -> Option<String> {
-    url.split_once("client=")
-        .map(|(_, client)| client.to_string())
+fn client_id_of(client: &crate::HostAssistClient, cx: &mut TestAppContext) -> String {
+    cx.update(|cx| client.registration.read(cx).client_id.clone())
 }
 
 /// ホストのサーバーは `enabled` でなくても、アシストのクライアントが居るあいだだけ動く。
@@ -4542,11 +4653,7 @@ async fn a_host_assist_client_runs_the_server_without_opening_the_ide_endpoint(
             client.source(cx).expect("the client's source"),
         )
     });
-    assert!(
-        endpoint.url.contains("/mcp/zed?client="),
-        "{}",
-        endpoint.url
-    );
+    assert!(endpoint.url.ends_with("/mcp/zed"), "{}", endpoint.url);
     assert_eq!(
         agent_endpoint, endpoint,
         "without `enabled` an agent gets the assist tools alone"
@@ -4564,7 +4671,7 @@ async fn a_host_assist_client_runs_the_server_without_opening_the_ide_endpoint(
         "terminals are not pointed at an IDE endpoint that is closed"
     );
 
-    let client_id = client_id_of(&endpoint.url);
+    let client_id = Some(client_id_of(&client, cx));
     let route = |endpoint, kind| transport::Route {
         kind,
         endpoint,
@@ -4638,10 +4745,17 @@ async fn a_host_assist_client_runs_the_server_without_opening_the_ide_endpoint(
         full
     );
     assert!(server.read_with(cx, |server, _| server.port()).is_some());
+    let whole_set = cx
+        .update(|cx| client.agent_endpoint(cx))
+        .expect("the agent's endpoint");
     assert!(
-        cx.update(|cx| client.agent_endpoint(cx))
-            .is_some_and(|endpoint| endpoint.url.contains("/mcp?client=")),
-        "with `enabled` an agent gets the whole set"
+        whole_set.url.ends_with("/mcp"),
+        "with `enabled` an agent gets the whole set: {}",
+        whole_set.url
+    );
+    assert_eq!(
+        whole_set.authorization, endpoint.authorization,
+        "with the client's own token"
     );
     assert_eq!(lock_files(lock_directory.path()).len(), 1);
 
@@ -4656,10 +4770,33 @@ async fn a_host_assist_client_runs_the_server_without_opening_the_ide_endpoint(
     cx.run_until_parked();
     assert_eq!(
         cx.update(|cx| client.assist_endpoint(cx)),
-        Some(endpoint),
+        Some(endpoint.clone()),
         "the port and token a running CLI holds stay valid"
     );
     assert!(lock_files(lock_directory.path()).is_empty());
+
+    // `assist_tools` を切って戻しても、クライアントが居るあいだは待ち受けを続ける (口だけ閉じる)
+    // ので、起動済みの CLI が持っているポートとトークンがそのまま使える。
+    set_ide_server_settings(cx, |settings| settings.assist_tools = Some(false));
+    assert_eq!(cx.update(|cx| client.assist_endpoint(cx)), None);
+    let gate = server.read_with(cx, |server, _| {
+        assert!(server.running.is_some(), "still listening for the client");
+        server.connection_gate()
+    });
+    assert!(
+        gate.admit(&route(
+            transport::Endpoint::Assist,
+            transport::ConnectionKind::Http
+        ))
+        .is_err(),
+        "the assist endpoint is closed meanwhile"
+    );
+    set_ide_server_settings(cx, |settings| settings.assist_tools = Some(true));
+    assert_eq!(
+        cx.update(|cx| client.assist_endpoint(cx)),
+        Some(endpoint),
+        "the same port and token after turning the tools back on"
+    );
 
     drop(client);
     cx.run_until_parked();
@@ -4672,6 +4809,96 @@ async fn a_host_assist_client_runs_the_server_without_opening_the_ide_endpoint(
     assert!(
         server.read_with(cx, |server, _| server.running.is_none()),
         "nothing needs the server any more"
+    );
+}
+
+/// ADR-F56: ホストのサーバーはアシストのクライアントを URL の申告ではなくトークンで見分ける。
+/// クライアントごとに別のトークンを配り、そのトークンからそのクライアントの出どころが決まる。
+/// 登録を外したクライアントのトークンは受けず、サーバー自身のトークンは「外部エージェント」。
+#[gpui::test]
+async fn each_host_assist_client_is_known_by_its_own_token(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let server = cx
+        .update(|cx| crate::server_for_project(&fixture.project, cx))
+        .expect("the workspace has a server");
+    let first = cx
+        .update(|cx| crate::host_assist_client(&fixture.project, "Claude Code", cx))
+        .expect("a client registers");
+    let second = cx
+        .update(|cx| crate::host_assist_client(&fixture.project, "Gemini CLI", cx))
+        .expect("another client registers");
+    cx.run_until_parked();
+    let (first_endpoint, second_endpoint) = cx.update(|cx| {
+        (
+            first
+                .assist_endpoint(cx)
+                .expect("the first client's endpoint"),
+            second
+                .assist_endpoint(cx)
+                .expect("the second client's endpoint"),
+        )
+    });
+    assert_eq!(first_endpoint.url, second_endpoint.url, "one server");
+    assert_ne!(first_endpoint.authorization, second_endpoint.authorization);
+
+    let (credentials, server_token) = server.read_with(cx, |server, _| {
+        let running = server.running.as_ref().expect("running for the clients");
+        (
+            transport::Credentials::Host {
+                server_token: running.auth_token.clone(),
+                client_tokens: server.client_tokens.clone(),
+            },
+            running.auth_token.to_string(),
+        )
+    });
+    let token_of = |endpoint: &crate::McpEndpoint| {
+        endpoint
+            .authorization
+            .strip_prefix("Bearer ")
+            .expect("a bearer token")
+            .to_string()
+    };
+    let label_for = |token: &str, cx: &mut TestAppContext| {
+        let client = credentials.authenticate(token).expect("a token it takes");
+        server.read_with(cx, |server, cx| {
+            server
+                .connection_scope(
+                    &transport::Route {
+                        kind: transport::ConnectionKind::Http,
+                        endpoint: transport::Endpoint::Assist,
+                        client,
+                    },
+                    cx,
+                )
+                .expect("the assist endpoint is open")
+                .assist
+                .expect("with the assist tools")
+                .label
+        })
+    };
+    assert_eq!(
+        label_for(&token_of(&first_endpoint), cx).as_ref(),
+        "Claude Code"
+    );
+    assert_eq!(
+        label_for(&token_of(&second_endpoint), cx).as_ref(),
+        "Gemini CLI"
+    );
+    assert_eq!(label_for(&server_token, cx).as_ref(), "外部エージェント");
+    assert_eq!(credentials.authenticate(&client_id_of(&first, cx)), None);
+
+    drop(first);
+    cx.run_until_parked();
+    cx.update(|_| {});
+    cx.run_until_parked();
+    assert_eq!(
+        credentials.authenticate(&token_of(&first_endpoint)),
+        None,
+        "a client that went away takes its token with it"
+    );
+    assert_eq!(
+        label_for(&token_of(&second_endpoint), cx).as_ref(),
+        "Gemini CLI"
     );
 }
 
@@ -4773,8 +5000,8 @@ async fn private_files_stay_out_of_the_sandboxed_cli(cx: &mut TestAppContext) {
     assert!(response.to_string().contains("unknown macro"), "{response}");
 }
 
-/// query 担当の前提 (4): リモートのワークツリーの項目は proto の変換で `is_private` が常に false
-/// なので、`private_files` の判定は項目の旗ではなく設定のパターンでも行う。
+/// query 担当の前提 (4): 古いホストから届いたリモートの項目は `is_private` を持たない (false) ので、
+/// `private_files` の判定は項目の旗ではなく設定のパターンでも行う。
 #[gpui::test]
 async fn private_files_are_judged_by_the_settings_not_only_the_entry(cx: &mut TestAppContext) {
     let fixture = start_sandbox_fixture(cx).await;
@@ -5364,4 +5591,454 @@ async fn the_sandbox_status_item_menu_turns_off_sharing_the_open_file(cx: &mut T
         Some(false),
         "{settings_text}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// 拒否の理由 / 失敗したタスクの出力 / 全体診断の続き
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_rejection_carries_the_reason_only_when_one_was_written() {
+    assert_eq!(
+        tools::rejected_diff_content(None),
+        vec![json!({ "type": "text", "text": "DIFF_REJECTED" })]
+    );
+    assert_eq!(
+        tools::rejected_diff_content(Some("   ")),
+        vec![json!({ "type": "text", "text": "DIFF_REJECTED" })],
+        "a blank reason adds nothing"
+    );
+    let content = tools::rejected_diff_content(Some("  keep the old name  "));
+    assert_eq!(content.len(), 2, "{content:?}");
+    assert_eq!(
+        content[0]["text"],
+        json!("DIFF_REJECTED"),
+        "the CLI only looks at the first text"
+    );
+    assert_eq!(
+        content[1]["text"],
+        json!("The user rejected this change. Their reason: keep the old name")
+    );
+}
+
+#[gpui::test]
+async fn rejecting_a_diff_hands_the_written_reason_back(cx: &mut TestAppContext) {
+    let (_fs, _workspace, server) = test_workspace_with_fs(cx).await;
+    let message = open_diff_message(1, path!("/test/main.rs"), "main.rs");
+    let response = cx.spawn({
+        let server = server.clone();
+        async move |mut cx| {
+            crate::handle_message(&server, &message, tools::ConnectionId::next(), &mut cx).await
+        }
+    });
+    cx.run_until_parked();
+
+    let diff = server
+        .update(cx, |server, _| server.open_diffs().oldest_named("main.rs"))
+        .expect("the diff tab is registered while the CLI waits");
+    let window = *cx.windows().first().expect("the workspace window is open");
+    cx.update_window(window, |_, window, cx| {
+        diff.update(cx, |diff, cx| {
+            diff.set_rejection_reason(" use the existing helper instead ", window, cx)
+        })
+    })
+    .expect("the workspace window is open");
+    diff.update(cx, |diff, cx| diff.reject(cx));
+    cx.run_until_parked();
+
+    let response: Value =
+        serde_json::from_str(&response.await.expect("openDiff produced a response"))
+            .expect("the response is valid JSON");
+    let content = &response["result"]["content"];
+    assert_eq!(content[0]["text"], json!("DIFF_REJECTED"), "{response}");
+    assert_eq!(
+        content[1]["text"],
+        json!("The user rejected this change. Their reason: use the existing helper instead"),
+        "{response}"
+    );
+}
+
+#[test]
+fn keeps_the_end_of_the_task_output_without_splitting_a_character() {
+    let (output, truncated) = tools::task_output_tail("\n\nbuild   \nfailed  \n\n\n", 4096);
+    assert_eq!(output, "build\nfailed");
+    assert!(!truncated);
+
+    // 全体 6016 バイトなので、末尾 4096 バイトの境目 (1920) は 3 バイトの「あ」の 2 バイト目に来る。
+    let long = format!("head\n{}\nlast line!", "あ".repeat(2000));
+    let (output, truncated) = tools::task_output_tail(&long, 4096);
+    assert!(truncated);
+    assert!(
+        output.len() <= 4096 && output.len() > 4000,
+        "{}",
+        output.len()
+    );
+    assert!(
+        output.ends_with("last line!"),
+        "the end of the output is kept"
+    );
+    assert!(!output.contains("head"), "the start is dropped");
+}
+
+fn task_terminal(task_id: &str, cx: &mut TestAppContext) -> Entity<terminal::Terminal> {
+    let spawned_task = task::SpawnInTerminal {
+        id: task::TaskId(task_id.to_string()),
+        full_label: "cargo test".to_string(),
+        label: "cargo test".to_string(),
+        command_label: "cargo test -p demo".to_string(),
+        ..Default::default()
+    };
+    cx.new(|cx| {
+        let mut terminal = terminal::TerminalBuilder::new_display_only(
+            terminal::terminal_settings::CursorShape::default(),
+            terminal::terminal_settings::AlternateScroll::On,
+            None,
+            0,
+            cx.background_executor(),
+            util::paths::PathStyle::local(),
+        )
+        .subscribe(cx);
+        terminal.start_task_for_test(spawned_task);
+        terminal
+    })
+}
+
+fn finish_task(
+    workspace: &Entity<Workspace>,
+    task_id: &str,
+    exit_code: i32,
+    cx: &mut TestAppContext,
+) {
+    workspace.update(cx, |_, cx| {
+        cx.emit(workspace::Event::TaskFinished {
+            task_id: task::TaskId(task_id.to_string()),
+            label: "cargo test".to_string(),
+            command_label: "cargo test -p demo".to_string(),
+            success: exit_code == 0,
+            exit_code: Some(exit_code),
+        })
+    });
+    cx.run_until_parked();
+}
+
+fn get_last_task_output_request() -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": { "name": "getLastTaskOutput", "arguments": {} }
+    })
+}
+
+#[gpui::test]
+async fn a_failed_task_leaves_its_output_for_get_last_task_output(cx: &mut TestAppContext) {
+    let (_fs, workspace, server) = test_workspace_with_fs(cx).await;
+    let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
+
+    let response = request(&server, get_last_task_output_request(), cx).await;
+    assert_eq!(
+        first_text_as_json(&response)["success"],
+        json!(false),
+        "{response}"
+    );
+
+    let terminal = task_terminal("demo-task", cx);
+    project.update(cx, |project, _| {
+        project.add_terminal_handle_for_test(&terminal)
+    });
+    terminal.update(cx, |terminal, cx| {
+        terminal.write_output(
+            b"running 3 tests\r\nerror[E0425]: cannot find value `x`\r\n",
+            cx,
+        );
+        terminal.finish_task_for_test(101, cx);
+    });
+    finish_task(&workspace, "demo-task", 101, cx);
+
+    let response = request(&server, get_last_task_output_request(), cx).await;
+    let result = first_text_as_json(&response);
+    assert_eq!(result["success"], json!(true), "{result}");
+    assert_eq!(result["label"], json!("cargo test"));
+    assert_eq!(result["command"], json!("cargo test -p demo"));
+    assert_eq!(result["exitCode"], json!(101));
+    assert_eq!(result["truncated"], json!(false));
+    let output = result["output"].as_str().expect("the output is text");
+    assert!(
+        output.contains("error[E0425]: cannot find value `x`"),
+        "{output}"
+    );
+
+    // 同じタスクが通れば、前の失敗は古いので返さない。
+    finish_task(&workspace, "demo-task", 0, cx);
+    let response = request(&server, get_last_task_output_request(), cx).await;
+    assert_eq!(
+        first_text_as_json(&response)["success"],
+        json!(false),
+        "{response}"
+    );
+}
+
+#[gpui::test]
+async fn a_failed_task_reads_only_the_tail_of_a_long_terminal(cx: &mut TestAppContext) {
+    let (_fs, workspace, server) = test_workspace_with_fs(cx).await;
+    let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
+
+    let terminal = task_terminal("long-task", cx);
+    project.update(cx, |project, _| {
+        project.add_terminal_handle_for_test(&terminal)
+    });
+    // 400 行 × 約 30 バイト = 約 12 KB。上限 (4 KB) の 3 倍ほど。
+    let mut output = String::new();
+    for index in 0..400 {
+        output.push_str(&format!(
+            "output line number {index:04}
+"
+        ));
+    }
+    output.push_str(
+        "
+
+",
+    );
+    terminal.update(cx, |terminal, cx| {
+        terminal.write_output(output.as_bytes(), cx);
+        terminal.finish_task_for_test(1, cx);
+    });
+
+    let tail = terminal.read_with(cx, |terminal, _| {
+        terminal.last_lines_within_bytes(tools::MAX_TASK_OUTPUT_BYTES)
+    });
+    assert!(
+        tail.len() > tools::MAX_TASK_OUTPUT_BYTES && tail.len() < 6 * 1024,
+        "reads just past the limit, not the whole scrollback: {}",
+        tail.len()
+    );
+    assert!(
+        !tail.contains("output line number 0000"),
+        "the start is not read"
+    );
+
+    finish_task(&workspace, "long-task", 1, cx);
+    let response = request(&server, get_last_task_output_request(), cx).await;
+    let result = first_text_as_json(&response);
+    assert_eq!(result["truncated"], json!(true), "{result}");
+    let output = result["output"].as_str().expect("the output is text");
+    assert!(
+        output.len() <= tools::MAX_TASK_OUTPUT_BYTES,
+        "{}",
+        output.len()
+    );
+    assert!(
+        output.contains("output line number 0399"),
+        "the last line is kept: {output}"
+    );
+    assert!(
+        !output.contains("output line number 0000"),
+        "the first line is dropped"
+    );
+}
+
+#[gpui::test]
+async fn a_failed_task_whose_terminal_is_gone_still_reports_its_exit_code(cx: &mut TestAppContext) {
+    let (_fs, workspace, server) = test_workspace_with_fs(cx).await;
+    finish_task(&workspace, "closed-task", 2, cx);
+
+    let response = request(&server, get_last_task_output_request(), cx).await;
+    let result = first_text_as_json(&response);
+    assert_eq!(result["success"], json!(true), "{result}");
+    assert_eq!(result["exitCode"], json!(2));
+    assert!(result.get("output").is_none(), "{result}");
+}
+
+#[gpui::test]
+async fn task_output_is_not_shared_when_the_setting_is_off(cx: &mut TestAppContext) {
+    let (_fs, workspace, server) = test_workspace_with_fs(cx).await;
+    finish_task(&workspace, "demo-task", 1, cx);
+    set_ide_server_settings(cx, |settings| settings.share_task_output = Some(false));
+
+    let response = request(&server, get_last_task_output_request(), cx).await;
+    assert_eq!(response["result"]["isError"], json!(true), "{response}");
+    assert!(
+        server.read_with(cx, |server, _| server.last_task_failure().is_none()),
+        "turning the setting off forgets what was recorded"
+    );
+
+    finish_task(&workspace, "demo-task", 1, cx);
+    assert!(
+        server.read_with(cx, |server, _| server.last_task_failure().is_none()),
+        "nothing is recorded while the setting is off"
+    );
+}
+
+#[test]
+fn pages_continue_where_the_previous_one_stopped() {
+    assert_eq!(
+        tools::page_of(vec![1, 2, 3, 4, 5], 0, 2),
+        (vec![1, 2], Some(2))
+    );
+    assert_eq!(
+        tools::page_of(vec![1, 2, 3, 4, 5], 2, 2),
+        (vec![3, 4], Some(4))
+    );
+    assert_eq!(tools::page_of(vec![1, 2, 3, 4, 5], 4, 2), (vec![5], None));
+    assert_eq!(tools::page_of(vec![1, 2, 3, 4], 2, 2), (vec![3, 4], None));
+    assert_eq!(tools::page_of(vec![1, 2], 9, 2), (Vec::<i32>::new(), None));
+}
+
+fn get_diagnostics_request(arguments: Value) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": { "name": "getDiagnostics", "arguments": arguments }
+    })
+}
+
+fn diagnostic_uris(files: &Value) -> Vec<String> {
+    files
+        .as_array()
+        .expect("the diagnostics are an array")
+        .iter()
+        .map(|file| file["uri"].as_str().unwrap_or_default().to_string())
+        .collect()
+}
+
+#[gpui::test]
+async fn workspace_diagnostics_beyond_one_page_continue_with_a_cursor(cx: &mut TestAppContext) {
+    let (fs, workspace, server) = test_workspace_with_fs(cx).await;
+    let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
+    let file_count = 501;
+    let files = (0..file_count)
+        .map(|index| (format!("file{index:03}.rs"), json!("x\n")))
+        .collect::<serde_json::Map<_, _>>();
+    fs.insert_tree(path!("/test/many"), Value::Object(files))
+        .await;
+    cx.run_until_parked();
+    for index in 0..file_count {
+        set_diagnostic(
+            &project,
+            &format!("{}/file{index:03}.rs", path!("/test/many")),
+            "broken",
+            cx,
+        );
+    }
+    cx.run_until_parked();
+
+    // 引数なし (CLI の呼び方) は今までどおり最初のテキストが配列で、500 件で止まる。
+    let response = request(&server, get_diagnostics_request(json!({})), cx).await;
+    let first_page = diagnostic_uris(&first_text_as_json(&response));
+    assert_eq!(first_page.len(), 500);
+    let continuation: Value = serde_json::from_str(
+        response["result"]["content"][1]["text"]
+            .as_str()
+            .expect("a truncated result carries a continuation"),
+    )
+    .expect("the continuation is JSON");
+    let cursor = continuation["nextCursor"]
+        .as_str()
+        .expect("the continuation has a cursor")
+        .to_string();
+
+    let response = request(
+        &server,
+        get_diagnostics_request(json!({ "cursor": cursor })),
+        cx,
+    )
+    .await;
+    let second_page = diagnostic_uris(&first_text_as_json(&response));
+    assert_eq!(second_page.len(), 1, "{second_page:?}");
+    assert!(
+        response["result"]["content"].get(1).is_none(),
+        "the last page has no continuation: {response}"
+    );
+    let mut all = first_page;
+    all.extend(second_page);
+    all.sort();
+    all.dedup();
+    assert_eq!(all.len(), file_count, "every file shows up exactly once");
+
+    let response = request(
+        &server,
+        get_diagnostics_request(json!({ "cursor": "not-a-cursor" })),
+        cx,
+    )
+    .await;
+    assert_eq!(response["result"]["isError"], json!(true), "{response}");
+}
+
+#[gpui::test]
+async fn workspace_diagnostics_list_a_file_once_for_several_language_servers(
+    cx: &mut TestAppContext,
+) {
+    let (_fs, workspace, server) = test_workspace_with_fs(cx).await;
+    let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
+    for server_id in [0, 1] {
+        project
+            .update(cx, |project, cx| {
+                project.lsp_store().update(cx, |lsp_store, cx| {
+                    lsp_store.update_diagnostic_entries(
+                        LanguageServerId(server_id),
+                        PathBuf::from(path!("/test/main.rs")),
+                        None,
+                        None,
+                        vec![DiagnosticEntry::new(
+                            Unclipped(PointUtf16::new(0, 0))..Unclipped(PointUtf16::new(0, 2)),
+                            Diagnostic {
+                                severity: DiagnosticSeverity::ERROR,
+                                message: format!("from server {server_id}"),
+                                source_kind: DiagnosticSourceKind::Pushed,
+                                ..Diagnostic::default()
+                            },
+                        )],
+                        cx,
+                    )
+                })
+            })
+            .expect("the diagnostics apply");
+    }
+    cx.run_until_parked();
+
+    let response = request(&server, get_diagnostics_request(json!({})), cx).await;
+    let files = first_text_as_json(&response);
+    assert_eq!(diagnostic_uris(&files).len(), 1, "{files}");
+    assert_eq!(
+        files[0]["diagnostics"]
+            .as_array()
+            .map(|diagnostics| diagnostics.len()),
+        Some(2),
+        "both servers' diagnostics are in the one entry: {files}"
+    );
+}
+
+/// ターミナルの出力には秘密が混じりうるので、`getLastTaskOutput` はホストの全ツールの口だけ。
+/// サンドボックスの CLI・制限セッション・アシストの口 (`/mcp/zed`) には一覧にも出さず、呼ばれても断る。
+#[gpui::test]
+async fn task_output_never_reaches_a_sandboxed_or_assist_scope(cx: &mut TestAppContext) {
+    let paths = Arc::new(session_paths());
+    for scope in [
+        tools::ToolScope::Sandboxed(paths.clone()),
+        tools::ToolScope::SandboxedReadOnly(paths.clone()),
+        tools::ToolScope::Assist(Some(paths.clone())),
+        tools::ToolScope::Assist(None),
+    ] {
+        assert!(!scope.allows_tool("getLastTaskOutput"));
+        let listed = tool_names(&json!({
+            "result": tools::list_tools_result(&tools::ConnectionScope::without_assist(scope)),
+        }));
+        assert!(
+            !listed.iter().any(|name| name == "getLastTaskOutput"),
+            "{listed:?}"
+        );
+    }
+    assert!(tools::ToolScope::Full.allows_tool("getLastTaskOutput"));
+
+    let fixture = start_sandbox_fixture(cx).await;
+    let mut client = connect(&fixture, cx).await;
+    let response = client.call_tool("getLastTaskOutput", json!({})).await;
+    assert_eq!(
+        response["error"]["code"],
+        json!(protocol::INVALID_PARAMS),
+        "{response}"
+    );
+    assert!(response.get("result").is_none(), "{response}");
 }

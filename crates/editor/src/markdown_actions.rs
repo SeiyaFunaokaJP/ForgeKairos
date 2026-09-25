@@ -2220,7 +2220,13 @@ struct MarkdownTextLayout<'a> {
     code_rows: Vec<bool>,
     blocks: Vec<TextBlock>,
     block_of_row: Vec<Option<usize>>,
-    links: Vec<LinkSyntax>,
+    /// The rows that start a link reference definition, which a link anywhere
+    /// in the document may refer to.
+    link_definition_rows: Vec<usize>,
+    /// The links found so far, by the text they were looked for in: finding
+    /// them takes a Markdown parse, which is kept to the text around the
+    /// blocks a selection touches instead of the whole document.
+    links_by_region: RefCell<Vec<(Range<usize>, Rc<[LinkSyntax]>)>>,
 }
 
 impl<'a> MarkdownTextLayout<'a> {
@@ -2296,6 +2302,7 @@ impl<'a> MarkdownTextLayout<'a> {
         // The row of the latest link reference definition, whose title may
         // follow on the next row.
         let mut link_definition_row = None;
+        let mut link_definition_rows = Vec::new();
         let mut in_list = false;
         for row in 0..lines.len() {
             let Some(line_range) = lines.get(row).cloned() else {
@@ -2410,9 +2417,13 @@ impl<'a> MarkdownTextLayout<'a> {
             let continues_definition = row > 0
                 && link_definition_row == Some(row - 1)
                 && content.starts_with(['"', '\'', '(']);
-            if (starts_block && is_link_reference_definition(content)) || continues_definition {
+            let starts_definition = starts_block && is_link_reference_definition(content);
+            if starts_definition || continues_definition {
                 blocks.extend(open_block.take());
                 link_definition_row = Some(row);
+                if starts_definition {
+                    link_definition_rows.push(row);
+                }
                 continue;
             }
 
@@ -2463,8 +2474,111 @@ impl<'a> MarkdownTextLayout<'a> {
             code_rows,
             blocks,
             block_of_row,
-            links: markdown_link_syntax(text),
+            link_definition_rows,
+            links_by_region: RefCell::default(),
         }
+    }
+
+    fn line_text(&self, row: usize) -> &'a str {
+        self.lines
+            .get(row)
+            .and_then(|range| self.text.get(range.clone()))
+            .unwrap_or_default()
+    }
+
+    fn is_blank_row(&self, row: usize) -> bool {
+        self.line_text(row).trim().is_empty()
+    }
+
+    /// The rows around `rows` that parse on their own the way they do in the
+    /// whole document: back to a line that starts a top-level block after a
+    /// blank line, since a list item's or an indented line's meaning depends
+    /// on the lines before it, and on to the next blank line, which no link
+    /// spans.
+    fn link_region(&self, rows: Range<usize>) -> Range<usize> {
+        let mut start = rows.start.min(self.lines.len().saturating_sub(1));
+        while start > 0 {
+            let line = self.line_text(start);
+            let starts_top_level_block = !line.starts_with([' ', '\t'])
+                && !self.is_blank_row(start)
+                && !self.is_code_row(start)
+                && self.is_blank_row(start - 1)
+                && !self.is_code_row(start - 1);
+            if starts_top_level_block {
+                break;
+            }
+            start -= 1;
+        }
+        let mut end = rows.end.max(start + 1);
+        while end < self.lines.len() && !self.is_blank_row(end) {
+            end += 1;
+        }
+        start..end.min(self.lines.len())
+    }
+
+    /// The links and images in and around `block`.
+    fn links_around(&self, block: &TextBlock) -> Rc<[LinkSyntax]> {
+        let rows = self.link_region(block.rows.clone());
+        let (Some(first_line), Some(last_line)) =
+            (self.lines.get(rows.start), self.lines.get(rows.end - 1))
+        else {
+            return Rc::from([]);
+        };
+        let region = first_line.start..last_line.end;
+        if let Some((_, links)) = self
+            .links_by_region
+            .borrow()
+            .iter()
+            .find(|(cached, _)| *cached == region)
+        {
+            return links.clone();
+        }
+
+        // A reference link is one only if its label is defined, anywhere in
+        // the document, so the definitions outside the region go in front of
+        // it. Behind it, a fence or a comment the region leaves open would
+        // swallow them.
+        let mut source = String::new();
+        for &definition_row in &self.link_definition_rows {
+            if rows.contains(&definition_row) {
+                continue;
+            }
+            // The destination and the title may each take a line of their
+            // own. A line that could open a block running past the blank line
+            // after it is left out, since it would swallow the region.
+            for row in definition_row..(definition_row + 3).min(self.lines.len()) {
+                let line = self.line_text(row);
+                let content = line.get(line_prefix(line).text_start..).unwrap_or_default();
+                if row > definition_row
+                    && (self.is_blank_row(row)
+                        || self.is_code_row(row)
+                        || content.trim_start().starts_with('<'))
+                {
+                    break;
+                }
+                source.push_str(content);
+                source.push('\n');
+            }
+            source.push('\n');
+        }
+        let region_start_in_source = source.len();
+        source.push_str(self.text.get(region.clone()).unwrap_or_default());
+
+        let to_document = |offset: usize| offset - region_start_in_source + region.start;
+        let links: Rc<[LinkSyntax]> = markdown_link_syntax(&source)
+            .into_iter()
+            .filter(|link| link.outer.start >= region_start_in_source)
+            .map(|link| LinkSyntax {
+                outer: to_document(link.outer.start)..to_document(link.outer.end),
+                text: link
+                    .text
+                    .map(|text| to_document(text.start)..to_document(text.end)),
+            })
+            .collect();
+        self.links_by_region
+            .borrow_mut()
+            .push((region, links.clone()));
+        links
     }
 
     fn row_of(&self, offset: usize) -> usize {
@@ -2649,7 +2763,11 @@ impl<'a> MarkdownTextLayout<'a> {
     /// Why new tags around `segment` of `block` would change what the Markdown
     /// around them means, if they would.
     fn wrap_refusal(&self, block: &TextBlock, segment: &Range<usize>) -> Option<StyleRefusal> {
-        if self.links.iter().any(|link| link.is_cut_by(segment)) {
+        if self
+            .links_around(block)
+            .iter()
+            .any(|link| link.is_cut_by(segment))
+        {
             return Some(if segment.is_empty() {
                 StyleRefusal::InsideLink
             } else {
@@ -3866,6 +3984,75 @@ mod style_tests {
                 Request::SetMarker(Some(0xb7ebc6))
             ),
             "<mark style=\"background-color: #b7ebc6\">[li«nk](url) b»</mark>"
+        );
+    }
+
+    #[test]
+    fn test_links_are_found_in_the_text_around_the_selection_only() {
+        let text = "前の段落\n\n- 項目\n  - 入れ子\n\n    続き\n\n後の段落\n\n    コード\n\n最後";
+        let layout = MarkdownTextLayout::new(text);
+        let row = |line: &str| {
+            text.split('\n')
+                .position(|text_line| text_line == line)
+                .unwrap_or_else(|| panic!("{line:?} is not in the text"))
+        };
+
+        // A paragraph after a blank line stands on its own.
+        assert_eq!(
+            layout.link_region(row("後の段落")..row("後の段落") + 1),
+            row("後の段落")..row("後の段落") + 1
+        );
+        // An indented line means what it means only after the list it
+        // continues, which the region goes back to.
+        assert_eq!(
+            layout.link_region(row("    続き")..row("    続き") + 1),
+            row("- 項目")..row("    続き") + 1
+        );
+        assert_eq!(
+            layout.link_region(row("  - 入れ子")..row("  - 入れ子") + 1),
+            row("- 項目")..row("  - 入れ子") + 1
+        );
+        // Nor does a paragraph after indented code need anything before it.
+        assert_eq!(
+            layout.link_region(row("最後")..row("最後") + 1),
+            row("最後")..row("最後") + 1
+        );
+    }
+
+    #[test]
+    fn test_links_are_found_outside_the_region_they_would_be_parsed_in() {
+        for marked in [
+            // An indented line alone would be code, with no link in it.
+            "- 項目\n  - 入れ子\n\n    続きの [リ«ンク](url) 後»",
+            // Definitions are found wherever they are in the document.
+            "前\n\n[te«xt][r»ef]\n\n後\n\n> [ref]: https://example.com",
+            "[te«xt][r»ef]\n\n- [ref]: https://example.com",
+            "[te«xt][r»ef]\n\n[ref]:\n  https://example.com\n  \"題\"",
+            "[te«xt][r»ef]\n\n段落\n\n[other]: /x\n[ref]: /y",
+            // A fence the region leaves open does not hide them.
+            "[te«xt][r»ef]\n```\nコード\n\n続き\n```\n\n[ref]: https://example.com",
+        ] {
+            assert_eq!(
+                inline(marked, Request::SetTextColor(RED)),
+                "refused: CrossesLink",
+                "{marked}"
+            );
+        }
+        // Without its definition, a reference link is only brackets.
+        assert_eq!(
+            inline(
+                "[te«xt][r»ef]\n\n[other]: https://example.com",
+                Request::ToggleMarker
+            ),
+            "[te<mark>«xt][r»</mark>ef]\n\n[other]: https://example.com"
+        );
+        // A definition inside a code block defines nothing.
+        assert_eq!(
+            inline(
+                "[te«xt][r»ef]\n\n```\n[ref]: https://example.com\n```",
+                Request::ToggleMarker
+            ),
+            "[te<mark>«xt][r»</mark>ef]\n\n```\n[ref]: https://example.com\n```"
         );
     }
 

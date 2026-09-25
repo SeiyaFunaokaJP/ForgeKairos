@@ -680,6 +680,16 @@ impl ConfigureContextServerModal {
             }
         };
 
+        if defined_by_project(
+            self.context_server_store.read(cx),
+            &id,
+            self.original_server_id.as_ref(),
+            cx,
+        ) {
+            self.set_error(DEFINED_BY_PROJECT_MESSAGE, cx);
+            return;
+        }
+
         self.state = State::Waiting;
 
         let existing_server = self.context_server_store.read(cx).get_server(&id);
@@ -938,6 +948,24 @@ impl ConfigureContextServerModal {
             .log_err();
     }
 }
+
+/// This dialog writes the user's settings, where an entry for a name a
+/// project defines is shadowed by the project's and would only leave a copy
+/// behind that nothing runs.
+fn defined_by_project(
+    store: &ContextServerStore,
+    id: &ContextServerId,
+    original_id: Option<&ContextServerId>,
+    cx: &App,
+) -> bool {
+    std::iter::once(id).chain(original_id).any(|id| {
+        store
+            .server_source(id, cx)
+            .is_some_and(|source| source.is_project())
+    })
+}
+
+const DEFINED_BY_PROJECT_MESSAGE: &str = "このサーバーはプロジェクトの設定ファイル (.zed/settings.json) で定義されています。ここで保存するとユーザー設定に書き込まれますが、プロジェクトの定義が優先されるため反映されません。設定ウィンドウの「MCP サーバー」ページから、定義しているファイルを編集してください。";
 
 fn parse_input(text: &str) -> Result<(ContextServerId, ContextServerCommand)> {
     let value: serde_json::Value = serde_json_lenient::from_str(text)?;
@@ -2076,6 +2104,93 @@ pub(crate) fn default_markdown_style(window: &Window, cx: &App) -> MarkdownStyle
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::TestAppContext;
+    use project::{FakeFs, Project};
+    use settings::ContextServerSettingsContent;
+    use util::path;
+
+    /// The dialog writes the user's settings, and a project's entry of the
+    /// same name wins over the user's: saving there would change nothing that
+    /// runs and leave a stray copy in the user's file.
+    #[gpui::test]
+    async fn test_a_server_the_project_defines_is_not_saved_to_the_user_settings(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.context_servers.insert(
+                        "shared".into(),
+                        ContextServerSettingsContent::Stdio {
+                            // Off for the same reason as the project's entry below: the store
+                            // starts the user's entry before the project's settings are read.
+                            enabled: false,
+                            remote: false,
+                            command: ContextServerCommand {
+                                path: "user-server".into(),
+                                args: Vec::new(),
+                                env: None,
+                                timeout: None,
+                            },
+                        },
+                    );
+                    settings.project.context_servers.insert(
+                        "mine".into(),
+                        ContextServerSettingsContent::Stdio {
+                            enabled: false,
+                            remote: false,
+                            command: ContextServerCommand {
+                                path: "my-server".into(),
+                                args: Vec::new(),
+                                env: None,
+                                timeout: None,
+                            },
+                        },
+                    );
+                });
+            });
+        });
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            serde_json::json!({
+                ".zed": {
+                    // Disabled so that nothing sets out to launch a real process.
+                    "settings.json": r#"{ "context_servers": { "shared": { "enabled": false, "command": "project-server" } } }"#
+                },
+                "src": {}
+            }),
+        )
+        .await;
+        let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+        cx.run_until_parked();
+
+        let shared = ContextServerId("shared".into());
+        let other = ContextServerId("other".into());
+        project.read_with(cx, |project, cx| {
+            let store = project.context_server_store();
+            let store = store.read(cx);
+            assert!(defined_by_project(store, &shared, None, cx));
+            assert!(
+                defined_by_project(store, &other, Some(&shared), cx),
+                "renaming it does not take it out of the project's hands"
+            );
+            assert!(defined_by_project(store, &shared, Some(&other), cx));
+            assert!(!defined_by_project(store, &other, None, cx));
+            let mine = ContextServerId("mine".into());
+            assert!(
+                store.server_source(&mine, cx).is_some(),
+                "the store knows the user's own server"
+            );
+            assert!(
+                !defined_by_project(store, &mine, None, cx),
+                "a server only the user's settings define is saved as before"
+            );
+            assert!(!defined_by_project(store, &mine, Some(&other), cx));
+        });
+    }
 
     #[test]
     fn parse_http_input_reads_oauth_settings() {

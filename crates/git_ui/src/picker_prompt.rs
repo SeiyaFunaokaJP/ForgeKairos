@@ -24,10 +24,24 @@ pub fn prompt(
     window: &mut Window,
     cx: &mut App,
 ) -> Task<Option<usize>> {
+    if options.len() == 1 {
+        return Task::ready(Some(0));
+    }
+    prompt_even_for_one(prompt, options, workspace, window, cx)
+}
+
+/// [`prompt`] that shows the picker even when there is only one option, for a choice that decides
+/// what the user is told afterwards: taking the only option without asking would leave them not
+/// knowing it was taken.
+pub fn prompt_even_for_one(
+    prompt: &str,
+    options: Vec<SharedString>,
+    workspace: WeakEntity<Workspace>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Task<Option<usize>> {
     if options.is_empty() {
         return Task::ready(None);
-    } else if options.len() == 1 {
-        return Task::ready(Some(0));
     }
     let prompt = prompt.to_string().into();
 

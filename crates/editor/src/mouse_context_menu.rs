@@ -19,7 +19,10 @@ use zed_actions::agent::AddSelectionToThread;
 use zed_actions::browser::{AskCopilot, SearchSelection};
 use zed_actions::ide_server::SendSelectionToClaudeCode;
 use zed_actions::preview::{
-    markdown::{EditMermaid, EditTable, OpenPreviewToTheSide as OpenMarkdownPreviewToTheSide},
+    markdown::{
+        EditMermaid, EditTable, OpenPreview as OpenMarkdownPreview,
+        OpenPreviewToTheSide as OpenMarkdownPreviewToTheSide,
+    },
     svg::OpenPreviewToTheSide as OpenSvgPreviewToTheSide,
 };
 
@@ -319,6 +322,7 @@ pub fn deploy_context_menu(
                 )
                 .when(is_markdown, |builder| {
                     builder
+                        .action("Markdown プレビューを開く", Box::new(OpenMarkdownPreview))
                         .action(
                             "Markdown プレビューを横に開く",
                             Box::new(OpenMarkdownPreviewToTheSide),

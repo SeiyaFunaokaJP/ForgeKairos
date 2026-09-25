@@ -37,6 +37,9 @@ pub(crate) enum ImageData {
     LocalFile(PathBuf),
     /// Bytes with no file behind them (a pasted screenshot). `extension` without the dot, e.g. "png".
     Bytes { bytes: Vec<u8>, extension: String },
+    /// A file of one of the project's worktrees. On a remote host it is
+    /// copied there, never passing through this machine.
+    ProjectFile(ProjectPath),
 }
 
 /// Stores the image in the `images` folder next to `document` (creating the folder), under
@@ -286,6 +289,20 @@ async fn store(
             check_size(bytes.len() as u64)?;
             bytes
         }
+        ImageData::ProjectFile(source) if !destination.is_local => {
+            return copy_on_host(destination, project, &source, &file_name, cx).await;
+        }
+        ImageData::ProjectFile(source) => {
+            let path = project
+                .read_with(cx, |project, cx| project.absolute_path(&source, cx))?
+                .with_context(|| {
+                    format!(
+                        "画像ファイルが見つかりません: {}",
+                        source.path.display(destination.path_style)
+                    )
+                })?;
+            read_local_image(fs, &path).await?
+        }
     };
 
     if !destination.is_local {
@@ -340,6 +357,75 @@ async fn store(
             )))
         }
     }
+}
+
+/// Copies a file of the remote project next to the document on the host
+/// itself. The host's image store cannot read every format a Markdown file
+/// links (SVG, AVIF), and the copy never needs the bytes here anyway.
+async fn copy_on_host(
+    destination: &Destination,
+    project: &WeakEntity<Project>,
+    source: &ProjectPath,
+    file_name: &str,
+    cx: &mut AsyncApp,
+) -> Result<StoredImage> {
+    let (entry_id, size) = project
+        .read_with(cx, |project, cx| {
+            project
+                .entry_for_path(source, cx)
+                .filter(|entry| entry.is_file())
+                .map(|entry| (entry.id, entry.size))
+        })?
+        .with_context(|| {
+            format!(
+                "画像ファイルが見つかりません: {}",
+                source.path.display(destination.path_style)
+            )
+        })?;
+    check_size(size)?;
+    let path = find_remote_name(destination, project, file_name, cx).await?;
+    let worktree = destination
+        .worktree
+        .upgrade()
+        .context("Markdown のあるワークツリーが閉じられました。")?;
+    // Unlike writing bytes, copying on the host does not create the folder.
+    let has_folder = worktree.read_with(cx, |worktree, _| {
+        worktree.entry_for_path(&destination.folder).is_some()
+    });
+    if !has_folder {
+        worktree
+            .update(cx, |worktree, cx| {
+                worktree.create_entry(destination.folder.clone(), true, None, cx)
+            })
+            .await
+            .with_context(|| {
+                format!(
+                    "images フォルダーを作れません: {}",
+                    destination.folder.display(destination.path_style)
+                )
+            })?;
+    }
+    let project_path = ProjectPath {
+        worktree_id: destination.worktree_id,
+        path,
+    };
+    // The host refuses to copy over anything already at the name, so unlike
+    // `create_entry` this cannot overwrite what turned up there meanwhile.
+    let copied = project
+        .update(cx, |project, cx| {
+            project.copy_entry(entry_id, project_path.clone(), cx)
+        })?
+        .await
+        .with_context(|| {
+            format!(
+                "接続先で画像をコピーできませんでした: {}",
+                project_path.path.display(destination.path_style)
+            )
+        })?;
+    Ok(StoredImage {
+        project_path,
+        entry_id: copied.map(|entry| entry.id),
+    })
 }
 
 /// Writes the picture over the empty file that claimed its name, through the
@@ -414,6 +500,11 @@ fn stored_file_name(image: &ImageData, preferred_name: Option<String>) -> Result
             .with_context(|| format!("ファイル名を読み取れません: {}", path.display()))?
             .to_string(),
         (None, ImageData::Bytes { .. }) => "image".to_string(),
+        (None, ImageData::ProjectFile(source)) => source
+            .path
+            .file_name()
+            .with_context(|| format!("ファイル名を読み取れません: {}", source.path.as_unix_str()))?
+            .to_string(),
     };
     let mut name = sanitize_file_name(&name);
     if let ImageData::Bytes { extension, .. } = image {

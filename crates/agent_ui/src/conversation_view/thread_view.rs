@@ -27,7 +27,9 @@ use crate::agent_registry_ui::{
     add_consented_hosts_and_await_pickup, missing_hosts, registry_install_requirement,
 };
 use crate::completion_provider::{AvailableSkill, PromptLocalCommand};
-use crate::message_editor::SharedSessionCapabilities;
+use crate::message_editor::{
+    ActiveFileEstimate, SharedSessionCapabilities, expands_directory_mentions,
+};
 use crate::ui::{
     SandboxGroup, SandboxRow, SandboxSection, SandboxStatusTooltip, TerminalSandboxWarning,
     TerminalToolHeader,
@@ -641,6 +643,9 @@ pub struct ThreadView {
     /// Cloned from the parent `ConversationView` so the cache is shared and the
     /// snapshot stays in sync via the parent's project-event subscription.
     pub(crate) code_span_resolver: AgentCodeSpanResolver,
+    /// The file `agent.attach_active_file` would add, for the attachment
+    /// totals. Only a top-level thread sends messages the user writes.
+    pub(crate) active_file_estimate: Option<Entity<ActiveFileEstimate>>,
     pub show_external_source_prompt_warning: bool,
     pub show_codex_windows_warning: bool,
     sandbox_status: Option<VerifiedSandboxStatus>,
@@ -916,7 +921,13 @@ impl ThreadView {
                             auto_submit,
                         } => {
                             should_auto_submit = auto_submit;
-                            editor.set_message(blocks, window, cx);
+                            // Content that is not sent right away is a draft
+                            // the user saved (or carried to another thread).
+                            if auto_submit {
+                                editor.set_message(blocks, window, cx);
+                            } else {
+                                editor.set_draft_message(blocks, window, cx);
+                            }
                         }
                         AgentInitialContent::FromExternalSource(prompt) => {
                             show_external_source_prompt_warning = true;
@@ -932,14 +943,25 @@ impl ThreadView {
                         }
                     }
                 } else if let Some(draft) = thread.read(cx).draft_prompt() {
-                    editor.set_message(draft.to_vec(), window, cx);
+                    editor.set_draft_message(draft.to_vec(), window, cx);
                 }
                 editor
             })
         });
-        message_editor.update(cx, |editor, _| editor.set_thread(thread.downgrade()));
+        message_editor.update(cx, |editor, cx| {
+            editor.set_thread(thread.downgrade());
+            editor.set_directory_expansion_thread(thread.downgrade(), cx);
+        });
         let mention_set = message_editor.read(cx).mention_set().clone();
         subscriptions.push(cx.observe(&mention_set, |_, _, cx| cx.notify()));
+        let active_file_estimate = parent_session_id
+            .is_none()
+            .then(|| Some((workspace.upgrade()?, project.upgrade()?)))
+            .flatten()
+            .map(|(workspace, project)| ActiveFileEstimate::shared(&workspace, &project, cx));
+        if let Some(active_file_estimate) = &active_file_estimate {
+            subscriptions.push(cx.observe(active_file_estimate, |_, _, cx| cx.notify()));
+        }
 
         let show_codex_windows_warning = cfg!(windows)
             && project.upgrade().is_some_and(|p| p.read(cx).is_local())
@@ -1129,6 +1151,7 @@ impl ThreadView {
             tool_permission_menu_handle: PopoverMenuHandle::default(),
             project,
             code_span_resolver,
+            active_file_estimate,
             show_external_source_prompt_warning,
             show_codex_windows_warning,
             sandbox_status: None,
@@ -1296,13 +1319,7 @@ impl ThreadView {
         message_editor: &Entity<MessageEditor>,
         cx: &mut App,
     ) -> Task<Result<(Vec<acp::ContentBlock>, Vec<Entity<Buffer>>)>> {
-        let expand = self.as_native_thread(cx).is_some_and(|thread| {
-            let thread = thread.read(cx);
-            AgentSettings::get_global(cx)
-                .profiles
-                .get(&thread.profile(cx))
-                .is_some_and(|profile| profile.tools.is_empty())
-        });
+        let expand = expands_directory_mentions(self.thread.read(cx), cx);
         message_editor.update(cx, |message_editor, cx| message_editor.contents(expand, cx))
     }
 
@@ -4659,6 +4676,12 @@ impl ThreadView {
                 let steer_on = entry.steer;
 
                 let min_width = rems_from_px(160_f32);
+                // The queued content was resolved when it was queued, the
+                // active file included.
+                let attachment_total = crate::ui::attachment_total(
+                    ("queued-message-attachment-estimate", index),
+                    self.attachment_estimate_for(editor, false, cx),
+                );
 
                 h_flex()
                     .group("queue_entry")
@@ -4681,6 +4704,7 @@ impl ThreadView {
                             .tooltip(Tooltip::text(tooltip_text)),
                     )
                     .child(editor.clone())
+                    .children(attachment_total)
                     .child(if editor_focused {
                         h_flex()
                             .gap_1()
@@ -4818,43 +4842,31 @@ impl ThreadView {
     }
 
     /// The rough size of what the message's attachments will add, so that a
-    /// large paste or file is noticed before it is sent.
-    fn render_attachment_estimate(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
-        let estimate = self
-            .message_editor
-            .read(cx)
+    /// large paste or file is noticed before it is sent. `with_active_file`
+    /// for an editor whose message is resolved when it is sent (the active
+    /// file is added then); a queued message already contains it.
+    pub(crate) fn attachment_estimate_for(
+        &self,
+        message_editor: &Entity<MessageEditor>,
+        with_active_file: bool,
+        cx: &App,
+    ) -> crate::mention_set::AttachmentsEstimate {
+        let message_editor = message_editor.read(cx);
+        let active_file = self
+            .active_file_estimate
+            .as_ref()
+            .filter(|_| with_active_file)
+            .and_then(|active_file| message_editor.unlisted_active_file(active_file, cx));
+        message_editor
             .mention_set()
             .read(cx)
-            .total_estimate(cx);
-        if estimate.bytes == 0 {
-            return None;
-        }
-        let tokens = crate::mention_set::format_token_estimate(
-            crate::mention_set::estimated_tokens(estimate.bytes),
-        );
-        let reduced_count = estimate.reduced_count;
-        let tooltip: SharedString = if reduced_count > 0 {
-            format!(
-                "添付の概算トークン数です (4 バイトを 1 トークンとして概算)。\n\
-                 1 メッセージの上限を超えるため、大きい添付 {reduced_count} 件をアウトラインや参照に減らして送ります。"
-            )
-            .into()
-        } else {
-            "添付の概算トークン数です (4 バイトを 1 トークンとして概算)。".into()
-        };
-        Some(
-            div()
-                .id("attachment-estimate")
-                .child(
-                    Label::new(format!("添付 {tokens}"))
-                        .size(LabelSize::Small)
-                        .color(if reduced_count > 0 {
-                            Color::Warning
-                        } else {
-                            Color::Muted
-                        }),
-                )
-                .tooltip(Tooltip::text(tooltip)),
+            .total_estimate(active_file.as_ref(), cx)
+    }
+
+    fn render_attachment_estimate(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        crate::ui::attachment_total(
+            "attachment-estimate",
+            self.attachment_estimate_for(&self.message_editor, true, cx),
         )
     }
 
@@ -6449,6 +6461,14 @@ impl ThreadView {
                 let is_subagent = self.is_subagent();
                 let can_rewind = self.thread.read(cx).supports_truncate(cx);
                 let is_editable = can_rewind && message.client_id.is_some() && !is_subagent;
+                let edited_attachment_total = (editing && is_editable)
+                    .then(|| {
+                        crate::ui::attachment_total(
+                            ("edited-message-attachment-estimate", entry_ix),
+                            self.attachment_estimate_for(&editor, true, cx),
+                        )
+                    })
+                    .flatten();
                 let agent_name = if is_subagent {
                     "subagents".into()
                 } else {
@@ -6540,6 +6560,9 @@ impl ThreadView {
                                 if is_editable {
                                     this.child(
                                         base_container
+                                            .children(edited_attachment_total.map(|total| {
+                                                h_flex().pl_1p5().child(total)
+                                            }))
                                             .child(
                                                 IconButton::new("cancel", IconName::Close)
                                                     .disabled(is_loading_contents)

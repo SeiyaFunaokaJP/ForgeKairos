@@ -114,7 +114,7 @@ const TOKEN_THRESHOLD: u64 = 250;
 
 pub(crate) const DRAFT_PROMPT_PERSIST_DEBOUNCE: Duration = Duration::from_millis(250);
 
-const START_OUTSIDE_SANDBOX_LABEL: &str = "サンドボックスの外で起動 (今回のみ)";
+const START_OUTSIDE_SANDBOX_LABEL: &str = "サンドボックスの外で起動 (このスレッドのみ)";
 /// ADR-F49 決定 19 (8c): a start in the sandbox that failed for a reason of
 /// its own (the agent exited, something else went wrong) may still be one
 /// the user wants outside it. The start is confirmed like any other.
@@ -133,30 +133,18 @@ pub(crate) const RESTART_OUTSIDE_SANDBOX_LABEL: &str = "サンドボックスの
 /// the thread's name.
 const OUTSIDE_SANDBOX_TAB_SUFFIX: &str = " (サンドボックスの外)";
 
-/// ADR-F49 決定 19 (8c): the threads whose start outside the sandbox the user
-/// confirmed in this session of Zed. The consent is the thread's, not one
-/// connection's: the idle disconnect or an update that takes the connection
-/// away does not take it back, and the thread comes back outside without
-/// asking again. It is not kept past the session — a thread read back from
-/// the history after a restart asks again.
-///
-/// Kept by thread and agent: a thread reopened with another agent (a shared
-/// project opens every thread with Zed's own) is not a start the user
-/// confirmed.
-#[derive(Default)]
-struct OutsideSandboxConsents(HashSet<(ThreadId, AgentId)>);
-
-impl gpui::Global for OutsideSandboxConsents {}
-
+/// ADR-F49 決定 19 (8c): the consent is the thread's, not one connection's:
+/// the idle disconnect or an update that takes the connection away does not
+/// take it back, and the thread comes back outside without asking again. It
+/// is written down (td), so a thread read back after a restart of Zed does not
+/// ask again either, until the user takes the consents back on the settings
+/// page.
 fn outside_sandbox_consented(thread_id: ThreadId, agent_id: AgentId, cx: &App) -> bool {
-    cx.try_global::<OutsideSandboxConsents>()
-        .is_some_and(|consents| consents.0.contains(&(thread_id, agent_id)))
+    crate::thread_metadata_store::outside_sandbox_consented(thread_id, &agent_id, cx)
 }
 
 fn consent_to_outside_sandbox(thread_id: ThreadId, agent_id: AgentId, cx: &mut App) {
-    cx.default_global::<OutsideSandboxConsents>()
-        .0
-        .insert((thread_id, agent_id));
+    crate::thread_metadata_store::record_outside_sandbox_consent(thread_id, agent_id, cx);
 }
 
 /// ADR-F49 決定 19 (8c): said on a thread read back in its sandbox although
@@ -166,7 +154,7 @@ const RESUMED_IN_SANDBOX_LABEL: &str =
 const OUTSIDE_SANDBOX_RUNNING_LABEL: &str =
     "このスレッドのエージェントはサンドボックスの外で実行中です";
 const OUTSIDE_SANDBOX_EXPLANATION: &str = "サンドボックスの外で起動すると、このエージェントは \
-     Zed 本体の権限で動き、プロジェクトのフックや MCP サーバーも実行できます。起動の前に毎回確認します。";
+     Zed 本体の権限で動き、プロジェクトのフックや MCP サーバーも実行できます。起動の前にスレッドごとに確認します。";
 const AGENT_HOSTS_MESSAGE: &str = "エージェントの通信に許可リストへの追加が必要です";
 const ADD_AGENT_HOSTS_LABEL: &str = "許可リストに追加して起動";
 /// The same button after a consent that did not carry through: by then the
@@ -4995,10 +4983,10 @@ impl ConversationView {
         )
     }
 
-    /// ADR-F49 decision 19: asks, every time and with no "always", before
-    /// the agent starts outside its sandbox, for this once.
+    /// ADR-F49 decision 19: asks, with no "always", before the agent starts
+    /// outside its sandbox for this thread.
     fn start_agent_outside_sandbox_once(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.start_agent_outside_sandbox(OutsideSandboxStart::Once, window, cx);
+        self.start_agent_outside_sandbox(OutsideSandboxStart::Thread, window, cx);
     }
 
     /// ADR-F49 決定 19 (8c): the start outside the sandbox offered where one in
@@ -5014,7 +5002,7 @@ impl ConversationView {
         let start = if self.root_session_id.is_some() {
             OutsideSandboxStart::RestartingThread
         } else {
-            OutsideSandboxStart::Once
+            OutsideSandboxStart::Thread
         };
         self.start_agent_outside_sandbox(start, window, cx);
     }
@@ -5058,7 +5046,7 @@ impl ConversationView {
                 });
                 this.outside_sandbox = Some(id);
                 let session = match start {
-                    OutsideSandboxStart::Once => ResetSession::Resume,
+                    OutsideSandboxStart::Once | OutsideSandboxStart::Thread => ResetSession::Resume,
                     OutsideSandboxStart::RestartingThread => ResetSession::Fresh,
                 };
                 this.reset_with(session, window, cx);
@@ -5773,6 +5761,7 @@ fn plan_label_markdown_style(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::sandboxed_claude_code::LAUNCH_FOR_THIS_THREAD_LABEL;
     use acp_thread::StubAgentConnection;
     use action_log::ActionLog;
     use agent::{AgentTool, EditFileTool, FetchTool, TerminalTool, ToolPermissionContext};
@@ -7682,6 +7671,86 @@ pub(crate) mod tests {
         );
     }
 
+    fn file_resource(file_name: &str, text: String) -> acp::ContentBlock {
+        acp::ContentBlock::Resource(acp::EmbeddedResource::new(
+            acp::EmbeddedResourceResource::TextResourceContents(acp::TextResourceContents::new(
+                text,
+                MentionUri::File {
+                    abs_path: PathBuf::from(util::path!("/project")).join(file_name),
+                }
+                .to_uri()
+                .to_string(),
+            )),
+        ))
+    }
+
+    #[gpui::test]
+    async fn test_restored_draft_attachments_are_planned_against_the_budget(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let big = "a line of plain text\n".repeat(5_000);
+        let (conversation_view, cx) = setup_conversation_view_with_initial_content(
+            StubAgentServer::default_response(),
+            AgentInitialContent::ContentBlock {
+                blocks: vec![file_resource("big.txt", big.clone())],
+                auto_submit: false,
+            },
+            cx,
+        )
+        .await;
+
+        let thread = active_thread(&conversation_view, cx);
+        let estimate = thread.update(cx, |thread, cx| {
+            thread
+                .session_capabilities
+                .write()
+                .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+            thread.attachment_estimate_for(&thread.message_editor, true, cx)
+        });
+        assert_eq!(
+            estimate.reduced_count, 1,
+            "the draft's attachment is over the budget and reduced when sent: {estimate:?}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_queued_message_shows_its_attachment_total(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::default_response(), cx).await;
+        let queued = "queued attachment\n".repeat(100);
+        active_thread(&conversation_view, cx).update_in(cx, |thread, window, cx| {
+            thread
+                .session_capabilities
+                .write()
+                .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+            thread.add_to_queue(
+                vec![
+                    acp::ContentBlock::Text(acp::TextContent::new("見て ".to_string())),
+                    file_resource("queued.txt", queued.clone()),
+                ],
+                vec![],
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let estimate = active_thread(&conversation_view, cx).read_with(cx, |thread, cx| {
+            let queued_editor = thread
+                .message_queue
+                .first()
+                .map(|entry| entry.editor.clone())
+                .expect("queued message editor not created");
+            thread.attachment_estimate_for(&queued_editor, false, cx)
+        });
+        assert_eq!(estimate.bytes, queued.len());
+        assert!(!estimate.includes_active_file);
+    }
+
     async fn setup_conversation_view(
         agent: impl AgentServer + 'static,
         cx: &mut TestAppContext,
@@ -8064,7 +8133,7 @@ pub(crate) mod tests {
             view.start_agent_outside_sandbox_once(window, cx)
         });
         cx.run_until_parked();
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
         cx.run_until_parked();
         assert_eq!(outside_starts.load(std::sync::atomic::Ordering::SeqCst), 1);
         conversation_view.read_with(cx, |view, _| {
@@ -8095,7 +8164,7 @@ pub(crate) mod tests {
             view.start_agent_outside_sandbox_once(window, cx)
         });
         cx.run_until_parked();
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
         cx.run_until_parked();
         assert_eq!(outside_starts.load(std::sync::atomic::Ordering::SeqCst), 1);
 
@@ -8207,7 +8276,7 @@ pub(crate) mod tests {
             view.start_agent_outside_sandbox_once(window, cx)
         });
         cx.run_until_parked();
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
         cx.run_until_parked();
         assert_eq!(outside_starts.load(std::sync::atomic::Ordering::SeqCst), 1);
         confirming_view.read_with(cx, |view, cx| {
@@ -8433,9 +8502,13 @@ pub(crate) mod tests {
             cx.simulate_click(button.center(), gpui::Modifiers::default());
             cx.run_until_parked();
             let (_message, detail) = cx.pending_prompt().expect("the start is confirmed first");
-            assert!(detail.contains("今回の起動だけです"), "{detail}");
+            assert!(detail.contains("このスレッドだけです"), "{detail}");
+            assert!(
+                detail.contains("同意は設定の「AI」ページで取り消せます"),
+                "{detail}"
+            );
             assert_eq!(server.starts(), (1, 0), "nothing started before the answer");
-            cx.simulate_prompt_answer("起動 (今回のみ)");
+            cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
             cx.run_until_parked();
             assert_eq!(server.starts(), (1, 1));
             assert!(is_connected(&view, cx));
@@ -8473,7 +8546,7 @@ pub(crate) mod tests {
         cx.run_until_parked();
         let (_message, detail) = cx.pending_prompt().expect("asked first");
         assert!(detail.contains("新しいセッションになります"), "{detail}");
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
         cx.run_until_parked();
         assert_eq!(server.starts(), (1, 1));
         assert!(is_connected(&view, cx));
@@ -8553,7 +8626,7 @@ pub(crate) mod tests {
             view.restart_outside_sandbox(window, cx)
         });
         cx.run_until_parked();
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
         cx.run_until_parked();
         assert_eq!(server.starts(), (1, 1));
         assert!(is_connected(&view, cx));
@@ -8594,7 +8667,7 @@ pub(crate) mod tests {
             view.start_agent_outside_sandbox_once(window, cx)
         });
         cx.run_until_parked();
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
         cx.run_until_parked();
         assert_eq!(server.starts(), (1, 1));
         let first = view.read_with(cx, |view, _| view.outside_sandbox);
@@ -8633,7 +8706,7 @@ pub(crate) mod tests {
             view.start_agent_outside_sandbox_once(window, cx)
         });
         cx.run_until_parked();
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
         cx.run_until_parked();
         assert!(shows_outside_sandbox_banner(&view, cx));
 
@@ -8690,7 +8763,7 @@ pub(crate) mod tests {
             view.start_agent_outside_sandbox_once(window, cx)
         });
         cx.run_until_parked();
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
         cx.run_until_parked();
         assert_eq!(server.starts(), (0, 1));
         assert!(is_connected(&view, cx));

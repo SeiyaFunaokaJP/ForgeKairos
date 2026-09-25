@@ -5943,7 +5943,7 @@ mod tests {
         let project =
             project::Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
         let endpoint = ide_server::McpEndpoint {
-            url: "http://127.0.0.1:39254/mcp/zed?client=abc".to_string(),
+            url: "http://127.0.0.1:39254/mcp/zed".to_string(),
             authorization: "Bearer secret".to_string(),
         };
         let given = cx.update(|cx| {

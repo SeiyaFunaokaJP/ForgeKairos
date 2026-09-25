@@ -74,6 +74,26 @@ fn development_range_args(base: &str, development_branch: &str) -> Vec<String> {
     ]
 }
 
+/// `git log --no-walk` of commits the box holds from outside the development range, in the same
+/// format as [`development_range_args`], to fill in what was not known when they were added.
+fn outside_commit_args(shas: &[Oid]) -> Vec<String> {
+    let mut args = vec![
+        "log".to_string(),
+        "--no-walk=unsorted".to_string(),
+        "-z".to_string(),
+        "--format=%H%x1f%P%x1f%s%x1f%B".to_string(),
+    ];
+    args.extend(shas.iter().map(Oid::to_string));
+    args
+}
+
+/// What the box says when the development range is longer than it reads.
+fn range_too_wide_message() -> String {
+    format!(
+        "開発ブランチの範囲が広すぎます ({MAX_RANGE_COMMITS} 件を超えています)。基点が正しいか確かめてください。"
+    )
+}
+
 fn parse_development_range(stdout: &str) -> DevelopmentRange {
     let mut commits = Vec::new();
     for record in stdout.split('\0') {
@@ -320,6 +340,47 @@ impl MergeRequestBoxState {
         self.sort_placed();
         self.refresh_message();
         pruned
+    }
+
+    /// Forgets the range, for one that could not be read whole: nothing may be marked, listed as
+    /// unplaced, or taken out of the box on the strength of part of it.
+    fn clear_range(&mut self) {
+        self.range = None;
+        self.range_positions.clear();
+    }
+
+    /// The commits in the box from outside the development range, whose subjects are whatever
+    /// the graph knew when they were added.
+    fn outside_range_shas(&self) -> Vec<Oid> {
+        self.placed
+            .iter()
+            .filter(|placed| !self.range_positions.contains_key(&placed.sha))
+            .map(|placed| placed.sha)
+            .take(MAX_RANGE_COMMITS)
+            .collect()
+    }
+
+    /// Takes what git says about commits from outside the range (see
+    /// [`Self::outside_range_shas`]). Returns whether anything in the box changed.
+    fn update_outside_commits(&mut self, commits: &[RangeCommit]) -> bool {
+        let mut changed = false;
+        for placed in &mut self.placed {
+            if self.range_positions.contains_key(&placed.sha) {
+                continue;
+            }
+            let Some(commit) = commits.iter().find(|commit| commit.sha == placed.sha) else {
+                continue;
+            };
+            if placed.subject != commit.subject || placed.message != commit.message {
+                placed.subject = commit.subject.clone();
+                placed.message = commit.message.clone();
+                changed = true;
+            }
+        }
+        if changed {
+            self.refresh_message();
+        }
+        changed
     }
 
     fn unplaced(&self) -> Vec<&RangeCommit> {
@@ -570,18 +631,26 @@ fn can_leave_stranded(stranded: &StrandedBuild, head_sha: Option<&str>) -> bool 
     head_sha == Some(stranded.merge_request_sha.as_str())
 }
 
-fn box_key(work_directory_abs_path: &Path, development_branch: &str) -> String {
-    format!(
-        "git-merge-request-box:{}:{development_branch}",
-        work_directory_abs_path.to_string_lossy()
-    )
+/// Where a repository's boxes are kept: its path, and for a remote project the machine as well
+/// (`RemoteConnectionOptions::machine_key`), so that the same path on this machine and on a
+/// server does not share one box. A local path never starts with `@`, and stays as it was so
+/// that boxes saved before are still found.
+pub(crate) fn merge_request_storage_location(
+    work_directory_abs_path: &Path,
+    remote_machine: Option<&str>,
+) -> String {
+    match remote_machine {
+        None => work_directory_abs_path.to_string_lossy().into_owned(),
+        Some(machine) => format!("@{machine}:{}", work_directory_abs_path.to_string_lossy()),
+    }
 }
 
-fn pending_key(work_directory_abs_path: &Path, scratch_branch: &str) -> String {
-    format!(
-        "git-merge-request-pending:{}:{scratch_branch}",
-        work_directory_abs_path.to_string_lossy()
-    )
+fn box_key(location: &str, development_branch: &str) -> String {
+    format!("git-merge-request-box:{location}:{development_branch}")
+}
+
+fn pending_key(location: &str, scratch_branch: &str) -> String {
+    format!("git-merge-request-pending:{location}:{scratch_branch}")
 }
 
 /// The default base: the repository's default branch, on the remote when the local branch tracks
@@ -706,7 +775,10 @@ pub(crate) struct MergeRequestBox {
     /// Commits handed over while the saved box was still being read (the multi-selection menu
     /// opens the box and fills it in one go), added once it has been.
     queued_candidates: Vec<MergeRequestCandidate>,
+    /// `RemoteConnectionOptions::machine_key` of a remote project.
+    remote_machine: Option<String>,
     _range_task: Option<Task<()>>,
+    _outside_task: Option<Task<()>>,
     _load_task: Option<Task<()>>,
     _save_task: Option<Task<()>>,
     _pending_task: Option<Task<()>>,
@@ -776,6 +848,16 @@ impl MergeRequestBox {
                 },
             ),
         ];
+        let remote_machine = workspace
+            .upgrade()
+            .and_then(|workspace| {
+                workspace
+                    .read(cx)
+                    .project()
+                    .read(cx)
+                    .remote_connection_options(cx)
+            })
+            .map(|options| options.machine_key());
         let mut this = Self {
             git_store,
             repo_id,
@@ -799,7 +881,9 @@ impl MergeRequestBox {
             building: false,
             loading_saved: false,
             queued_candidates: Vec::new(),
+            remote_machine,
             _range_task: None,
+            _outside_task: None,
             _load_task: None,
             _save_task: None,
             _pending_task: None,
@@ -832,6 +916,10 @@ impl MergeRequestBox {
             .unwrap_or_default()
     }
 
+    fn storage_location(&self, work_directory_abs_path: &Path) -> String {
+        merge_request_storage_location(work_directory_abs_path, self.remote_machine.as_deref())
+    }
+
     fn work_directory_abs_path(&self, cx: &App) -> Option<Arc<Path>> {
         Some(
             self.repository(cx)?
@@ -859,7 +947,11 @@ impl MergeRequestBox {
             self.set_development_branch(development_branch, window, cx);
             return;
         };
-        let pending = read_pending(&work_directory_abs_path, &scratch, cx);
+        let pending = read_pending(
+            &self.storage_location(&work_directory_abs_path),
+            &scratch,
+            cx,
+        );
         self.loading_saved = true;
         self._load_task = Some(cx.spawn_in(window, async move |this, cx| {
             let pending = pending.await;
@@ -907,7 +999,10 @@ impl MergeRequestBox {
             return;
         };
         self.loading_saved = true;
-        let key = box_key(&work_directory_abs_path, &development_branch);
+        let key = box_key(
+            &self.storage_location(&work_directory_abs_path),
+            &development_branch,
+        );
         let store = KeyValueStore::global(cx);
         let saved = cx.background_spawn(async move { store.read_kvp(&key).log_err().flatten() });
         let default_branch = repository.update(cx, |repository, _| repository.default_branch(true));
@@ -1028,6 +1123,18 @@ impl MergeRequestBox {
                 this.range_status = match result {
                     Ok(Ok(output)) if output.succeeded() => {
                         let range = parse_development_range(&output.stdout);
+                        // Refused rather than shown in part: a commit past the limit cannot be
+                        // told from one a rewrite took away, so nothing could be taken out of
+                        // the box, and what is listed as left over would not be all of it.
+                        if range.truncated {
+                            this.state.clear_range();
+                            this.after_state_change(window, cx);
+                            this.refresh_outside_commits(window, cx);
+                            this.range_status =
+                                RangeStatus::Failed(range_too_wide_message().into());
+                            cx.notify();
+                            return;
+                        }
                         let pruned = this.state.set_range(
                             range,
                             (base.to_string(), development_branch.to_string()),
@@ -1038,6 +1145,7 @@ impl MergeRequestBox {
                             )));
                         }
                         this.after_state_change(window, cx);
+                        this.refresh_outside_commits(window, cx);
                         RangeStatus::Loaded
                     }
                     Ok(Ok(output)) => RangeStatus::Failed(
@@ -1058,6 +1166,46 @@ impl MergeRequestBox {
         }));
     }
 
+    /// Re-reads the subjects of the commits from outside the development range, which a commit
+    /// the graph had not loaded yet when it was dropped into the box would otherwise keep as its
+    /// short SHA. Runs with every read of the range, which follows every change of the refs.
+    fn refresh_outside_commits(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let shas = self.state.outside_range_shas();
+        let Some(repository) = self.repository(cx).filter(|_| !shas.is_empty()) else {
+            self._outside_task = None;
+            return;
+        };
+        let receiver = repository.update(cx, |repository, _| {
+            repository.run_git_command(outside_commit_args(&shas), None)
+        });
+        self._outside_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let output = match receiver.await {
+                Ok(Ok(output)) if output.succeeded() => output,
+                Ok(Ok(output)) => {
+                    log::warn!(
+                        "could not read the commits outside the development range: {}",
+                        output.failure_message()
+                    );
+                    return;
+                }
+                Ok(Err(error)) => {
+                    log::warn!(
+                        "could not read the commits outside the development range: {error:#}"
+                    );
+                    return;
+                }
+                Err(_) => return,
+            };
+            let commits = parse_development_range(&output.stdout).commits;
+            this.update_in(cx, |this, window, cx| {
+                if this.state.update_outside_commits(&commits) {
+                    this.after_state_change(window, cx);
+                }
+            })
+            .ok();
+        }));
+    }
+
     fn schedule_save(&mut self, cx: &mut Context<Self>) {
         if self.loading_saved {
             return;
@@ -1072,7 +1220,10 @@ impl MergeRequestBox {
         let saved = self
             .state
             .to_saved(self.base.as_deref(), Some(branch_name.trim()));
-        let key = box_key(&work_directory_abs_path, &development_branch);
+        let key = box_key(
+            &self.storage_location(&work_directory_abs_path),
+            &development_branch,
+        );
         let store = KeyValueStore::global(cx);
         self._save_task = Some(cx.spawn(async move |_, cx| {
             cx.background_executor().timer(SAVE_DELAY).await;
@@ -1104,7 +1255,11 @@ impl MergeRequestBox {
         let Some(work_directory_abs_path) = self.work_directory_abs_path(cx) else {
             return;
         };
-        let pending = read_pending(&work_directory_abs_path, &scratch, cx);
+        let pending = read_pending(
+            &self.storage_location(&work_directory_abs_path),
+            &scratch,
+            cx,
+        );
         self._pending_task = Some(cx.spawn(async move |this, cx| {
             let pending = pending.await;
             this.update(cx, |this, cx| {
@@ -1583,7 +1738,11 @@ impl MergeRequestBox {
                     recreate: build.recreate,
                     excluded: excluded.iter().map(Oid::to_string).collect(),
                 };
-                write_pending(&work_directory_abs_path, &pending, cx);
+                write_pending(
+                    &self.storage_location(&work_directory_abs_path),
+                    &pending,
+                    cx,
+                );
                 self.pending = Some(pending);
                 self.report_error(
                     format!(
@@ -1664,7 +1823,11 @@ impl MergeRequestBox {
                                 merge_request_sha,
                             });
                         }
-                        forget_pending(&work_directory_abs_path, &pending.scratch_branch, cx);
+                        forget_pending(
+                            &this.storage_location(&work_directory_abs_path),
+                            &pending.scratch_branch,
+                            cx,
+                        );
                         this.pending = None;
                         this.report_created(
                             repository.clone(),
@@ -1761,7 +1924,11 @@ impl MergeRequestBox {
                 match result {
                     Ok(Ok(output)) if output.succeeded() => {
                         forget_origin(&work_directory_abs_path, &pending.scratch_branch, cx);
-                        forget_pending(&work_directory_abs_path, &pending.scratch_branch, cx);
+                        forget_pending(
+                            &this.storage_location(&work_directory_abs_path),
+                            &pending.scratch_branch,
+                            cx,
+                        );
                         this.pending = None;
                         this.report_info(
                             format!(
@@ -2536,11 +2703,11 @@ fn short_sha(sha: &str) -> String {
 }
 
 fn read_pending(
-    work_directory_abs_path: &Path,
+    location: &str,
     scratch_branch: &str,
     cx: &App,
 ) -> Task<Option<PendingMergeRequest>> {
-    let key = pending_key(work_directory_abs_path, scratch_branch);
+    let key = pending_key(location, scratch_branch);
     let store = KeyValueStore::global(cx);
     cx.background_spawn(async move {
         store
@@ -2551,8 +2718,8 @@ fn read_pending(
     })
 }
 
-fn write_pending(work_directory_abs_path: &Path, pending: &PendingMergeRequest, cx: &App) {
-    let key = pending_key(work_directory_abs_path, &pending.scratch_branch);
+fn write_pending(location: &str, pending: &PendingMergeRequest, cx: &App) {
+    let key = pending_key(location, &pending.scratch_branch);
     let Some(json) = serde_json::to_string(pending).log_err() else {
         return;
     };
@@ -2564,8 +2731,8 @@ fn write_pending(work_directory_abs_path: &Path, pending: &PendingMergeRequest, 
 }
 
 /// Drops what a stopped build left for the box to finish, once its scratch branch is gone.
-pub(crate) fn forget_pending(work_directory_abs_path: &Path, scratch_branch: &str, cx: &App) {
-    let key = pending_key(work_directory_abs_path, scratch_branch);
+pub(crate) fn forget_pending(location: &str, scratch_branch: &str, cx: &App) {
+    let key = pending_key(location, scratch_branch);
     let store = KeyValueStore::global(cx);
     cx.background_spawn(async move {
         store.delete_kvp(key).await.log_err();
@@ -2702,6 +2869,86 @@ mod tests {
 
     fn placed(state: &MergeRequestBoxState) -> Vec<Oid> {
         state.placed.iter().map(|placed| placed.sha).collect()
+    }
+
+    /// A commit from outside the development range keeps what the graph knew when it was added
+    /// (a short SHA while the graph was still loading it) until git says more; the range's own
+    /// commits are left to the range.
+    #[test]
+    fn test_outside_commits_take_what_git_says() {
+        let mut state = state_with_range();
+        state.add([
+            MergeRequestCandidate::from(&range_commit(1, false)),
+            candidate(9),
+        ]);
+        assert_eq!(state.outside_range_shas(), vec![oid(9)]);
+        assert_eq!(
+            outside_commit_args(&[oid(9)]),
+            [
+                "log".to_string(),
+                "--no-walk=unsorted".to_string(),
+                "-z".to_string(),
+                "--format=%H%x1f%P%x1f%s%x1f%B".to_string(),
+                oid(9).to_string(),
+            ]
+        );
+        git::repository::validate_git_command(&outside_commit_args(&[oid(9)])).unwrap();
+
+        let told = RangeCommit {
+            sha: oid(9),
+            subject: "本当の件名 9".into(),
+            message: "本当の件名 9\n\n本文 9".into(),
+            is_merge: false,
+        };
+        let not_for_the_range = RangeCommit {
+            subject: "別の件名 1".into(),
+            ..range_commit(1, false)
+        };
+        assert!(state.update_outside_commits(&[told.clone(), not_for_the_range]));
+        assert_eq!(state.placed[0].subject.as_ref(), "件名 1");
+        assert_eq!(state.placed[1].subject.as_ref(), "本当の件名 9");
+        assert_eq!(state.message, "件名 1\n\n本文 1\n本当の件名 9");
+        assert!(
+            !state.update_outside_commits(&[told]),
+            "nothing new, nothing to save"
+        );
+    }
+
+    /// A range read only in part is dropped whole: nothing is marked or listed from it.
+    #[test]
+    fn test_cleared_range_marks_and_lists_nothing() {
+        let mut state = state_with_range();
+        state.add([MergeRequestCandidate::from(&range_commit(1, false))]);
+        state.exclude(&oid(2));
+        state.clear_range();
+        assert!(state.unplaced().is_empty());
+        assert!(!state.everything_checked());
+        assert!(!state.is_outside_range(&oid(1)));
+        assert_eq!(state.outside_range_shas(), vec![oid(1)]);
+        assert_eq!(placed(&state), vec![oid(1)], "the box keeps what is in it");
+        assert_eq!(state.row_marks().mark(&oid(3)), None);
+    }
+
+    /// The same path on this machine and on a server keeps two boxes; a local path's key is what
+    /// it was before remote machines were told apart.
+    #[test]
+    fn test_storage_location_tells_machines_apart() {
+        let path = Path::new("/home/me/repo");
+        let local = merge_request_storage_location(path, None);
+        let remote = merge_request_storage_location(path, Some("ssh:me@server:22"));
+        assert_eq!(
+            box_key(&local, "dev"),
+            "git-merge-request-box:/home/me/repo:dev"
+        );
+        assert_eq!(
+            box_key(&remote, "dev"),
+            "git-merge-request-box:@ssh:me@server:22:/home/me/repo:dev"
+        );
+        assert_ne!(pending_key(&local, "x"), pending_key(&remote, "x"));
+        assert_ne!(
+            merge_request_storage_location(path, Some("ssh:me@other:22")),
+            remote
+        );
     }
 
     #[test]
@@ -3450,6 +3697,81 @@ mod tests {
                     .collect::<Vec<_>>(),
                 vec![oid(5)]
             );
+        });
+    }
+
+    /// A development range longer than the box reads is refused with the reason, rather than
+    /// shown in part with nothing ever taken out of the box.
+    #[gpui::test]
+    async fn test_too_wide_range_is_refused(cx: &mut TestAppContext) {
+        let (fs, _workspace, graph, mut cx) = setup("dev-wide", cx).await;
+        let stdout = (0..=MAX_RANGE_COMMITS)
+            .map(|index| {
+                let sha: Oid = format!("{:040x}", index + 1000).parse().unwrap();
+                format!("{sha}\x1f\x1f件名\x1f件名\n\0")
+            })
+            .collect::<String>();
+        set_git_result(
+            &fs,
+            &development_range_args("origin/main", "dev-wide").join(" "),
+            &stdout,
+            0,
+        );
+        let merge_request_box = open_box(&graph, &mut cx);
+        merge_request_box.read_with(&cx, |merge_request_box, _| {
+            assert_eq!(
+                merge_request_box.range_status,
+                RangeStatus::Failed(range_too_wide_message().into())
+            );
+            assert!(merge_request_box.state.unplaced().is_empty());
+            assert!(merge_request_box.state.range.is_none());
+            assert!(
+                merge_request_box.unverified_range().is_some(),
+                "creating still says the check is incomplete"
+            );
+        });
+    }
+
+    /// A commit dropped in from outside the development range before the graph had loaded it
+    /// gets its subject on the next read of the range, which every change of the refs brings.
+    #[gpui::test]
+    async fn test_outside_commit_subjects_are_read_again(cx: &mut TestAppContext) {
+        let (fs, _workspace, graph, mut cx) = setup("dev-outside", cx).await;
+        let merge_request_box = open_box(&graph, &mut cx);
+        let outsider = oid(4);
+        merge_request_box.update_in(&mut cx, |merge_request_box, window, cx| {
+            merge_request_box.add_candidates(
+                vec![MergeRequestCandidate {
+                    sha: outsider,
+                    subject: outsider.display_short().into(),
+                    message: SharedString::default(),
+                    is_merge: false,
+                }],
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        set_git_result(
+            &fs,
+            &outside_commit_args(&[outsider]).join(" "),
+            &format!("{outsider}\x1f\x1f基点の件名\x1f基点の件名\n\n本文\n\0"),
+            0,
+        );
+        merge_request_box.update_in(&mut cx, |merge_request_box, window, cx| {
+            merge_request_box.reload_range(window, cx);
+        });
+        cx.run_until_parked();
+        merge_request_box.read_with(&cx, |merge_request_box, _| {
+            let placed = merge_request_box
+                .state
+                .placed
+                .iter()
+                .find(|placed| placed.sha == outsider)
+                .expect("the outsider stays in the box");
+            assert_eq!(placed.subject.as_ref(), "基点の件名");
+            assert_eq!(placed.message.as_ref(), "基点の件名\n\n本文");
         });
     }
 

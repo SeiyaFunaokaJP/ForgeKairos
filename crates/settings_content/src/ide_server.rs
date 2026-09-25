@@ -29,4 +29,10 @@ pub struct IdeServerSettingsContent {
     ///
     /// Default: true
     pub share_active_file: Option<bool>,
+    /// Whether agents connected over the IDE server may read the output of the
+    /// last task that failed in this window (the `getLastTaskOutput` tool, at
+    /// most the last 4 KB of the task's terminal).
+    ///
+    /// Default: true
+    pub share_task_output: Option<bool>,
 }

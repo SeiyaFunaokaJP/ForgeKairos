@@ -7,7 +7,7 @@ use std::{
 
 use gpui::{DefiniteLength, FontWeight, Hsla, SharedString, TextAlign, px, relative};
 use html5ever::{
-    Attribute, LocalName, ParseOpts, local_name, parse_document,
+    Attribute, LocalName, ParseOpts, QualName, local_name, parse_document,
     tendril::{StrTendril, TendrilSink},
     tokenizer::{
         BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
@@ -66,13 +66,43 @@ pub(crate) enum HtmlTablePart {
     OpenTable(HtmlSpanningTable),
     OpenCell(HtmlSpanningCell),
     CloseCell,
-    /// A row ended after taking this many columns; the rest of the table's
-    /// columns still need a box each, or the grid would pull the next row up.
+    /// A row ended with these of its columns taken, by its own cells or by
+    /// a `rowspan` from above; the rest of the table's columns still need a
+    /// box each to draw their borders.
     EndRow {
         row: usize,
-        used_columns: usize,
+        occupied_columns: Vec<bool>,
     },
-    CloseTable,
+    CloseTable {
+        has_caption: bool,
+        /// The `children` of the block making up the table's `<caption>`,
+        /// when it is drawn below the table.
+        caption_below: Option<Range<usize>>,
+    },
+}
+
+/// The width a `<td>` or `<th>` asks its column to have.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum HtmlColumnWidth {
+    Pixels(f32),
+    /// A fraction of the table's width, `0.5` for `50%`.
+    Fraction(f32),
+}
+
+impl HtmlColumnWidth {
+    /// The width a column gets from two of its cells: a percentage wins over
+    /// pixels, the way a browser makes the column a percentage column, and
+    /// otherwise the wider one.
+    pub(crate) fn merge(known: Option<Self>, width: Self) -> Self {
+        match (known, width) {
+            (Some(Self::Pixels(known)), Self::Pixels(width)) => Self::Pixels(known.max(width)),
+            (Some(Self::Fraction(known)), Self::Fraction(width)) => {
+                Self::Fraction(known.max(width))
+            }
+            (Some(Self::Fraction(known)), Self::Pixels(_)) => Self::Fraction(known),
+            (None, width) | (Some(Self::Pixels(_)), width) => width,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -84,8 +114,14 @@ pub(crate) struct HtmlSpanningTable {
     /// The table's own `align`, or the alignment of what encloses it in the
     /// same block. One from an earlier block is the renderer's to find.
     pub text_align: Option<TextAlign>,
-    /// Each column's `width` in pixels, when a cell of it asks for one.
-    pub column_widths: Vec<Option<f32>>,
+    /// Each column's `width`, when a cell of it asks for one.
+    pub column_widths: Vec<Option<HtmlColumnWidth>>,
+    /// Whether the table has a `<caption>`, which is drawn with the table in a
+    /// box of their own.
+    pub has_caption: bool,
+    /// The `children` of the block making up the `<caption>`, when it is
+    /// drawn above the table.
+    pub caption_above: Option<Range<usize>>,
 }
 
 #[derive(Debug, Clone)]
@@ -94,6 +130,8 @@ pub(crate) struct HtmlSpanningCell {
     pub row: usize,
     pub column: usize,
     pub col_span: usize,
+    /// How many rows the cell reaches down, never past the table's last row.
+    pub row_span: usize,
     pub is_header: bool,
     /// The cell's own alignment, its row's, or the centering a `<th>` gets.
     pub text_align: Option<TextAlign>,
@@ -138,9 +176,15 @@ pub(crate) enum HtmlLayoutTagKind {
         text_align: Option<TextAlign>,
         vertical_align: Option<HtmlVerticalAlign>,
         col_span: usize,
-        width: Option<f32>,
+        row_span: usize,
+        width: Option<HtmlColumnWidth>,
     },
     CloseCell,
+    OpenCaption {
+        below: bool,
+        text_align: Option<TextAlign>,
+    },
+    CloseCaption,
 }
 
 /// The tags that can hold later blocks in their body. `<details>` is followed
@@ -321,6 +365,9 @@ pub(crate) struct ParsedHtmlTable {
     pub header: Vec<ParsedHtmlTableRow>,
     pub body: Vec<ParsedHtmlTableRow>,
     pub caption: Option<HtmlParagraph>,
+    /// Whether the caption asks to go below the table, with `align="bottom"`
+    /// or `caption-side: bottom`.
+    pub caption_below: bool,
     /// The alignment of an enclosing `<div align>`, which moves the table as a
     /// whole and reaches the cells that ask for no alignment of their own, the
     /// way it reaches a markdown table's cells.
@@ -335,6 +382,7 @@ pub(crate) struct ParsedHtmlTableColumn {
     pub is_header: bool,
     pub children: HtmlParagraph,
     pub alignment: Alignment,
+    pub width: Option<HtmlColumnWidth>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -373,6 +421,9 @@ pub(crate) struct HtmlHighlightStyle {
     pub color: Option<u32>,
     /// The background color as `0xRRGGBB`.
     pub background_color: Option<u32>,
+    /// The `font-size` of a `<span>`, `<mark>` or `<font>`, as a percentage of
+    /// the surrounding text.
+    pub font_scale_percent: Option<u16>,
 }
 
 #[derive(Debug, Clone)]
@@ -494,16 +545,10 @@ fn container_tags(source: &str) -> Vec<HtmlContainerTag> {
                 return TokenSinkResult::Continue;
             };
             let tag_name = tag.name.as_ref();
-            if tag.kind == TagKind::StartTag {
-                let raw_kind = match tag_name {
-                    "script" => Some(RawKind::ScriptData),
-                    "style" => Some(RawKind::Rawtext),
-                    "textarea" | "title" => Some(RawKind::Rcdata),
-                    _ => None,
-                };
-                if let Some(raw_kind) = raw_kind {
-                    return TokenSinkResult::RawData(raw_kind);
-                }
+            if tag.kind == TagKind::StartTag
+                && let Some(raw_text) = raw_text_result(tag_name)
+            {
+                return raw_text;
             }
             if tag_name == "pre" {
                 match tag.kind {
@@ -546,21 +591,51 @@ fn container_tags(source: &str) -> Vec<HtmlContainerTag> {
     tokenizer.sink.tags
 }
 
+/// What the tree builder would tell the tokenizer after the start tag of an
+/// element that holds text rather than markup, the way a browser reads
+/// `<script>`, `<style>`, `<xmp>` or `<iframe>`.
+fn raw_text_result(tag_name: &str) -> Option<TokenSinkResult<()>> {
+    Some(match tag_name {
+        "script" => TokenSinkResult::RawData(RawKind::ScriptData),
+        "style" | "xmp" | "iframe" | "noembed" | "noframes" | "noscript" => {
+            TokenSinkResult::RawData(RawKind::Rawtext)
+        }
+        "textarea" | "title" => TokenSinkResult::RawData(RawKind::Rcdata),
+        "plaintext" => TokenSinkResult::Plaintext,
+        _ => return None,
+    })
+}
+
+/// The tags whose text [`raw_text_result`] hands the tokenizer as text,
+/// together with `<pre>`, whose tags are code the document shows.
+fn holds_no_layout_tags(tag_name: &str) -> bool {
+    tag_name == "pre" || raw_text_result(tag_name).is_some()
+}
+
 /// The widest `colspan` a cell of a table spanning blocks is given, the same
 /// ceiling the HTML table renderer puts on its grid.
 pub(crate) const MAX_SPANNING_TABLE_COLUMNS: usize = 512;
+
+/// The most rows a `rowspan` reaches, as in a browser.
+const MAX_ROW_SPAN: usize = 65534;
 
 /// Lists the tags that lay out a `<table>`, together with the `<div>`,
 /// `<center>` and `<details>` tags around and inside its cells, each with its
 /// byte range in `source`. The markdown parser cuts a block at these tags when
 /// the table's cells continue in later blocks, so unlike [`container_tags`]
 /// this has to know where each tag is, which html5ever's tokenizer does not
-/// say. Comments and the text of `<script>`, `<style>`, `<textarea>`, `<title>`
-/// and `<pre>` are skipped, the way [`container_tags`] skips them.
+/// say. Comments, the text of the elements [`raw_text_result`] lists and of
+/// `<pre>` are skipped, the way [`container_tags`] skips them.
 pub(crate) fn layout_tags(source: &str) -> Vec<HtmlLayoutTag> {
+    struct FoundTag {
+        range: Range<usize>,
+        name: &'static str,
+        closing: bool,
+    }
+
     // Lowercasing ASCII keeps every byte offset, so the ranges fit `source`.
     let lowered = source.to_ascii_lowercase();
-    let mut tags = Vec::new();
+    let mut found = Vec::new();
     let mut index = 0;
 
     while let Some(offset) = lowered.get(index..).and_then(|rest| rest.find('<')) {
@@ -592,7 +667,7 @@ pub(crate) fn layout_tags(source: &str) -> Vec<HtmlLayoutTag> {
         };
         index = end;
 
-        if !closing && matches!(name, "script" | "style" | "textarea" | "title" | "pre") {
+        if !closing && holds_no_layout_tags(name) {
             let close = format!("</{name}");
             index = lowered[end..]
                 .find(&close)
@@ -600,9 +675,24 @@ pub(crate) fn layout_tags(source: &str) -> Vec<HtmlLayoutTag> {
             continue;
         }
 
-        let range = start..end;
-        let kind = if closing {
-            match name {
+        let Some(name) = LAYOUT_TAG_NAMES
+            .iter()
+            .copied()
+            .find(|layout_name| *layout_name == name)
+        else {
+            continue;
+        };
+        found.push(FoundTag {
+            range: start..end,
+            name,
+            closing,
+        });
+    }
+
+    let mut tags = Vec::with_capacity(found.len());
+    for tag in found {
+        let kind = if tag.closing {
+            match tag.name {
                 "div" => {
                     HtmlLayoutTagKind::Container(HtmlContainerTag::Close(HtmlContainerName::Div))
                 }
@@ -613,69 +703,144 @@ pub(crate) fn layout_tags(source: &str) -> Vec<HtmlLayoutTag> {
                     HtmlContainerName::Details,
                 )),
                 "table" => HtmlLayoutTagKind::CloseTable,
-                "thead" | "tbody" | "tfoot" => HtmlLayoutTagKind::CloseSection,
+                "caption" => HtmlLayoutTagKind::CloseCaption,
                 "tr" => HtmlLayoutTagKind::CloseRow,
                 "td" | "th" => HtmlLayoutTagKind::CloseCell,
-                _ => continue,
+                _ => HtmlLayoutTagKind::CloseSection,
             }
+        } else if !tag_takes_attributes(tag.name) {
+            HtmlLayoutTagKind::OpenSection
         } else {
-            let container_name = match name {
-                "div" => Some(HtmlContainerName::Div),
-                "center" => Some(HtmlContainerName::Center),
-                "details" => Some(HtmlContainerName::Details),
-                _ => None,
-            };
-            if !matches!(
-                name,
-                "div"
-                    | "center"
-                    | "details"
-                    | "table"
-                    | "thead"
-                    | "tbody"
-                    | "tfoot"
-                    | "tr"
-                    | "td"
-                    | "th"
-            ) {
-                continue;
-            }
-            let attrs = tag_attributes(source.get(range.clone()).unwrap_or_default());
-            let styles = extract_styles_from_attributes(&attrs);
-            let text_align = text_align_from_attributes(&attrs, &styles);
-            if let Some(name) = container_name {
-                HtmlLayoutTagKind::Container(HtmlContainerTag::Open {
-                    name,
-                    text_align: text_align
-                        .or((name == HtmlContainerName::Center).then_some(TextAlign::Center)),
-                })
-            } else {
-                match name {
-                    "table" => HtmlLayoutTagKind::OpenTable { text_align },
-                    "tr" => HtmlLayoutTagKind::OpenRow {
-                        text_align,
-                        vertical_align: vertical_align_from_attributes(&attrs, &styles),
-                    },
-                    "td" | "th" => HtmlLayoutTagKind::OpenCell {
-                        is_header: name == "th",
-                        text_align,
-                        vertical_align: vertical_align_from_attributes(&attrs, &styles),
-                        col_span: attr_value(&attrs, local_name!("colspan"))
-                            .and_then(|span| span.trim().parse::<usize>().ok())
-                            .unwrap_or(1)
-                            .clamp(1, MAX_SPANNING_TABLE_COLUMNS),
-                        width: attr_value(&attrs, local_name!("width"))
-                            .or_else(|| styles.get("width").cloned())
-                            .and_then(|width| parse_pixel_width(&width)),
-                    },
-                    _ => HtmlLayoutTagKind::OpenSection,
-                }
-            }
+            let tag_source = source.get(tag.range.clone()).unwrap_or_default();
+            // A tokenizer per tag made a large table's block a quarter slower
+            // to parse, so only the tags it takes to read correctly get one.
+            let attrs = plain_tag_attributes(tag_source)
+                .map(RefCell::new)
+                .unwrap_or_else(|| tag_attributes(tag_source));
+            layout_start_tag_kind(tag.name, &attrs)
         };
-        tags.push(HtmlLayoutTag { range, kind });
+        tags.push(HtmlLayoutTag {
+            range: tag.range,
+            kind,
+        });
     }
 
     tags
+}
+
+const LAYOUT_TAG_NAMES: [&str; 11] = [
+    "div", "center", "details", "table", "caption", "thead", "tbody", "tfoot", "tr", "td", "th",
+];
+
+/// Whether [`layout_tags`] reads the attributes of this start tag, which all
+/// but the row groups need.
+fn tag_takes_attributes(name: &str) -> bool {
+    !matches!(name, "thead" | "tbody" | "tfoot")
+}
+
+fn layout_start_tag_kind(name: &str, attrs: &RefCell<Vec<Attribute>>) -> HtmlLayoutTagKind {
+    let styles = extract_styles_from_attributes(attrs);
+    let text_align = text_align_from_attributes(attrs, &styles);
+    match name {
+        "div" => HtmlLayoutTagKind::Container(HtmlContainerTag::Open {
+            name: HtmlContainerName::Div,
+            text_align,
+        }),
+        "center" => HtmlLayoutTagKind::Container(HtmlContainerTag::Open {
+            name: HtmlContainerName::Center,
+            text_align: text_align.or(Some(TextAlign::Center)),
+        }),
+        "details" => HtmlLayoutTagKind::Container(HtmlContainerTag::Open {
+            name: HtmlContainerName::Details,
+            text_align,
+        }),
+        "table" => HtmlLayoutTagKind::OpenTable { text_align },
+        "caption" => HtmlLayoutTagKind::OpenCaption {
+            below: caption_goes_below(attrs, &styles),
+            text_align: text_align_from_styles(&styles),
+        },
+        "tr" => HtmlLayoutTagKind::OpenRow {
+            text_align,
+            vertical_align: vertical_align_from_attributes(attrs, &styles),
+        },
+        _ => HtmlLayoutTagKind::OpenCell {
+            is_header: name == "th",
+            text_align,
+            vertical_align: vertical_align_from_attributes(attrs, &styles),
+            col_span: attr_value(attrs, local_name!("colspan"))
+                .and_then(|span| span.trim().parse::<usize>().ok())
+                .unwrap_or(1)
+                .clamp(1, MAX_SPANNING_TABLE_COLUMNS),
+            row_span: row_span_from_attributes(attrs),
+            width: column_width_from_attributes(attrs, &styles),
+        },
+    }
+}
+
+/// The attributes of the one tag `tag_source` holds, read the way the
+/// tokenizer reads them, or `None` for a tag only the tokenizer reads right:
+/// one whose values hold a character reference, or that is not plainly
+/// written.
+fn plain_tag_attributes(tag_source: &str) -> Option<Vec<Attribute>> {
+    let inner = tag_source.strip_prefix('<')?.strip_suffix('>')?;
+    let is_separator = |character: char| character.is_ascii_whitespace() || character == '/';
+    let mut rest = inner.trim_start_matches(|character: char| !is_separator(character));
+    let mut attributes: Vec<Attribute> = Vec::new();
+    loop {
+        rest = rest.trim_start_matches(is_separator);
+        if rest.is_empty() {
+            return Some(attributes);
+        }
+        let name_len = rest
+            .find(|character: char| is_separator(character) || character == '=')
+            .unwrap_or(rest.len());
+        let name = rest.get(..name_len)?;
+        if name.is_empty() || name.contains(['"', '\'', '<']) {
+            return None;
+        }
+        rest =
+            rest[name_len..].trim_start_matches(|character: char| character.is_ascii_whitespace());
+        let value = match rest.strip_prefix('=') {
+            Some(after_equals) => {
+                let after_equals = after_equals
+                    .trim_start_matches(|character: char| character.is_ascii_whitespace());
+                match after_equals.chars().next() {
+                    Some(quote @ ('"' | '\'')) => {
+                        let quoted = &after_equals[1..];
+                        let end = quoted.find(quote)?;
+                        rest = &quoted[end + 1..];
+                        &quoted[..end]
+                    }
+                    _ => {
+                        let end = after_equals
+                            .find(|character: char| character.is_ascii_whitespace())
+                            .unwrap_or(after_equals.len());
+                        rest = &after_equals[end..];
+                        let value = &after_equals[..end];
+                        if value.contains(['"', '\'', '<', '=', '`']) {
+                            return None;
+                        }
+                        value
+                    }
+                }
+            }
+            None => "",
+        };
+        if value.contains(['&', '\0']) {
+            return None;
+        }
+        let name = name.to_ascii_lowercase();
+        // As in the tokenizer, the first of two attributes of a name wins.
+        if !attributes
+            .iter()
+            .any(|attribute| attribute.name.local.as_ref() == name)
+        {
+            attributes.push(Attribute {
+                name: QualName::new(None, Default::default(), LocalName::from(name)),
+                value: StrTendril::from(value),
+            });
+        }
+    }
 }
 
 fn tag_name_ends_here(after_name: &str) -> bool {
@@ -752,15 +917,54 @@ fn vertical_align_from_attributes(
     }
 }
 
-/// A `width` in pixels, as `300` or `300px`. A percentage is left out: the
-/// grid the table is drawn with only takes a floor in pixels for a column.
-fn parse_pixel_width(value: &str) -> Option<f32> {
+/// A cell's `width`, as `300`, `300px` or `50%`, from its style or else its
+/// attribute, the way a browser lets the style win.
+fn column_width_from_attributes(
+    attrs: &RefCell<Vec<Attribute>>,
+    styles: &HashMap<String, String>,
+) -> Option<HtmlColumnWidth> {
+    styles
+        .get("width")
+        .and_then(|width| parse_column_width(width))
+        .or_else(|| {
+            attr_value(attrs, local_name!("width")).and_then(|width| parse_column_width(&width))
+        })
+}
+
+fn parse_column_width(value: &str) -> Option<HtmlColumnWidth> {
     let value = value.trim().to_ascii_lowercase();
-    let number = value.strip_suffix("px").unwrap_or(&value).trim();
+    let value = value.strip_suffix("!important").unwrap_or(&value).trim();
+    if let Some(percent) = value.strip_suffix('%') {
+        return percent
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|percent| percent.is_finite() && *percent > 0.0)
+            .map(|percent| HtmlColumnWidth::Fraction(percent.min(100.0) / 100.0));
+    }
+    let number = value.strip_suffix("px").unwrap_or(value).trim();
     number
         .parse::<f32>()
         .ok()
         .filter(|width| width.is_finite() && *width > 0.0)
+        .map(HtmlColumnWidth::Pixels)
+}
+
+/// A cell's `rowspan`, where `0` and what cannot be read count as one row.
+fn row_span_from_attributes(attrs: &RefCell<Vec<Attribute>>) -> usize {
+    attr_value(attrs, local_name!("rowspan"))
+        .and_then(|span| span.trim().parse::<usize>().ok())
+        .unwrap_or(1)
+        .clamp(1, MAX_ROW_SPAN)
+}
+
+/// Whether a `<caption>` asks to be drawn below its table.
+fn caption_goes_below(attrs: &RefCell<Vec<Attribute>>, styles: &HashMap<String, String>) -> bool {
+    styles
+        .get("caption-side")
+        .cloned()
+        .or_else(|| attr_value(attrs, local_name!("align")))
+        .is_some_and(|side| side.trim().eq_ignore_ascii_case("bottom"))
 }
 
 /// Gives the elements of a block that sits inside an aligned container opened
@@ -1577,9 +1781,13 @@ fn parse_paragraph(
                 let font_color = attr_value_named(attrs, "color");
                 let (color, background_color) =
                     inline_tag_colors(name.local.as_ref(), &styles, font_color.as_deref());
+                let font_scale_percent = styles
+                    .get("font-size")
+                    .and_then(|value| parse_css_font_scale(value));
                 let mut style = html_style_from_html_styles(styles).unwrap_or_default();
                 style.color = color;
                 style.background_color = background_color;
+                style.font_scale_percent = font_scale_percent;
                 if style == HtmlHighlightStyle::default() {
                     consume_paragraph(source_range, node, paragraph, highlights, links);
                 } else {
@@ -1758,12 +1966,7 @@ fn parse_table_column(source_range: Range<usize>, node: &Node) -> Option<ParsedH
                         .unwrap_or(1),
                     1,
                 ),
-                row_span: std::cmp::max(
-                    attr_value(attrs, local_name!("rowspan"))
-                        .and_then(|span| span.parse().ok())
-                        .unwrap_or(1),
-                    1,
-                ),
+                row_span: row_span_from_attributes(attrs),
                 is_header,
                 children,
                 alignment: attr_value(attrs, local_name!("align"))
@@ -1778,6 +1981,7 @@ fn parse_table_column(source_range: Range<usize>, node: &Node) -> Option<ParsedH
                     } else {
                         Alignment::None
                     }),
+                width: column_width_from_attributes(attrs, &extract_styles_from_attributes(attrs)),
             })
         }
         _ => None,
@@ -1817,7 +2021,14 @@ fn consume_nodes(
 
         let mut paragraph = HtmlParagraph::new();
         let mut links = Vec::new();
+        let mut bare_images = 0;
         while let Some(node) = nodes.get(index).filter(|node| is_inline_node(node)) {
+            if matches!(
+                &node.data,
+                NodeData::Element { name, .. } if name.local == local_name!("img")
+            ) {
+                bare_images += 1;
+            }
             let mut highlights = context.inherited_styles.clone();
             parse_paragraph(
                 source_range.clone(),
@@ -1846,8 +2057,10 @@ fn consume_nodes(
         }
         match (paragraph.as_slice(), context.text_align) {
             // A lone image with nothing to align it stays a block of its own,
-            // without the spacing a paragraph adds below itself.
-            ([HtmlParagraphChunk::Image(image)], None) => {
+            // without the spacing a paragraph adds below itself. One inside a
+            // link or another inline element is a paragraph, as it was before
+            // images were gathered into runs.
+            ([HtmlParagraphChunk::Image(image)], None) if bare_images == 1 => {
                 elements.push(ParsedHtmlElement::Image(image.clone()));
             }
             _ => elements.push(ParsedHtmlElement::Paragraph(ParsedHtmlParagraph {
@@ -2368,6 +2581,16 @@ fn named_css_color(name: &str) -> Option<u32> {
 const MAX_FONT_SCALE_PERCENT: f32 = 400.0;
 const MIN_FONT_SCALE_PERCENT: f32 = 50.0;
 
+/// `scale` kept to the sizes the preview draws. Sizes inside sizes multiply,
+/// and a few nested spans would otherwise ask for glyphs thousands of pixels
+/// tall, each rasterized into a bitmap of gigabytes.
+pub(crate) fn clamp_font_scale(scale: f32) -> f32 {
+    scale.clamp(
+        MIN_FONT_SCALE_PERCENT / 100.0,
+        MAX_FONT_SCALE_PERCENT / 100.0,
+    )
+}
+
 /// The size a browser gives body text when nothing says otherwise, which is
 /// what the preview's body text stands for when a size is given in pixels.
 const BROWSER_BODY_FONT_SIZE_PX: f32 = 16.0;
@@ -2550,10 +2773,12 @@ fn extract_html_table(node: &Node, source_range: Range<usize>) -> Option<ParsedH
     let mut header_rows = Vec::new();
     let mut body_rows = Vec::new();
     let mut caption = None;
+    let mut caption_below = false;
 
     for child in node.children.borrow().iter() {
-        if let NodeData::Element { name, .. } = &child.data {
-            if name.local == local_name!("caption") {
+        if let NodeData::Element { name, attrs, .. } = &child.data {
+            if name.local == local_name!("caption") && caption.is_none() {
+                caption_below = caption_goes_below(attrs, &extract_styles_from_attributes(attrs));
                 let mut paragraph = HtmlParagraph::new();
                 parse_paragraph(
                     source_range.clone(),
@@ -2581,12 +2806,14 @@ fn extract_html_table(node: &Node, source_range: Range<usize>) -> Option<ParsedH
         }
     }
 
-    if !header_rows.is_empty() || !body_rows.is_empty() {
+    // A table with no rows still shows its caption, as it does in a browser.
+    if !header_rows.is_empty() || !body_rows.is_empty() || caption.is_some() {
         Some(ParsedHtmlTable {
             source_range,
             body: body_rows,
             header: header_rows,
             caption,
+            caption_below,
             text_align: None,
         })
     } else {
@@ -2637,7 +2864,8 @@ mod tests {
                     text_align: Some(TextAlign::Right),
                     vertical_align: None,
                     col_span: 2,
-                    width: Some(80.0),
+                    row_span: 1,
+                    width: Some(HtmlColumnWidth::Pixels(80.0)),
                 },
                 HtmlLayoutTagKind::CloseCell,
                 HtmlLayoutTagKind::OpenCell {
@@ -2645,13 +2873,248 @@ mod tests {
                     text_align: Some(TextAlign::Left),
                     vertical_align: Some(HtmlVerticalAlign::Top),
                     col_span: 1,
-                    width: None,
+                    row_span: 1,
+                    width: Some(HtmlColumnWidth::Fraction(0.5)),
                 },
                 HtmlLayoutTagKind::CloseRow,
                 HtmlLayoutTagKind::CloseTable,
                 HtmlLayoutTagKind::Container(HtmlContainerTag::Close(HtmlContainerName::Div)),
             ]
         );
+    }
+
+    #[test]
+    fn layout_tags_read_captions_and_row_spans_and_skip_raw_text() {
+        let source = "<table><caption align=\"bottom\" style=\"text-align: left\">表題</caption><xmp><td></xmp><iframe><div></iframe><noscript><th></noscript><noembed><tr></noembed><td rowspan=\"3\" style=\"width: 25%\" width=\"80\"><td rowspan=\"0\" width=\"40px\"></table><plaintext><td>";
+        assert_eq!(
+            layout_tags(source)
+                .into_iter()
+                .map(|tag| tag.kind)
+                .collect::<Vec<_>>(),
+            vec![
+                HtmlLayoutTagKind::OpenTable { text_align: None },
+                HtmlLayoutTagKind::OpenCaption {
+                    below: true,
+                    text_align: Some(TextAlign::Left),
+                },
+                HtmlLayoutTagKind::CloseCaption,
+                HtmlLayoutTagKind::OpenCell {
+                    is_header: false,
+                    text_align: None,
+                    vertical_align: None,
+                    col_span: 1,
+                    row_span: 3,
+                    width: Some(HtmlColumnWidth::Fraction(0.25)),
+                },
+                HtmlLayoutTagKind::OpenCell {
+                    is_header: false,
+                    text_align: None,
+                    vertical_align: None,
+                    col_span: 1,
+                    row_span: 1,
+                    width: Some(HtmlColumnWidth::Pixels(40.0)),
+                },
+                HtmlLayoutTagKind::CloseTable,
+            ]
+        );
+    }
+
+    /// Tags are read without a tokenizer where that reads them the same, and
+    /// with one where it would not.
+    #[test]
+    fn plain_tag_attributes_read_tags_as_the_tokenizer_does() {
+        fn by_tokenizer(tag_source: &str) -> Vec<(String, String)> {
+            tag_attributes(tag_source)
+                .borrow()
+                .iter()
+                .map(|attribute| {
+                    (
+                        attribute.name.local.to_string(),
+                        attribute.value.to_string(),
+                    )
+                })
+                .collect()
+        }
+
+        for tag_source in [
+            "<td>",
+            "<td/>",
+            "<TD ALIGN=right>",
+            "<td align = \"center\" valign='top'>",
+            "<td width=\"50%\" width=\"120\">",
+            "<td style=\"text-align: right; width: 25%\" colspan=2 rowspan=\"3\">",
+            "<th nowrap align=left/>",
+            "<td title=\"a > b\">",
+            "<td\talign=\"right\"\n\trowspan=\"2\">",
+            "<div align=\"center\" class=\"x y\">",
+            "<table data-x=''>",
+        ] {
+            let plain = plain_tag_attributes(tag_source)
+                .unwrap_or_else(|| panic!("{tag_source:?} should be read without a tokenizer"))
+                .iter()
+                .map(|attribute| {
+                    (
+                        attribute.name.local.to_string(),
+                        attribute.value.to_string(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(plain, by_tokenizer(tag_source), "{tag_source:?}");
+        }
+
+        for tag_source in [
+            "<td align=\"&#114;ight\">",
+            "<td title=a&amp;b>",
+            "<td align=\"right>",
+            "<td \"align\"=right>",
+            "<td align=ri\"ght>",
+        ] {
+            assert!(
+                plain_tag_attributes(tag_source).is_none(),
+                "{tag_source:?} is the tokenizer's to read"
+            );
+        }
+        assert_eq!(
+            layout_tags("<td align=\"&#114;ight\">")
+                .first()
+                .map(|tag| tag.kind.clone()),
+            Some(HtmlLayoutTagKind::OpenCell {
+                is_header: false,
+                text_align: Some(TextAlign::Right),
+                vertical_align: None,
+                col_span: 1,
+                row_span: 1,
+                width: None,
+            })
+        );
+    }
+
+    #[test]
+    fn layout_tags_read_widths_however_the_attributes_are_written() {
+        let cell_kind = |source: &str| {
+            layout_tags(source)
+                .into_iter()
+                .next()
+                .map(|tag| tag.kind)
+                .unwrap_or_else(|| panic!("{source:?} should be read as a cell"))
+        };
+        let half = |text_align: Option<TextAlign>| HtmlLayoutTagKind::OpenCell {
+            is_header: false,
+            text_align,
+            vertical_align: None,
+            col_span: 1,
+            row_span: 1,
+            width: Some(HtmlColumnWidth::Fraction(0.5)),
+        };
+        for source in [
+            "<td width='50%'>",
+            "<td width=50%>",
+            "<TD WIDTH=\"50%\">",
+            "<td\nwidth = \"50%\">",
+        ] {
+            assert!(plain_tag_attributes(source).is_some(), "{source:?}");
+            assert_eq!(cell_kind(source), half(None), "{source:?}");
+        }
+        let source = "<td style=\"width:50%;text-align:center\">";
+        assert!(plain_tag_attributes(source).is_some());
+        assert_eq!(cell_kind(source), half(Some(TextAlign::Center)));
+
+        // A character reference is left to the tokenizer, which still finds
+        // the width beside it.
+        for source in [
+            "<td title=\"a&amp;b\" width=\"50%\">",
+            "<td width=\"50&#37;\">",
+        ] {
+            assert!(plain_tag_attributes(source).is_none(), "{source:?}");
+            assert_eq!(cell_kind(source), half(None), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn container_tags_skip_the_text_of_raw_text_elements() {
+        for source in [
+            "<xmp><div align=\"center\"></xmp>",
+            "<iframe><div align=\"center\"></iframe>",
+            "<noscript><div align=\"center\"></noscript>",
+            "<noembed><center></noembed>",
+            "<noframes><details></noframes>",
+            "<plaintext><div align=\"center\">",
+        ] {
+            assert_eq!(container_tags(source), Vec::new(), "{source:?}");
+        }
+        assert_eq!(
+            container_tags("<xmp></xmp><div>"),
+            vec![HtmlContainerTag::Open {
+                name: HtmlContainerName::Div,
+                text_align: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn column_widths_read_pixels_and_percentages() {
+        assert_eq!(
+            parse_column_width("50%"),
+            Some(HtmlColumnWidth::Fraction(0.5))
+        );
+        assert_eq!(
+            parse_column_width(" 150% "),
+            Some(HtmlColumnWidth::Fraction(1.0))
+        );
+        assert_eq!(
+            parse_column_width("120px !important"),
+            Some(HtmlColumnWidth::Pixels(120.0))
+        );
+        assert_eq!(parse_column_width("0%"), None);
+        assert_eq!(parse_column_width("auto"), None);
+        assert_eq!(
+            HtmlColumnWidth::merge(
+                Some(HtmlColumnWidth::Pixels(300.0)),
+                HtmlColumnWidth::Fraction(0.2)
+            ),
+            HtmlColumnWidth::Fraction(0.2),
+            "a percentage makes the column a percentage column"
+        );
+        assert_eq!(
+            HtmlColumnWidth::merge(
+                Some(HtmlColumnWidth::Fraction(0.2)),
+                HtmlColumnWidth::Pixels(300.0)
+            ),
+            HtmlColumnWidth::Fraction(0.2)
+        );
+        assert_eq!(
+            HtmlColumnWidth::merge(
+                Some(HtmlColumnWidth::Pixels(30.0)),
+                HtmlColumnWidth::Pixels(80.0)
+            ),
+            HtmlColumnWidth::Pixels(80.0)
+        );
+    }
+
+    #[test]
+    fn parses_html_table_widths_row_spans_and_caption_side() {
+        let parsed = parse(
+            "<table><caption style=\"caption-side: bottom\">表題</caption><tr><td rowspan=\"2\" width=\"50%\">a</td><td style=\"width: 90px\">b</td></tr><tr><td>c</td></tr></table>",
+        );
+        let [ParsedHtmlElement::Table(table)] = parsed.children.as_slice() else {
+            panic!("expected a table, got {:?}", parsed.children);
+        };
+        assert!(table.caption_below);
+        assert_eq!(
+            table.caption.as_ref().map(html_paragraph_text).as_deref(),
+            Some("表題")
+        );
+        let first_row = &table.body[0].columns;
+        assert_eq!(first_row[0].row_span, 2);
+        assert_eq!(first_row[0].width, Some(HtmlColumnWidth::Fraction(0.5)));
+        assert_eq!(first_row[1].width, Some(HtmlColumnWidth::Pixels(90.0)));
+        assert_eq!(table.body[1].columns[0].width, None);
+
+        let parsed = parse("<table><caption>表題</caption><tr><td>a</td></tr></table>");
+        let [ParsedHtmlElement::Table(table)] = parsed.children.as_slice() else {
+            panic!("expected a table, got {:?}", parsed.children);
+        };
+        assert!(!table.caption_below);
     }
 
     #[test]
@@ -2673,6 +3136,7 @@ mod tests {
                 text_align: None,
                 vertical_align: None,
                 col_span: MAX_SPANNING_TABLE_COLUMNS,
+                row_span: 1,
                 width: None,
             })
         );
@@ -3219,6 +3683,11 @@ mod tests {
         assert_eq!(
             image_layout("<img src=\"a.png\">\n<br>\n"),
             vec![("image", 1, None)]
+        );
+        assert_eq!(
+            image_layout("<a href=\"https://example.com\"><img src=\"a.png\"></a>\n"),
+            vec![("paragraph", 1, None)],
+            "a linked image is a paragraph, spaced like one"
         );
         assert_eq!(
             image_layout("<img src=\"a.png\">\n<img src=\"b.png\">"),

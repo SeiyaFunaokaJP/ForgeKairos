@@ -4104,15 +4104,20 @@ impl File {
             DiskState::New
         };
 
+        let path: Arc<RelPath> = RelPath::from_unix_str(&proto.path)
+            .context("invalid path in file protobuf")?
+            .into();
+        let is_private = worktree
+            .read(cx)
+            .entry_for_path(&path)
+            .is_some_and(|entry| entry.is_private);
         Ok(Self {
             worktree,
-            path: RelPath::from_unix_str(&proto.path)
-                .context("invalid path in file protobuf")?
-                .into(),
+            path,
             disk_state,
             entry_id: proto.entry_id.map(ProjectEntryId::from_proto),
             is_local: false,
-            is_private: false,
+            is_private,
         })
     }
 
@@ -7392,6 +7397,7 @@ impl<'a> From<&'a Entry> for proto::Entry {
                 .as_ref()
                 .map(|path| path.to_string_lossy().into_owned()),
             is_unloaded: entry.kind == EntryKind::UnloadedDir,
+            is_private: entry.is_private,
         }
     }
 }
@@ -7430,7 +7436,7 @@ impl TryFrom<(&CharBag, &PathMatcher, proto::Entry)> for Entry {
             is_hidden: entry.is_hidden,
             is_always_included,
             is_external: entry.is_external,
-            is_private: false,
+            is_private: entry.is_private,
             char_bag,
             is_fifo: entry.is_fifo,
         })

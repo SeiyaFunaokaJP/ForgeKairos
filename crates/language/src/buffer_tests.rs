@@ -5999,7 +5999,9 @@ async fn test_markdown_inline_math_is_highlighted_but_prices_are_not(cx: &mut Te
 
         空白入り $ x $ です。
 
-        数字から $1$ です。
+        数字から $1$ と $2x$ です。
+
+        範囲は $5/$10 と $x$1 です。
     "#};
     let keys = markdown_theme_keys(text, cx);
     let key = |context, needle| theme_key_at(text, &keys, context, needle);
@@ -6009,7 +6011,12 @@ async fn test_markdown_inline_math_is_highlighted_but_prices_are_not(cx: &mut Te
     assert_eq!(key("は $5 と $10", "$5 と $10"), None);
     assert_eq!(key("は$5と$10", "$5と$10"), None);
     assert_eq!(key("$ x $", "$ x $"), None);
-    assert_eq!(key("$1$", "$1$"), None);
+    // Pandoc's rule is about the character after the closing `$`, so math may
+    // start with a digit.
+    assert_eq!(key("$1$", "$1$"), Some("text.literal"));
+    assert_eq!(key("$2x$", "$2x$"), Some("text.literal"));
+    assert_eq!(key("$5/$10", "$5/$10"), None);
+    assert_eq!(key("$x$1", "$x$1"), None);
 }
 
 #[gpui::test]
@@ -6079,6 +6086,11 @@ async fn test_markdown_inline_markup_across_quote_and_list_lines_keeps_its_color
     // The inline grammar reads the tag across the quote marker only when the
     // marker is left out of the paragraph's text.
     assert_eq!(language_name("> title=", "title"), html);
+    // The tag's HTML is read without the marker too, which would otherwise
+    // close the tag early and leave its attributes as text.
+    assert_eq!(key("> title=", ">"), Some("punctuation.markup"));
+    assert_eq!(language_name("> title=", ">"), markdown);
+    assert_eq!(key("> title=", "title"), Some("attribute"));
 }
 
 #[gpui::test]
@@ -6090,7 +6102,9 @@ async fn test_markdown_inline_math_is_injected_only_where_it_is_highlighted(
 
         価格は $5 と $10 です。
 
-        空白入り $ x $ と数字から $1$ です。
+        空白入り $ x $ と数字から $2x$ です。
+
+        範囲は $5/$10 です。
     "#};
     let theme = default_theme_syntax();
     let (registry, markdown) = markdown_with_html_registry(&theme, cx.background_executor.clone());
@@ -6109,7 +6123,37 @@ async fn test_markdown_inline_math_is_injected_only_where_it_is_highlighted(
         .filter(|layer| layer.language.name().as_ref() == "latex")
         .map(|layer| &text[layer.node().byte_range()])
         .collect::<Vec<_>>();
-    assert_eq!(latex_texts, ["$x^2$", "$$a + b$$"]);
+    assert_eq!(latex_texts, ["$x^2$", "$$a + b$$", "$2x$"]);
+}
+
+#[gpui::test]
+async fn test_markdown_plus_front_matter_is_injected_as_toml(cx: &mut TestAppContext) {
+    let text = "+++\ntitle = \"題名\"\n+++\n\n本文 +++ は本文\n";
+    let theme = default_theme_syntax();
+    let (registry, markdown) = markdown_with_html_registry(&theme, cx.background_executor.clone());
+    // TOML comes from an extension, which is found by the name the injection
+    // asks for.
+    registry.add(Arc::new(Language::new(
+        LanguageConfig {
+            name: "TOML".into(),
+            matcher: LanguageMatcher {
+                path_suffixes: vec!["toml".to_string()],
+                ..Default::default()
+            }
+            .into(),
+            ..Default::default()
+        },
+        Some(tree_sitter_json::LANGUAGE.into()),
+    )));
+    let snapshot = cx.update(|cx| {
+        Buffer::build_snapshot_sync(text::Rope::from(text), Some(markdown), Some(registry), cx)
+    });
+    let toml_texts = snapshot
+        .syntax_layers()
+        .filter(|layer| layer.language.name().as_ref() == "TOML")
+        .map(|layer| &text[layer.node().byte_range()])
+        .collect::<Vec<_>>();
+    assert_eq!(toml_texts, ["+++\ntitle = \"題名\"\n+++\n"]);
 }
 
 #[gpui::test]

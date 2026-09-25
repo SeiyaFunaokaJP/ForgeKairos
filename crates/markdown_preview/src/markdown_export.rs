@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use anyhow::{Context as _, Result, anyhow};
 use fs::{Fs, RemoveOptions};
 use markdown::parser::{
-    Alignment, CodeBlockKind, HeadingLevel, InlineHtmlStyle, MarkdownEvent, MarkdownTag,
-    MarkdownTagEnd, extract_code_content_range, parse_markdown_events,
+    Alignment, CodeBlockKind, HeadingLevel, MarkdownEvent, MarkdownTag, MarkdownTagEnd,
+    extract_code_content_range, parse_markdown_events,
 };
 use util::command::new_command;
 
@@ -482,34 +482,10 @@ fn render_body(
             MarkdownEvent::Html | MarkdownEvent::InlineHtml => {
                 output.push_str(source.get(range).unwrap_or_default());
             }
-            MarkdownEvent::InlineHtmlStyleStart(style) => match style {
-                InlineHtmlStyle::Underline => output.push_str("<u>"),
-                InlineHtmlStyle::Code => output.push_str("<code>"),
-                InlineHtmlStyle::Span(span_style) => {
-                    output.push_str("<span style=\"");
-                    if let Some(color) = span_style.color {
-                        output.push_str(&format!(
-                            "color:{};",
-                            markdown::parser::inline_span_css_color(color)
-                        ));
-                    }
-                    if let Some(background) = span_style.background {
-                        output.push_str(&format!(
-                            "background-color:{};",
-                            markdown::parser::inline_span_css_color(background)
-                        ));
-                    }
-                    if let Some(percent) = span_style.paragraph_scale_percent {
-                        output.push_str(&format!("font-size:{percent}%;"));
-                    }
-                    output.push_str("\">");
-                }
-            },
-            MarkdownEvent::InlineHtmlStyleEnd(style) => output.push_str(match style {
-                InlineHtmlStyle::Underline => "</u>",
-                InlineHtmlStyle::Code => "</code>",
-                InlineHtmlStyle::Span(_) => "</span>",
-            }),
+            // `parse_markdown_events` leaves inline HTML raw, so the tags reach
+            // the arm above as written, and the browser that prints the page
+            // draws their colors and sizes itself.
+            MarkdownEvent::InlineHtmlStyleStart(_) | MarkdownEvent::InlineHtmlStyleEnd(_) => {}
             MarkdownEvent::FootnoteReference(label) => {
                 output.push_str("<sup><a href=\"#fn-");
                 escape_attribute(&label, output);
@@ -1063,6 +1039,14 @@ mod tests {
                 "<span style=\"font-size: 1.25em\">a <span style=\"color: #d44c47\">赤</span> <mark>黄</mark> <mark style=\"background-color: #b7ebc6\">緑</mark></span>\n"
             ),
             "<p><span style=\"font-size: 1.25em\">a <span style=\"color: #d44c47\">赤</span> <mark>黄</mark> <mark style=\"background-color: #b7ebc6\">緑</mark></span></p>\n"
+        );
+        // So do the colors the preview reads in other spellings, and a size on
+        // part of a paragraph.
+        assert_eq!(
+            render(
+                "a <span style=\"font-size: 20px; color: rgba(255 0 0 / 50%)\">一部</span> <u>下線</u> b\n"
+            ),
+            "<p>a <span style=\"font-size: 20px; color: rgba(255 0 0 / 50%)\">一部</span> <u>下線</u> b</p>\n"
         );
     }
 

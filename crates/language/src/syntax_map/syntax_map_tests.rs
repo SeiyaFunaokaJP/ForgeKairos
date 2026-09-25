@@ -1376,6 +1376,42 @@ fn test_markdown_html_layer_leaves_out_quote_markers_only(cx: &mut App) {
     );
 }
 
+#[gpui::test]
+fn test_markdown_inline_html_layer_leaves_out_quote_markers_inside_a_tag(cx: &mut App) {
+    // The inline layer is parsed without the `> ` that starts the tag's second
+    // line, but the tag's node still spans it.
+    let text = "> a <span\n> title=\"t\">b</span>\n";
+    let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+    let language = markdown_lang();
+    registry.add(language.clone());
+    registry.add(crate::test_language(
+        "markdown-inline",
+        tree_sitter_md::INLINE_LANGUAGE.into(),
+    ));
+    registry.add(Arc::new(html_lang()));
+    let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), text);
+    let mut syntax_map = SyntaxMap::new(&buffer);
+    syntax_map.set_language_registry(registry);
+    syntax_map.reparse(language, &buffer);
+
+    let html_ranges = syntax_map
+        .layers(&buffer)
+        .into_iter()
+        .filter(|layer| layer.language.name().as_ref() == "HTML")
+        .flat_map(|layer| {
+            let layer_start = layer.offset.0;
+            layer
+                .tree
+                .included_ranges()
+                .into_iter()
+                .map(move |range| layer_start + range.start_byte..layer_start + range.end_byte)
+        })
+        .filter(|range| range.start < range.end)
+        .map(|range| &text[range])
+        .collect::<Vec<_>>();
+    assert_eq!(html_ranges, ["<span\n", "title=\"t\">", "</span>"]);
+}
+
 fn check_random_markdown_edits_match_a_fresh_parse(text: String, mut rng: StdRng, cx: &mut App) {
     let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
     let language = markdown_lang();

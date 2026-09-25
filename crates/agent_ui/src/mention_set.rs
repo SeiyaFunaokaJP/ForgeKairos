@@ -71,6 +71,36 @@ pub enum AttachmentMode {
     Summary,
 }
 
+/// A draft is saved as its attachments' modes shape them, so the mode the user
+/// pinned travels with the saved content: restored without it, a draft's
+/// full content would be `Auto` again and the budget could reduce it.
+const ATTACHMENT_MODE_META_KEY: &str = "zed_attachment_mode";
+
+impl AttachmentMode {
+    pub fn to_meta(self) -> Option<acp::Meta> {
+        let value = match self {
+            AttachmentMode::Auto => return None,
+            AttachmentMode::Full => "full",
+            AttachmentMode::Summary => "summary",
+        };
+        Some(acp::Meta::from_iter([(
+            ATTACHMENT_MODE_META_KEY.into(),
+            value.into(),
+        )]))
+    }
+
+    pub fn from_meta(meta: Option<&acp::Meta>) -> Self {
+        match meta
+            .and_then(|meta| meta.get(ATTACHMENT_MODE_META_KEY))
+            .and_then(|value| value.as_str())
+        {
+            Some("full") => AttachmentMode::Full,
+            Some("summary") => AttachmentMode::Summary,
+            _ => AttachmentMode::Auto,
+        }
+    }
+}
+
 /// What a mention chip shows about the attachment behind it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AttachmentEstimate {
@@ -81,6 +111,9 @@ pub struct AttachmentEstimate {
     pub reduced_for_budget: bool,
     /// Whether the chip offers to switch between full content and a summary.
     pub switchable: bool,
+    /// Only a link is sent (a directory the agent reads with its own tools),
+    /// so there is no size to show.
+    pub link_only: bool,
 }
 
 impl AttachmentEstimate {
@@ -111,6 +144,48 @@ pub fn format_token_estimate(tokens: usize) -> String {
 pub struct AttachmentsEstimate {
     pub bytes: usize,
     pub reduced_count: usize,
+    /// The file `agent.attach_active_file` adds to the message is counted.
+    pub includes_active_file: bool,
+}
+
+/// The attachment a message gets without a chip (the file
+/// `agent.attach_active_file` adds), as its total counts it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnlistedAttachment {
+    pub uri: MentionUri,
+    pub bytes: usize,
+    pub is_text: bool,
+}
+
+/// How the attachments of a message reach its agent, which decides what their
+/// chips and total can promise.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttachmentDelivery {
+    /// An ACP agent without `embedded_context` is sent only a link for each
+    /// text attachment.
+    pub embeds_content: bool,
+    /// Directories are expanded into their files only for an agent whose
+    /// profile has no tools to read them with.
+    pub expands_directories: bool,
+}
+
+impl Default for AttachmentDelivery {
+    fn default() -> Self {
+        Self {
+            embeds_content: true,
+            expands_directories: true,
+        }
+    }
+}
+
+/// Where the content of a restored mention comes from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RestoredFrom {
+    /// A message that was already sent, or content handed to a new thread:
+    /// it went through the budget (or chose to skip it) when it was made.
+    EarlierMessage,
+    /// An unsent draft: saved as each mode shapes it, before the budget.
+    Draft,
 }
 
 pub struct MentionSet {
@@ -124,9 +199,12 @@ pub struct MentionSet {
     /// URI (terminal output, and content restored from an earlier message),
     /// kept so that switching modes can reshape it.
     raw_texts: HashMap<CreaseId, MentionTask>,
-    /// Mentions restored from an earlier message: their content was already
-    /// shaped when it was first sent, so `Auto` sends it as it is.
+    /// Mentions restored from an earlier message or a draft: their content
+    /// was already shaped for its mode, so `Auto` sends it as it is.
     restored: HashSet<CreaseId>,
+    /// Restored mentions the message budget leaves alone (all but drafts).
+    budget_exempt: HashSet<CreaseId>,
+    delivery: Option<Rc<dyn Fn(&App) -> AttachmentDelivery>>,
     /// Size of each resolved mention in its current mode.
     resolved_sizes: HashMap<CreaseId, usize>,
     size_tasks: HashMap<CreaseId, Task<()>>,
@@ -142,9 +220,21 @@ impl MentionSet {
             modes: HashMap::default(),
             raw_texts: HashMap::default(),
             restored: HashSet::default(),
+            budget_exempt: HashSet::default(),
+            delivery: None,
             resolved_sizes: HashMap::default(),
             size_tasks: HashMap::default(),
         }
+    }
+
+    pub fn set_delivery(&mut self, delivery: Rc<dyn Fn(&App) -> AttachmentDelivery>) {
+        self.delivery = Some(delivery);
+    }
+
+    pub fn delivery(&self, cx: &App) -> AttachmentDelivery {
+        self.delivery
+            .as_ref()
+            .map_or_else(AttachmentDelivery::default, |delivery| delivery(cx))
     }
 
     /// The resolved mentions, with every mention reduced as the message budget
@@ -215,7 +305,7 @@ impl MentionSet {
         let contents = self.contents_before_budget(false, cx);
         let project = self.project.clone();
         let modes = self.modes.clone();
-        let restored = self.restored.clone();
+        let budget_exempt = self.budget_exempt.clone();
         let settings = AgentSettings::get_global(cx).context_attachments;
         cx.spawn(async move |mention_set, cx| {
             let mut contents = contents.await?;
@@ -237,7 +327,7 @@ impl MentionSet {
                     size: mention_size(mention),
                     reducible: modes.get(crease_id).copied().unwrap_or_default()
                         == AttachmentMode::Auto
-                        && !restored.contains(crease_id)
+                        && !budget_exempt.contains(crease_id)
                         && is_reducible(uri, mention),
                     reduced_size_bound: reduced_size_bound(uri, &settings),
                 })
@@ -262,11 +352,13 @@ impl MentionSet {
                         }
                     })
                     .sum::<usize>();
-                let size = mention_size(mention);
-                if is_reducible(uri, mention)
-                    && creases_total + size > settings.message_budget_bytes
-                    && reduced_size_bound(uri, &settings) < size
-                {
+                if unlisted_is_reduced(
+                    creases_total,
+                    uri,
+                    mention_size(mention),
+                    matches!(mention, Mention::Text { .. }),
+                    &settings,
+                ) {
                     reduced.insert(None);
                 }
             }
@@ -352,6 +444,7 @@ impl MentionSet {
         self.modes.remove(crease_id);
         self.raw_texts.remove(crease_id);
         self.restored.remove(crease_id);
+        self.budget_exempt.remove(crease_id);
         self.resolved_sizes.remove(crease_id);
         self.size_tasks.remove(crease_id);
     }
@@ -381,12 +474,14 @@ impl MentionSet {
     }
 
     /// Inserts a mention whose content comes from an earlier message (editing
-    /// a sent message, or content handed over when a thread starts).
+    /// a sent message, or content handed over when a thread starts) or from a
+    /// saved draft.
     pub fn insert_restored_mention(
         &mut self,
         crease_id: CreaseId,
         uri: MentionUri,
         mention: Mention,
+        restored_from: RestoredFrom,
         crease_entity: Option<Entity<LoadingContext>>,
         cx: &mut Context<Self>,
     ) {
@@ -395,12 +490,41 @@ impl MentionSet {
             self.raw_texts.insert(crease_id, task.clone());
         }
         self.restored.insert(crease_id);
+        match restored_from {
+            RestoredFrom::EarlierMessage => {
+                self.budget_exempt.insert(crease_id);
+            }
+            RestoredFrom::Draft => {
+                self.budget_exempt.remove(&crease_id);
+            }
+        }
         self.mentions.insert(crease_id, (uri, task));
         if let Some(entity) = crease_entity {
             self.attach_crease_entity(crease_id, entity, cx);
         }
         self.track_size(crease_id, cx);
         self.recompute_disambiguation(cx);
+    }
+
+    /// Gives a restored mention back the mode its content was shaped by
+    /// (see [`AttachmentMode::to_meta`]), without resolving it again.
+    pub fn restore_mode(
+        &mut self,
+        crease_id: CreaseId,
+        mode: AttachmentMode,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((uri, _)) = self.mentions.get(&crease_id) else {
+            return;
+        };
+        if mode == AttachmentMode::Auto
+            || !is_switchable(uri)
+            || !self.restored.contains(&crease_id)
+        {
+            return;
+        }
+        self.modes.insert(crease_id, mode);
+        cx.notify();
     }
 
     fn attach_crease_entity(
@@ -467,6 +591,7 @@ impl MentionSet {
             // The restored content is gone once another mode replaced it, so
             // `Auto` reads the attachment afresh.
             self.restored.remove(&crease_id);
+            self.budget_exempt.remove(&crease_id);
             self.resolve_uri(uri.clone(), mode, cx)
         } else {
             self.resolve_uri(uri.clone(), mode, cx)
@@ -561,28 +686,49 @@ impl MentionSet {
     }
 
     /// What the chip of `crease_id` shows, once its mention has resolved.
+    /// Nothing for an agent that is sent links only: their size would not
+    /// reach it.
     pub fn attachment_estimate(
         &self,
         crease_id: &CreaseId,
         cx: &App,
     ) -> Option<AttachmentEstimate> {
+        let delivery = self.delivery(cx);
+        if !delivery.embeds_content {
+            return None;
+        }
         let (uri, _) = self.mentions.get(crease_id)?;
         let bytes = *self.resolved_sizes.get(crease_id)?;
+        // A directory restored from a message that expanded it carries its
+        // files, whatever the profile does now.
+        let link_only = matches!(uri, MentionUri::Directory { .. })
+            && !delivery.expands_directories
+            && bytes == 0;
         let reduced = self.planned_reductions(cx);
         Some(AttachmentEstimate {
             bytes,
             mode: self.mode(crease_id),
             reduced_for_budget: reduced.contains(&Some(*crease_id)),
-            switchable: is_switchable(uri),
+            switchable: is_switchable(uri) && !link_only,
+            link_only,
         })
     }
 
     /// The total the send area shows: every resolved attachment, counting the
-    /// ones the budget reduces at their reduced size.
-    pub fn total_estimate(&self, cx: &App) -> AttachmentsEstimate {
+    /// ones the budget reduces at their reduced size, plus `unlisted` (the
+    /// active file) planned the way sending plans it: after the chips, giving
+    /// way first.
+    pub fn total_estimate(
+        &self,
+        unlisted: Option<&UnlistedAttachment>,
+        cx: &App,
+    ) -> AttachmentsEstimate {
+        let mut total = AttachmentsEstimate::default();
+        if !self.delivery(cx).embeds_content {
+            return total;
+        }
         let settings = AgentSettings::get_global(cx).context_attachments;
         let reduced = self.planned_reductions(cx);
-        let mut total = AttachmentsEstimate::default();
         for (crease_id, bytes) in &self.resolved_sizes {
             if reduced.contains(&Some(*crease_id)) {
                 total.reduced_count += 1;
@@ -591,6 +737,23 @@ impl MentionSet {
                 }
             } else {
                 total.bytes += bytes;
+            }
+        }
+        if let Some(unlisted) = unlisted {
+            total.includes_active_file = true;
+            if unlisted_is_reduced(
+                total.bytes,
+                &unlisted.uri,
+                unlisted.bytes,
+                unlisted.is_text,
+                &settings,
+            ) {
+                total.reduced_count += 1;
+                total.bytes += unlisted
+                    .bytes
+                    .min(reduced_size_bound(&unlisted.uri, &settings));
+            } else {
+                total.bytes += unlisted.bytes;
             }
         }
         total
@@ -607,7 +770,7 @@ impl MentionSet {
                     key: Some(*crease_id),
                     size: *size,
                     reducible: self.mode(crease_id) == AttachmentMode::Auto
-                        && !self.restored.contains(crease_id)
+                        && !self.budget_exempt.contains(crease_id)
                         && is_switchable(uri),
                     reduced_size_bound: reduced_size_bound(uri, &settings),
                 })
@@ -703,6 +866,7 @@ impl MentionSet {
         self.modes.retain(|id, _| mentions.contains_key(id));
         self.raw_texts.retain(|id, _| mentions.contains_key(id));
         self.restored.retain(|id| mentions.contains_key(id));
+        self.budget_exempt.retain(|id| mentions.contains_key(id));
         self.resolved_sizes
             .retain(|id, _| mentions.contains_key(id));
         self.size_tasks.retain(|id, _| mentions.contains_key(id));
@@ -714,6 +878,7 @@ impl MentionSet {
         self.modes.clear();
         self.raw_texts.clear();
         self.restored.clear();
+        self.budget_exempt.clear();
         self.resolved_sizes.clear();
         self.size_tasks.clear();
         self.mentions.drain()
@@ -1408,6 +1573,21 @@ fn is_switchable(uri: &MentionUri) -> bool {
 
 fn is_reducible(uri: &MentionUri, mention: &Mention) -> bool {
     is_switchable(uri) && matches!(mention, Mention::Text { .. })
+}
+
+/// Whether the attachment without a chip (the active file) is reduced when the
+/// chips' attachments come to `creases_total` bytes once planned.
+fn unlisted_is_reduced(
+    creases_total: usize,
+    uri: &MentionUri,
+    size: usize,
+    is_text: bool,
+    settings: &ContextAttachmentSettings,
+) -> bool {
+    is_switchable(uri)
+        && is_text
+        && creases_total + size > settings.message_budget_bytes
+        && reduced_size_bound(uri, settings) < size
 }
 
 /// At most how large an attachment of this kind is once the budget reduces
@@ -2151,6 +2331,234 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_restored_draft_goes_through_the_budget(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let file = "a line of plain text\n".repeat(5_000);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/project", json!({"notes.txt": file.clone()}))
+            .await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+        let mention_set = cx.new(|_cx| MentionSet::new(project.downgrade(), None));
+        let crease_id = CreaseId::default();
+        // A draft saved with the file pinned to its full content: larger than
+        // the budget.
+        mention_set.update(cx, |mention_set, cx| {
+            mention_set.insert_restored_mention(
+                crease_id,
+                MentionUri::File {
+                    abs_path: path!("/project/notes.txt").into(),
+                },
+                Mention::Text {
+                    content: file.clone(),
+                    tracked_buffers: Vec::new(),
+                },
+                RestoredFrom::Draft,
+                None,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let estimate = mention_set
+            .read_with(cx, |mention_set, cx| {
+                mention_set.attachment_estimate(&crease_id, cx)
+            })
+            .unwrap();
+        assert_eq!(estimate.bytes, file.len());
+        assert!(estimate.reduced_for_budget, "the chip warns before sending");
+        let contents = mention_set
+            .update(cx, |mention_set, cx| mention_set.contents(false, cx))
+            .await
+            .unwrap();
+        match &contents[&crease_id].1 {
+            Mention::Text { content, .. } => assert!(
+                content.contains("Its full content was not attached."),
+                "{content}"
+            ),
+            other => panic!("expected a text mention, got {other:?}"),
+        }
+    }
+
+    #[gpui::test]
+    async fn test_links_only_delivery_has_no_estimates(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            "/project",
+            json!({"notes.txt": "some notes\n", "dir": {"a.txt": "alpha\n"}}),
+        )
+        .await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+        let crease_id = CreaseId::default();
+        let file_mentions = cx.new(|_cx| MentionSet::new(project.downgrade(), None));
+        file_mentions.update(cx, |mention_set, cx| {
+            let abs_path = PathBuf::from(path!("/project/notes.txt"));
+            let task = mention_set.confirm_mention_for_file(abs_path.clone(), false, cx);
+            let task = cx
+                .spawn(async move |_, _| task.await.map_err(|error| error.to_string()))
+                .shared();
+            mention_set.insert_mention(crease_id, MentionUri::File { abs_path }, task, None, cx);
+        });
+        let directory_mentions = cx.new(|_cx| MentionSet::new(project.downgrade(), None));
+        directory_mentions.update(cx, |mention_set, cx| {
+            mention_set.insert_mention(
+                crease_id,
+                MentionUri::Directory {
+                    abs_path: path!("/project/dir").into(),
+                },
+                Task::ready(Ok(Mention::Link)).shared(),
+                None,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let set_delivery =
+            |embeds_content: bool, expands_directories: bool, cx: &mut TestAppContext| {
+                for mention_set in [&file_mentions, &directory_mentions] {
+                    mention_set.update(cx, |mention_set, _| {
+                        mention_set.set_delivery(Rc::new(move |_| AttachmentDelivery {
+                            embeds_content,
+                            expands_directories,
+                        }))
+                    });
+                }
+            };
+        let estimate = |mention_set: &Entity<MentionSet>, cx: &mut TestAppContext| {
+            mention_set.read_with(cx, |mention_set, cx| {
+                mention_set.attachment_estimate(&crease_id, cx)
+            })
+        };
+        let total = |mention_set: &Entity<MentionSet>, cx: &mut TestAppContext| {
+            mention_set.read_with(cx, |mention_set, cx| mention_set.total_estimate(None, cx))
+        };
+
+        // An agent that reads directories with its tools gets a link.
+        set_delivery(true, false, cx);
+        let file = estimate(&file_mentions, cx).expect("the file has a size");
+        assert_eq!(file.bytes, "some notes\n".len());
+        assert!(!file.link_only);
+        assert_eq!(total(&file_mentions, cx).bytes, "some notes\n".len());
+        let directory = estimate(&directory_mentions, cx).expect("the directory has a label");
+        assert!(directory.link_only);
+        assert!(!directory.switchable, "modes change nothing for a link");
+
+        // An agent without tools gets the directory expanded when sending.
+        set_delivery(true, true, cx);
+        let directory = estimate(&directory_mentions, cx).expect("the directory has a chip");
+        assert!(!directory.link_only);
+        assert!(directory.switchable);
+
+        // A directory a sent message expanded comes back with its files, and
+        // sending the edited message sends them.
+        let expanded_crease = CreaseId::default();
+        let expanded = cx.new(|_cx| MentionSet::new(project.downgrade(), None));
+        expanded.update(cx, |mention_set, cx| {
+            mention_set.set_delivery(Rc::new(|_| AttachmentDelivery {
+                embeds_content: true,
+                expands_directories: false,
+            }));
+            mention_set.insert_restored_mention(
+                expanded_crease,
+                MentionUri::Directory {
+                    abs_path: path!("/project/dir").into(),
+                },
+                Mention::Text {
+                    content: "alpha
+"
+                    .to_string(),
+                    tracked_buffers: Vec::new(),
+                },
+                RestoredFrom::EarlierMessage,
+                None,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let restored = expanded
+            .read_with(cx, |mention_set, cx| {
+                mention_set.attachment_estimate(&expanded_crease, cx)
+            })
+            .expect("the restored directory has an estimate");
+        assert!(!restored.link_only, "{restored:?}");
+        assert_eq!(
+            restored.bytes,
+            "alpha
+"
+            .len()
+        );
+
+        // An agent without embedded context is sent links only.
+        set_delivery(false, false, cx);
+        assert_eq!(estimate(&file_mentions, cx), None);
+        assert_eq!(estimate(&directory_mentions, cx), None);
+        assert_eq!(total(&file_mentions, cx), AttachmentsEstimate::default());
+    }
+
+    #[gpui::test]
+    async fn test_total_counts_the_active_file_after_the_chips(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/project", json!({"notes.txt": "x".repeat(50_000)}))
+            .await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+        let mention_set = cx.new(|_cx| MentionSet::new(project.downgrade(), None));
+        let crease_id = CreaseId::default();
+        mention_set.update(cx, |mention_set, cx| {
+            mention_set.insert_restored_mention(
+                crease_id,
+                MentionUri::File {
+                    abs_path: path!("/project/notes.txt").into(),
+                },
+                Mention::Text {
+                    content: "x".repeat(50_000),
+                    tracked_buffers: Vec::new(),
+                },
+                RestoredFrom::EarlierMessage,
+                None,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let active_file = |bytes: usize| UnlistedAttachment {
+            uri: MentionUri::File {
+                abs_path: path!("/project/active.rs").into(),
+            },
+            bytes,
+            is_text: true,
+        };
+        let total = |active_file: &UnlistedAttachment, cx: &mut TestAppContext| {
+            mention_set.read_with(cx, |mention_set, cx| {
+                mention_set.total_estimate(Some(active_file), cx)
+            })
+        };
+
+        let small = total(&active_file(1_000), cx);
+        assert_eq!(
+            small,
+            AttachmentsEstimate {
+                bytes: 51_000,
+                reduced_count: 0,
+                includes_active_file: true,
+            }
+        );
+
+        // Over the 64 KB budget: the active file gives way, as when sending.
+        let large = total(&active_file(40_000), cx);
+        assert_eq!(large.reduced_count, 1);
+        assert!(large.includes_active_file);
+        assert!(
+            large.bytes > 50_000 && large.bytes < 50_000 + 40_000,
+            "{}",
+            large.bytes
+        );
+    }
+
+    #[gpui::test]
     async fn test_restored_mention_is_sent_as_it_is(cx: &mut TestAppContext) {
         init_test(cx);
 
@@ -2174,6 +2582,7 @@ mod tests {
                     content: review.clone(),
                     tracked_buffers: Vec::new(),
                 },
+                RestoredFrom::EarlierMessage,
                 None,
                 cx,
             );

@@ -1187,6 +1187,39 @@ pub(super) fn last_non_empty_lines(term: &Term<ZedListener>, line_count: usize) 
     lines
 }
 
+/// The bottom of the scrollback as text, reading upwards only until it holds more than `max_bytes`,
+/// so a failing task's tail doesn't require stringifying up to the whole 100k-line history.
+pub(super) fn last_lines_within_bytes(term: &Term<ZedListener>, max_bytes: usize) -> String {
+    let grid = term.grid();
+    let mut lines = Vec::new();
+    let mut byte_count = 0;
+
+    let mut current_line = grid.bottommost_line().0;
+    let topmost_line = grid.topmost_line().0;
+
+    while current_line >= topmost_line {
+        let (logical_line_start, logical_line) =
+            logical_line_for_row(grid, current_line, topmost_line);
+        current_line = logical_line_start - 1;
+
+        let line = logical_line.trim_end().to_string();
+        if line.is_empty() && lines.is_empty() {
+            continue;
+        }
+        // Only a non-empty line can end the walk: stopping on a blank one would let the caller's
+        // trimming shrink the text back under `max_bytes` and hide that it was cut.
+        let is_empty = line.is_empty();
+        byte_count += line.len() + 1;
+        lines.push(line);
+        if !is_empty && byte_count > max_bytes {
+            break;
+        }
+    }
+
+    lines.reverse();
+    lines.join("\n")
+}
+
 pub(super) fn update_vi_cursor_for_scroll(term: &mut Term<ZedListener>, scroll: Scroll) {
     match scroll {
         Scroll::Delta(delta) => {

@@ -434,6 +434,43 @@ async fn test_escape_cancels(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
+async fn test_escape_in_normal_mode_reaches_editor_addons(cx: &mut gpui::TestAppContext) {
+    // Stands in for `ide_assist`, whose annotations and code tour an agent
+    // shows in the editor and Escape dismisses.
+    struct CountingOverlay(std::rc::Rc<std::cell::Cell<usize>>);
+
+    impl editor::Addon for CountingOverlay {
+        fn to_any(&self) -> &dyn std::any::Any {
+            self
+        }
+
+        fn dismiss_on_escape(&self, _window: &mut gpui::Window, _cx: &mut gpui::App) -> bool {
+            self.0.set(self.0.get() + 1);
+            true
+        }
+    }
+
+    let mut cx = VimTestContext::new(cx, true).await;
+    let dismissed = std::rc::Rc::new(std::cell::Cell::new(0));
+    cx.update_editor(|editor, _, _| editor.register_addon(CountingOverlay(dismissed.clone())));
+
+    cx.set_state("aˇbc", Mode::Insert);
+    cx.simulate_keystrokes("escape");
+    cx.assert_state("ˇabc", Mode::Normal);
+    assert_eq!(dismissed.get(), 0, "leaving insert mode keeps the overlays");
+
+    cx.simulate_keystrokes("escape");
+    assert_eq!(dismissed.get(), 1, "Escape in normal mode dismisses them");
+
+    cx.simulate_keystrokes("v l escape");
+    cx.assert_state("aˇbc", Mode::Normal);
+    assert_eq!(dismissed.get(), 1, "leaving visual mode keeps the overlays");
+
+    cx.simulate_keystrokes("escape");
+    assert_eq!(dismissed.get(), 2);
+}
+
+#[gpui::test]
 async fn test_insert_line_with_multi_keybinding_to_normal(cx: &mut gpui::TestAppContext) {
     let mut cx = VimTestContext::new(cx, true).await;
 

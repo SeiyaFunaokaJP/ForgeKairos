@@ -4099,7 +4099,7 @@ impl Pane {
         );
     }
 
-    fn handle_project_entry_drop(
+    pub fn handle_project_entry_drop(
         &mut self,
         project_entry_id: &ProjectEntryId,
         target: Option<usize>,
@@ -4180,7 +4180,7 @@ impl Pane {
             .log_err();
     }
 
-    fn handle_external_paths_drop(
+    pub fn handle_external_paths_drop(
         &mut self,
         paths: &ExternalPaths,
         window: &mut Window,
@@ -4534,6 +4534,17 @@ impl Render for Pane {
             let project = project.read(cx);
             project.is_local() || project.is_via_remote_server()
         };
+        // Over SSH and Docker the pane itself refuses files from this machine, so
+        // the drop target is only shown while the active item would take them.
+        let shows_external_paths_target = {
+            let project = project.read(cx);
+            project.is_local()
+                || project.is_via_wsl(cx)
+                || cx
+                    .active_drag_value::<ExternalPaths>()
+                    .zip(self.active_item())
+                    .is_some_and(|(paths, item)| item.accepts_drop(self, paths, cx))
+        };
 
         v_flex()
             .key_context(key_context)
@@ -4807,7 +4818,7 @@ impl Render for Pane {
                             .bg(cx.theme().colors().drop_target_background)
                             .group_drag_over::<DraggedTab>("", |style| style.visible())
                             .group_drag_over::<DraggedSelection>("", |style| style.visible())
-                            .when(accepts_external_paths, |div| {
+                            .when(shows_external_paths_target, |div| {
                                 div.group_drag_over::<ExternalPaths>("", |style| style.visible())
                             })
                             .when_some(self.can_drop_predicate.clone(), |this, p| {

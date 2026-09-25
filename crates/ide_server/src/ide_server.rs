@@ -116,6 +116,8 @@ pub struct IdeServerSettings {
     pub assist_tools: bool,
     /// 何も選んでいないときも、開いているファイルを CLI に伝えるか (CLI の「⧉ In <ファイル>」)。
     pub share_active_file: bool,
+    /// 最後に失敗したタスクの出力を `getLastTaskOutput` で渡すか。
+    pub share_task_output: bool,
 }
 
 impl Settings for IdeServerSettings {
@@ -125,6 +127,7 @@ impl Settings for IdeServerSettings {
             enabled: ide_server.enabled.unwrap_or(false),
             assist_tools: ide_server.assist_tools.unwrap_or(true),
             share_active_file: ide_server.share_active_file.unwrap_or(true),
+            share_task_output: ide_server.share_task_output.unwrap_or(true),
         }
     }
 }
@@ -376,7 +379,8 @@ impl HostAssistClient {
         Some((server.read(cx), client_id))
     }
 
-    /// アシストのツールだけの口 (`/mcp/zed?client=<id>`)。ホストで起動した CLI に渡す。
+    /// アシストのツールだけの口 (`/mcp/zed`、このクライアントのトークン)。ホストで起動した
+    /// CLI に渡す。
     /// `ide_server.assist_tools` が無効か、サーバーが動いていなければ `None`。
     pub fn assist_endpoint(&self, cx: &App) -> Option<McpEndpoint> {
         let (server, client_id) = self.server_and_id(cx)?;
@@ -408,9 +412,10 @@ impl HostAssistClient {
     }
 }
 
-/// Zed が名前を決めていないクライアント (`.mcp.json` を貼った外部のクライアント、登録の無い
-/// `client=`)。表示の枠の見出しは、クライアントの申告 (MCP の `clientInfo.name`・ツールの引数)
-/// からは決して取らない: 「Zed」などを名乗らせると、Zed 自身の表示に見せかけられるため。
+/// Zed が名前を決めていないクライアント (`.mcp.json` を貼った外部のクライアントなど、サーバー
+/// 自身のトークンで繋いできたもの)。表示の枠の見出しは、クライアントの申告 (MCP の
+/// `clientInfo.name`・ツールの引数) からは決して取らない: 「Zed」などを名乗らせると、Zed 自身の
+/// 表示に見せかけられるため。
 const UNKNOWN_ASSIST_CLIENT_LABEL: &str = "外部エージェント";
 
 /// 口ごとの受け入れの判断 (ADR-F56)。要求の頭を読んだところで、トランスポートが
@@ -519,6 +524,12 @@ fn remove_lock_file_at(lock_path: &Path) {
     }
 }
 
+struct AssistClient {
+    /// 表示の枠に出す名前。
+    label: SharedString,
+    token: Arc<str>,
+}
+
 pub struct IdeServer {
     workspace: WeakEntity<Workspace>,
     /// 表示を消すのに使う (ワークスペースは更新や解放の途中で読めないことがある)。
@@ -534,9 +545,15 @@ pub struct IdeServer {
     share_active_file: bool,
     selection_subscription: Option<Subscription>,
     open_diffs: tools::OpenDiffs,
-    /// ADR-F56: このサーバーを使うアシストのクライアント (ID → 表示の枠に出す名前)。
-    /// 1 つでもあれば、`enabled` でなくてもサーバーを動かしておく。
-    assist_clients: HashMap<String, SharedString>,
+    /// このワークスペースで最後に失敗したタスク (`getLastTaskOutput`)。失敗した時点で
+    /// ターミナルから読んでおく: あとで同じタスクを流し直すと、ターミナルが使い回される。
+    last_task_failure: Option<tools::TaskFailure>,
+    /// ADR-F56: このサーバーを使うアシストのクライアント。1 つでもあれば、`enabled` でなくても
+    /// サーバーを動かしておく。
+    assist_clients: HashMap<String, AssistClient>,
+    /// クライアントごとのトークン (トランスポートが照合する)。サーバーではなく登録の寿命なので、
+    /// サーバーを止めて起動し直しても、登録が続くかぎり同じトークンが使える。
+    client_tokens: transport::ClientTokens,
     _settings_subscription: Subscription,
     _quit_subscription: Subscription,
     _workspace_subscription: Option<Subscription>,
@@ -580,7 +597,9 @@ impl IdeServer {
             share_active_file: true,
             selection_subscription: None,
             open_diffs: tools::OpenDiffs::default(),
+            last_task_failure: None,
             assist_clients: HashMap::default(),
+            client_tokens: transport::ClientTokens::default(),
             _settings_subscription: settings_subscription,
             _quit_subscription: quit_subscription,
             _workspace_subscription: workspace_subscription,
@@ -615,15 +634,17 @@ impl IdeServer {
         self.endpoint_for(transport::IDE_MCP_PATH, None)
     }
 
-    /// 動いているサーバーの `path` (と、あればクライアントの ID) を指すエンドポイント。
+    /// 動いているサーバーの `path` を指すエンドポイント。クライアントの ID があればその
+    /// クライアントのトークン、なければサーバー自身のトークンで。
     fn endpoint_for(&self, path: &str, client_id: Option<&str>) -> Option<McpEndpoint> {
         let running = self.running.as_ref()?;
-        let query = client_id
-            .map(|client_id| format!("?{}={client_id}", transport::CLIENT_QUERY_NAME))
-            .unwrap_or_default();
+        let token = match client_id {
+            Some(client_id) => self.assist_clients.get(client_id)?.token.clone(),
+            None => running.auth_token.clone(),
+        };
         Some(McpEndpoint {
-            url: format!("http://127.0.0.1:{}{path}{query}", running.port),
-            authorization: format!("Bearer {}", running.auth_token),
+            url: format!("http://127.0.0.1:{}{path}", running.port),
+            authorization: format!("Bearer {token}"),
         })
     }
 
@@ -637,11 +658,11 @@ impl IdeServer {
         match client_id.and_then(|client_id| {
             self.assist_clients
                 .get(client_id)
-                .map(|label| (client_id, label))
+                .map(|client| (client_id, client))
         }) {
-            Some((client_id, label)) => AssistSource {
+            Some((client_id, client)) => AssistSource {
                 id: format!("zed-ide-client-{client_id}").into(),
-                label: label.clone(),
+                label: client.label.clone(),
             },
             None => AssistSource {
                 id: format!("zed-ide-server-{}", self.project_id.as_u64()).into(),
@@ -656,16 +677,26 @@ impl IdeServer {
         label: SharedString,
         cx: &mut gpui::Context<Self>,
     ) {
-        self.assist_clients.insert(client_id, label);
+        let token: Arc<str> = uuid::Uuid::new_v4().to_string().into();
+        self.client_tokens
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(token.to_string(), client_id.clone());
+        self.assist_clients
+            .insert(client_id, AssistClient { label, token });
         self.apply_settings(cx);
         cx.notify();
     }
 
     fn unregister_assist_client(&mut self, client_id: &str, cx: &mut gpui::Context<Self>) {
         let source = self.assist_source(Some(client_id));
-        if self.assist_clients.remove(client_id).is_none() {
+        let Some(client) = self.assist_clients.remove(client_id) else {
             return;
-        }
+        };
+        self.client_tokens
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&*client.token);
         self.clear_assist_display(source, cx);
         self.apply_settings(cx);
         cx.notify();
@@ -696,8 +727,59 @@ impl IdeServer {
             // ワークツリーが増減したらロックファイルの `workspaceFolders` を書き直す。
             // CLI はこれで「この cwd はどの IDE のものか」を決めている。
             workspace::Event::WorktreeCreationChanged => self.refresh_lock_file(cx),
+            workspace::Event::TaskFinished {
+                task_id,
+                label,
+                command_label,
+                success,
+                exit_code,
+            } => {
+                if *success {
+                    // 同じタスクが通ったら、前の失敗はもう古い。
+                    if self
+                        .last_task_failure
+                        .as_ref()
+                        .is_some_and(|failure| &failure.task_id == task_id)
+                    {
+                        self.last_task_failure = None;
+                    }
+                } else if IdeServerSettings::get_global(cx).share_task_output {
+                    let terminal_content = self.finished_task_terminal_content(task_id, cx);
+                    self.last_task_failure = Some(tools::TaskFailure::new(
+                        task_id.clone(),
+                        label.clone(),
+                        command_label.clone(),
+                        *exit_code,
+                        terminal_content.as_deref(),
+                    ));
+                }
+            }
             _ => {}
         }
+    }
+
+    /// 終わったタスクのターミナルの内容。同じタスクのターミナルが複数あれば、いちばん新しいもの。
+    /// `hide: always` などでターミナルが先に閉じられていたら `None`。
+    fn finished_task_terminal_content(&self, task_id: &task::TaskId, cx: &App) -> Option<String> {
+        let project = self.project.upgrade()?;
+        let project = project.read(cx);
+        project
+            .local_terminal_handles()
+            .iter()
+            .rev()
+            .filter_map(WeakEntity::upgrade)
+            .find(|terminal| {
+                terminal.read(cx).task().is_some_and(|task| {
+                    &task.spawned_task.id == task_id && task.status != terminal::TaskStatus::Running
+                })
+            })
+            .map(|terminal| {
+                // 余裕を足すのは、末尾の切り詰めが `truncated` を正しく立てられるように
+                // 上限を少し超える量を読むため。スクロールバック全体は文字列にしない。
+                terminal
+                    .read(cx)
+                    .last_lines_within_bytes(tools::MAX_TASK_OUTPUT_BYTES + 1024)
+            })
     }
 
     fn refresh_lock_file(&mut self, cx: &mut gpui::Context<Self>) {
@@ -742,15 +824,22 @@ impl IdeServer {
     ///
     /// - `enabled`: IDE の口 (WebSocket・`/mcp`) を開け、ロックファイルを書き、選択範囲を追う
     /// - `assist_tools` かつクライアントあり: 少なくともアシストの口 (`/mcp/zed`) のために動かす
+    /// - 動いているあいだにクライアントが居れば、`assist_tools` を切っても待ち受けは続ける
+    ///   (口だけ閉じる)
     ///
     /// 口の開け閉めでは待ち受けもトークンも変えない。起動済みの CLI のタブや ACP の接続が
-    /// 持っているポートとトークンが、設定を切り替えたあとも使えるように。
+    /// 持っているポートとトークンが、設定を切り替えて戻したあとも使えるように。
     fn apply_settings(&mut self, cx: &mut gpui::Context<Self>) {
         let settings = IdeServerSettings::get_global(cx).clone();
         let share_active_file_changed =
             std::mem::replace(&mut self.share_active_file, settings.share_active_file)
                 != settings.share_active_file;
-        let wanted = settings.enabled || (settings.assist_tools && !self.assist_clients.is_empty());
+        if !settings.share_task_output {
+            self.last_task_failure = None;
+        }
+        let wanted = settings.enabled
+            || (!self.assist_clients.is_empty()
+                && (settings.assist_tools || self.running.is_some()));
         if !wanted {
             if self.running.is_some() {
                 self.stop();
@@ -819,7 +908,10 @@ impl IdeServer {
             .context("handing the IDE server's socket to the async runtime")?;
         let auth_token: Arc<str> = uuid::Uuid::new_v4().to_string().into();
         let accept_task = cx.spawn({
-            let auth_token = auth_token.clone();
+            let credentials = transport::Credentials::Host {
+                server_token: auth_token.clone(),
+                client_tokens: self.client_tokens.clone(),
+            };
             async move |this, cx| {
                 loop {
                     let Ok((stream, peer)) = listener.accept().await else {
@@ -832,7 +924,7 @@ impl IdeServer {
                     let Some(this) = this.upgrade() else {
                         break;
                     };
-                    IdeServer::serve(this, stream, auth_token.clone(), cx);
+                    IdeServer::serve(this, stream, credentials.clone(), cx);
                 }
             }
         });
@@ -945,8 +1037,13 @@ impl IdeServer {
         );
     }
 
-    fn serve(this: Entity<Self>, stream: TcpStream, auth_token: Arc<str>, cx: &mut AsyncApp) {
-        let connection = run_connection(this, stream, auth_token, None, cx.clone());
+    fn serve(
+        this: Entity<Self>,
+        stream: TcpStream,
+        credentials: transport::Credentials,
+        cx: &mut AsyncApp,
+    ) {
+        let connection = run_connection(this, stream, credentials, None, cx.clone());
         cx.spawn(async move |_| connection.await).detach();
     }
 
@@ -1075,6 +1172,10 @@ impl ToolHost for IdeServer {
         &mut self.open_diffs
     }
 
+    fn last_task_failure(&self) -> Option<&tools::TaskFailure> {
+        self.last_task_failure.as_ref()
+    }
+
     fn add_connection(&mut self, connection: Arc<transport::Outbox>, cx: &mut gpui::Context<Self>) {
         if let Some(running) = self.running.as_mut() {
             running.connections.push(connection.clone());
@@ -1181,7 +1282,7 @@ pub(crate) fn broadcast_notification(
 pub(crate) async fn run_connection<S, H>(
     this: Entity<H>,
     stream: S,
-    auth_token: Arc<str>,
+    credentials: impl Into<transport::Credentials>,
     open_transport: Option<OpenTransport>,
     mut cx: AsyncApp,
 ) where
@@ -1201,12 +1302,13 @@ pub(crate) async fn run_connection<S, H>(
         )
     });
     let handshake_deadline = cx.background_executor().timer(transport::HANDSHAKE_TIMEOUT);
+    let credentials = credentials.into();
     let io_task = cx.background_spawn(async move {
         // トランスポートが閉じるまで、開いている接続として数える。
         let _open_transport = open_transport;
         if let Err(error) = transport::serve_connection(
             stream,
-            auth_token,
+            credentials,
             move |route| gate.admit(route),
             incoming_tx,
             outgoing,

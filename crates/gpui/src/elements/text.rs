@@ -271,7 +271,7 @@ impl Element for &'static str {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let mut state = TextLayout::default();
-        let layout_id = state.layout(SharedString::from(*self), None, window, cx);
+        let layout_id = state.layout(SharedString::from(*self), None, &[], window, cx);
         (layout_id, state)
     }
 
@@ -345,7 +345,7 @@ impl Element for SharedString {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let mut state = TextLayout::default();
-        let layout_id = state.layout(self.clone(), None, window, cx);
+        let layout_id = state.layout(self.clone(), None, &[], window, cx);
         (layout_id, state)
     }
 
@@ -393,6 +393,7 @@ pub struct StyledText {
     runs: Option<Vec<TextRun>>,
     delayed_highlights: Option<Vec<(Range<usize>, HighlightStyle)>>,
     delayed_font_family_overrides: Option<Vec<(Range<usize>, SharedString)>>,
+    font_scales: Vec<(Range<usize>, f32)>,
     layout: TextLayout,
 }
 
@@ -404,8 +405,30 @@ impl StyledText {
             runs: None,
             delayed_highlights: None,
             delayed_font_family_overrides: None,
+            font_scales: Vec::new(),
             layout: TextLayout::default(),
         }
+    }
+
+    /// Draw the given byte ranges of the text at their scale of the font size
+    /// the text is laid out at, the way CSS draws `font-size: 1.5em` on part
+    /// of a paragraph. Every line of the text is made as tall as the largest
+    /// scale needs, and the glyphs of a line share one baseline.
+    ///
+    /// The ranges must be sorted by start, must not overlap and must fall on
+    /// character boundaries.
+    pub fn with_font_scales(
+        mut self,
+        scales: impl IntoIterator<Item = (Range<usize>, f32)>,
+    ) -> Self {
+        self.font_scales = scales
+            .into_iter()
+            .inspect(|(range, _)| {
+                debug_assert!(self.text.is_char_boundary(range.start));
+                debug_assert!(self.text.is_char_boundary(range.end));
+            })
+            .collect();
+        self
     }
 
     /// Get the layout for this element. This can be used to map indices to pixels and vice versa.
@@ -571,7 +594,9 @@ impl Element for StyledText {
             Self::apply_font_family_overrides(runs, overrides);
         }
 
-        let layout_id = self.layout.layout(self.text.clone(), runs, window, cx);
+        let layout_id = self
+            .layout
+            .layout(self.text.clone(), runs, &self.font_scales, window, cx);
         (layout_id, ())
     }
 
@@ -628,16 +653,26 @@ impl TextLayout {
         &self,
         text: SharedString,
         runs: Option<Vec<TextRun>>,
+        font_scales: &[(Range<usize>, f32)],
         window: &mut Window,
         _: &mut App,
     ) -> LayoutId {
         let text_style = window.text_style();
         let font_size = text_style.font_size.to_pixels(window.rem_size());
+        let largest_scale = font_scales
+            .iter()
+            .map(|(_, scale)| *scale)
+            .fold(1.0_f32, f32::max);
         let line_height = window.pixel_snap(
             text_style
                 .line_height
-                .to_pixels(font_size.into(), window.rem_size()),
+                .to_pixels(font_size.into(), window.rem_size())
+                * largest_scale,
         );
+        let font_sizes = font_scales
+            .iter()
+            .map(|(range, scale)| (range.clone(), font_size * *scale))
+            .collect::<Vec<_>>();
 
         let runs = if let Some(runs) = runs {
             runs
@@ -735,12 +770,20 @@ impl TextLayout {
                 };
                 let len = text.len();
 
+                // Truncation measures the text at a single size, and cuts it
+                // where the scaled ranges would no longer line up.
+                let font_sizes = if truncate_width.is_none() {
+                    font_sizes.as_slice()
+                } else {
+                    &[]
+                };
                 let Some(lines) = window
                     .text_system()
-                    .shape_text(
+                    .shape_text_with_font_sizes(
                         text,
                         font_size,
                         &runs,
+                        font_sizes,
                         wrap_width,            // Wrap if we know the width.
                         text_style.line_clamp, // Limit the number of lines if line_clamp is set.
                     )

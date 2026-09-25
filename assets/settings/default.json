@@ -1084,7 +1084,10 @@
     // 何も選んでいないときも、開いているファイルを接続中の Claude Code CLI に伝える
     // (CLI の入力欄に「In <ファイル名>」と出て、次の送信にそのファイルが添付される)。
     // 無効にすると、行を選んだときの選択範囲だけを送る。
-    "share_active_file": true
+    "share_active_file": true,
+    // 最後に失敗したタスク (0 以外で終了) の出力の末尾 (最大 4 KB) を、IDE サーバーの
+    // ツール `getLastTaskOutput` でエージェントが読めるようにする。
+    "share_task_output": true
   },
   "collaboration_panel": {
     // Whether to show the collaboration panel button in the status bar.

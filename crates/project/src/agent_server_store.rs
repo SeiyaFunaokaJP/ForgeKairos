@@ -483,9 +483,7 @@ impl AgentServerStore {
                                         node_runtime: node_runtime.clone(),
                                         project_environment: project_environment.clone(),
                                         registry_id: Arc::from(name.as_str()),
-                                        installation_dir: paths::external_agents_dir()
-                                            .join("registry")
-                                            .join(sanitize_path_component(name)),
+                                        installation_dir: registry_archive_installation_dir(name),
                                         version: agent.metadata.version.clone(),
                                         targets: agent.targets.clone(),
                                         env: env.clone(),
@@ -1431,6 +1429,90 @@ async fn remove_stale_versioned_archive_cache_dirs(
     }
 
     Ok(())
+}
+
+/// Where the host keeps the downloaded builds of the registry agent `registry_id`.
+fn registry_archive_installation_dir(registry_id: &str) -> PathBuf {
+    paths::external_agents_dir()
+        .join("registry")
+        .join(sanitize_path_component(registry_id))
+}
+
+/// The versions of the registry agent `registry_id` cached on this host, most
+/// recently written first (F2-5 follow-up: the registry page's "update
+/// available" badge). Empty when nothing is cached, which includes an agent
+/// that has only ever run inside the WSL sandbox (its build is staged in the
+/// distro, not here) and every `npx` agent (npm resolves a version range, so
+/// there is no single installed version to read).
+///
+/// More than one version can be cached: the sweep of older versions only runs
+/// on the next launch, and fails on files a still-running older build holds
+/// open, which also leaves that older directory with the newest mtime. So ask
+/// whether the registry's version is among these, rather than trusting the
+/// first one to be what launches. Versions come back as the cache directory
+/// spells them; compare them with [`registry_archive_version_matches`], never
+/// with `==`.
+pub async fn installed_registry_archive_versions(fs: &dyn Fs, registry_id: &str) -> Vec<String> {
+    versioned_archive_versions_newest_first(fs, &registry_archive_installation_dir(registry_id))
+        .await
+}
+
+/// Whether `installed_version` (from [`installed_registry_archive_versions`]) is
+/// the registry's `registry_version`.
+pub fn registry_archive_version_matches(installed_version: &str, registry_version: &str) -> bool {
+    installed_version == sanitize_path_component(registry_version)
+}
+
+async fn versioned_archive_versions_newest_first(fs: &dyn Fs, base_dir: &Path) -> Vec<String> {
+    if !fs.is_dir(base_dir).await {
+        return Vec::new();
+    }
+    let Some(mut entries) = fs
+        .read_dir(base_dir)
+        .await
+        .with_context(|| format!("reading archive cache directory {base_dir:?}"))
+        .log_err()
+    else {
+        return Vec::new();
+    };
+
+    let mut versions: Vec<(fs::MTime, String)> = Vec::new();
+    while let Some(entry) = entries.next().await {
+        let Some(entry) = entry.log_err() else {
+            continue;
+        };
+        let Some(version) = entry
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(versioned_archive_dir_version)
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        let Some(metadata) = fs.metadata(&entry).await.log_err().flatten() else {
+            continue;
+        };
+        if !metadata.is_dir {
+            continue;
+        }
+        let position = versions
+            .iter()
+            .position(|(mtime, _)| metadata.mtime.bad_is_greater_than(*mtime))
+            .unwrap_or(versions.len());
+        versions.insert(position, (metadata.mtime, version));
+    }
+    versions.into_iter().map(|(_, version)| version).collect()
+}
+
+/// The version part of a directory name made by [`archive_version_component`].
+fn versioned_archive_dir_version(directory_name: &str) -> Option<&str> {
+    let rest = directory_name.strip_prefix(VERSIONED_ARCHIVE_CACHE_DIR_PREFIX)?;
+    let mut parts = rest.rsplitn(3, '_');
+    let archive_hash = parts.next()?;
+    let version_hash = parts.next()?;
+    let version = parts.next()?;
+    let is_hash = |part: &str| part.len() == 16 && part.chars().all(|c| c.is_ascii_hexdigit());
+    (is_hash(archive_hash) && is_hash(version_hash) && !version.is_empty()).then_some(version)
 }
 
 /// The SHA-256 a registry archive is checked against: the one the registry
@@ -3226,6 +3308,92 @@ mod tests {
                 "v_current".to_string(),
                 "v_newer".to_string(),
                 "v_not_a_dir".to_string(),
+            ]
+        );
+    }
+
+    const CACHED_ARCHIVE_URL: &str = "https://example.test/cached-agent";
+
+    #[test]
+    fn versioned_archive_dir_version_reads_back_the_cache_dir_name() {
+        let version_of = |version: &str| {
+            let directory = versioned_archive_cache_dir(
+                Path::new("/cache"),
+                Some(version),
+                CACHED_ARCHIVE_URL,
+                None,
+            );
+            let name = directory
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_string);
+            name.and_then(|name| versioned_archive_dir_version(&name).map(str::to_string))
+        };
+        assert_eq!(version_of("1.2.3"), Some("1.2.3".to_string()));
+        assert_eq!(
+            version_of("2.0.0+build_7"),
+            Some("2.0.0-build_7".to_string())
+        );
+
+        assert_eq!(versioned_archive_dir_version("v_current"), None);
+        assert_eq!(versioned_archive_dir_version("other"), None);
+        assert_eq!(
+            versioned_archive_dir_version("v_1.0.0_0123456789abcdef_not-a-hash-at-all"),
+            None
+        );
+    }
+
+    #[test]
+    fn registry_archive_version_matches_compares_sanitized_versions() {
+        assert!(registry_archive_version_matches("1.2.3", "1.2.3"));
+        assert!(registry_archive_version_matches(
+            "2.0.0-build_7",
+            "2.0.0+build_7"
+        ));
+        assert!(!registry_archive_version_matches("1.2.3", "1.3.0"));
+    }
+
+    #[gpui::test]
+    async fn test_versioned_archive_versions_newest_first(cx: &mut TestAppContext) {
+        let fs = fs::FakeFs::new(cx.executor());
+        let base_dir = Path::new("/cache");
+
+        assert_eq!(
+            versioned_archive_versions_newest_first(fs.as_ref(), base_dir).await,
+            Vec::<String>::new()
+        );
+
+        fs.create_dir(base_dir).await.unwrap();
+        assert_eq!(
+            versioned_archive_versions_newest_first(fs.as_ref(), base_dir).await,
+            Vec::<String>::new()
+        );
+
+        // FakeFs increments mtime on every create, so the creation order below
+        // is the mtime order, which is neither the name order nor its reverse.
+        // The stray entries created after them are newer still but are not
+        // version directories.
+        for version in ["1.0.0", "3.0.0", "2.0.0"] {
+            fs.create_dir(&versioned_archive_cache_dir(
+                base_dir,
+                Some(version),
+                CACHED_ARCHIVE_URL,
+                None,
+            ))
+            .await
+            .unwrap();
+        }
+        fs.create_dir(&base_dir.join("v_unrelated")).await.unwrap();
+        let not_a_dir =
+            versioned_archive_cache_dir(base_dir, Some("9.9.9"), CACHED_ARCHIVE_URL, None);
+        fs.insert_file(&not_a_dir, b"not a version".to_vec()).await;
+
+        assert_eq!(
+            versioned_archive_versions_newest_first(fs.as_ref(), base_dir).await,
+            vec![
+                "2.0.0".to_string(),
+                "3.0.0".to_string(),
+                "1.0.0".to_string()
             ]
         );
     }

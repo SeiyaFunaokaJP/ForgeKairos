@@ -6466,6 +6466,156 @@ mod tests {
         });
     }
 
+    /// A preview beside the source leaves both unreadable on a narrow screen,
+    /// so the quick action bar's eye opens Markdown as a tab of the source's
+    /// own pane and leaves the split to Ctrl-click (Cmd on macOS).
+    #[gpui::test]
+    async fn test_quick_action_bar_opens_the_markdown_preview_in_the_same_pane(
+        cx: &mut TestAppContext,
+    ) {
+        use markdown_preview::markdown_preview_view::MarkdownPreviewView;
+
+        let app_state = init_test(cx);
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(path!("/root"), json!({ "notes.md": "# Notes\n" }))
+            .await;
+
+        let project = Project::test(app_state.fs.clone(), [path!("/root").as_ref()], cx).await;
+        project.update(cx, |project, _cx| project.languages().add(markdown_lang()));
+        let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let workspace = window
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .unwrap();
+        let markdown_path = cx
+            .read(|cx| workspace.file_project_paths(cx))
+            .into_iter()
+            .next()
+            .expect("the fixture should hold a Markdown file");
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+
+        let editor = workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.open_path(markdown_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<Editor>()
+            .expect("the Markdown file should open in an editor");
+        cx.run_until_parked();
+
+        cx.update(|_window, cx| {
+            assert!(
+                MarkdownPreviewView::is_markdown_file(&editor, cx),
+                "the fixture should be recognized as Markdown"
+            );
+        });
+        // Nothing here forces a redraw, so the eye has to come from the bar's
+        // ordinary rendering, as it does in the app.
+        let click_the_eye = |modifiers: Modifiers, cx: &mut VisualTestContext| {
+            let bounds = cx
+                .debug_bounds("ICON-Eye")
+                .expect("the quick action bar should draw its preview button");
+            cx.simulate_click(bounds.center(), modifiers);
+            cx.run_until_parked();
+        };
+        let previews_by_pane = |cx: &mut VisualTestContext| {
+            cx.update(|_window, cx| {
+                workspace
+                    .read(cx)
+                    .panes()
+                    .iter()
+                    .map(|pane| pane.read(cx).items_of_type::<MarkdownPreviewView>().count())
+                    .collect::<Vec<_>>()
+            })
+        };
+
+        // Ctrl-click first: it hands focus back to the source, so the same
+        // bar is still showing for the plain click that follows.
+        click_the_eye(Modifiers::secondary_key(), &mut cx);
+        assert_eq!(
+            previews_by_pane(&mut cx),
+            [0, 1],
+            "Ctrl-click opens the preview in a pane beside the source"
+        );
+        cx.update(|window, cx| {
+            assert!(
+                editor.focus_handle(cx).contains_focused(window, cx),
+                "the source keeps focus after Ctrl-click"
+            );
+        });
+
+        click_the_eye(Modifiers::none(), &mut cx);
+        assert_eq!(
+            previews_by_pane(&mut cx),
+            [1, 1],
+            "a plain click opens the preview as a tab of the source's own pane"
+        );
+    }
+
+    /// A buffer's language can arrive after its editor was first drawn, and
+    /// the quick action bar subscribes to nothing that reports it: the eye
+    /// relies on the pane's toolbar being redrawn along with the editor.
+    #[gpui::test]
+    async fn test_quick_action_bar_shows_the_markdown_preview_once_the_language_is_known(
+        cx: &mut TestAppContext,
+    ) {
+        let app_state = init_test(cx);
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(
+                path!("/root"),
+                json!({ "notes.md": "# Notes
+" }),
+            )
+            .await;
+
+        let project = Project::test(app_state.fs.clone(), [path!("/root").as_ref()], cx).await;
+        let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let workspace = window
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .unwrap();
+        let markdown_path = cx
+            .read(|cx| workspace.file_project_paths(cx))
+            .into_iter()
+            .next()
+            .expect("the fixture should hold a Markdown file");
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+
+        let editor = workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                workspace.open_path(markdown_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<Editor>()
+            .expect("the file should open in an editor");
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("ICON-Eye").is_none(),
+            "without a Markdown language the bar has no preview to offer"
+        );
+
+        let buffer = cx.update(|_window, cx| {
+            editor
+                .read(cx)
+                .buffer()
+                .read(cx)
+                .as_singleton()
+                .expect("the editor should hold one buffer")
+        });
+        buffer.update(&mut cx, |buffer, cx| {
+            buffer.set_language(Some(markdown_lang()), cx)
+        });
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("ICON-Eye").is_some(),
+            "the preview button appears once the buffer turns out to be Markdown"
+        );
+    }
+
     pub(crate) fn init_test(cx: &mut TestAppContext) -> Arc<AppState> {
         init_test_with_state(cx, cx.update(AppState::test))
     }
@@ -6493,13 +6643,6 @@ mod tests {
 
             gpui_tokio::init(cx);
             AppState::set_global(app_state.clone(), cx);
-            // Without a per-`App` database these tests fall back to the shared
-            // `TEST_APP_DATABASE`. `WindowId`s restart at 1 in every
-            // `TestAppContext`, so concurrently running tests would read and
-            // overwrite each other's `multi_workspace_state/<window_id>` rows and
-            // workspace rows, which shows up as project groups from a different
-            // test appearing in a restored window.
-            cx.set_global(db::AppDatabase::test_new());
             theme_settings::init(theme::LoadThemes::JustBase, cx);
             // `terminal.starts_open` は既定 true (第 11 便 ⑩) だが、テストで本物の
             // PTY が立つと test scheduler が「別スレッドの活動」を検出して落ちる。

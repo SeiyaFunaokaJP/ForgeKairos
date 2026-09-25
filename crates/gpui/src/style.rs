@@ -174,6 +174,28 @@ pub struct GridTemplate {
     pub min_size: GridTemplateMinSize,
 }
 
+/// How wide one column of a grid asks to be, for [`Styled::grid_cols_widths`].
+#[derive(Copy, Clone, PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
+pub enum GridColumnWidth {
+    /// `minmax(<min>, max-content)`: as wide as its content, but never narrower
+    /// than `min`.
+    Content {
+        /// The narrowest the column gets.
+        min: Pixels,
+    },
+    /// `minmax(min-content, <fraction>)`: this fraction of the grid's own
+    /// width, unless its content cannot be wrapped that narrow. Only a grid
+    /// with a definite width has something to take the fraction of.
+    Fraction(f32),
+    /// `minmax(<min>, 1fr)`: a share of whatever width the other columns
+    /// leave, but never narrower than `min`, or with a zero `min` than its
+    /// content can be wrapped (`minmax(min-content, 1fr)`).
+    Remainder {
+        /// The narrowest the column gets.
+        min: Pixels,
+    },
+}
+
 /// The CSS styling that can be applied to an element via the `Styled` trait
 #[derive(Clone, Refineable, Debug)]
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -305,11 +327,9 @@ pub struct Style {
     /// Roughly equivalent to the Tailwind `grid-cols-<number>`
     pub grid_cols: Option<GridTemplate>,
 
-    /// An explicit minimum width for each grid column, in order. Each column
-    /// becomes `minmax(<width>, max-content)`, so it never shrinks below its
-    /// entry but still grows to fit its content when there is room. Takes
-    /// precedence over `grid_cols`.
-    pub grid_cols_min_widths: Option<Vec<Pixels>>,
+    /// An explicit width for each grid column, in order, as
+    /// [`GridColumnWidth`] describes. Takes precedence over `grid_cols`.
+    pub grid_cols_widths: Option<Vec<GridColumnWidth>>,
 
     /// The row span of this element
     /// Equivalent to the Tailwind `grid-rows-<number>`
@@ -817,7 +837,7 @@ impl Default for Style {
             opacity: None,
             grid_rows: None,
             grid_cols: None,
-            grid_cols_min_widths: None,
+            grid_cols_widths: None,
             grid_location: None,
 
             #[cfg(debug_assertions)]

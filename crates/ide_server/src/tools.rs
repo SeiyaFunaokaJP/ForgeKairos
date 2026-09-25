@@ -41,8 +41,12 @@ use crate::path_mapping::{self, MAX_SANDBOX_FILE_BYTES, RealRoots, SandboxFile};
 use crate::transport::{Endpoint, HOST_MAX_MESSAGE_BYTES, MessageLimits, Outbox, Route};
 use crate::{ConnectionGate, IdeServerDiff, IdeServerDiffOutcome};
 
-/// 全体診断で開くバッファーの上限。壊れたワークツリーで固まらないための保険。
+/// 全体診断で 1 回に開くバッファーの上限。壊れたワークツリーで固まらないための保険。
+/// 超えた分は `nextCursor` で続きを取る。
 const MAX_DIAGNOSTIC_FILES: usize = 500;
+
+/// `getLastTaskOutput` が返すタスクの出力の上限 (末尾を残す)。
+pub(crate) const MAX_TASK_OUTPUT_BYTES: usize = 4096;
 
 /// サンドボックスのセッションで出すツール。CLI が内部から呼ぶ 4 本だけ。ホストの任意の
 /// パスを開く `openFile` や、保存で整形 (= ワークツリーのコードの実行) を引き起こす
@@ -314,6 +318,10 @@ pub trait ToolHost: 'static + Sized {
     fn tool_scope(&self) -> ToolScope;
     fn latest_selection(&self) -> Option<&SelectionSnapshot>;
     fn open_diffs(&mut self) -> &mut OpenDiffs;
+    /// `getLastTaskOutput` が返す、このワークスペースで最後に失敗したタスク。
+    fn last_task_failure(&self) -> Option<&TaskFailure> {
+        None
+    }
     /// WebSocket の接続を、こちらから撃つ通知の宛先に加える。
     fn add_connection(&mut self, connection: Arc<Outbox>, cx: &mut Context<Self>);
     fn remove_connection(&mut self, connection: &Arc<Outbox>, cx: &mut Context<Self>);
@@ -619,16 +627,29 @@ pub fn tools() -> Vec<Tool> {
         tool(
             "getDiagnostics",
             "Get language server diagnostics. Pass a file URI to limit the result to one file, \
-             or omit it to get diagnostics for every file that has them.",
+             or omit it to get diagnostics for every file that has them. When there are more \
+             files than one call returns, a second content block carries a nextCursor; pass it \
+             back as cursor to get the next page.",
             object_schema(
                 json!({
                     "uri": {
                         "type": "string",
                         "description": "Optional file:// URI. Omit for all files."
+                    },
+                    "cursor": {
+                        "type": "string",
+                        "description": "The nextCursor of a previous call without uri, to continue where it stopped."
                     }
                 }),
                 &[],
             ),
+        ),
+        tool(
+            "getLastTaskOutput",
+            "Get the output of the most recent Zed task that failed (exited with a non-zero \
+             status) in this workspace: the last 4 KB of its terminal, with the task's label, \
+             command and exit code.",
+            object_schema(json!({}), &[]),
         ),
         tool(
             "openFile",
@@ -672,7 +693,8 @@ pub fn tools() -> Vec<Tool> {
         tool(
             "openDiff",
             "Open a diff of the proposed contents against a file and wait for the user to \
-             accept or reject it.",
+             accept or reject it. A rejection may carry the user's reason as a second text \
+             content block.",
             object_schema(
                 json!({
                     "old_file_path": { "type": "string" },
@@ -813,8 +835,34 @@ async fn run_tool<H: ToolHost>(
                 .get("uri")
                 .and_then(Value::as_str)
                 .map(str::to_string);
-            let diagnostics = collect_diagnostics(workspace, uri.as_deref(), scope, cx).await?;
-            Ok(vec![json_content(&diagnostics)?])
+            let cursor = diagnostics_cursor(&arguments)?;
+            let page = collect_diagnostics(workspace, uri.as_deref(), cursor, scope, cx).await?;
+            // CLI は最初のテキストだけを診断の配列として読むので、続きの案内は 2 つ目に置く。
+            let mut content = vec![json_content(&page.files)?];
+            if let Some(next_cursor) = page.next_cursor {
+                content.push(json_content(&json!({
+                    "nextCursor": next_cursor.to_string(),
+                    "message": "More files have diagnostics. Call getDiagnostics again with this cursor to get the next page.",
+                }))?);
+            }
+            Ok(content)
+        }
+        "getLastTaskOutput" => {
+            let shares_task_output =
+                cx.update(|cx| crate::IdeServerSettings::get_global(cx).share_task_output);
+            if !shares_task_output {
+                return Err(client_error(
+                    "Sharing task output is turned off in Zed (ide_server.share_task_output)",
+                ));
+            }
+            let failure = server.read_with(cx, |server, _| server.last_task_failure().cloned());
+            Ok(vec![json_content(&match failure {
+                Some(failure) => failure.to_tool_result(),
+                None => json!({
+                    "success": false,
+                    "message": "No task has failed in this workspace since Zed started",
+                }),
+            })?])
         }
         "openFile" => {
             let result = open_file(&arguments, workspace, cx).await?;
@@ -1580,40 +1628,84 @@ fn selection_range(
     Some(start..end)
 }
 
+/// `getDiagnostics` の 1 回分。
+pub(crate) struct DiagnosticsPage {
+    pub files: Value,
+    /// まだ続きがあるときの、次の呼び出しに渡す位置。
+    pub next_cursor: Option<usize>,
+}
+
+/// `getDiagnostics` の `cursor`。前回の `nextCursor` (診断のあるファイルの並びの何番目から
+/// 続けるか) をそのまま受け取る。並びは呼び出しのたびに作り直すので、あいだに診断が
+/// 増減すると、ファイルが飛んだり重なったりしうる。
+fn diagnostics_cursor(arguments: &Value) -> Result<usize> {
+    match arguments.get("cursor") {
+        None | Some(Value::Null) => Ok(0),
+        Some(Value::String(text)) => text.parse::<usize>().map_err(|_| {
+            client_error(format!(
+                "cursor {text:?} is not a nextCursor returned by getDiagnostics"
+            ))
+        }),
+        Some(_) => Err(client_error("cursor must be a string")),
+    }
+}
+
+/// 全体の並び `items` から、`cursor` 番目以降の最大 `limit` 件と、続きの位置を返す。
+pub(crate) fn page_of<T>(items: Vec<T>, cursor: usize, limit: usize) -> (Vec<T>, Option<usize>) {
+    let total = items.len();
+    let page = items
+        .into_iter()
+        .skip(cursor)
+        .take(limit)
+        .collect::<Vec<_>>();
+    let end = cursor.saturating_add(page.len());
+    (page, (end < total).then_some(end))
+}
+
 async fn collect_diagnostics(
     workspace: &WeakEntity<Workspace>,
     uri: Option<&str>,
+    cursor: usize,
     scope: &ToolScope,
     cx: &mut AsyncApp,
-) -> Result<Value> {
+) -> Result<DiagnosticsPage> {
     let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
-    let files = match scope.sandbox_paths() {
-        None => host_diagnostics(&project, uri, cx).await?,
-        Some(paths) => sandbox_diagnostics(&project, uri, paths, cx).await?,
+    let (files, next_cursor) = match scope.sandbox_paths() {
+        None => host_diagnostics(&project, uri, cursor, cx).await?,
+        Some(paths) => sandbox_diagnostics(&project, uri, cursor, paths, cx).await?,
     };
-    Ok(Value::Array(files))
+    Ok(DiagnosticsPage {
+        files: Value::Array(files),
+        next_cursor,
+    })
 }
 
 async fn host_diagnostics(
     project: &Entity<Project>,
     uri: Option<&str>,
+    cursor: usize,
     cx: &mut AsyncApp,
-) -> Result<Vec<Value>> {
-    let project_paths = match uri {
+) -> Result<(Vec<Value>, Option<usize>)> {
+    let (project_paths, next_cursor) = match uri {
         Some(uri) => {
             let path = path_from_uri(uri);
             let project_path = project
                 .read_with(cx, |project, cx| project.find_project_path(&path, cx))
                 .ok_or_else(|| anyhow!("{} is not inside a worktree", path.display()))?;
-            vec![project_path]
+            (vec![project_path], None)
         }
-        None => project.read_with(cx, |project, cx| {
-            project
-                .diagnostic_summaries(false, cx)
-                .map(|(project_path, _, _)| project_path)
-                .take(MAX_DIAGNOSTIC_FILES)
-                .collect::<Vec<_>>()
-        }),
+        None => {
+            // 言語サーバーごとに 1 件ずつ並ぶので、同じファイルを 2 度返さないよう畳む。
+            let all_paths = project.read_with(cx, |project, cx| {
+                let mut seen = HashSet::default();
+                project
+                    .diagnostic_summaries(false, cx)
+                    .map(|(project_path, _, _)| project_path)
+                    .filter(|project_path| seen.insert(project_path.clone()))
+                    .collect::<Vec<_>>()
+            });
+            page_of(all_paths, cursor, MAX_DIAGNOSTIC_FILES)
+        }
     };
 
     let mut files = Vec::new();
@@ -1637,7 +1729,7 @@ async fn host_diagnostics(
         }
         files.push(json!({ "uri": file_uri(&abs_path), "diagnostics": diagnostics }));
     }
-    Ok(files)
+    Ok((files, next_cursor))
 }
 
 /// サンドボックスへの診断。すでに開いているバッファーにある診断だけを返し、URI を指定されても
@@ -1646,30 +1738,34 @@ async fn host_diagnostics(
 async fn sandbox_diagnostics(
     project: &Entity<Project>,
     uri: Option<&str>,
+    cursor: usize,
     paths: &SandboxPaths,
     cx: &mut AsyncApp,
-) -> Result<Vec<Value>> {
+) -> Result<(Vec<Value>, Option<usize>)> {
     let request = SandboxRequest::new(paths, project, cx).await;
-    let buffers = match uri {
+    let (buffers, next_cursor) = match uri {
         Some(uri) => {
             let host_path = request.resolve(uri, cx).await?;
             let project_path = project
                 .read_with(cx, |project, cx| project.find_project_path(&host_path, cx))
                 .ok_or_else(|| client_error(format!("{uri} is not inside a worktree")))?;
-            project
+            let buffers = project
                 .read_with(cx, |project, cx| project.get_open_buffer(&project_path, cx))
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            (buffers, None)
         }
-        None => project.read_with(cx, |project, cx| {
-            let mut seen = HashSet::default();
-            project
-                .diagnostic_summaries(false, cx)
-                .filter(|(project_path, _, _)| seen.insert(project_path.clone()))
-                .filter_map(|(project_path, _, _)| project.get_open_buffer(&project_path, cx))
-                .take(MAX_SANDBOX_DIAGNOSTIC_FILES)
-                .collect::<Vec<_>>()
-        }),
+        None => {
+            let all_buffers = project.read_with(cx, |project, cx| {
+                let mut seen = HashSet::default();
+                project
+                    .diagnostic_summaries(false, cx)
+                    .filter(|(project_path, _, _)| seen.insert(project_path.clone()))
+                    .filter_map(|(project_path, _, _)| project.get_open_buffer(&project_path, cx))
+                    .collect::<Vec<_>>()
+            });
+            page_of(all_buffers, cursor, MAX_SANDBOX_DIAGNOSTIC_FILES)
+        }
     };
     let mut files = Vec::new();
     for buffer in buffers {
@@ -1680,7 +1776,7 @@ async fn sandbox_diagnostics(
             }
         }
     }
-    Ok(files)
+    Ok((files, next_cursor))
 }
 
 fn sandbox_diagnostics_entry(
@@ -1885,7 +1981,9 @@ async fn open_diff<H: ToolHost>(
         take_focus: !sandboxed,
     };
     let outcome = IdeServerDiff::open(workspace.clone(), proposal, register, cx).await?;
-    let outcome = outcome.await.unwrap_or(IdeServerDiffOutcome::Rejected);
+    let outcome = outcome
+        .await
+        .unwrap_or(IdeServerDiffOutcome::Rejected { reason: None });
     server.update(cx, |server, _| server.open_diffs().finish(diff_id));
 
     // `FILE_SAVED` の 2 番目のテキストが、CLI が「承認された本文」として読む唯一の
@@ -1895,8 +1993,98 @@ async fn open_diff<H: ToolHost>(
         IdeServerDiffOutcome::Accepted { contents } => {
             vec![text_content("FILE_SAVED"), text_content(contents)]
         }
-        IdeServerDiffOutcome::Rejected => vec![text_content("DIFF_REJECTED")],
+        IdeServerDiffOutcome::Rejected { reason } => rejected_diff_content(reason.as_deref()),
     })
+}
+
+/// 拒否の応答。CLI は 1 つ目のテキストが `DIFF_REJECTED` かどうかだけを見る (2.1.282 で
+/// 確認) ので、ユーザーの理由は 2 つ目のテキストに足す。
+pub(crate) fn rejected_diff_content(reason: Option<&str>) -> Vec<Value> {
+    let mut content = vec![text_content("DIFF_REJECTED")];
+    if let Some(reason) = reason.map(str::trim).filter(|reason| !reason.is_empty()) {
+        content.push(text_content(format!(
+            "The user rejected this change. Their reason: {reason}"
+        )));
+    }
+    content
+}
+
+/// このワークスペースで最後に失敗したタスク (`getLastTaskOutput`)。
+#[derive(Clone, Debug, PartialEq)]
+pub struct TaskFailure {
+    pub task_id: task::TaskId,
+    pub label: String,
+    pub command: String,
+    pub exit_code: Option<i32>,
+    /// ターミナルの末尾 ([`MAX_TASK_OUTPUT_BYTES`] まで)。ターミナルが先に閉じられて
+    /// 読めなかったら `None`。
+    pub output: Option<String>,
+    pub truncated: bool,
+}
+
+impl TaskFailure {
+    pub fn new(
+        task_id: task::TaskId,
+        label: String,
+        command: String,
+        exit_code: Option<i32>,
+        terminal_content: Option<&str>,
+    ) -> Self {
+        let (output, truncated) = match terminal_content {
+            Some(content) => {
+                let (output, truncated) = task_output_tail(content, MAX_TASK_OUTPUT_BYTES);
+                (Some(output), truncated)
+            }
+            None => (None, false),
+        };
+        Self {
+            task_id,
+            label,
+            command,
+            exit_code,
+            output,
+            truncated,
+        }
+    }
+
+    fn to_tool_result(&self) -> Value {
+        let mut result = json!({
+            "success": true,
+            "label": self.label,
+            "command": self.command,
+            "exitCode": self.exit_code,
+        });
+        match &self.output {
+            Some(output) => {
+                result["output"] = json!(output);
+                result["truncated"] = json!(self.truncated);
+            }
+            None => {
+                result["message"] =
+                    json!("The task's terminal was closed before its output could be read");
+            }
+        }
+        result
+    }
+}
+
+/// ターミナルの内容の末尾 `max_bytes` バイト (文字の途中では切らない)。行末の空白と
+/// 前後の空行は落とす (グリッドの空きセルが空白で埋まっているため)。
+pub(crate) fn task_output_tail(content: &str, max_bytes: usize) -> (String, bool) {
+    let text = content
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let text = text.trim_matches('\n');
+    if text.len() <= max_bytes {
+        return (text.to_string(), false);
+    }
+    let mut start = text.len() - max_bytes;
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    (text.get(start..).unwrap_or_default().to_string(), true)
 }
 
 /// ホストの提案: 旧内容は実ファイルのバッファー (未保存の変更も見える)、新内容は作業用の

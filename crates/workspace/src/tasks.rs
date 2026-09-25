@@ -108,6 +108,9 @@ impl Workspace {
         cx: &mut Context<Workspace>,
     ) {
         let spawn_in_terminal = resolved_task.resolved.clone();
+        let task_id = spawn_in_terminal.id.clone();
+        let task_label = spawn_in_terminal.full_label.clone();
+        let command_label = spawn_in_terminal.command_label.clone();
         if !omit_history {
             if let Some(debugger_provider) = self.debugger_provider.as_ref() {
                 debugger_provider.task_scheduled(cx);
@@ -140,6 +143,17 @@ impl Workspace {
                     let res = cx.background_spawn(spawn_task).await;
                     let result = match res {
                         Some(Ok(status)) => {
+                            workspace
+                                .update(cx, |_, cx| {
+                                    cx.emit(crate::Event::TaskFinished {
+                                        task_id,
+                                        label: task_label,
+                                        command_label,
+                                        success: status.success(),
+                                        exit_code: status.code(),
+                                    })
+                                })
+                                .ok();
                             if status.success() {
                                 log::debug!("Task spawn succeeded");
                                 ScheduledTaskResult::Success
@@ -444,6 +458,68 @@ mod tests {
         cx.executor().run_until_parked();
 
         assert_eq!(*task_result.lock(), Some(ScheduledTaskResult::Success));
+    }
+
+    #[gpui::test]
+    async fn test_schedule_resolved_task_tells_subscribers_how_it_finished(
+        cx: &mut TestAppContext,
+    ) {
+        let (fixture, cx) = create_fixture(cx, SaveStrategy::None).await;
+        let task_id = fixture.task.resolved.id.clone();
+        fixture.workspace.update(cx, |workspace, _| {
+            workspace.terminal_provider = Some(Box::new(FailingTerminalProvider { exit_code: 3 }));
+        });
+        let finished = Arc::new(Mutex::new(Vec::new()));
+        let _subscription = cx.update(|_, cx| {
+            let finished = finished.clone();
+            cx.subscribe(&fixture.workspace, move |_, event, _| {
+                if let crate::Event::TaskFinished {
+                    task_id,
+                    success,
+                    exit_code,
+                    ..
+                } = event
+                {
+                    finished
+                        .lock()
+                        .push((task_id.clone(), *success, *exit_code));
+                }
+            })
+        });
+        fixture.workspace.update_in(cx, |workspace, window, cx| {
+            workspace.schedule_resolved_task(
+                TaskSourceKind::UserInput,
+                fixture.task,
+                false,
+                window,
+                cx,
+            );
+        });
+        cx.executor().run_until_parked();
+
+        assert_eq!(*finished.lock(), vec![(task_id, false, Some(3))]);
+    }
+
+    struct FailingTerminalProvider {
+        exit_code: u32,
+    }
+
+    impl TerminalProvider for FailingTerminalProvider {
+        fn spawn(
+            &self,
+            _task: task::SpawnInTerminal,
+            _window: &mut ui::Window,
+            _cx: &mut App,
+        ) -> Task<Option<Result<ExitStatus>>> {
+            #[cfg(unix)]
+            let status = <ExitStatus as std::os::unix::process::ExitStatusExt>::from_raw(
+                (self.exit_code as i32) << 8,
+            );
+            #[cfg(windows)]
+            let status =
+                <ExitStatus as std::os::windows::process::ExitStatusExt>::from_raw(self.exit_code);
+            Task::ready(Some(Ok(status)))
+        }
     }
 
     async fn create_fixture(

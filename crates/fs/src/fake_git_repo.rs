@@ -75,6 +75,9 @@ pub struct FakeGitRepositoryState {
     pub simulated_index_write_error_message: Option<String>,
     pub simulated_create_worktree_error: Option<String>,
     pub simulated_graph_error: Option<String>,
+    /// When set, a commit search keeps running after its last match, holding a clone of this
+    /// until it is dropped, so a test can count the searches still running.
+    pub commit_search_hold: Option<Arc<()>>,
     pub simulated_status_error: Option<String>,
     pub simulated_open_error: Option<String>,
     pub branches_requiring_force_delete: HashSet<String>,
@@ -110,6 +113,7 @@ impl FakeGitRepositoryState {
             simulated_index_write_error_message: Default::default(),
             simulated_create_worktree_error: Default::default(),
             simulated_graph_error: None,
+            commit_search_hold: None,
             simulated_status_error: None,
             simulated_open_error: None,
             branches_requiring_force_delete: Default::default(),
@@ -1762,6 +1766,14 @@ impl GitRepository for FakeGitRepository {
                 if request_tx.send(sha).await.is_err() {
                     break;
                 }
+            }
+
+            let hold = self.fs.with_git_state(&self.dot_git_path, false, |state| {
+                state.commit_search_hold.clone()
+            })?;
+            if let Some(hold) = hold {
+                let _hold = hold;
+                futures::future::pending::<()>().await;
             }
 
             Ok(())

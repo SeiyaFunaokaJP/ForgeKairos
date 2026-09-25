@@ -1545,6 +1545,9 @@ impl AppState {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
         }
+        if !cx.has_global::<db::AppDatabase>() {
+            cx.set_global(db::AppDatabase::test_new());
+        }
 
         let fs = fs::FakeFs::new(cx.background_executor().clone());
         <dyn Fs>::set_global(fs.clone(), cx);
@@ -1652,6 +1655,15 @@ pub enum Event {
     Activate,
     PanelAdded(AnyView),
     WorktreeCreationChanged,
+    /// A task scheduled through [`Workspace::schedule_resolved_task`] exited. Its
+    /// terminal, if still open, carries the same task id.
+    TaskFinished {
+        task_id: task::TaskId,
+        label: String,
+        command_label: String,
+        success: bool,
+        exit_code: Option<i32>,
+    },
 }
 
 /// Controls which types of items should be made visible in the project panel
@@ -22149,6 +22161,34 @@ mod tests {
             cx.set_global(db::AppDatabase::test_new());
             theme_settings::init(theme::LoadThemes::JustBase, cx);
         });
+    }
+
+    #[gpui::test]
+    async fn test_app_state_test_gives_the_app_a_database_and_keeps_an_existing_one(
+        cx_without_database: &mut TestAppContext,
+        cx_with_database: &mut TestAppContext,
+    ) {
+        cx_without_database.update(|cx| {
+            AppState::test(cx);
+        });
+        assert!(cx_without_database.read(|cx| cx.has_global::<db::AppDatabase>()));
+
+        let key = "app-state-test-probe".to_string();
+        cx_with_database.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+        cx_with_database
+            .read(db::kvp::KeyValueStore::global)
+            .write_kvp(key.clone(), "written".to_string())
+            .await
+            .unwrap();
+        cx_with_database.update(|cx| {
+            AppState::test(cx);
+        });
+        assert_eq!(
+            cx_with_database
+                .read(|cx| db::kvp::KeyValueStore::global(cx).read_kvp(&key))
+                .unwrap(),
+            Some("written".to_string())
+        );
     }
 
     #[gpui::test]

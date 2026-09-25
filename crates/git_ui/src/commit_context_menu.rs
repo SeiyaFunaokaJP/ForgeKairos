@@ -1107,12 +1107,16 @@ fn report_fixup(
     let undo = |old_head: String, new_head: String| -> FollowUp {
         let repository = repository.clone();
         let workspace = workspace.clone();
+        let branch = target.branch.clone();
         Rc::new(move |window, cx| {
             undo_fixup(
                 repository.clone(),
                 workspace.clone(),
-                old_head.clone(),
-                new_head.clone(),
+                FixupUndo {
+                    branch: branch.clone(),
+                    old_head: old_head.clone(),
+                    new_head: new_head.clone(),
+                },
                 window,
                 cx,
             )
@@ -1221,17 +1225,37 @@ fn report_fixup(
     }
 }
 
+/// Where a fixup left `branch` (`new_head`) and where it had been (`old_head`).
+#[derive(Clone, Debug)]
+struct FixupUndo {
+    branch: String,
+    old_head: String,
+    new_head: String,
+}
+
+impl FixupUndo {
+    /// Whether the output of `git rev-parse HEAD --symbolic-full-name HEAD` says HEAD is still
+    /// the fixup's result on the fixup's branch. Another branch at the same commit does not
+    /// count: `reset` would move that one instead.
+    fn still_applies(&self, rev_parse_output: &str) -> bool {
+        let mut lines = rev_parse_output.lines().map(str::trim);
+        lines.next() == Some(self.new_head.as_str()) && lines.next() == Some(self.branch.as_str())
+    }
+}
+
 /// Takes a fixup back: the branch returns to `old_head` with `reset --soft`, so what was folded
 /// in comes back as staged changes. The graph's undo uses `--hard`, which here would throw those
 /// changes away, since nothing `old_head` reaches ever had them.
 fn undo_fixup(
     repository: Entity<Repository>,
     workspace: Entity<Workspace>,
-    old_head: String,
-    new_head: String,
+    undo: FixupUndo,
     window: &mut Window,
     cx: &mut App,
 ) {
+    let FixupUndo {
+        old_head, new_head, ..
+    } = undo.clone();
     let short_old = short_sha(&old_head);
     let short_new = short_sha(&new_head);
     let prompt = window.prompt(
@@ -1249,15 +1273,23 @@ fn undo_fixup(
         }
         // Asked of git rather than of the last scan, which can still show the HEAD from before.
         let head = repository.update(cx, |repository, _| {
-            repository.run_git_command(vec!["rev-parse".into(), "HEAD".into()], None)
+            repository.run_git_command(
+                vec![
+                    "rev-parse".into(),
+                    "HEAD".into(),
+                    "--symbolic-full-name".into(),
+                    "HEAD".into(),
+                ],
+                None,
+            )
         });
         match await_receiver(head).await {
-            Ok(output) if output.succeeded() && output.stdout.trim() == new_head => {}
+            Ok(output) if output.succeeded() && undo.still_applies(&output.stdout) => {}
             Ok(_) => {
                 cx.update(|cx| {
                     show_warning_toast(
                         &workspace,
-                        "fixup の後に HEAD が動いているため、ここからは戻せません。git reflog から手で戻してください。",
+                        "fixup の後に HEAD が動いたか別のブランチに切り替わっているため、ここからは戻せません。git reflog から手で戻してください。",
                         cx,
                     )
                 });
@@ -1544,6 +1576,8 @@ fn commit_status_toast(
 pub(crate) type FollowUp = Rc<dyn Fn(&mut Window, &mut App)>;
 
 const FORCE_PUSH_LABEL: &str = "強制プッシュ (lease 付き)";
+const NO_UPSTREAM_NOTE: &str =
+    "このブランチには追跡ブランチがないため、プッシュ済みかどうかは確かめていません。";
 const FORCE_PUSH_NEEDED: &str = "\nプッシュ済みなので、強制プッシュ (lease 付き) が必要です。";
 
 /// Says a history rewrite worked, with what the user may want next: taking it back (`undo`), and
@@ -2179,6 +2213,13 @@ impl Render for FixupModal {
                         .to_string(),
                 ))
             })
+            .when(!self.target.has_upstream, |modal| {
+                modal.child(
+                    Label::new(NO_UPSTREAM_NOTE)
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+            })
             .child(
                 h_flex()
                     .w_full()
@@ -2274,6 +2315,30 @@ mod tests {
             index_status,
             worktree_status,
         })
+    }
+
+    /// Undoing a fixup moves the branch it rewrote, only while HEAD is still its result there:
+    /// another branch at the same commit is left alone.
+    #[test]
+    fn test_fixup_undo_applies_only_on_the_rewritten_branch() {
+        let undo = FixupUndo {
+            branch: "refs/heads/dev".to_string(),
+            old_head: "a".repeat(40),
+            new_head: "b".repeat(40),
+        };
+        let new_head = "b".repeat(40);
+        assert!(undo.still_applies(&format!("{new_head}\nrefs/heads/dev\n")));
+        assert!(undo.still_applies(&format!("{new_head}\r\nrefs/heads/dev\r\n")));
+        assert!(
+            !undo.still_applies(&format!("{new_head}\nrefs/heads/other\n")),
+            "another branch at the same commit"
+        );
+        assert!(
+            !undo.still_applies(&format!("{new_head}\nHEAD\n")),
+            "a detached HEAD at the same commit"
+        );
+        assert!(!undo.still_applies(&format!("{}\nrefs/heads/dev\n", "c".repeat(40))));
+        assert!(!undo.still_applies(&format!("{new_head}\n")));
     }
 
     /// `commit -a` takes every tracked change, staged or not; untracked and ignored files are

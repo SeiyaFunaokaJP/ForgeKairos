@@ -2101,9 +2101,10 @@ impl MarkdownElement {
         builder.pop_text_style();
     }
 
-    /// Sizes the lines laid out until the matching `pop_div`, which must wrap a
-    /// paragraph's whole text: GPUI takes a line's font size from the element
-    /// it is laid out in, so only a whole run of lines can change size.
+    /// Sizes the lines laid out until the matching `pop_paragraph_scale`, which
+    /// must wrap a paragraph's whole text: GPUI takes a line's font size from
+    /// the element it is laid out in, so only a whole run of lines can change
+    /// size.
     fn push_paragraph_scale(
         &self,
         builder: &mut MarkdownElementBuilder,
@@ -2111,7 +2112,10 @@ impl MarkdownElement {
         range: &Range<usize>,
         markdown_end: usize,
     ) {
-        let scale = f32::from(percent) / 100.0;
+        let scale = html::html_parser::clamp_font_scale(
+            builder.paragraph_scale() * f32::from(percent) / 100.0,
+        );
+        builder.paragraph_scale_stack.push(scale);
         let font_size = match builder.text_style().font_size {
             AbsoluteLength::Pixels(size) => AbsoluteLength::Pixels(size * scale),
             AbsoluteLength::Rems(size) => AbsoluteLength::Rems(rems(size.0 * scale)),
@@ -2125,6 +2129,11 @@ impl MarkdownElement {
             range,
             markdown_end,
         );
+    }
+
+    fn pop_paragraph_scale(&self, builder: &mut MarkdownElementBuilder) {
+        builder.pop_div();
+        builder.paragraph_scale_stack.pop();
     }
 
     fn push_markdown_heading(
@@ -3253,16 +3262,28 @@ impl Element for MarkdownElement {
                             let row_index = builder.table.row_index;
                             let col_index = builder.table.col_index;
                             // A column that asks for no alignment follows an
-                            // enclosing `<div align>`, as it does on GitHub.
-                            let alignment = match builder.table.current_cell_alignment() {
-                                Some(Alignment::None) => builder
+                            // enclosing `<div align>`, as it does on GitHub,
+                            // its header too: a browser only centers a `<th>`
+                            // that nothing around it aligns.
+                            let inherited_alignment =
+                                builder
                                     .inherited_text_align()
                                     .map(|text_align| match text_align {
                                         TextAlign::Left => Alignment::Left,
                                         TextAlign::Center => Alignment::Center,
                                         TextAlign::Right => Alignment::Right,
-                                    })
-                                    .or(Some(Alignment::None)),
+                                    });
+                            let alignment = match builder.table.current_cell_alignment() {
+                                Some(Alignment::None) => {
+                                    inherited_alignment.or(Some(Alignment::None))
+                                }
+                                Some(Alignment::Center)
+                                    if is_header
+                                        && builder.table.current_column_alignment()
+                                            == Some(Alignment::None) =>
+                                {
+                                    inherited_alignment.or(Some(Alignment::Center))
+                                }
                                 alignment => alignment,
                             };
                             let text_align = alignment
@@ -3528,6 +3549,9 @@ impl Element for MarkdownElement {
                         if let Some(percent) = span_style.paragraph_scale_percent {
                             self.push_paragraph_scale(&mut builder, percent, range, markdown_end);
                         }
+                        if let Some(percent) = span_style.text_scale_percent {
+                            builder.push_font_scale(f32::from(percent) / 100.0);
+                        }
                         if span_style.color.is_some() {
                             builder.explicit_text_color_depth += 1;
                         }
@@ -3542,7 +3566,10 @@ impl Element for MarkdownElement {
                                 builder.explicit_text_color_depth.saturating_sub(1);
                         }
                         if span_style.paragraph_scale_percent.is_some() {
-                            builder.pop_div();
+                            self.pop_paragraph_scale(&mut builder);
+                        }
+                        if span_style.text_scale_percent.is_some() {
+                            builder.pop_font_scale();
                         }
                     }
                 }
@@ -3928,6 +3955,12 @@ impl TableState {
         }
         self.alignments.get(self.col_index).copied()
     }
+
+    /// The alignment the delimiter row asks of the current column, which the
+    /// header row does not follow.
+    fn current_column_alignment(&self) -> Option<Alignment> {
+        self.alignments.get(self.col_index).copied()
+    }
 }
 
 fn alignment_to_text_align(alignment: Alignment) -> Option<TextAlign> {
@@ -4117,6 +4150,14 @@ struct MarkdownElementBuilder {
     /// The column counts of the HTML tables whose cells are open across
     /// blocks, innermost last.
     spanning_table_columns: Vec<usize>,
+    /// The `font-size` scales of the spans over part of a paragraph that the
+    /// text being pushed is in, innermost last.
+    font_scale_stack: Vec<f32>,
+    /// The sizes, relative to the body text, of the paragraphs wrapped in
+    /// `font-size` spans that the text being pushed is in, innermost last.
+    paragraph_scale_stack: Vec<f32>,
+    /// How many HTML headings the elements being rendered are in.
+    html_heading_depth: usize,
 }
 
 struct MarkdownHighlights {
@@ -4197,6 +4238,8 @@ impl DivStackEntry {
 struct PendingLine {
     text: String,
     runs: Vec<TextRun>,
+    /// The ranges of `text` drawn at a scale of the line's font size.
+    font_scales: Vec<(Range<usize>, f32)>,
     source_mappings: Vec<SourceMapping>,
 }
 
@@ -4236,7 +4279,24 @@ impl MarkdownElementBuilder {
             highlights,
             inherited_alignments: Vec::new(),
             spanning_table_columns: Vec::new(),
+            font_scale_stack: Vec::new(),
+            paragraph_scale_stack: Vec::new(),
+            html_heading_depth: 0,
         }
+    }
+
+    /// Draws the text pushed until the matching `pop_font_scale` at `scale`
+    /// times the size of the line it is in.
+    fn push_font_scale(&mut self, scale: f32) {
+        self.font_scale_stack.push(scale);
+    }
+
+    fn pop_font_scale(&mut self) {
+        self.font_scale_stack.pop();
+    }
+
+    fn paragraph_scale(&self) -> f32 {
+        self.paragraph_scale_stack.last().copied().unwrap_or(1.0)
     }
 
     /// The alignment an enclosing `<div align>` written in an earlier HTML
@@ -4306,6 +4366,24 @@ impl MarkdownElementBuilder {
     }
 
     fn push_image_child(&mut self, child: impl IntoElement) {
+        // A line break before the paragraph's first image was pushed as a
+        // newline at the end of its text, which in the row the image turns
+        // the paragraph into would leave the image beside the text. It
+        // becomes the row's own line break instead.
+        let mut line_breaks = 0;
+        if !self.uses_flex_line_breaks() {
+            while self.pending_line.text.ends_with('\n')
+                && self.pending_line.runs.last().is_some_and(|run| run.len > 0)
+            {
+                self.trim_trailing_newline();
+                line_breaks += 1;
+            }
+            let text_len = self.pending_line.text.len();
+            self.pending_line
+                .source_mappings
+                .retain(|mapping| mapping.rendered_index < text_len);
+        }
+
         // Images are laid out as flex items, which `text-align` does not move,
         // so a centered or right-aligned paragraph has to justify them itself.
         let text_align = self.text_style().text_align;
@@ -4318,6 +4396,9 @@ impl MarkdownElementBuilder {
             }
         });
         self.div_stack.last_mut().unwrap().line_break_mode = LineBreakMode::FlexWrap;
+        for _ in 0..line_breaks {
+            self.append_child(div().w_full().h_0().into_any_element());
+        }
         self.append_child(child.into_any_element());
     }
 
@@ -4457,8 +4538,29 @@ impl MarkdownElementBuilder {
             rendered_index: self.pending_line.text.len(),
             source_index: source_range.start,
         });
+        let rendered_start = self.pending_line.text.len();
         self.pending_line.text.push_str(text);
         self.current_source_index = source_range.end;
+
+        // The text's size is relative to its paragraph's, and together they
+        // still stop at the sizes a single span may ask for.
+        let paragraph_scale = self.paragraph_scale();
+        let text_scale: f32 = self.font_scale_stack.iter().product();
+        let limited = html::html_parser::clamp_font_scale(paragraph_scale * text_scale);
+        let scale = if limited == paragraph_scale * text_scale {
+            text_scale
+        } else {
+            limited / paragraph_scale
+        };
+        if scale != 1.0 && !text.is_empty() {
+            let rendered = rendered_start..self.pending_line.text.len();
+            match self.pending_line.font_scales.last_mut() {
+                Some((last, last_scale)) if last.end == rendered.start && *last_scale == scale => {
+                    last.end = rendered.end;
+                }
+                _ => self.pending_line.font_scales.push((rendered, scale)),
+            }
+        }
 
         // Compute the base text style once
         let text_style = self.text_style();
@@ -4604,7 +4706,18 @@ impl MarkdownElementBuilder {
             .unwrap_or_default();
         #[cfg(test)]
         let runs = line.runs.clone();
-        let text = StyledText::new(line.text).with_runs(line.runs);
+        let text_length = line.text.len();
+        let font_scales = line
+            .font_scales
+            .into_iter()
+            .filter_map(|(range, scale)| {
+                let range = range.start..range.end.min(text_length);
+                (range.start < range.end).then_some((range, scale))
+            })
+            .collect::<Vec<_>>();
+        let text = StyledText::new(line.text)
+            .with_runs(line.runs)
+            .with_font_scales(font_scales);
         let rendered_line = Rc::new(RenderedLine {
             layout: text.layout().clone(),
             source_mappings: line.source_mappings,
@@ -6622,6 +6735,78 @@ mod tests {
             "a column's own alignment wins"
         );
         assert_eq!(line_text_align(&rendered, "外の値"), TextAlign::Left);
+    }
+
+    #[gpui::test]
+    fn test_aligned_div_reaches_markdown_table_headers(cx: &mut TestAppContext) {
+        let source = "<div align=\"right\">\n\n| 列 | 中 | 左 |\n|---|:-:|:--|\n| 値 | 真ん中 | 左の値 |\n\n</div>\n\n| 外 |\n|---|\n| 外の値 |\n";
+        let (rendered, _) = draw_html_preview(source, &[], cx);
+        assert_eq!(
+            line_text_align(&rendered, "列"),
+            TextAlign::Right,
+            "the header of a column that asks for nothing follows the div"
+        );
+        assert_eq!(line_text_align(&rendered, "中"), TextAlign::Center);
+        assert_eq!(
+            line_text_align(&rendered, "左"),
+            TextAlign::Center,
+            "a header of a column that asks for an alignment stays centered"
+        );
+        assert_eq!(
+            line_text_align(&rendered, "外"),
+            TextAlign::Center,
+            "outside an aligned div a header stays centered"
+        );
+    }
+
+    fn drawn_line_bounds(rendered: &RenderedText, text: &str) -> Bounds<Pixels> {
+        rendered
+            .lines
+            .iter()
+            .find(|line| line.layout.wrapped_text().contains(text))
+            .map(|line| line.layout.bounds())
+            .unwrap_or_else(|| panic!("{text:?} should be drawn"))
+    }
+
+    #[gpui::test]
+    fn test_an_image_after_a_line_break_starts_the_next_line(cx: &mut TestAppContext) {
+        for (source, image_source) in [
+            (
+                "<p>文字<br><img src=\"a.png\" width=\"100\" height=\"50\"></p>\n",
+                "<p>",
+            ),
+            (
+                "<p>文字<br>\n<br><img src=\"a.png\" width=\"100\" height=\"50\"></p>\n",
+                "<p>",
+            ),
+            ("文字  \n![画像](a.png)\n", "![画像]"),
+        ] {
+            let (rendered, cx) = draw_html_preview(source, &[], cx);
+            let text = drawn_line_bounds(&rendered, "文字");
+            let image = drawn_image_bounds(cx, source, image_source);
+            assert!(
+                image.top() >= text.bottom() && image.left() < text.right(),
+                "the image goes under the text, not beside it: {text:?} {image:?} ({source:?})"
+            );
+        }
+
+        for (source, image_source) in [
+            (
+                "<p>文字<img src=\"a.png\" width=\"100\" height=\"50\"></p>\n",
+                "<p>",
+            ),
+            ("文字 ![画像](a.png)\n", "![画像]"),
+            // A soft break is a space, not a line break.
+            ("文字\n![画像](a.png)\n", "![画像]"),
+        ] {
+            let (rendered, cx) = draw_html_preview(source, &[], cx);
+            let text = drawn_line_bounds(&rendered, "文字");
+            let image = drawn_image_bounds(cx, source, image_source);
+            assert!(
+                image.left() >= text.right(),
+                "without a break the image stays beside the text: {text:?} {image:?} ({source:?})"
+            );
+        }
     }
 
     #[gpui::test]

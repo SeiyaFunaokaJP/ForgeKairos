@@ -540,6 +540,7 @@ message Envelope {
     ListSandboxProcessesResponse list_sandbox_processes_response = 508;
     StopSandboxProcesses stop_sandbox_processes = 509;
     StopSandboxProcessesResponse stop_sandbox_processes_response = 510;
+    CancelSearchCommits cancel_search_commits = 511;
     KillTerminalSession kill_terminal_session = 520; // current max
   }
 

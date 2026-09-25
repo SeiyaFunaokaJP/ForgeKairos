@@ -33,6 +33,8 @@ pub struct LineLayout {
 pub struct ShapedRun {
     /// The font id for this run
     pub font_id: FontId,
+    /// The size this run was shaped at, when it is not the line's.
+    pub font_size: Option<Pixels>,
     /// The glyphs that make up this run
     pub glyphs: Vec<ShapedGlyph>,
 }
@@ -54,6 +56,11 @@ pub struct ShapedGlyph {
 }
 
 impl LineLayout {
+    /// The size the glyphs of `run`, one of this line's runs, are drawn at.
+    pub fn run_font_size(&self, run: &ShapedRun) -> Pixels {
+        run.font_size.unwrap_or(self.font_size)
+    }
+
     /// The index for the character at the given x coordinate
     pub fn index_for_x(&self, x: Pixels) -> Option<usize> {
         if x >= self.width {
@@ -514,6 +521,7 @@ impl LineLayoutCache {
         text: Text,
         font_size: Pixels,
         runs: &[FontRun],
+        font_sizes: &[FontSizeRun],
         wrap_width: Option<Pixels>,
         max_lines: Option<usize>,
     ) -> Arc<WrappedLineLayout>
@@ -525,6 +533,7 @@ impl LineLayoutCache {
             text: text.as_ref(),
             font_size,
             runs,
+            font_sizes,
             wrap_width,
             force_width: None,
         } as &dyn AsCacheKeyRef;
@@ -545,7 +554,8 @@ impl LineLayoutCache {
         } else {
             drop(current_frame);
             let text = SharedString::from(text);
-            let unwrapped_layout = self.layout_line::<&SharedString>(&text, font_size, runs, None);
+            let unwrapped_layout =
+                self.layout_line::<&SharedString>(&text, font_size, runs, font_sizes, None);
             let wrap_boundaries = if let Some(wrap_width) = wrap_width {
                 unwrapped_layout.compute_wrap_boundaries(text.as_ref(), wrap_width, max_lines)
             } else {
@@ -560,6 +570,7 @@ impl LineLayoutCache {
                 text,
                 font_size,
                 runs: SmallVec::from(runs),
+                font_sizes: SmallVec::from(font_sizes),
                 wrap_width,
                 force_width: None,
             });
@@ -579,6 +590,7 @@ impl LineLayoutCache {
         text: Text,
         font_size: Pixels,
         runs: &[FontRun],
+        font_sizes: &[FontSizeRun],
         force_width: Option<Pixels>,
     ) -> Arc<LineLayout>
     where
@@ -589,6 +601,7 @@ impl LineLayoutCache {
             text: text.as_ref(),
             font_size,
             runs,
+            font_sizes,
             wrap_width: None,
             force_width,
         } as &dyn AsCacheKeyRef;
@@ -605,9 +618,18 @@ impl LineLayoutCache {
             layout
         } else {
             let text = SharedString::from(text);
-            let mut layout = self
-                .platform_text_system
-                .layout_line(&text, font_size, runs);
+            let mut layout = if font_sizes.is_empty() {
+                self.platform_text_system
+                    .layout_line(&text, font_size, runs)
+            } else {
+                layout_line_at_font_sizes(
+                    self.platform_text_system.as_ref(),
+                    &text,
+                    font_size,
+                    runs,
+                    font_sizes,
+                )
+            };
 
             if let Some(force_width) = force_width {
                 apply_force_width_to_layout(&mut layout, force_width);
@@ -617,6 +639,7 @@ impl LineLayoutCache {
                 text,
                 font_size,
                 runs: SmallVec::from(runs),
+                font_sizes: SmallVec::from(font_sizes),
                 wrap_width: None,
                 force_width,
             });
@@ -817,6 +840,115 @@ pub struct FontRun {
     pub font_id: FontId,
 }
 
+/// A run of text with a single font size. A line given these is shaped a run
+/// at a time, and its glyphs share the baseline of the tallest run.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[expect(missing_docs)]
+pub struct FontSizeRun {
+    pub len: usize,
+    pub font_size: Pixels,
+}
+
+/// Shapes `text` one run of `font_sizes` at a time and lines the pieces up,
+/// since the platform text systems shape a line at a single size. Shaping
+/// does not reach across the pieces, so there is no kerning or ligature at
+/// their seams.
+fn layout_line_at_font_sizes(
+    platform_text_system: &dyn PlatformTextSystem,
+    text: &str,
+    font_size: Pixels,
+    runs: &[FontRun],
+    font_sizes: &[FontSizeRun],
+) -> LineLayout {
+    let mut pieces: SmallVec<[(Range<usize>, Pixels); 4]> = SmallVec::new();
+    let mut piece_start = 0;
+    for size_run in font_sizes {
+        if piece_start >= text.len() {
+            break;
+        }
+        let piece_end = (piece_start + size_run.len).min(text.len());
+        if piece_end > piece_start {
+            match pieces.last_mut() {
+                Some((last, last_size)) if *last_size == size_run.font_size => {
+                    last.end = piece_end;
+                }
+                _ => pieces.push((piece_start..piece_end, size_run.font_size)),
+            }
+        }
+        piece_start = piece_end;
+    }
+    if piece_start < text.len() {
+        pieces.push((piece_start..text.len(), font_size));
+    }
+    let splits_characters = pieces
+        .iter()
+        .any(|(range, _)| !text.is_char_boundary(range.start) || !text.is_char_boundary(range.end));
+    if splits_characters
+        || (pieces.len() <= 1 && pieces.first().is_none_or(|(_, size)| *size == font_size))
+    {
+        return platform_text_system.layout_line(text, font_size, runs);
+    }
+
+    let mut layout = LineLayout {
+        font_size,
+        width: px(0.),
+        ascent: px(0.),
+        descent: px(0.),
+        runs: Vec::new(),
+        len: text.len(),
+    };
+    let mut font_runs = runs.iter().copied();
+    let mut current_font_run = font_runs.next();
+    for (range, piece_font_size) in pieces {
+        let mut piece_runs: SmallVec<[FontRun; 2]> = SmallVec::new();
+        let mut remaining = range.len();
+        while remaining > 0 {
+            let Some(font_run) = current_font_run.as_mut() else {
+                break;
+            };
+            let taken = font_run.len.min(remaining);
+            if taken > 0 {
+                piece_runs.push(FontRun {
+                    len: taken,
+                    font_id: font_run.font_id,
+                });
+            }
+            font_run.len -= taken;
+            remaining -= taken;
+            if font_run.len == 0 {
+                current_font_run = font_runs.next();
+            }
+        }
+
+        let piece_text = text.get(range.clone()).unwrap_or_default();
+        let piece = platform_text_system.layout_line(piece_text, piece_font_size, &piece_runs);
+        let x_offset = layout.width;
+        layout.runs.extend(piece.runs.into_iter().map(|run| {
+            ShapedRun {
+                font_id: run.font_id,
+                font_size: (piece_font_size != font_size).then_some(piece_font_size),
+                glyphs: run
+                    .glyphs
+                    .into_iter()
+                    .map(|glyph| ShapedGlyph {
+                        position: point(glyph.position.x + x_offset, glyph.position.y),
+                        index: glyph.index + range.start,
+                        ..glyph
+                    })
+                    .collect(),
+            }
+        }));
+        layout.width += piece.width;
+        if piece.ascent.abs() > layout.ascent.abs() {
+            layout.ascent = piece.ascent;
+        }
+        if piece.descent.abs() > layout.descent.abs() {
+            layout.descent = piece.descent;
+        }
+    }
+    layout
+}
+
 trait AsCacheKeyRef {
     fn as_cache_key_ref(&self) -> CacheKeyRef<'_>;
 }
@@ -826,6 +958,7 @@ struct CacheKey {
     text: SharedString,
     font_size: Pixels,
     runs: SmallVec<[FontRun; 1]>,
+    font_sizes: SmallVec<[FontSizeRun; 1]>,
     wrap_width: Option<Pixels>,
     force_width: Option<Pixels>,
 }
@@ -835,6 +968,7 @@ struct CacheKeyRef<'a> {
     text: &'a str,
     font_size: Pixels,
     runs: &'a [FontRun],
+    font_sizes: &'a [FontSizeRun],
     wrap_width: Option<Pixels>,
     force_width: Option<Pixels>,
 }
@@ -927,6 +1061,7 @@ impl AsCacheKeyRef for CacheKey {
             text: &self.text,
             font_size: self.font_size,
             runs: self.runs.as_slice(),
+            font_sizes: self.font_sizes.as_slice(),
             wrap_width: self.wrap_width,
             force_width: self.force_width,
         }
@@ -979,6 +1114,7 @@ mod tests {
             descent: px(4.),
             runs: vec![ShapedRun {
                 font_id: FontId(0),
+                font_size: None,
                 glyphs,
             }],
             len: 0,
@@ -991,6 +1127,117 @@ mod tests {
             .iter()
             .map(|g| f32::from(g.position.x))
             .collect()
+    }
+
+    #[test]
+    fn test_font_sizes_scale_their_glyphs_and_share_a_baseline() {
+        let text_system = crate::NoopTextSystem::new();
+        let runs = [FontRun {
+            len: 6,
+            font_id: FontId(0),
+        }];
+        let even = text_system.layout_line("abcdef", px(10.), &runs);
+        let em = even.width / 6.;
+        let in_ems = |x: Pixels| (x / em).round() as i32;
+
+        // The last two characters are left to the line's own size.
+        let mixed = layout_line_at_font_sizes(
+            &text_system,
+            "abcdef",
+            px(10.),
+            &runs,
+            &[
+                FontSizeRun {
+                    len: 2,
+                    font_size: px(10.),
+                },
+                FontSizeRun {
+                    len: 2,
+                    font_size: px(20.),
+                },
+            ],
+        );
+        assert_eq!(mixed.font_size, px(10.));
+        assert_eq!(mixed.len, 6);
+        assert_eq!(in_ems(mixed.width), 8);
+        assert_eq!(mixed.ascent, even.ascent * 2.);
+        assert_eq!(mixed.descent, even.descent * 2.);
+        assert_eq!(
+            mixed
+                .runs
+                .iter()
+                .map(|run| (mixed.run_font_size(run), run.font_size))
+                .collect::<Vec<_>>(),
+            [(px(10.), None), (px(20.), Some(px(20.))), (px(10.), None)]
+        );
+        let glyphs = mixed
+            .runs
+            .iter()
+            .flat_map(|run| &run.glyphs)
+            .map(|glyph| (glyph.index, in_ems(glyph.position.x)))
+            .collect::<Vec<_>>();
+        assert_eq!(glyphs, [(0, 0), (1, 1), (2, 2), (3, 4), (4, 6), (5, 7)]);
+        // Hit testing reads the pieces as one line.
+        assert_eq!(mixed.index_for_x(em * 5.), Some(3));
+        assert_eq!(in_ems(mixed.x_for_index(4)), 6);
+    }
+
+    #[test]
+    fn test_font_sizes_that_split_a_character_are_ignored() {
+        let text_system = crate::NoopTextSystem::new();
+        let runs = [FontRun {
+            len: "日本".len(),
+            font_id: FontId(0),
+        }];
+        let layout = layout_line_at_font_sizes(
+            &text_system,
+            "日本",
+            px(10.),
+            &runs,
+            &[FontSizeRun {
+                len: 1,
+                font_size: px(20.),
+            }],
+        );
+        assert_eq!(
+            layout.ascent,
+            text_system.layout_line("日本", px(10.), &runs).ascent
+        );
+        assert!(layout.runs.iter().all(|run| run.font_size.is_none()));
+    }
+
+    #[test]
+    fn test_line_layouts_are_cached_by_their_font_sizes() {
+        let cache = LineLayoutCache::new(Arc::new(crate::NoopTextSystem::new()));
+        let runs = [FontRun {
+            len: 3,
+            font_id: FontId(0),
+        }];
+        let even = cache.layout_line("abc", px(10.), &runs, &[], None);
+        let larger = cache.layout_line(
+            "abc",
+            px(10.),
+            &runs,
+            &[FontSizeRun {
+                len: 3,
+                font_size: px(20.),
+            }],
+            None,
+        );
+        let in_ems = |x: Pixels| (x / (even.width / 3.)).round() as i32;
+        assert_eq!(in_ems(larger.width), 6);
+        let wrapped = cache.layout_wrapped_line(
+            "abc",
+            px(10.),
+            &runs,
+            &[FontSizeRun {
+                len: 1,
+                font_size: px(30.),
+            }],
+            None,
+            None,
+        );
+        assert_eq!(in_ems(wrapped.unwrapped_layout.width), 5);
     }
 
     #[test]

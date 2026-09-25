@@ -61,8 +61,8 @@
   (#match? @text.literal.markup "^\\$\\$"))
 
 ; The grammar also reads `$5 and $10` as inline math. Pandoc's rule keeps
-; prices out: no space just inside either `$`. Its other half, no digit right
-; after the closing `$`, is outside the node, so math that starts with a digit
-; is left as prose instead.
+; prices out: no space just inside either `$`, and no digit right after the
+; closing one (`$5/$10`).
 ((latex_block) @text.literal.markup
-  (#match? @text.literal.markup "^\\$[^$\\s0-9]([^$]*[^$\\s])?\\$$"))
+  (#match? @text.literal.markup "^\\$[^$\\s]([^$]*[^$\\s])?\\$$")
+  (#not-followed-by? @text.literal.markup "0123456789"))
