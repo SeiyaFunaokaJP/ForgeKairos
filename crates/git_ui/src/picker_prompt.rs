@@ -88,7 +88,9 @@ impl Render for PickerPrompt {
 pub struct PickerPromptDelegate {
     prompt: Arc<str>,
     matches: Vec<StringMatch>,
-    all_options: Vec<SharedString>,
+    /// Built once when the prompt opens and shared with every keystroke's search, since the
+    /// options can be every branch and tag of a large repository.
+    candidates: Arc<[StringMatchCandidate]>,
     selected_index: usize,
     max_match_length: usize,
     tx: Option<oneshot::Sender<usize>>,
@@ -103,7 +105,11 @@ impl PickerPromptDelegate {
     ) -> Self {
         Self {
             prompt,
-            all_options: options,
+            candidates: options
+                .iter()
+                .enumerate()
+                .map(|(ix, option)| StringMatchCandidate::new(ix, option))
+                .collect(),
             matches: vec![],
             selected_index: 0,
             max_match_length: max_chars,
@@ -146,42 +152,35 @@ impl PickerDelegate for PickerPromptDelegate {
         window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Task<()> {
+        let candidates = self.candidates.clone();
         cx.spawn_in(window, async move |picker, cx| {
-            let candidates = picker.read_with(cx, |picker, _| {
-                picker
-                    .delegate
-                    .all_options
-                    .iter()
-                    .enumerate()
-                    .map(|(ix, option)| StringMatchCandidate::new(ix, option))
-                    .collect::<Vec<StringMatchCandidate>>()
-            });
-            let Some(candidates) = candidates.log_err() else {
-                return;
-            };
-            let matches: Vec<StringMatch> = if query.is_empty() {
-                candidates
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, candidate)| StringMatch {
-                        candidate_id: index,
-                        string: candidate.string,
-                        positions: Vec::new(),
-                        score: 0.0,
-                    })
-                    .collect()
-            } else {
-                fuzzy::match_strings(
-                    &candidates,
-                    &query,
-                    true,
-                    true,
-                    10000,
-                    &Default::default(),
-                    cx.background_executor().clone(),
-                )
-                .await
-            };
+            let executor = cx.background_executor().clone();
+            let matches: Vec<StringMatch> = cx
+                .background_spawn(async move {
+                    if query.is_empty() {
+                        candidates
+                            .iter()
+                            .map(|candidate| StringMatch {
+                                candidate_id: candidate.id,
+                                string: candidate.string.clone(),
+                                positions: Vec::new(),
+                                score: 0.0,
+                            })
+                            .collect()
+                    } else {
+                        fuzzy::match_strings(
+                            &candidates,
+                            &query,
+                            true,
+                            true,
+                            10000,
+                            &Default::default(),
+                            executor,
+                        )
+                        .await
+                    }
+                })
+                .await;
             picker
                 .update(cx, |picker, _| {
                     let delegate = &mut picker.delegate;
@@ -236,5 +235,64 @@ impl PickerDelegate for PickerPromptDelegate {
                     el.child(HighlightedLabel::new(shortened_option, highlights))
                 }),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+    use settings::SettingsStore;
+
+    #[gpui::test]
+    async fn test_picker_prompt_matches_keep_the_option_indices(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+        });
+        let (tx, _rx) = oneshot::channel();
+        let options: Vec<SharedString> = vec![
+            "main".into(),
+            "feature/login".into(),
+            "refs/tags/v1.0".into(),
+        ];
+        let delegate = PickerPromptDelegate::new("prompt".into(), options, tx, 70);
+        let window = cx.add_window(|window, cx| Picker::uniform_list(delegate, window, cx));
+        let matches = async |query: &str, cx: &mut TestAppContext| {
+            let query = query.to_string();
+            window
+                .update(cx, |picker, window, cx| {
+                    picker.delegate.update_matches(query, window, cx)
+                })
+                .unwrap()
+                .await;
+            window
+                .read_with(cx, |picker, _| {
+                    picker
+                        .delegate
+                        .matches
+                        .iter()
+                        .map(|string_match| {
+                            (string_match.candidate_id, string_match.string.clone())
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap()
+        };
+
+        assert_eq!(
+            matches("", cx).await,
+            [
+                (0, "main".to_string()),
+                (1, "feature/login".to_string()),
+                (2, "refs/tags/v1.0".to_string()),
+            ]
+        );
+        assert_eq!(
+            matches("v1.0", cx).await,
+            [(2, "refs/tags/v1.0".to_string())]
+        );
     }
 }

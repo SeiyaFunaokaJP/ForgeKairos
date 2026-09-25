@@ -669,6 +669,62 @@ async fn test_realfs_symlink_loop_metadata(executor: BackgroundExecutor) {
     // don't care about len or mtime on symlinks?
 }
 
+/// `metadata` opens a file only in ways that a writer sharing it the way git for Windows appends
+/// to `.git/logs/HEAD` (`FILE_SHARE_READ | FILE_SHARE_WRITE`) can coexist with. Sharing works both
+/// ways: an extensionless program that `metadata` could not open next to such a writer would read
+/// as not executable, and the same open made first would have kept git from appending.
+#[gpui::test]
+#[cfg(windows)]
+async fn test_realfs_metadata_shares_extensionless_files_with_writers(
+    executor: BackgroundExecutor,
+) {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_SHARE_READ: u32 = 0x1;
+    const FILE_SHARE_WRITE: u32 = 0x2;
+
+    executor.allow_parking();
+    let tempdir = TempDir::new().unwrap();
+    let fs = RealFs::new(None, executor);
+    let is_executable = async |path: &Path| fs.metadata(path).await.unwrap().unwrap().is_executable;
+
+    let program = tempdir.path().join("tool");
+    let system_root = std::env::var_os("SystemRoot").expect("SystemRoot is set");
+    std::fs::copy(
+        Path::new(&system_root).join("System32").join("cmd.exe"),
+        &program,
+    )
+    .unwrap();
+    let reflog = tempdir.path().join("HEAD");
+    std::fs::write(
+        &reflog,
+        "0 1 A <a@example.com> 1700000000 +0900\tcommit: x\n",
+    )
+    .unwrap();
+    let script = tempdir.path().join("run.CMD");
+    std::fs::write(&script, "@echo off\n").unwrap();
+    let text = tempdir.path().join("notes.txt");
+    std::fs::write(&text, "MZ\n").unwrap();
+
+    assert!(is_executable(&program).await);
+    assert!(is_executable(&script).await);
+    assert!(!is_executable(&reflog).await);
+    assert!(!is_executable(&text).await);
+    assert!(!is_executable(tempdir.path()).await);
+
+    let append_like_git = |path: &Path| {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .open(path)
+            .unwrap()
+    };
+    let _program_writer = append_like_git(&program);
+    let _reflog_writer = append_like_git(&reflog);
+    assert!(is_executable(&program).await);
+    assert!(!is_executable(&reflog).await);
+}
+
 #[gpui::test]
 async fn test_fake_fs_trash(executor: BackgroundExecutor) {
     let fs = FakeFs::new(executor.clone());

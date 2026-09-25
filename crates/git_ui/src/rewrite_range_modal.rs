@@ -123,8 +123,10 @@ struct TodoRow {
     message_editor: Option<Entity<Editor>>,
 }
 
-/// What the modal hands back: the commits of the rewritten range, oldest first.
-pub(crate) type RewriteConfirm = Box<dyn FnOnce(Vec<RewriteGroup>, &mut Window, &mut App)>;
+/// What the modal hands back: the commits of the rewritten range, oldest first, and every commit
+/// the list showed (dropped ones included), which the rewrite checks git's range against.
+pub(crate) type RewriteConfirm =
+    Box<dyn FnOnce(Vec<RewriteGroup>, Vec<String>, &mut Window, &mut App)>;
 
 /// The commits the rewritten range ends up with, or why the list cannot be used as it stands.
 ///
@@ -201,6 +203,38 @@ fn default_message_for(entries: &[TodoEntry], index: usize) -> String {
     message
 }
 
+/// Moves the item at `from` to `to` the way a list reorders under a drag: the moved item ends up at
+/// `to`, and everything between shifts one place back towards where it came from. `false` (and the
+/// list untouched) for an index past the end or a move onto itself.
+pub(crate) fn move_list_item<T>(items: &mut Vec<T>, from: usize, to: usize) -> bool {
+    if from == to || from >= items.len() || to >= items.len() {
+        return false;
+    }
+    let item = items.remove(from);
+    items.insert(to, item);
+    true
+}
+
+/// `items` rearranged so that position `i` holds `items[order[i]]`, or `items` back untouched when
+/// `order` does not name every item exactly once: a row left out would be a commit dropped from the
+/// history without the user having said so.
+fn apply_order<T>(items: Vec<T>, order: &[usize]) -> Result<Vec<T>, Vec<T>> {
+    let mut seen = vec![false; items.len()];
+    let names_every_item_once = order.len() == items.len()
+        && order.iter().all(|index| {
+            seen.get_mut(*index)
+                .is_some_and(|seen| !std::mem::replace(seen, true))
+        });
+    if !names_every_item_once {
+        return Err(items);
+    }
+    let mut slots: Vec<Option<T>> = items.into_iter().map(Some).collect();
+    Ok(order
+        .iter()
+        .filter_map(|index| slots.get_mut(*index).and_then(Option::take))
+        .collect())
+}
+
 /// Whether the list still says exactly what the range already is, in which case running git would
 /// rewrite every SHA for nothing.
 fn is_unchanged(entries: &[TodoEntry], original_shas: &[String]) -> bool {
@@ -226,6 +260,33 @@ pub(crate) struct RewriteRangeModal {
     /// Why the list cannot be used as it stands, shown under it so that the modal can stay open
     /// with the user's work still in it.
     error: Option<SharedString>,
+    /// Set when the list opens already reordered (a commit dragged onto another in the graph), so
+    /// that the user reads the modal as the confirmation it is rather than as a blank form.
+    opened_reordered: bool,
+}
+
+/// A row of the todo list being dragged onto another row.
+#[derive(Clone)]
+struct DraggedTodoRow {
+    index: usize,
+    label: SharedString,
+}
+
+impl Render for DraggedTodoRow {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .gap_1()
+            .px_1p5()
+            .py_0p5()
+            .rounded_sm()
+            .elevation_2(cx)
+            .child(
+                Icon::new(IconName::GitCommit)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted),
+            )
+            .child(Label::new(self.label.clone()).size(LabelSize::Small))
+    }
 }
 
 impl RewriteRangeModal {
@@ -248,7 +309,40 @@ impl RewriteRangeModal {
                 .collect(),
             confirm: Some(confirm),
             error: None,
+            opened_reordered: false,
         }
+    }
+
+    /// Opens the list already rearranged: `commits` is the range as it is (oldest first, which is
+    /// what "unchanged" is measured against) and row `i` starts out as `commits[initial_order[i]]`.
+    ///
+    /// An order that does not name every commit exactly once is not used: the list then opens as
+    /// the range stands, and says so, rather than leaving a commit out.
+    pub(crate) fn with_initial_order(
+        commits: Vec<RewriteCommitRow>,
+        initial_order: &[usize],
+        confirm: RewriteConfirm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut modal = Self::new(commits, confirm, window, cx);
+        let rows = std::mem::take(&mut modal.rows);
+        match apply_order(rows, initial_order) {
+            Ok(rows) => {
+                modal.rows = rows;
+                modal.opened_reordered = true;
+            }
+            Err(rows) => {
+                log::error!(
+                    "rewrite todo list: initial order {initial_order:?} does not cover {} rows",
+                    rows.len()
+                );
+                modal.rows = rows;
+                modal.error =
+                    Some("ドラッグした並びを再現できなかったため、元の並びで開いています。".into());
+            }
+        }
+        modal
     }
 
     /// The list as plain data, with what the user has typed read out of the editors.
@@ -278,6 +372,24 @@ impl RewriteRangeModal {
         self.rows.swap(index, target);
         self.error = None;
         cx.notify();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn row_shas(&self) -> Vec<String> {
+        self.rows.iter().map(|row| row.commit.sha.clone()).collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn opened_reordered(&self) -> bool {
+        self.opened_reordered
+    }
+
+    /// A row dropped onto another: it takes that row's place and the rows in between shift.
+    fn move_row_to(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
+        if move_list_item(&mut self.rows, from, to) {
+            self.error = None;
+            cx.notify();
+        }
     }
 
     fn set_action(
@@ -337,7 +449,7 @@ impl RewriteRangeModal {
         let Some(confirm) = self.confirm.take() else {
             return;
         };
-        confirm(groups, window, cx);
+        confirm(groups, self.original_shas.clone(), window, cx);
         cx.emit(DismissEvent);
     }
 
@@ -409,9 +521,27 @@ impl RewriteRangeModal {
         let dropped = row.action == RewriteRowAction::Drop;
         let modal = cx.entity();
         let current = row.action;
+        let dragged_row = DraggedTodoRow {
+            index,
+            label: format!("{} {}", short_sha(&row.commit.sha), row.commit.subject).into(),
+        };
         v_flex()
+            .id(("rewrite-row", index))
             .w_full()
             .gap_0p5()
+            .rounded_sm()
+            .drag_over::<DraggedTodoRow>(move |style, dragged, _window, cx| {
+                if dragged.index == index {
+                    style
+                } else {
+                    style.bg(cx.theme().colors().drop_target_background)
+                }
+            })
+            .on_drop(
+                cx.listener(move |this, dragged: &DraggedTodoRow, _window, cx| {
+                    this.move_row_to(dragged.index, index, cx);
+                }),
+            )
             .child(
                 h_flex()
                     .w_full()
@@ -434,23 +564,36 @@ impl RewriteRangeModal {
                                 this.move_row(index, 1, cx);
                             })),
                     )
+                    // The SHA and the subject are the handle for dragging the row, which keeps the
+                    // buttons on either side clickable without a jittery click turning into a drag.
                     .child(
-                        Label::new(short_sha(&row.commit.sha))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
-                    )
-                    .child(
-                        div().flex_1().min_w_0().child(
-                            Label::new(row.commit.subject.clone())
-                                .size(LabelSize::Small)
-                                .color(if dropped {
-                                    Color::Muted
-                                } else {
-                                    Color::Default
-                                })
-                                .when(dropped, |label| label.strikethrough())
-                                .truncate(),
-                        ),
+                        h_flex()
+                            .id(("rewrite-row-drag-handle", index))
+                            .flex_1()
+                            .min_w_0()
+                            .gap_1()
+                            .cursor_grab()
+                            .on_drag(dragged_row, |dragged: &DraggedTodoRow, _, _, cx| {
+                                cx.new(|_| dragged.clone())
+                            })
+                            .child(
+                                Label::new(short_sha(&row.commit.sha))
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .child(
+                                div().flex_1().min_w_0().child(
+                                    Label::new(row.commit.subject.clone())
+                                        .size(LabelSize::Small)
+                                        .color(if dropped {
+                                            Color::Muted
+                                        } else {
+                                            Color::Default
+                                        })
+                                        .when(dropped, |label| label.strikethrough())
+                                        .truncate(),
+                                ),
+                            ),
                     )
                     .child(
                         PopoverMenu::new(("rewrite-row-action", index))
@@ -541,11 +684,20 @@ impl Render for RewriteRangeModal {
             .child(Label::new(format!("{count} 件のコミットを編集")).size(LabelSize::Large))
             .child(
                 Label::new(
-                    "上が古いコミットです。並べ替え・まとめる・メッセージの変更・捨てるを選んでから実行してください。",
+                    "上が古いコミットです。行をドラッグするか ↑↓ で並べ替え、まとめる・メッセージの変更・捨てるを選んでから実行してください。",
                 )
                 .size(LabelSize::Small)
                 .color(Color::Muted),
             )
+            .when(self.opened_reordered, |this| {
+                this.child(
+                    Label::new(
+                        "ドラッグした結果の並びにしてあります。このまま実行するか、ここで直してください。",
+                    )
+                    .size(LabelSize::Small)
+                    .color(Color::Accent),
+                )
+            })
             .child(
                 v_flex()
                     .id("rewrite-range-rows")
@@ -793,6 +945,154 @@ mod tests {
             git::repository::validate_git_command(&command.args)
                 .unwrap_or_else(|error| panic!("`git {}`: {error:#}", command.args.join(" ")));
         }
+    }
+
+    /// A drop puts the dragged item where the target was and shifts everything in between one
+    /// place back towards where the dragged item came from, in either direction.
+    #[test]
+    fn test_move_list_item_is_a_list_reorder() {
+        let moved = |from: usize, to: usize| {
+            let mut items = vec!['a', 'b', 'c', 'd'];
+            let changed = move_list_item(&mut items, from, to);
+            (changed, items.into_iter().collect::<String>())
+        };
+
+        // Up past two rows.
+        assert_eq!(moved(3, 1), (true, "adbc".to_string()));
+        // Down past two rows.
+        assert_eq!(moved(0, 2), (true, "bcad".to_string()));
+        // All the way, both ways.
+        assert_eq!(moved(3, 0), (true, "dabc".to_string()));
+        assert_eq!(moved(0, 3), (true, "bcda".to_string()));
+        // Next to each other is a swap.
+        assert_eq!(moved(1, 2), (true, "acbd".to_string()));
+        assert_eq!(moved(2, 1), (true, "acbd".to_string()));
+        // Onto itself, or off the end, changes nothing.
+        assert_eq!(moved(2, 2), (false, "abcd".to_string()));
+        assert_eq!(moved(4, 0), (false, "abcd".to_string()));
+        assert_eq!(moved(0, 4), (false, "abcd".to_string()));
+    }
+
+    /// An initial order is only used when it names every row exactly once; otherwise the rows come
+    /// back as they were.
+    #[test]
+    fn test_apply_order_needs_every_row_once() {
+        assert_eq!(
+            apply_order(vec!['a', 'b', 'c'], &[2, 0, 1]),
+            Ok(vec!['c', 'a', 'b'])
+        );
+        assert_eq!(
+            apply_order(vec!['a', 'b', 'c'], &[0, 1, 2]),
+            Ok(vec!['a', 'b', 'c'])
+        );
+        // A row named twice would stand in for the one left out.
+        assert_eq!(
+            apply_order(vec!['a', 'b', 'c'], &[0, 0, 1]),
+            Err(vec!['a', 'b', 'c'])
+        );
+        assert_eq!(
+            apply_order(vec!['a', 'b', 'c'], &[0, 1]),
+            Err(vec!['a', 'b', 'c'])
+        );
+        assert_eq!(
+            apply_order(vec!['a', 'b', 'c'], &[0, 1, 3]),
+            Err(vec!['a', 'b', 'c'])
+        );
+        assert_eq!(apply_order(Vec::<char>::new(), &[]), Ok(Vec::new()));
+    }
+
+    fn commit_row(sha: &str, subject: &str) -> RewriteCommitRow {
+        RewriteCommitRow {
+            sha: sha.to_string(),
+            subject: subject.to_string().into(),
+            message: subject.to_string().into(),
+        }
+    }
+
+    /// A commit dragged onto another in the graph opens the list already reordered: that is a
+    /// change to confirm, measured against the range as it stands, and the rows can still be moved
+    /// by dragging them inside the modal.
+    #[gpui::test]
+    fn test_with_initial_order_opens_reordered(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        let range = vec![
+            commit_row("aaa", "A"),
+            commit_row("bbb", "B"),
+            commit_row("ccc", "C"),
+        ];
+        let modal = cx.new_window_entity(|window, cx| {
+            RewriteRangeModal::with_initial_order(
+                range.clone(),
+                &[2, 0, 1],
+                Box::new(|_groups, _expected_shas, _window, _cx| {}),
+                window,
+                cx,
+            )
+        });
+        modal.update(cx, |modal, cx| {
+            let order = |modal: &RewriteRangeModal| {
+                modal
+                    .rows
+                    .iter()
+                    .map(|row| row.commit.sha.clone())
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(order(modal), ["ccc", "aaa", "bbb"]);
+            assert_eq!(modal.original_shas, ["aaa", "bbb", "ccc"]);
+            assert!(modal.opened_reordered);
+            assert!(modal.error.is_none());
+            assert!(
+                modal
+                    .rows
+                    .iter()
+                    .all(|row| row.action == RewriteRowAction::Keep)
+            );
+            let entries = modal.entries(cx);
+            assert!(
+                !is_unchanged(&entries, &modal.original_shas),
+                "the reordered list is a change to run"
+            );
+            assert_eq!(
+                build_rewrite_groups(&entries)
+                    .unwrap()
+                    .into_iter()
+                    .map(|group| group.shas)
+                    .collect::<Vec<_>>(),
+                vec![
+                    vec!["ccc".to_string()],
+                    vec!["aaa".to_string()],
+                    vec!["bbb".to_string()],
+                ]
+            );
+
+            // Dragging the top row back down to the bottom restores the range as it was.
+            modal.move_row_to(0, 2, cx);
+            assert_eq!(order(modal), ["aaa", "bbb", "ccc"]);
+            assert!(is_unchanged(&modal.entries(cx), &modal.original_shas));
+        });
+
+        let fallback = cx.new_window_entity(|window, cx| {
+            RewriteRangeModal::with_initial_order(
+                range.clone(),
+                &[0, 0, 1],
+                Box::new(|_groups, _expected_shas, _window, _cx| {}),
+                window,
+                cx,
+            )
+        });
+        fallback.update(cx, |modal, _cx| {
+            assert_eq!(
+                modal
+                    .rows
+                    .iter()
+                    .map(|row| row.commit.sha.as_str())
+                    .collect::<Vec<_>>(),
+                ["aaa", "bbb", "ccc"],
+                "an order that loses a commit must not be used"
+            );
+            assert!(!modal.opened_reordered);
+            assert!(modal.error.is_some(), "the fallback is said out loud");
+        });
     }
 
     /// Reordering alone is a change; leaving the list exactly as it was picked is not.

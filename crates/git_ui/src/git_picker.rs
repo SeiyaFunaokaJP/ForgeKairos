@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
 use gpui::{
-    App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    KeyContext, ModifiersChangedEvent, MouseButton, ParentElement, Rems, Render, Styled,
-    Subscription, WeakEntity, Window, actions, rems,
+    Action, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
+    InteractiveElement, KeyContext, ModifiersChangedEvent, MouseButton, ParentElement, Rems,
+    Render, Styled, Subscription, WeakEntity, Window, actions, rems,
 };
 use project::git_store::Repository;
 use ui::{
@@ -196,54 +196,77 @@ impl GitPicker {
         let branches_focus_handle = focus_handle.clone();
         let stash_focus_handle = focus_handle;
 
-        h_flex().p_2().pb_0p5().w_full().child(
-            ToggleButtonGroup::single_row(
-                "git-picker-tabs",
-                [
-                    ToggleButtonSimple::new(
-                        GitPickerTab::Branches.to_string(),
-                        cx.listener(|this, _, window, cx| {
-                            this.tab = GitPickerTab::Branches;
-                            this.ensure_active_picker(window, cx);
-                            this.focus_active_picker(window, cx);
-                            cx.notify();
-                        }),
-                    )
-                    .tooltip(move |_, cx| {
-                        Tooltip::for_action_in(
-                            "ブランチピッカーを切り替え",
-                            &ActivateBranchesTab,
-                            &branches_focus_handle,
-                            cx,
+        h_flex()
+            .p_2()
+            .pb_0p5()
+            .w_full()
+            .child(
+                ToggleButtonGroup::single_row(
+                    "git-picker-tabs",
+                    [
+                        ToggleButtonSimple::new(
+                            GitPickerTab::Branches.to_string(),
+                            cx.listener(|this, _, window, cx| {
+                                this.tab = GitPickerTab::Branches;
+                                this.ensure_active_picker(window, cx);
+                                this.focus_active_picker(window, cx);
+                                cx.notify();
+                            }),
                         )
-                    }),
-                    ToggleButtonSimple::new(
-                        GitPickerTab::Stashes.to_string(),
-                        cx.listener(|this, _, window, cx| {
-                            this.tab = GitPickerTab::Stashes;
-                            this.ensure_active_picker(window, cx);
-                            this.focus_active_picker(window, cx);
-                            cx.notify();
+                        .tooltip(move |_, cx| {
+                            Tooltip::for_action_in(
+                                "ブランチピッカーを切り替え",
+                                &ActivateBranchesTab,
+                                &branches_focus_handle,
+                                cx,
+                            )
                         }),
-                    )
-                    .tooltip(move |_, cx| {
-                        Tooltip::for_action_in(
-                            "スタッシュピッカーを切り替え",
-                            &ActivateStashTab,
-                            &stash_focus_handle,
-                            cx,
+                        ToggleButtonSimple::new(
+                            GitPickerTab::Stashes.to_string(),
+                            cx.listener(|this, _, window, cx| {
+                                this.tab = GitPickerTab::Stashes;
+                                this.ensure_active_picker(window, cx);
+                                this.focus_active_picker(window, cx);
+                                cx.notify();
+                            }),
                         )
-                    }),
-                ],
+                        .tooltip(move |_, cx| {
+                            Tooltip::for_action_in(
+                                "スタッシュピッカーを切り替え",
+                                &ActivateStashTab,
+                                &stash_focus_handle,
+                                cx,
+                            )
+                        }),
+                    ],
+                )
+                .label_size(LabelSize::Default)
+                .style(ToggleButtonGroupStyle::Outlined)
+                .auto_width()
+                .selected_index(match self.tab {
+                    GitPickerTab::Branches => 0,
+                    GitPickerTab::Stashes => 1,
+                }),
             )
-            .label_size(LabelSize::Default)
-            .style(ToggleButtonGroupStyle::Outlined)
-            .auto_width()
-            .selected_index(match self.tab {
-                GitPickerTab::Branches => 0,
-                GitPickerTab::Stashes => 1,
-            }),
-        )
+            .child(div().flex_1())
+            .child(
+                // The branch button is where people look for "what happened on this branch", and
+                // the graph is otherwise only reachable from a small icon in the git panel.
+                Button::new("git-picker-open-graph", "グラフ")
+                    .label_size(LabelSize::Small)
+                    .start_icon(
+                        Icon::new(IconName::GitGraph)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    )
+                    .tooltip(|_window, cx| {
+                        Tooltip::for_action("コミットグラフを開く", &crate::git_graph::Open, cx)
+                    })
+                    .on_click(cx.listener(|_, _, window, cx| {
+                        window.dispatch_action(crate::git_graph::Open.boxed_clone(), cx);
+                        cx.emit(DismissEvent);
+                    })),
+            )
     }
 
     fn render_active_picker(

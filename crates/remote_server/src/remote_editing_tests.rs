@@ -3197,15 +3197,26 @@ async fn test_remote_search_commits_streams_proto_chunks(
             }),
             query: "needle".to_string(),
             case_sensitive: true,
-            author: None,
+            ..Default::default()
         })
         .await
         .expect("search commits stream should start");
 
     let mut chunks = Vec::new();
+    let mut filters_versions = Vec::new();
     while let Some(response) = futures::StreamExt::next(&mut stream).await {
-        chunks.push(response.expect("search commits chunk should succeed").shas);
+        let response = response.expect("search commits chunk should succeed");
+        filters_versions.push(response.filters_version);
+        chunks.push(response.shas);
     }
+    assert!(
+        filters_versions.first().is_some_and(Option::is_some),
+        "the first answer says the server applies every filter"
+    );
+    let chunks = chunks
+        .into_iter()
+        .filter(|chunk| !chunk.is_empty())
+        .collect::<Vec<_>>();
 
     assert!(
         chunks.len() > 1,
@@ -3220,6 +3231,205 @@ async fn test_remote_search_commits_streams_proto_chunks(
 
     let actual_shas = chunks.into_iter().flatten().collect::<HashSet<_>>();
     assert_eq!(actual_shas, expected_shas);
+}
+
+#[gpui::test]
+async fn test_remote_search_commits_applies_the_filters_after_author(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".git": {},
+                "file.txt": "content",
+            },
+        }),
+    )
+    .await;
+
+    let sha = |byte: u8| Oid::from_bytes(&[byte; 20]).unwrap();
+    let commit = |byte: u8, author: &str, timestamp: i64, parents: usize| {
+        (
+            CommitData {
+                sha: sha(byte),
+                parents: (0..parents).map(|parent| sha(100 + parent as u8)).collect(),
+                author_name: SharedString::from(author.to_string()),
+                author_email: SharedString::from("someone@example.com"),
+                commit_timestamp: timestamp,
+                subject: SharedString::from("subject"),
+                message: SharedString::from("needle"),
+            },
+            false,
+        )
+    };
+    fs.set_commit_data(
+        Path::new(path!("/code/project1/.git")),
+        [
+            commit(1, "山田 太郎", 100, 1),
+            commit(2, "山田 花子", 200, 1),
+            commit(3, "山田 太郎", 300, 2),
+            commit(4, "鈴木 太郎", 400, 1),
+        ],
+    );
+
+    let (project, _headless) = init_test(&fs, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .expect("should open remote worktree");
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+    project
+        .update(cx, |project, cx| project.git_scans_complete(cx))
+        .await;
+    let repository = project.read_with(cx, |project, cx| {
+        project
+            .active_repository(cx)
+            .expect("remote project should have an active repository")
+    });
+
+    let search = |args: git::repository::SearchCommitArgs, cx: &mut TestAppContext| {
+        let (request_tx, request_rx) = smol::channel::unbounded();
+        let task = repository.update(cx, |repository, cx| {
+            repository.search_commits(git::repository::LogSource::All, args, request_tx, cx)
+        });
+        async move {
+            let result = task.await;
+            let mut found = Vec::new();
+            while let Ok(oid) = request_rx.try_recv() {
+                found.push(oid);
+            }
+            found.sort_by_key(|oid| oid.to_string());
+            (result, found)
+        }
+    };
+
+    // Two authors, a period and no merges: all filters an older server would have dropped.
+    let task = search(
+        git::repository::SearchCommitArgs {
+            query: "needle".into(),
+            authors: vec!["山田".into(), "太郎".into()],
+            since: Some(50),
+            until: Some(350),
+            merges: git::commit_search::MergeFilter::Exclude,
+            ..Default::default()
+        },
+        cx,
+    );
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+    let (result, found) = task.await;
+    result.expect("the search should succeed");
+    assert_eq!(found, [sha(1)]);
+
+    let task = search(
+        git::repository::SearchCommitArgs {
+            commits: Some(vec![sha(2), sha(4)]),
+            ..Default::default()
+        },
+        cx,
+    );
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+    let (result, found) = task.await;
+    result.expect("the search should succeed");
+    assert_eq!(found, [sha(2), sha(4)]);
+
+    // The server's reason for refusing a search reaches the client.
+    let task = search(
+        git::repository::SearchCommitArgs {
+            path: Some("src".into()),
+            ..Default::default()
+        },
+        cx,
+    );
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+    let (result, found) = task.await;
+    assert!(result.is_err());
+    assert!(found.is_empty());
+}
+
+#[gpui::test]
+async fn test_remote_search_commits_stops_at_the_result_limit(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let limit = git::commit_search::COMMIT_SEARCH_RESULT_LIMIT;
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".git": {},
+                "file.txt": "content",
+            },
+        }),
+    )
+    .await;
+    fs.set_commit_data(
+        Path::new(path!("/code/project1/.git")),
+        (0..limit + 50).map(|index| {
+            (
+                CommitData {
+                    sha: Oid::from_str(&format!("{:040x}", index + 1)).unwrap(),
+                    parents: Default::default(),
+                    author_name: SharedString::from("Author"),
+                    author_email: SharedString::from("author@example.com"),
+                    commit_timestamp: index as i64,
+                    subject: SharedString::from("subject"),
+                    message: SharedString::from("needle"),
+                },
+                false,
+            )
+        }),
+    );
+
+    let (project, _headless) = init_test(&fs, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .expect("should open remote worktree");
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+    project
+        .update(cx, |project, cx| project.git_scans_complete(cx))
+        .await;
+    let repository = project.read_with(cx, |project, cx| {
+        project
+            .active_repository(cx)
+            .expect("remote project should have an active repository")
+    });
+
+    let (request_tx, request_rx) = smol::channel::unbounded();
+    let task = repository.update(cx, |repository, cx| {
+        repository.search_commits(
+            git::repository::LogSource::All,
+            git::repository::SearchCommitArgs {
+                query: "needle".into(),
+                ..Default::default()
+            },
+            request_tx,
+            cx,
+        )
+    });
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+    task.await.expect("the search should succeed");
+    let mut found_count = 0;
+    while request_rx.try_recv().is_ok() {
+        found_count += 1;
+    }
+    // The client cannot tell the server to stop, so the server stops at the limit itself rather
+    // than sending the whole history over for the client to throw away.
+    assert_eq!(found_count, limit);
 }
 
 #[gpui::test]

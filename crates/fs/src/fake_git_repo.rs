@@ -6,6 +6,7 @@ use async_channel::Sender;
 use collections::{HashMap, HashSet};
 use futures::FutureExt as _;
 use futures::future::{self, BoxFuture, join_all};
+use git::commit_search::MergeFilter;
 use git::repository::GitCommitTemplate;
 use git::{
     Oid, RunHook,
@@ -1664,7 +1665,17 @@ impl GitRepository for FakeGitRepository {
         request_tx: Sender<Oid>,
     ) -> BoxFuture<'_, Result<()>> {
         async move {
-            let hash_query = commit_hash_search_query(search_args.query.as_str())
+            search_args.validate()?;
+            if search_args.branch.is_some()
+                || search_args.path.is_some()
+                || search_args.change.is_some()
+            {
+                bail!("the fake repository cannot search by branch, file or changed text");
+            }
+            let hash_query = search_args
+                .sha_prefix
+                .as_deref()
+                .or_else(|| commit_hash_search_query(search_args.query.as_str()))
                 .map(|query| query.to_ascii_lowercase());
             let fold_case = |text: &str| {
                 if search_args.case_sensitive {
@@ -1675,13 +1686,19 @@ impl GitRepository for FakeGitRepository {
             };
             // Like the real backend, which leaves `--grep` out entirely rather than passing the
             // empty pattern that would match every commit.
-            let message_query =
-                (!search_args.query.is_empty()).then(|| fold_case(search_args.query.as_str()));
-            let author_query = search_args.author_filter()?.map(fold_case);
+            let message_query = (!search_args.query.is_empty()
+                && (search_args.sha_prefix.is_some()
+                    || commit_hash_search_query(search_args.query.as_str()).is_none()))
+            .then(|| fold_case(search_args.query.as_str()));
+            let author_queries = search_args
+                .author_filters()?
+                .into_iter()
+                .map(fold_case)
+                .collect::<Vec<_>>();
 
             // As in the real backend, a search with nothing to match on finds nothing rather
             // than everything.
-            if author_query.is_none() && message_query.is_none() {
+            if !search_args.has_anything_to_match() {
                 return Ok(());
             }
 
@@ -1693,23 +1710,43 @@ impl GitRepository for FakeGitRepository {
                         let FakeCommitDataEntry::Success(commit_data) = entry else {
                             return None;
                         };
-                        if let Some(author_query) = author_query.as_ref() {
-                            // `--author` matches the whole author header, so the address counts
-                            // as well as the name.
-                            let matches_author = fold_case(commit_data.author_name.as_str())
-                                .contains(author_query)
-                                || fold_case(commit_data.author_email.as_str())
-                                    .contains(author_query);
-                            if !matches_author {
-                                return None;
-                            }
+                        // `--author` matches the whole author header, so the address counts
+                        // as well as the name.
+                        let author = fold_case(&format!(
+                            "{} <{}>",
+                            commit_data.author_name, commit_data.author_email
+                        ));
+                        if !author_queries
+                            .iter()
+                            .all(|author_query| author.contains(author_query.as_str()))
+                        {
+                            return None;
                         }
-                        if let Some(hash_query) = hash_query.as_ref() {
-                            return sha
-                                .to_string()
-                                .to_ascii_lowercase()
-                                .starts_with(hash_query)
-                                .then_some(*sha);
+                        if let Some(commits) = search_args.commits.as_ref()
+                            && !commits.contains(sha)
+                        {
+                            return None;
+                        }
+                        if search_args
+                            .since
+                            .is_some_and(|since| commit_data.commit_timestamp < since)
+                            || search_args
+                                .until
+                                .is_some_and(|until| commit_data.commit_timestamp > until)
+                        {
+                            return None;
+                        }
+                        let is_merge = commit_data.parents.len() > 1;
+                        match search_args.merges {
+                            MergeFilter::Include => {}
+                            MergeFilter::Exclude if is_merge => return None,
+                            MergeFilter::Only if !is_merge => return None,
+                            MergeFilter::Exclude | MergeFilter::Only => {}
+                        }
+                        if let Some(hash_query) = hash_query.as_ref()
+                            && !sha.to_string().to_ascii_lowercase().starts_with(hash_query)
+                        {
+                            return None;
                         }
                         let Some(message_query) = message_query.as_ref() else {
                             return Some(*sha);

@@ -32,15 +32,16 @@ use futures::{
 use git::{
     BuildPermalinkParams, GitHostingProviderRegistry, Oid, RunHook,
     blame::Blame,
+    commit_search::{COMMIT_SEARCH_RESULT_LIMIT, MergeFilter},
     parse_git_remote_url,
     repository::{
         Branch, BranchesScanResult, CommitData, CommitDetails, CommitFileStatus, CommitOptions,
         CreateWorktreeTarget, DiffStatType, DiffType, FetchOptions, FileHistoryChangedFileSets,
         GitCommandOutput, GitCommitTemplate, GitRepository, GitRepositoryCheckpoint,
-        InitialGraphCommitData, LogOrder, LogSource, PatchSource, PushOptions, Remote,
-        RemoteCommandOutput, RepoPath, ResetMode, SearchCommitArgs, SequencerKind, SequencerProbes,
-        SequencerState, TAG_LIST_FORMAT, TagDistance, TagInfo, UpstreamTrackingStatus,
-        Worktree as GitWorktree, delete_branch_flag, is_binary_content,
+        InitialGraphCommitData, LogOrder, LogSource, LooseRefCount, PatchSource, PushOptions,
+        RefStorageScan, Remote, RemoteCommandOutput, RepoPath, ResetMode, SearchCommitArgs,
+        SequencerKind, SequencerProbes, SequencerState, TAG_LIST_FORMAT, TagDistance, TagInfo,
+        UpstreamTrackingStatus, Worktree as GitWorktree, delete_branch_flag, is_binary_content,
         sequencer_state_from_probes,
     },
     stash::{GitStash, StashEntry},
@@ -50,8 +51,8 @@ use git::{
     },
 };
 use gpui::{
-    App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, EventEmitter, SharedString,
-    Subscription, Task, TaskExt, WeakEntity,
+    App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, EntityId, EventEmitter,
+    SharedString, Subscription, Task, TaskExt, WeakEntity,
 };
 use language::{
     Anchor, Buffer, BufferEvent, Capability, Language, LanguageRegistry, decode_text, encode_text,
@@ -540,6 +541,59 @@ impl PushOutput {
     }
 }
 
+/// What the merge-request box asks [`Repository::build_merge_request_branch`] to build.
+#[derive(Clone, Debug)]
+pub struct MergeRequestBuild {
+    /// The ref the merge request starts from, as the user picked it. It is resolved to a commit
+    /// once, before anything moves.
+    pub base: String,
+    pub shas_oldest_first: Vec<String>,
+    pub merge_request_branch: String,
+    pub message: String,
+    /// Whether an existing `merge_request_branch` may be moved to the new commit.
+    pub recreate: bool,
+    /// The branch checked out now, which the caller has already remembered as the way back from
+    /// `scratch_branch`.
+    pub origin_branch: String,
+    pub scratch_branch: String,
+}
+
+/// The rest of a merge-request build that stopped on a conflict, once the cherry-pick has been
+/// continued: see [`Repository::finish_merge_request_branch`].
+#[derive(Clone, Debug)]
+pub struct MergeRequestContinuation {
+    /// The commit the build resolved its base to when it started.
+    pub base_sha: String,
+    pub merge_request_branch: String,
+    pub message: String,
+    pub recreate: bool,
+    pub origin_branch: String,
+    pub scratch_branch: String,
+}
+
+/// Where a merge-request build, or its continuation, ended up.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MergeRequestBuildOutcome {
+    /// The merge-request branch points at the new commit.
+    Created {
+        merge_request_sha: String,
+        /// Where a recreated branch pointed before, which is how the user finds it again.
+        previous_sha: Option<String>,
+        /// Why the user could not be put back on the branch they started from, when that is the
+        /// one step that went wrong. They are still on the scratch branch then.
+        return_failure: Option<String>,
+    },
+    /// A cherry-pick stopped on a conflict, leaving the user on the scratch branch.
+    Stopped { base_sha: String, reason: String },
+    /// git refused a step, or there was nothing to build.
+    Refused {
+        reason: String,
+        /// Whether the user is still on the scratch branch. A fresh build puts everything back
+        /// whenever it can; a continuation never throws the resolved commits away.
+        left_on_scratch_branch: bool,
+    },
+}
+
 #[derive(Clone)]
 pub enum CommitDataState {
     Loading(Option<Shared<oneshot::Receiver<Arc<CommitData>>>>),
@@ -579,6 +633,15 @@ pub struct RepositorySnapshot {
     pub remote_upstream_url: Option<String>,
     pub stash_entries: GitStash,
     pub linked_worktrees: Arc<[GitWorktree]>,
+    /// How many refs the repository keeps as loose files. `None` when that is not known (a host
+    /// too old to say, or refs that could not be read), in which case nothing should suggest
+    /// packing them.
+    pub loose_refs: Option<LooseRefCount>,
+    /// [`RefStorageScan::tags_fingerprint`] from the host: it changes whenever the tags may have
+    /// changed, which [`RepositoryEvent::TagsChanged`] announces. `None` when the host cannot
+    /// tell; views that list tags then have to reload them whenever the branches or HEAD change
+    /// instead.
+    pub tags_fingerprint: Option<u64>,
 }
 
 type JobId = u64;
@@ -817,9 +880,15 @@ pub enum RepositoryEvent {
     StatusesChanged,
     HeadChanged,
     BranchListChanged,
+    /// A tag may have been added, moved or deleted, including by a `git tag` or `git fetch
+    /// --tags` run outside Zed. Never sent while `RepositorySnapshot::tags_fingerprint` is
+    /// `None`.
+    TagsChanged,
     StashEntriesChanged,
     GitWorktreeListChanged,
-    PendingOpsChanged { pending_ops: SumTree<PendingOps> },
+    PendingOpsChanged {
+        pending_ops: SumTree<PendingOps>,
+    },
     GraphEvent((LogSource, LogOrder), GitGraphEvent),
 }
 
@@ -857,6 +926,10 @@ enum GitJobKey {
     RefreshStatuses,
     ReloadGitState,
     SequencerState,
+    /// A view's tag list: only its newest request is worth running.
+    LatestTags(EntityId),
+    /// A view's `git describe` of the commit it has selected: only the newest is worth running.
+    LatestDescribe(EntityId),
 }
 
 impl GitStore {
@@ -4070,34 +4143,51 @@ impl GitStore {
 
         let repository_id = RepositoryId::from_proto(envelope.payload.repository_id);
         let repository_handle = Self::repository_for_request(&this, repository_id, &mut cx)?;
+        let search_args = search_commit_args_from_proto(&envelope.payload)?;
         let log_source = log_source_from_proto(
             envelope
                 .payload
                 .log_source
                 .context("missing search commit log source")?,
         )?;
-        let search_args = SearchCommitArgs {
-            query: SharedString::from(envelope.payload.query),
-            author: envelope.payload.author.map(SharedString::from),
-            case_sensitive: envelope.payload.case_sensitive,
-        };
 
         let (request_tx, request_rx) = async_channel::unbounded();
-        repository_handle.update(&mut cx, |repository, cx| {
-            repository.search_commits(log_source, search_args, request_tx, cx);
+        let search_task = repository_handle.update(&mut cx, |repository, cx| {
+            repository.search_commits(log_source, search_args, request_tx, cx)
         });
 
         let (mut response_tx, response_rx) = mpsc::unbounded();
         cx.background_spawn(async move {
+            // Said before any result, and even when there are none, so that the client can tell
+            // this server applied every filter from an older one that dropped some.
+            if response_tx
+                .send(Ok(proto::SearchCommitsResponse {
+                    shas: Vec::new(),
+                    filters_version: Some(SEARCH_COMMITS_FILTERS_VERSION),
+                }))
+                .await
+                .is_err()
+            {
+                return;
+            }
+
             let mut shas = Vec::new();
+            let mut found_count = 0;
+            let mut reached_limit = false;
 
             while let Ok(sha) = request_rx.recv().await {
                 shas.push(sha.to_string());
+                found_count += 1;
+                if found_count >= COMMIT_SEARCH_RESULT_LIMIT {
+                    reached_limit = true;
+                    break;
+                }
 
                 if shas.len() >= CHUNK_SIZE {
                     if response_tx
                         .send(Ok(proto::SearchCommitsResponse {
                             shas: mem::take(&mut shas),
+                            filters_version: None,
                         }))
                         .await
                         .is_err()
@@ -4109,9 +4199,27 @@ impl GitStore {
 
             if !shas.is_empty() {
                 response_tx
-                    .send(Ok(proto::SearchCommitsResponse { shas }))
+                    .send(Ok(proto::SearchCommitsResponse {
+                        shas,
+                        filters_version: None,
+                    }))
                     .await
                     .ok();
+            }
+
+            // The client stops listening at the same limit but cannot tell this server so; the
+            // search is dropped here, which stops git, instead of walking the rest of the history.
+            if reached_limit {
+                drop(search_task);
+                return;
+            }
+
+            if let Err(error) = search_task.await {
+                response_tx
+                    .send(Err(anyhow!("{error:#}")))
+                    .await
+                    .context("failed to send the commit search error")
+                    .log_err();
             }
         })
         .detach();
@@ -5997,6 +6105,46 @@ async fn request_remote_password(
     response.context("askpass cancelled")
 }
 
+/// A history rewrite with `--autostash` that worked, except that git could not put the stashed
+/// changes back afterwards and kept them as a stash entry instead ("Applying autostash resulted in
+/// conflicts"), which git reports as success.
+#[derive(Debug)]
+pub struct ChangesLeftInStash;
+
+impl std::fmt::Display for ChangesLeftInStash {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(
+            "変更の一部を元に戻せなかったため、stash に退避しました (stash@{0})。Git パネルの stash から戻してください。",
+        )
+    }
+}
+
+impl std::error::Error for ChangesLeftInStash {}
+
+/// A remote Zed from before `ls-files` was allowed refuses the check every history rewrite makes
+/// for ignored files, which leaves the rewrite unusable against it; said in words the user can
+/// act on, still refusing.
+fn explain_old_server_refusing_ls_files(error: anyhow::Error) -> anyhow::Error {
+    if git::repository::is_unknown_git_subcommand_refusal(&format!("{error:#}"), "ls-files") {
+        anyhow!(
+            "接続先の Zed のサーバーが古いため、この書き換えは使えません。接続先の Zed を更新してください。"
+        )
+    } else {
+        error
+    }
+}
+
+/// The commits a fixup replays, as `Repository::validate_fixup_target_in_job` found them.
+struct FixupRange {
+    /// The target, as a full SHA.
+    sha: String,
+    /// `None` when the target is the repository's first commit.
+    parent: Option<String>,
+    head: String,
+    /// `<parent>..HEAD`, or `HEAD` for a first commit: the target and everything after it.
+    range: String,
+}
+
 impl RepositoryId {
     pub fn to_proto(self) -> u64 {
         self.0
@@ -6042,6 +6190,8 @@ impl RepositorySnapshot {
             stash_entries: Default::default(),
             linked_worktrees: Arc::from([]),
             path_style,
+            loose_refs: None,
+            tags_fingerprint: None,
         }
     }
 
@@ -6092,6 +6242,11 @@ impl RepositorySnapshot {
                 .iter()
                 .map(worktree_to_proto)
                 .collect(),
+            tags_fingerprint: self.tags_fingerprint,
+            loose_ref_count: self.loose_refs.map(|loose_refs| loose_refs.count as u64),
+            loose_ref_count_is_lower_bound: self
+                .loose_refs
+                .is_some_and(|loose_refs| !loose_refs.complete),
         }
     }
 
@@ -6195,6 +6350,11 @@ impl RepositorySnapshot {
                 .iter()
                 .map(worktree_to_proto)
                 .collect(),
+            tags_fingerprint: self.tags_fingerprint,
+            loose_ref_count: self.loose_refs.map(|loose_refs| loose_refs.count as u64),
+            loose_ref_count_is_lower_bound: self
+                .loose_refs
+                .is_some_and(|loose_refs| !loose_refs.complete),
         }
     }
 
@@ -6564,7 +6724,11 @@ impl Repository {
         // scan id greater than 2 means the initial snapshot was calculated,
         // otherwise we don't need to refresh the graph state
         match event {
-            RepositoryEvent::HeadChanged | RepositoryEvent::BranchListChanged => {
+            // The graph's cached log carries the tags that decorate its commits, so it goes
+            // stale when a tag is added or deleted too.
+            RepositoryEvent::HeadChanged
+            | RepositoryEvent::BranchListChanged
+            | RepositoryEvent::TagsChanged => {
                 if self.scan_id > 2 {
                     self.initial_graph_data.clear();
                 }
@@ -7193,74 +7357,40 @@ impl Repository {
         self.initial_graph_data.get(&(log_source, log_order))
     }
 
+    /// Streams the commits matching `search_args` into `request_tx`. Dropping the task stops
+    /// the search; its error says why a search could not run.
     pub fn search_commits(
         &mut self,
         log_source: LogSource,
         search_args: SearchCommitArgs,
         request_tx: async_channel::Sender<Oid>,
         cx: &mut Context<Self>,
-    ) {
+    ) -> Task<Result<()>> {
         let repository_state = self.repository_state.clone();
         let repository_id = self.id;
 
         cx.background_spawn(async move {
-            let repo_state = repository_state.await;
-
-            match repo_state {
+            match repository_state.await {
                 Ok(RepositoryState::Local(LocalRepositoryState { backend, .. })) => {
                     backend
                         .search_commits(log_source, search_args, request_tx)
                         .await
-                        .log_err();
                 }
-
                 Ok(RepositoryState::Remote(RemoteRepositoryState { client, project_id })) => {
-                    let result = client
-                        .request_stream(proto::SearchCommits {
-                            project_id: project_id.to_proto(),
-                            repository_id: repository_id.to_proto(),
-                            log_source: Some(log_source_to_proto(&log_source)),
-                            query: search_args.query.to_string(),
-                            case_sensitive: search_args.case_sensitive,
-                            author: search_args.author.as_ref().map(|author| author.to_string()),
-                        })
-                        .await;
-
-                    let mut stream = match result {
-                        Ok(stream) => stream,
-                        Err(error) => {
-                            log::error!("failed to search commits remotely: {error:?}");
-                            return;
-                        }
-                    };
-
-                    while let Some(response) = stream.next().await {
-                        let response = match response {
-                            Ok(response) => response,
-                            Err(error) => {
-                                log::error!(
-                                    "failed to receive remote commit search results: {error:?}"
-                                );
-                                return;
-                            }
-                        };
-
-                        for sha in &response.shas {
-                            let Ok(oid) = Oid::from_str(sha) else {
-                                return;
-                            };
-                            if request_tx.send(oid).await.is_err() {
-                                return;
-                            }
-                        }
-                    }
+                    let requires_filters = search_args.uses_filters_beyond_author();
+                    let stream = client
+                        .request_stream(search_commit_args_to_proto(
+                            project_id.to_proto(),
+                            repository_id.to_proto(),
+                            &log_source,
+                            &search_args,
+                        ))
+                        .await?;
+                    forward_remote_commit_search(stream, requires_filters, request_tx).await
                 }
-                Err(error) => {
-                    log::error!("failed to get repository state for commit search: {error}");
-                }
-            };
+                Err(error) => Err(anyhow!(error)),
+            }
         })
-        .detach();
     }
 
     pub fn graph_data(
@@ -8546,6 +8676,7 @@ impl Repository {
     ) -> Result<()> {
         let branches_scan = backend.branches().await?;
         let branch_list_error = branches_scan.error;
+        let ref_storage = branches_scan.ref_storage;
         let branch_list: Arc<[Branch]> = branches_scan.branches.into();
         let branch = branch_list.iter().find(|branch| branch.is_head).cloned();
         log::info!("head branch after scan is {branch:?}");
@@ -8562,6 +8693,7 @@ impl Repository {
             if branch_list_changed || branch_list_error_changed {
                 cx.emit(RepositoryEvent::BranchListChanged);
             }
+            this.apply_ref_storage_scan(ref_storage, cx);
             this.snapshot.clone()
         })?;
         if let Some(updates_tx) = updates_tx {
@@ -8570,6 +8702,22 @@ impl Repository {
                 .ok();
         }
         Ok(())
+    }
+
+    /// Takes in what the branch listing read from the ref files: how many refs are loose, and
+    /// whether a tag changed since the previous listing.
+    fn apply_ref_storage_scan(&mut self, ref_storage: RefStorageScan, cx: &mut Context<Self>) {
+        self.snapshot.loose_refs = ref_storage.loose_refs;
+        self.set_tags_fingerprint(ref_storage.tags_fingerprint, cx);
+    }
+
+    fn set_tags_fingerprint(&mut self, tags_fingerprint: Option<u64>, cx: &mut Context<Self>) {
+        let tags_changed =
+            tags_fingerprint.is_some() && tags_fingerprint != self.snapshot.tags_fingerprint;
+        self.snapshot.tags_fingerprint = tags_fingerprint;
+        if tags_changed {
+            cx.emit(RepositoryEvent::TagsChanged);
+        }
     }
 
     pub fn fetch(
@@ -9026,6 +9174,7 @@ impl Repository {
                     Ok(BranchesScanResult {
                         branches,
                         error: response.error.map(SharedString::from),
+                        ref_storage: RefStorageScan::default(),
                     })
                 }
             }
@@ -9850,10 +9999,32 @@ impl Repository {
         receiver
     }
 
+    /// `git pack-refs --all`: folds the loose ref files into `packed-refs`. The refs themselves
+    /// stay as they are; only the way git stores them changes.
+    pub fn pack_refs(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let receiver = self.run_git_command(vec!["pack-refs".into(), "--all".into()], None);
+        // The loose ref count shown to the user comes from the ref scan.
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
     /// Every tag in the repository, newest first.
     pub fn tags(&mut self) -> oneshot::Receiver<Result<Vec<TagInfo>>> {
+        self.tags_job(None)
+    }
+
+    /// [`Self::tags`] for a view that only needs its newest request answered: a request of the
+    /// same `requester` still waiting in the queue is dropped (its receiver is cancelled).
+    pub fn latest_tags(&mut self, requester: EntityId) -> oneshot::Receiver<Result<Vec<TagInfo>>> {
+        self.tags_job(Some(GitJobKey::LatestTags(requester)))
+    }
+
+    fn tags_job(&mut self, key: Option<GitJobKey>) -> oneshot::Receiver<Result<Vec<TagInfo>>> {
         let id = self.id;
-        self.send_job("tags", None, move |repo, _cx| async move {
+        self.send_keyed_job("tags", key, None, move |repo, cx| async move {
             let output = Self::run_step_in_job(
                 &repo,
                 id,
@@ -9870,7 +10041,10 @@ impl Repository {
                 "タグ一覧を取得できませんでした: {}",
                 output.failure_message()
             );
-            Ok(TagInfo::parse_list(&output.stdout))
+            // Tens of thousands of tags take long enough to parse to stall a frame.
+            Ok(cx
+                .background_spawn(async move { TagInfo::parse_list(&output.stdout) })
+                .await)
         })
     }
 
@@ -9879,8 +10053,27 @@ impl Repository {
         &mut self,
         committish: String,
     ) -> oneshot::Receiver<Result<Option<TagDistance>>> {
+        self.describe_job(committish, None)
+    }
+
+    /// [`Self::describe`] for a view that follows its selection: a request of the same
+    /// `requester` still waiting in the queue is dropped (its receiver is cancelled), so moving
+    /// the selection quickly does not queue a `git describe` per commit passed over.
+    pub fn latest_describe(
+        &mut self,
+        committish: String,
+        requester: EntityId,
+    ) -> oneshot::Receiver<Result<Option<TagDistance>>> {
+        self.describe_job(committish, Some(GitJobKey::LatestDescribe(requester)))
+    }
+
+    fn describe_job(
+        &mut self,
+        committish: String,
+        key: Option<GitJobKey>,
+    ) -> oneshot::Receiver<Result<Option<TagDistance>>> {
         let id = self.id;
-        self.send_job("describe", None, move |repo, _cx| async move {
+        self.send_keyed_job("describe", key, None, move |repo, _cx| async move {
             let output = Self::run_step_in_job(
                 &repo,
                 id,
@@ -10074,6 +10267,12 @@ impl Repository {
 
                 Self::ensure_commit_is_in_head_in_job(&repo, id, &sha).await?;
                 Self::ensure_range_is_linear_in_job(&repo, id, format!("{sha}..HEAD")).await?;
+                Self::ensure_no_ignored_file_is_overwritten_in_job(
+                    &repo,
+                    id,
+                    git::repository::RewrittenCommits::Range(&format!("{sha}..HEAD")),
+                )
+                .await?;
                 let author = Self::author_env_in_job(&repo, id, &sha).await?;
                 let parent = Self::parent_of_in_job(&repo, id, &sha).await?;
                 let rebuilt = Self::commit_tree_in_job(
@@ -10090,12 +10289,17 @@ impl Repository {
                     Err(output) => return Ok(output),
                 };
 
-                Self::run_step_in_job(
+                let stash_before = Self::stash_top_in_job(&repo, id).await?;
+                let rebased = Self::run_step_in_job(
                     &repo,
                     id,
                     git::repository::rebase_onto_args(&new_sha, &sha, branch_name.as_deref()),
                 )
-                .await
+                .await?;
+                if rebased.succeeded() && Self::stash_top_in_job(&repo, id).await? != stash_before {
+                    return Err(ChangesLeftInStash.into());
+                }
+                Ok(rebased)
             },
         );
         self.schedule_scan_after_worktree_change(cx);
@@ -10133,6 +10337,14 @@ impl Repository {
                     None => newest_sha.clone(),
                 };
                 Self::ensure_range_is_linear_in_job(&repo, id, range).await?;
+                // The squashed commit takes `newest`'s tree, so only what comes after it is
+                // checked out or replayed.
+                Self::ensure_no_ignored_file_is_overwritten_in_job(
+                    &repo,
+                    id,
+                    git::repository::RewrittenCommits::Range(&format!("{newest_sha}..HEAD")),
+                )
+                .await?;
                 let author = Self::author_env_in_job(&repo, id, &oldest_sha).await?;
                 let rebuilt = Self::commit_tree_in_job(
                     &repo,
@@ -10148,7 +10360,8 @@ impl Repository {
                     Err(output) => return Ok(output),
                 };
 
-                Self::run_step_in_job(
+                let stash_before = Self::stash_top_in_job(&repo, id).await?;
+                let rebased = Self::run_step_in_job(
                     &repo,
                     id,
                     git::repository::rebase_onto_args(
@@ -10157,57 +10370,510 @@ impl Repository {
                         branch_name.as_deref(),
                     ),
                 )
-                .await
+                .await?;
+                if rebased.succeeded() && Self::stash_top_in_job(&repo, id).await? != stash_before {
+                    return Err(ChangesLeftInStash.into());
+                }
+                Ok(rebased)
             },
         );
         self.schedule_scan_after_worktree_change(cx);
         receiver
     }
 
-    /// Builds a merge-request branch: `base`, then every commit of `shas_oldest_first` applied
-    /// without committing, then one commit.
+    /// Builds a merge-request branch out of the merge-request box: one commit on top of
+    /// `build.base` carrying the changes of every commit in the box, without ever moving the
+    /// branch the user is on.
     ///
-    /// A conflict comes back as a non-zero exit code with `sequencer_state()` reporting a stopped
-    /// cherry-pick, so the panel can offer continuing or aborting.
-    pub fn squash_to_new_branch(
+    /// Everything happens on `build.scratch_branch` (see
+    /// [`git::repository::merge_request_pick_commands`] and
+    /// [`git::repository::merge_request_finish_commands`]), and a build that works puts the user
+    /// back on `build.origin_branch`. A conflict leaves them on the scratch branch with the
+    /// cherry-pick stopped, which the git panel's banner continues or aborts; once continued,
+    /// [`Self::finish_merge_request_branch`] does the rest. Any other refusal puts everything back
+    /// the way it was.
+    pub fn build_merge_request_branch(
         &mut self,
-        base: String,
-        shas_oldest_first: Vec<String>,
-        new_branch: String,
-        message: String,
+        build: MergeRequestBuild,
         cx: &mut Context<Self>,
-    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+    ) -> oneshot::Receiver<Result<MergeRequestBuildOutcome>> {
         let id = self.id;
         let receiver = self.send_job(
-            "squash_to_new_branch",
-            Some(format!("git switch -c {new_branch}").into()),
+            "build_merge_request_branch",
+            Some(format!("git switch -c {}", build.scratch_branch).into()),
             move |repo, _cx| async move {
-                anyhow::ensure!(
-                    !shas_oldest_first.is_empty(),
-                    "まとめるコミットが選択されていません。"
-                );
-                let mut cherry_pick = vec!["cherry-pick".to_string(), "-n".to_string()];
-                cherry_pick.extend(shas_oldest_first);
-                Self::run_steps_in_job(
-                    &repo,
-                    id,
-                    vec![
-                        // `switch` becomes `checkout -b` where git is too old for it (ADR-F47).
-                        vec!["switch".into(), "-c".into(), new_branch, base],
-                        cherry_pick,
-                        vec!["commit".into(), "-m".into(), message],
-                    ],
-                )
-                .await
+                // Nothing has moved until the scratch branch is created, so every refusal up to
+                // there is a plain "no" that leaves nothing behind.
+                let prepared = async {
+                    Self::ensure_head_is_branch_in_job(&repo, id, &build.origin_branch).await?;
+                    Self::ensure_nothing_in_progress_in_job(&repo, id).await?;
+                    let dirty = Self::run_step_in_job(
+                        &repo,
+                        id,
+                        vec!["diff".into(), "--quiet".into(), "HEAD".into()],
+                    )
+                    .await?;
+                    anyhow::ensure!(
+                        dirty.succeeded(),
+                        "未コミットの変更があります。MR ブランチを作る前に、コミットかスタッシュしてください。"
+                    );
+                    anyhow::ensure!(
+                        Self::verify_ref_in_job(
+                            &repo,
+                            id,
+                            &format!("refs/heads/{}", build.scratch_branch)
+                        )
+                        .await?
+                        .is_none(),
+                        "前回の一時ブランチ「{}」が残っています。中身を確認して削除してからやり直してください。",
+                        build.scratch_branch
+                    );
+                    let base_sha =
+                        Self::verify_ref_in_job(&repo, id, &format!("{}^{{commit}}", build.base))
+                            .await?
+                            .with_context(|| format!("基点「{}」が見つかりません。", build.base))?;
+                    // Recreating the base itself would move it onto the merge request's commit.
+                    anyhow::ensure!(
+                        build.merge_request_branch != build.base
+                            && build.base != format!("refs/heads/{}", build.merge_request_branch),
+                        "基点のブランチ「{}」を MR ブランチにはできません。別の名前にしてください。",
+                        build.merge_request_branch
+                    );
+                    let previous_sha = Self::merge_request_previous_sha_in_job(
+                        &repo,
+                        id,
+                        &build.merge_request_branch,
+                        build.recreate,
+                    )
+                    .await?;
+                    // The switch onto the base refuses to overwrite an ignored file by itself
+                    // (`--no-overwrite-ignore`); the cherry-picks after it have no such option.
+                    Self::ensure_no_ignored_file_is_overwritten_in_job(
+                        &repo,
+                        id,
+                        git::repository::RewrittenCommits::Commits(&build.shas_oldest_first),
+                    )
+                    .await?;
+                    // Both halves are built before anything runs, so that a name or a message
+                    // the finish would refuse is refused while the user is still on their own
+                    // branch.
+                    let picks = git::repository::merge_request_pick_commands(
+                        &base_sha,
+                        &build.shas_oldest_first,
+                        &build.scratch_branch,
+                    )?;
+                    let finish = git::repository::merge_request_finish_commands(
+                        &base_sha,
+                        &build.message,
+                        &build.merge_request_branch,
+                        build.recreate,
+                        &build.origin_branch,
+                        &build.scratch_branch,
+                    )?;
+                    let mut picks = picks.into_iter();
+                    let (Some(create_scratch), Some(cherry_pick)) = (picks.next(), picks.next())
+                    else {
+                        anyhow::bail!("MR ブランチを組み立てるコマンドを用意できませんでした。");
+                    };
+                    anyhow::Ok((base_sha, previous_sha, create_scratch, cherry_pick, finish))
+                }
+                .await;
+                let (base_sha, previous_sha, create_scratch, cherry_pick, finish) = match prepared
+                {
+                    Ok(prepared) => prepared,
+                    Err(error) => {
+                        return Ok(MergeRequestBuildOutcome::Refused {
+                            reason: format!("{error:#}"),
+                            left_on_scratch_branch: false,
+                        });
+                    }
+                };
+
+                let created = Self::run_step_in_job(&repo, id, create_scratch).await?;
+                if !created.succeeded() {
+                    // A failing `post-checkout` hook fails the switch after it has happened.
+                    let on_scratch_branch =
+                        Self::ensure_head_is_branch_in_job(&repo, id, &build.scratch_branch)
+                            .await
+                            .is_ok();
+                    let left_on_scratch_branch = on_scratch_branch
+                        && !Self::leave_merge_request_scratch_in_job(
+                            &repo,
+                            id,
+                            &build.origin_branch,
+                            &build.scratch_branch,
+                        )
+                        .await;
+                    return Ok(MergeRequestBuildOutcome::Refused {
+                        reason: created.failure_message(),
+                        left_on_scratch_branch,
+                    });
+                }
+                let picked = Self::run_step_in_job(&repo, id, cherry_pick).await?;
+                if !picked.succeeded() {
+                    if Self::verify_ref_in_job(&repo, id, "CHERRY_PICK_HEAD")
+                        .await?
+                        .is_some()
+                    {
+                        return Ok(MergeRequestBuildOutcome::Stopped {
+                            base_sha,
+                            reason: picked.failure_message(),
+                        });
+                    }
+                    // Refused for some other reason than a conflict (a commit git cannot pick,
+                    // say). A pick of several commits can still have left its todo list behind,
+                    // which would make every later cherry-pick in this repository refuse to
+                    // start, so it goes before the scratch branch does.
+                    let aborted = Self::run_step_in_job(
+                        &repo,
+                        id,
+                        vec!["cherry-pick".into(), "--abort".into()],
+                    )
+                    .await;
+                    if let Err(error) = aborted {
+                        log::warn!("止まった cherry-pick を片付けられませんでした: {error:#}");
+                    }
+                    let left_on_scratch_branch = !Self::leave_merge_request_scratch_in_job(
+                        &repo,
+                        id,
+                        &build.origin_branch,
+                        &build.scratch_branch,
+                    )
+                    .await;
+                    return Ok(MergeRequestBuildOutcome::Refused {
+                        reason: picked.failure_message(),
+                        left_on_scratch_branch,
+                    });
+                }
+                Self::finish_merge_request_in_job(&repo, id, finish, previous_sha, true).await
             },
         );
         self.schedule_scan_after_worktree_change(cx);
         receiver
+    }
+
+    /// The rest of a merge-request build that stopped on a conflict and was continued from the
+    /// git panel's banner: the replayed commits on the scratch branch are folded into one, the
+    /// merge-request branch is pointed at it, and the user is put back where they started.
+    ///
+    /// Unlike a fresh build, a refusal here leaves the user on the scratch branch: the commits on
+    /// it carry the conflict resolution they did by hand.
+    pub fn finish_merge_request_branch(
+        &mut self,
+        continuation: MergeRequestContinuation,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<MergeRequestBuildOutcome>> {
+        let id = self.id;
+        let receiver = self.send_job(
+            "finish_merge_request_branch",
+            Some(format!("git switch {}", continuation.origin_branch).into()),
+            move |repo, _cx| async move {
+                Self::ensure_head_is_branch_in_job(&repo, id, &continuation.scratch_branch)
+                    .await?;
+                Self::ensure_nothing_in_progress_in_job(&repo, id).await?;
+                // Staged changes are allowed: they are what a fold that got as far as
+                // `reset --soft` before being refused left behind.
+                let unstaged = Self::run_step_in_job(
+                    &repo,
+                    id,
+                    vec!["diff".into(), "--quiet".into()],
+                )
+                .await?;
+                anyhow::ensure!(
+                    unstaged.succeeded(),
+                    "一時ブランチ「{}」にステージしていない変更があります。ステージするか取り消してから、もう一度お試しください。",
+                    continuation.scratch_branch
+                );
+                let off_base = Self::run_step_in_job(
+                    &repo,
+                    id,
+                    vec![
+                        "log".into(),
+                        "--format=%H".into(),
+                        format!("HEAD..{}", continuation.base_sha),
+                    ],
+                )
+                .await?;
+                anyhow::ensure!(
+                    off_base.succeeded() && off_base.stdout.trim().is_empty(),
+                    "一時ブランチ「{}」が基点から始まっていないため、MR ブランチに反映できません。",
+                    continuation.scratch_branch
+                );
+                let previous_sha = Self::merge_request_previous_sha_in_job(
+                    &repo,
+                    id,
+                    &continuation.merge_request_branch,
+                    continuation.recreate,
+                )
+                .await?;
+                let finish = git::repository::merge_request_finish_commands(
+                    &continuation.base_sha,
+                    &continuation.message,
+                    &continuation.merge_request_branch,
+                    continuation.recreate,
+                    &continuation.origin_branch,
+                    &continuation.scratch_branch,
+                )?;
+                Self::finish_merge_request_in_job(&repo, id, finish, previous_sha, false).await
+            },
+        );
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// Runs [`git::repository::MergeRequestFinishCommands`]. `clean_up_on_refusal` throws the
+    /// scratch branch away when git refuses to fold or point, which only a fresh build may do.
+    async fn finish_merge_request_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        finish: git::repository::MergeRequestFinishCommands,
+        previous_sha: Option<String>,
+        clean_up_on_refusal: bool,
+    ) -> Result<MergeRequestBuildOutcome> {
+        let git::repository::MergeRequestFinishCommands {
+            fold_and_point,
+            return_to_origin,
+            base_sha,
+            merge_request_branch,
+            origin_branch,
+            scratch_branch,
+        } = finish;
+        let refuse = async |reason: String| -> Result<MergeRequestBuildOutcome> {
+            let left_on_scratch_branch = if clean_up_on_refusal {
+                // Whatever the fold left in the index and the working tree is the replayed
+                // commits and nothing else (the build refused to start on a dirty tree), and
+                // `switch` would carry it over onto the user's branch.
+                let reset = Self::run_step_in_job(
+                    repo,
+                    id,
+                    vec!["reset".into(), "--hard".into(), "HEAD".into()],
+                )
+                .await?;
+                !reset.succeeded()
+                    || !Self::leave_merge_request_scratch_in_job(
+                        repo,
+                        id,
+                        &origin_branch,
+                        &scratch_branch,
+                    )
+                    .await
+            } else {
+                true
+            };
+            Ok(MergeRequestBuildOutcome::Refused {
+                reason,
+                left_on_scratch_branch,
+            })
+        };
+
+        // The index rather than HEAD: a continuation may find the replayed commits already
+        // folded into the index by an earlier attempt that got as far as `reset --soft`.
+        let unchanged = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "diff".into(),
+                "--cached".into(),
+                "--quiet".into(),
+                base_sha.clone(),
+            ],
+        )
+        .await?;
+        if unchanged.succeeded() {
+            return refuse(
+                "箱のコミットの変更はすべて基点に入っています。MR にする差分がありません。"
+                    .to_string(),
+            )
+            .await;
+        }
+        let folded = Self::run_steps_in_job(repo, id, fold_and_point).await?;
+        if !folded.succeeded() {
+            return refuse(folded.failure_message()).await;
+        }
+
+        // HEAD is the commit `branch` just pointed the merge-request branch at.
+        let merge_request_sha = Self::verify_ref_in_job(repo, id, "HEAD")
+            .await?
+            .with_context(|| {
+                format!("作った MR ブランチ「{merge_request_branch}」を確認できませんでした。")
+            })?;
+        let returned = Self::run_steps_in_job(repo, id, return_to_origin).await?;
+        Ok(MergeRequestBuildOutcome::Created {
+            merge_request_sha,
+            previous_sha,
+            return_failure: (!returned.succeeded()).then(|| returned.failure_message()),
+        })
+    }
+
+    /// Back to `origin_branch` with the scratch branch deleted; `false` when git refused either.
+    async fn leave_merge_request_scratch_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        origin_branch: &str,
+        scratch_branch: &str,
+    ) -> bool {
+        let steps = match git::repository::rewrite_cleanup_commands(origin_branch, scratch_branch) {
+            Ok(steps) => steps,
+            Err(error) => {
+                log::warn!("一時ブランチから戻れませんでした: {error:#}");
+                return false;
+            }
+        };
+        match Self::run_steps_in_job(repo, id, steps).await {
+            Ok(output) => output.succeeded(),
+            Err(error) => {
+                log::warn!("一時ブランチから戻れませんでした: {error:#}");
+                false
+            }
+        }
+    }
+
+    /// `git rev-parse --verify --quiet <name>`: the commit `name` points at, or `None` when there
+    /// is no such ref.
+    async fn verify_ref_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        name: &str,
+    ) -> Result<Option<String>> {
+        let output = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "rev-parse".into(),
+                "--verify".into(),
+                "--quiet".into(),
+                name.to_string(),
+            ],
+        )
+        .await?;
+        Ok(output
+            .succeeded()
+            .then(|| output.stdout.trim().to_string())
+            .filter(|sha| !sha.is_empty()))
+    }
+
+    /// Refuses unless `branch` is what is checked out. The caller read the branch from a snapshot
+    /// that may be a scan behind, and remembered it as the way back before calling.
+    async fn ensure_head_is_branch_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        branch: &str,
+    ) -> Result<()> {
+        let head = Self::run_step_in_job(
+            repo,
+            id,
+            vec!["rev-parse".into(), "--abbrev-ref".into(), "HEAD".into()],
+        )
+        .await?;
+        anyhow::ensure!(
+            head.succeeded(),
+            "現在のブランチを確認できませんでした: {}",
+            head.failure_message()
+        );
+        let current = head.stdout.trim();
+        anyhow::ensure!(
+            current != "HEAD",
+            "detached HEAD では MR ブランチを作れません。先にブランチに切り替えてください。"
+        );
+        anyhow::ensure!(
+            current == branch,
+            "チェックアウトしているブランチが「{current}」に変わっています (想定は「{branch}」)。もう一度お試しください。"
+        );
+        Ok(())
+    }
+
+    /// Refuses while a cherry-pick, revert, rebase or merge is stopped part-way, or while the index
+    /// still has conflicts.
+    async fn ensure_nothing_in_progress_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+    ) -> Result<()> {
+        for kind in SequencerKind::all() {
+            anyhow::ensure!(
+                Self::verify_ref_in_job(repo, id, kind.in_progress_ref())
+                    .await?
+                    .is_none(),
+                "{}が途中で止まっています。先に Git パネルのバナーで続行するか中止してください。",
+                kind.label()
+            );
+        }
+        anyhow::ensure!(
+            Self::verify_ref_in_job(repo, id, "MERGE_HEAD")
+                .await?
+                .is_none(),
+            "マージが途中で止まっています。先にマージを完了するか中止してください。"
+        );
+        let unmerged = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "diff".into(),
+                "--name-only".into(),
+                "--diff-filter=U".into(),
+            ],
+        )
+        .await?;
+        anyhow::ensure!(
+            unmerged.succeeded() && unmerged.stdout.trim().is_empty(),
+            "コンフリクトが解決されていないファイルがあります。先に解決してください。"
+        );
+        Ok(())
+    }
+
+    /// The local name of the repository's default branch (`main` for `origin/main`), as
+    /// [`Self::default_branch`] finds it; `None` when it cannot be told.
+    async fn local_default_branch_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+    ) -> Option<SharedString> {
+        let default_branch = match repo {
+            RepositoryState::Local(LocalRepositoryState { backend, .. }) => {
+                backend.default_branch(false).await
+            }
+            RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => client
+                .request(proto::GetDefaultBranch {
+                    project_id: project_id.0,
+                    repository_id: id.to_proto(),
+                    include_remote_name: false,
+                })
+                .await
+                .map(|response| response.branch.map(SharedString::from)),
+        };
+        default_branch
+            .context("デフォルトブランチを調べられませんでした")
+            .log_err()
+            .flatten()
+    }
+
+    /// Where the merge-request branch points before this build moves it, refusing to touch an
+    /// existing one unless the user asked for it to be recreated.
+    async fn merge_request_previous_sha_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        merge_request_branch: &str,
+        recreate: bool,
+    ) -> Result<Option<String>> {
+        git::repository::validate_merge_request_branch_name(merge_request_branch)?;
+        let default_branch = Self::local_default_branch_in_job(repo, id).await;
+        git::repository::ensure_merge_request_branch_is_not_default(
+            merge_request_branch,
+            default_branch.as_deref(),
+        )?;
+        let previous_sha =
+            Self::verify_ref_in_job(repo, id, &format!("refs/heads/{merge_request_branch}"))
+                .await?;
+        anyhow::ensure!(
+            previous_sha.is_none() || recreate,
+            "ブランチ「{merge_request_branch}」は既にあります。作り直すには「既存の {merge_request_branch} を作り直す」にチェックを入れてください。"
+        );
+        Ok(previous_sha)
     }
 
     /// Replaces the consecutive range `oldest_sha..=newest_sha` on the current branch with
     /// `groups`, which is what the todo editor collects: commits reordered, folded together,
-    /// reworded or left out.
+    /// reworded or left out. `expected_shas` is every commit the editor showed for the range, kept
+    /// or dropped: git's own idea of the range has to be exactly that, so that a commit nobody
+    /// saw is never dropped along with the ones the user left out.
     ///
     /// The whole rewrite happens on a scratch branch and the user's branch only moves at the
     /// final `rebase --onto` (see [`git::repository::rewrite_range_commands`]), so a step git
@@ -10219,6 +10885,7 @@ impl Repository {
         oldest_sha: String,
         newest_sha: String,
         groups: Vec<git::repository::RewriteGroup>,
+        expected_shas: Vec<String>,
         cx: &mut Context<Self>,
     ) -> oneshot::Receiver<Result<GitCommandOutput>> {
         let id = self.id;
@@ -10239,8 +10906,80 @@ impl Repository {
                         "最初のコミットを含む範囲は並べ替えられません。1 つ後のコミットから選び直してください。",
                     )?;
                 Self::ensure_commit_is_in_head_in_job(&repo, id, &newest_sha).await?;
+                if oldest_sha != newest_sha {
+                    Self::ensure_commit_is_in_head_in_job(&repo, id, &oldest_sha).await?;
+                }
                 Self::ensure_range_is_linear_in_job(&repo, id, format!("{base}..{newest_sha}"))
                     .await?;
+                // The scratch branch starts at `base` and only `groups` are applied onto it, so a
+                // commit of the range the list never showed would vanish from the branch as if
+                // the user had dropped it, and a commit of `groups` from outside the range, or one
+                // applied twice, would put changes into the branch that were never part of it.
+                let range = Self::run_step_in_job(
+                    &repo,
+                    id,
+                    vec![
+                        "log".into(),
+                        "--format=%H".into(),
+                        format!("{base}..{newest_sha}"),
+                    ],
+                )
+                .await?;
+                anyhow::ensure!(
+                    range.succeeded(),
+                    "書き換える範囲のコミットを取得できませんでした: {}",
+                    range.failure_message()
+                );
+                let range_shas: HashSet<&str> = range
+                    .stdout
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .collect();
+                anyhow::ensure!(
+                    range_shas.contains(oldest_sha.as_str()),
+                    "選んだ範囲の最も古いコミットが、最も新しいコミットの履歴にありません。範囲を選び直してください。"
+                );
+                let listed_shas: HashSet<&str> = expected_shas.iter().map(String::as_str).collect();
+                anyhow::ensure!(
+                    listed_shas.len() == expected_shas.len() && listed_shas == range_shas,
+                    "一覧に表示したコミットと、実際の範囲 (git の履歴) が一致しません。範囲の途中でコミットが増えたか減った可能性があります。グラフを更新してから選び直してください。"
+                );
+                let mut applied: HashSet<&str> = HashSet::default();
+                for sha in groups.iter().flat_map(|group| &group.shas) {
+                    let short = sha.get(..7).unwrap_or(sha);
+                    anyhow::ensure!(
+                        listed_shas.contains(sha.as_str()),
+                        "書き換える範囲に無いコミット {short} が含まれています。範囲を選び直してください。"
+                    );
+                    anyhow::ensure!(
+                        applied.insert(sha.as_str()),
+                        "コミット {short} が 2 回含まれています。一覧を確認してください。"
+                    );
+                }
+                // The closing `rebase --onto` replays every commit after the range, and a plain
+                // rebase flattens a merge commit it meets there without a word, so a merge anywhere
+                // between the range and HEAD stops the rewrite as well.
+                let merges_after = Self::run_step_in_job(
+                    &repo,
+                    id,
+                    vec![
+                        "log".into(),
+                        "--merges".into(),
+                        "--format=%H".into(),
+                        format!("{newest_sha}..HEAD"),
+                    ],
+                )
+                .await?;
+                anyhow::ensure!(
+                    merges_after.succeeded(),
+                    "書き換える範囲より後のコミットを調べられませんでした: {}",
+                    merges_after.failure_message()
+                );
+                anyhow::ensure!(
+                    merges_after.stdout.trim().is_empty(),
+                    "選んだ範囲より新しいコミットの中にマージコミットがあるため、書き換えられません (書き換えるとそのマージが崩れます)。マージより新しいコミットだけを選び直してください。"
+                );
 
                 let leftover = Self::run_step_in_job(
                     &repo,
@@ -10257,6 +10996,12 @@ impl Repository {
                     !leftover.succeeded(),
                     "前回の書き換えの一時ブランチ「{scratch_branch}」が残っています。中身を確認して削除してからやり直してください。"
                 );
+                Self::ensure_no_ignored_file_is_overwritten_in_job(
+                    &repo,
+                    id,
+                    git::repository::RewrittenCommits::Range(&format!("{base}..HEAD")),
+                )
+                .await?;
 
                 let mut commands = git::repository::rewrite_range_commands(
                     &base,
@@ -10269,6 +11014,7 @@ impl Repository {
                 let create_scratch = commands
                     .next()
                     .context("書き換えるコマンドを組み立てられませんでした。")?;
+                let stash_before = Self::stash_top_in_job(&repo, id).await?;
                 let created = Self::run_step_in_job(&repo, id, create_scratch.args).await?;
                 if !created.succeeded() {
                     return Ok(created);
@@ -10296,6 +11042,11 @@ impl Repository {
                             }
                         }
                     }
+                }
+                if outcome.as_ref().is_ok_and(GitCommandOutput::succeeded)
+                    && Self::stash_top_in_job(&repo, id).await? != stash_before
+                {
+                    return Err(ChangesLeftInStash.into());
                 }
                 outcome
             },
@@ -10370,16 +11121,221 @@ impl Repository {
                 )?;
                 Self::ensure_commit_is_in_head_in_job(&repo, id, &sha).await?;
                 Self::ensure_range_is_linear_in_job(&repo, id, format!("{sha}..HEAD")).await?;
-                Self::run_step_in_job(
+                Self::ensure_no_ignored_file_is_overwritten_in_job(
+                    &repo,
+                    id,
+                    git::repository::RewrittenCommits::Range(&format!("{parent}..HEAD")),
+                )
+                .await?;
+                let stash_before = Self::stash_top_in_job(&repo, id).await?;
+                let dropped = Self::run_step_in_job(
                     &repo,
                     id,
                     git::repository::rebase_onto_args(&parent, &sha, branch_name.as_deref()),
                 )
-                .await
+                .await?;
+                if dropped.succeeded() && Self::stash_top_in_job(&repo, id).await? != stash_before {
+                    return Err(ChangesLeftInStash.into());
+                }
+                Ok(dropped)
             },
         );
         self.schedule_scan_after_worktree_change(cx);
         receiver
+    }
+
+    /// Checks that changes can be folded into `sha` before the user is asked which ones: the
+    /// refusals [`Self::fixup_commit`] makes again when it runs, plus what the confirmation shows.
+    pub fn fixup_target(
+        &mut self,
+        sha: String,
+    ) -> oneshot::Receiver<Result<git::repository::FixupTarget>> {
+        let id = self.id;
+        self.send_job("fixup_target", None, move |repo, _cx| async move {
+            let target = Self::validate_fixup_target_in_job(&repo, id, &sha).await?;
+            let subject = Self::run_step_in_job(
+                &repo,
+                id,
+                vec![
+                    "log".into(),
+                    "-1".into(),
+                    "--format=%s".into(),
+                    target.sha.clone(),
+                ],
+            )
+            .await?;
+            anyhow::ensure!(
+                subject.succeeded(),
+                "コミットの件名を読めませんでした: {}",
+                subject.failure_message()
+            );
+            let pushed = Self::commit_is_pushed_in_job(&repo, id, &target.sha).await?;
+            Ok(git::repository::FixupTarget {
+                sha: target.sha,
+                subject: subject.stdout.trim_end_matches(['\r', '\n']).to_string(),
+                pushed,
+            })
+        })
+    }
+
+    /// Folds `changes` into `sha`, a commit on the current branch (fixup): `commit --fixup`, then
+    /// `rebase -i --autosquash` from the commit's parent. Every commit after `sha` gets a new SHA.
+    ///
+    /// git's own fixup machinery rather than a chain of cherry-picks, because the `fixup!` commit
+    /// holds the changes whatever the rebase does: a conflict, and aborting it from the banner,
+    /// leave them in that commit instead of losing them.
+    pub fn fixup_commit(
+        &mut self,
+        sha: String,
+        changes: git::repository::FixupChanges,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<git::repository::FixupOutcome>> {
+        use git::repository::{FixupChanges, FixupOutcome};
+
+        let id = self.id;
+        let untracked = match &changes {
+            FixupChanges::Paths(paths) => self.untracked_paths_among(paths),
+            FixupChanges::Staged | FixupChanges::AllTracked => Vec::new(),
+        };
+        let receiver = self.send_job(
+            "fixup_commit",
+            Some(format!("git commit --fixup={sha}").into()),
+            move |repo, _cx| async move {
+                let target = Self::validate_fixup_target_in_job(&repo, id, &sha).await?;
+                Self::ensure_fixup_has_changes_in_job(&repo, id, &changes, &untracked).await?;
+                Self::ensure_no_ignored_file_is_overwritten_in_job(
+                    &repo,
+                    id,
+                    git::repository::RewrittenCommits::Range(&target.range),
+                )
+                .await?;
+                let commits_before = Self::count_commits_in_job(&repo, id, &target.range).await?;
+
+                let steps =
+                    git::repository::fixup_commit_commands(&target.sha, &changes, &untracked)?;
+                let committed = Self::run_steps_in_job(&repo, id, steps).await?;
+                if !committed.succeeded() {
+                    if let Some(unstage) = git::repository::fixup_unstage_args(&untracked) {
+                        match Self::run_step_in_job(&repo, id, unstage).await {
+                            Ok(output) if output.succeeded() => {}
+                            Ok(output) => log::warn!(
+                                "fixup のために追加したファイルをステージから戻せませんでした: {}",
+                                output.failure_message()
+                            ),
+                            Err(error) => log::warn!(
+                                "fixup のために追加したファイルをステージから戻せませんでした: {error:#}"
+                            ),
+                        }
+                    }
+                    let head = Self::resolve_head_in_job(&repo, id).await?;
+                    return Ok(FixupOutcome::NotCommitted {
+                        output: committed,
+                        head_moved: head != target.head,
+                    });
+                }
+                let fixup_commit = Self::resolve_head_in_job(&repo, id).await?;
+                let uncommitted_after_commit =
+                    Self::uncommitted_changes_in_job(&repo, id).await?;
+                let stash_before = Self::stash_top_in_job(&repo, id).await?;
+
+                let rebase_failure = match Self::run_step_in_job(
+                    &repo,
+                    id,
+                    git::repository::fixup_rebase_args(target.parent.as_deref()),
+                )
+                .await
+                {
+                    Ok(output) if output.succeeded() => None,
+                    Ok(output) => Some(output.failure_message()),
+                    // Refused before git ran: an older git, which has no `--autostash`, asked to
+                    // rebase with changes left in the working tree.
+                    Err(error) => Some(format!("{error:#}")),
+                };
+                if let Some(message) = rebase_failure {
+                    if Self::rebase_in_progress_in_job(&repo, id).await? {
+                        return Ok(FixupOutcome::RebaseStopped {
+                            message,
+                            old_head: target.head,
+                            fixup_commit,
+                        });
+                    }
+                    // Nothing was replayed, so taking the `fixup!` commit back off the branch
+                    // (`--soft`, which leaves the index and the files alone) is the state before
+                    // the fixup with its changes staged, rather than a commit the user never asked
+                    // to keep on its own. Only when git left the index and the files as they
+                    // were, though: a rebase that dies while detaching HEAD has already checked
+                    // out part of the older tree, and moving the branch under that would stage
+                    // it as the user's own change.
+                    let head = Self::resolve_head_in_job(&repo, id).await?;
+                    let untouched = head == fixup_commit
+                        && Self::uncommitted_changes_in_job(&repo, id).await?
+                            == uncommitted_after_commit;
+                    let mut rolled_back = false;
+                    if untouched {
+                        match Self::run_step_in_job(
+                            &repo,
+                            id,
+                            vec!["reset".into(), "--soft".into(), target.head.clone()],
+                        )
+                        .await
+                        {
+                            Ok(output) if output.succeeded() => rolled_back = true,
+                            Ok(output) => log::warn!(
+                                "fixup! コミットを取り消せませんでした: {}",
+                                output.failure_message()
+                            ),
+                            Err(error) => {
+                                log::warn!("fixup! コミットを取り消せませんでした: {error:#}")
+                            }
+                        }
+                    }
+                    return Ok(FixupOutcome::RebaseRefused {
+                        message,
+                        rolled_back,
+                    });
+                }
+
+                let new_head = Self::resolve_head_in_job(&repo, id).await?;
+                if Self::stash_top_in_job(&repo, id).await? != stash_before {
+                    return Ok(FixupOutcome::ChangesLeftInStash {
+                        old_head: target.head,
+                        new_head,
+                    });
+                }
+                let commits_after = Self::count_commits_in_job(&repo, id, &target.range).await?;
+                if commits_after != commits_before {
+                    return Ok(FixupOutcome::LeftUnfolded {
+                        old_head: target.head,
+                        new_head,
+                    });
+                }
+                Ok(FixupOutcome::Folded {
+                    old_head: target.head,
+                    new_head,
+                })
+            },
+        );
+        self.schedule_scan_after_worktree_change(cx);
+        receiver
+    }
+
+    /// Whether the current branch's upstream already contains `sha`, which is when rewriting it
+    /// leaves the branch needing a force push. Ask before the rewrite: the rewritten commits are
+    /// new, and no upstream has them.
+    pub fn commit_is_pushed(&mut self, sha: String) -> oneshot::Receiver<Result<bool>> {
+        let id = self.id;
+        self.send_job("commit_is_pushed", None, move |repo, _cx| async move {
+            Self::commit_is_pushed_in_job(&repo, id, &sha).await
+        })
+    }
+
+    /// The untracked files among `paths`, or under them when a path is a directory.
+    fn untracked_paths_among(&self, paths: &[RepoPath]) -> Vec<RepoPath> {
+        self.cached_status()
+            .filter(|entry| entry.status.is_untracked())
+            .filter(|entry| paths.iter().any(|path| entry.repo_path.starts_with(path)))
+            .map(|entry| entry.repo_path)
+            .collect()
     }
 
     /// `git show <committish>:<path>`: the contents of one file as of a ref, with `path`
@@ -10555,6 +11511,338 @@ impl Repository {
             output.stdout.trim().is_empty(),
             "マージコミットを含む範囲は書き換えられません。マージを含まない範囲を選び直してください。"
         );
+        Ok(())
+    }
+
+    /// Refuses everything a fixup of `sha` cannot do safely, before it writes anything, and hands
+    /// back the commits it is going to replay.
+    async fn validate_fixup_target_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        sha: &str,
+    ) -> Result<FixupRange> {
+        // A caller's SHA is spliced into revision arguments, so anything else (an option, a range)
+        // is refused rather than handed to git.
+        anyhow::ensure!(
+            sha.len() >= 4 && sha.chars().all(|character| character.is_ascii_hexdigit()),
+            "コミットの SHA として読めません: {sha}"
+        );
+        let resolved = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "rev-parse".into(),
+                "--verify".into(),
+                "--quiet".into(),
+                format!("{sha}^{{commit}}"),
+            ],
+        )
+        .await?;
+        anyhow::ensure!(resolved.succeeded(), "コミット {sha} が見つかりません。");
+        let sha = resolved.stdout.trim().to_string();
+        let head = Self::resolve_head_in_job(repo, id).await?;
+
+        for kind in SequencerKind::all() {
+            let stopped = Self::run_step_in_job(
+                repo,
+                id,
+                vec![
+                    "rev-parse".into(),
+                    "--verify".into(),
+                    "--quiet".into(),
+                    kind.in_progress_ref().into(),
+                ],
+            )
+            .await?;
+            anyhow::ensure!(
+                !stopped.succeeded(),
+                "{}が途中で止まっています。Git パネルで続行か中止をしてからやり直してください。",
+                kind.label()
+            );
+        }
+        // `commit` would conclude the merge instead of making a `fixup!` commit.
+        let merging = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "rev-parse".into(),
+                "--verify".into(),
+                "--quiet".into(),
+                "MERGE_HEAD".into(),
+            ],
+        )
+        .await?;
+        anyhow::ensure!(
+            !merging.succeeded(),
+            "マージの途中です。マージを終えるか中止してからやり直してください。"
+        );
+        let unmerged = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "diff".into(),
+                "--name-only".into(),
+                "--diff-filter=U".into(),
+            ],
+        )
+        .await?;
+        anyhow::ensure!(
+            unmerged.stdout.trim().is_empty(),
+            "コンフリクトしているファイルがあります。解決してからやり直してください。"
+        );
+        // Also what a rebase stopped without a conflict looks like on a git too old for
+        // `REBASE_HEAD`.
+        anyhow::ensure!(
+            !Self::head_is_detached_in_job(repo, id).await?,
+            "detached HEAD では使えません。先にブランチに切り替えてください。"
+        );
+
+        Self::ensure_commit_is_in_head_in_job(repo, id, &sha).await?;
+        let parent = Self::parent_of_in_job(repo, id, &sha).await?;
+        let range = match &parent {
+            Some(parent) => format!("{parent}..HEAD"),
+            // The first commit of the repository: the rebase replays all of history.
+            None => "HEAD".to_string(),
+        };
+        // The target itself is in the range: `rebase -i <parent>` would flatten a merge commit
+        // being fixed up just as it flattens one after it.
+        Self::ensure_range_is_linear_in_job(repo, id, range.clone()).await?;
+
+        let subjects = Self::run_step_in_job(
+            repo,
+            id,
+            vec!["log".into(), "--format=%s".into(), range.clone()],
+        )
+        .await?;
+        anyhow::ensure!(
+            subjects.succeeded(),
+            "書き換える範囲を調べられませんでした: {}",
+            subjects.failure_message()
+        );
+        if let Some(subject) = subjects
+            .stdout
+            .lines()
+            .find(|subject| git::repository::is_autosquash_subject(subject))
+        {
+            anyhow::bail!(
+                "書き換える範囲に「{subject}」があります。fixup! / squash! のコミットはこの操作で一緒に畳まれてしまうため、先に片付けてからやり直してください。"
+            );
+        }
+
+        Ok(FixupRange {
+            sha,
+            parent,
+            head,
+            range,
+        })
+    }
+
+    /// Refuses a fixup that would record nothing, which git would otherwise report in English
+    /// as a failed commit.
+    async fn ensure_fixup_has_changes_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        changes: &git::repository::FixupChanges,
+        untracked: &[RepoPath],
+    ) -> Result<()> {
+        use git::repository::FixupChanges;
+
+        if matches!(changes, FixupChanges::Paths(_)) && !untracked.is_empty() {
+            return Ok(());
+        }
+        let output =
+            Self::run_step_in_job(repo, id, git::repository::fixup_changes_probe_args(changes))
+                .await?;
+        anyhow::ensure!(
+            output.succeeded(),
+            "入れる変更を調べられませんでした: {}",
+            output.failure_message()
+        );
+        anyhow::ensure!(
+            !output.stdout.trim().is_empty(),
+            match changes {
+                FixupChanges::Staged => "ステージ済みの変更がありません。",
+                FixupChanges::AllTracked =>
+                    "コミットに入れる変更がありません (未追跡のファイルはステージしない限り入りません)。",
+                FixupChanges::Paths(_) => "選んだファイルには変更がありません。",
+            }
+        );
+        Ok(())
+    }
+
+    /// The staged changes down to their contents, and the paths with unstaged ones: enough to
+    /// tell whether a git command that failed left the index and the working tree alone.
+    async fn uncommitted_changes_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+    ) -> Result<(String, String)> {
+        let staged = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "diff".into(),
+                "--cached".into(),
+                "--raw".into(),
+                "--no-abbrev".into(),
+            ],
+        )
+        .await?;
+        let unstaged =
+            Self::run_step_in_job(repo, id, vec!["diff".into(), "--name-only".into()]).await?;
+        anyhow::ensure!(
+            staged.succeeded() && unstaged.succeeded(),
+            "作業ツリーの状態を調べられませんでした: {}",
+            if staged.succeeded() {
+                unstaged.failure_message()
+            } else {
+                staged.failure_message()
+            }
+        );
+        Ok((staged.stdout, unstaged.stdout))
+    }
+
+    async fn resolve_head_in_job(repo: &RepositoryState, id: RepositoryId) -> Result<String> {
+        let head = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "rev-parse".into(),
+                "--verify".into(),
+                "--quiet".into(),
+                "HEAD".into(),
+            ],
+        )
+        .await?;
+        anyhow::ensure!(
+            head.succeeded(),
+            "HEAD を解決できませんでした: {}",
+            head.failure_message()
+        );
+        Ok(head.stdout.trim().to_string())
+    }
+
+    async fn head_is_detached_in_job(repo: &RepositoryState, id: RepositoryId) -> Result<bool> {
+        let head = Self::run_step_in_job(
+            repo,
+            id,
+            vec!["rev-parse".into(), "--abbrev-ref".into(), "HEAD".into()],
+        )
+        .await?;
+        // A repository without a first commit prints `HEAD` too, on its way to failing.
+        Ok(head.succeeded() && head.stdout.trim() == "HEAD")
+    }
+
+    /// Whether a rebase that did not finish is waiting for the user, as opposed to one that never
+    /// started. Every rebase detaches HEAD while it runs, which is the only sign an older git
+    /// without `REBASE_HEAD` leaves.
+    async fn rebase_in_progress_in_job(repo: &RepositoryState, id: RepositoryId) -> Result<bool> {
+        let rebase_head = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "rev-parse".into(),
+                "--verify".into(),
+                "--quiet".into(),
+                SequencerKind::Rebase.in_progress_ref().into(),
+            ],
+        )
+        .await?;
+        if rebase_head.succeeded() {
+            return Ok(true);
+        }
+        Self::head_is_detached_in_job(repo, id).await
+    }
+
+    async fn count_commits_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        range: &str,
+    ) -> Result<usize> {
+        let output = Self::run_step_in_job(
+            repo,
+            id,
+            vec!["log".into(), "--format=%H".into(), range.to_string()],
+        )
+        .await?;
+        anyhow::ensure!(
+            output.succeeded(),
+            "書き換える範囲を調べられませんでした: {}",
+            output.failure_message()
+        );
+        Ok(output
+            .stdout
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .count())
+    }
+
+    async fn commit_is_pushed_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        sha: &str,
+    ) -> Result<bool> {
+        let output =
+            Self::run_step_in_job(repo, id, git::repository::pushed_probe_args(sha)).await?;
+        Ok(git::repository::is_pushed_from_probe(&output))
+    }
+
+    /// The newest stash entry, if any. A rewrite whose `--autostash` could not put the user's
+    /// changes back leaves a new one, and exits as if nothing went wrong.
+    async fn stash_top_in_job(repo: &RepositoryState, id: RepositoryId) -> Result<Option<String>> {
+        let output = Self::run_step_in_job(
+            repo,
+            id,
+            vec![
+                "rev-parse".into(),
+                "--verify".into(),
+                "--quiet".into(),
+                "refs/stash".into(),
+            ],
+        )
+        .await?;
+        Ok(output.succeeded().then(|| output.stdout.trim().to_string()))
+    }
+
+    /// Refuses a history rewrite that would check out or replay a commit touching a path where the
+    /// working tree has an ignored, untracked file: git overwrites such a file without asking and
+    /// deletes it for good once a later commit stops tracking the path (see
+    /// [`git::repository::touched_paths_probe_commands`]).
+    async fn ensure_no_ignored_file_is_overwritten_in_job(
+        repo: &RepositoryState,
+        id: RepositoryId,
+        commits: git::repository::RewrittenCommits<'_>,
+    ) -> Result<()> {
+        let mut touched = BTreeSet::new();
+        for args in git::repository::touched_paths_probe_commands(commits) {
+            let output = Self::run_step_in_job(repo, id, args).await?;
+            anyhow::ensure!(
+                output.succeeded(),
+                "書き換えで変わるファイルを調べられませんでした: {}",
+                output.failure_message()
+            );
+            touched.extend(
+                git::repository::parse_nul_separated_paths(&output.stdout).map(str::to_string),
+            );
+        }
+        let mut ignored = Vec::new();
+        for args in
+            git::repository::ignored_files_probe_commands(touched.iter().map(String::as_str))
+        {
+            let output = Self::run_step_in_job(repo, id, args)
+                .await
+                .map_err(explain_old_server_refusing_ls_files)?;
+            anyhow::ensure!(
+                output.succeeded(),
+                "無視されているローカルのファイルを調べられませんでした: {}",
+                output.failure_message()
+            );
+            ignored.extend(
+                git::repository::parse_nul_separated_paths(&output.stdout).map(str::to_string),
+            );
+        }
+        if let Some(refusal) = git::repository::ignored_files_refusal(&ignored) {
+            anyhow::bail!(refusal);
+        }
         Ok(())
     }
 
@@ -10815,6 +12103,13 @@ impl Repository {
             }
             self.snapshot.branch_list = new_branch_list;
             self.snapshot.branch_list_error = new_branch_list_error;
+        }
+        if update.is_last_update {
+            self.snapshot.loose_refs = update.loose_ref_count.map(|count| LooseRefCount {
+                count: count as usize,
+                complete: !update.loose_ref_count_is_lower_bound,
+            });
+            self.set_tags_fingerprint(update.tags_fingerprint, cx);
         }
 
         // We don't store any merge head state for downstream projects; the upstream
@@ -11637,6 +12932,8 @@ fn format_job_key(key: &GitJobKey) -> SharedString {
         GitJobKey::RefreshStatuses => "RefreshStatuses".into(),
         GitJobKey::ReloadGitState => "ReloadGitState".into(),
         GitJobKey::SequencerState => "SequencerState".into(),
+        GitJobKey::LatestTags(requester) => format!("LatestTags({requester})").into(),
+        GitJobKey::LatestDescribe(requester) => format!("LatestDescribe({requester})").into(),
     }
 }
 
@@ -12108,6 +13405,129 @@ fn log_source_from_proto(log_source: proto::GitLogSource) -> Result<LogSource> {
     }
 }
 
+/// What `SearchCommitsResponse.filters_version` says: this server applies every filter of
+/// `SearchCommits` up to here.
+const SEARCH_COMMITS_FILTERS_VERSION: u32 = 1;
+
+const OLD_SERVER_COMMIT_SEARCH_MESSAGE: &str = "接続先の Zed のサーバーが古いため、この条件では検索できません。接続先の Zed を更新してください。";
+
+fn search_commit_args_to_proto(
+    project_id: u64,
+    repository_id: u64,
+    log_source: &LogSource,
+    search_args: &SearchCommitArgs,
+) -> proto::SearchCommits {
+    let mut authors = search_args.authors.iter().map(|author| author.to_string());
+    proto::SearchCommits {
+        project_id,
+        repository_id,
+        log_source: Some(log_source_to_proto(log_source)),
+        query: search_args.query.to_string(),
+        case_sensitive: search_args.case_sensitive,
+        // The first author goes where an older server looks for it, so that a search needing
+        // no more than that still works against one.
+        author: authors.next(),
+        more_authors: authors.collect(),
+        only_commits: search_args
+            .commits
+            .as_ref()
+            .map(|commits| proto::SearchCommitsCommitSet {
+                shas: commits.iter().map(|commit| commit.to_string()).collect(),
+            }),
+        branch: search_args.branch.as_ref().map(|branch| branch.to_string()),
+        path: search_args.path.as_ref().map(|path| path.to_string()),
+        since: search_args.since,
+        until: search_args.until,
+        change: search_args.change.as_ref().map(|change| change.to_string()),
+        merges: match search_args.merges {
+            MergeFilter::Include => None,
+            MergeFilter::Exclude => Some(proto::SearchCommitsMerges::SearchCommitsExcludeMerges),
+            MergeFilter::Only => Some(proto::SearchCommitsMerges::SearchCommitsOnlyMerges),
+        }
+        .map(|merges| merges as i32),
+        sha_prefix: search_args
+            .sha_prefix
+            .as_ref()
+            .map(|sha_prefix| sha_prefix.to_string()),
+    }
+}
+
+/// The search a peer asked for, checked the way a local one is: a filter that arrives must narrow
+/// the search, not quietly fall away.
+fn search_commit_args_from_proto(request: &proto::SearchCommits) -> Result<SearchCommitArgs> {
+    let merges = match request.merges {
+        None => MergeFilter::Include,
+        Some(merges) => match proto::SearchCommitsMerges::from_i32(merges) {
+            Some(proto::SearchCommitsMerges::SearchCommitsIncludeMerges) => MergeFilter::Include,
+            Some(proto::SearchCommitsMerges::SearchCommitsExcludeMerges) => MergeFilter::Exclude,
+            Some(proto::SearchCommitsMerges::SearchCommitsOnlyMerges) => MergeFilter::Only,
+            None => bail!("マージの指定 ({merges}) を読めません。"),
+        },
+    };
+    let commits = request
+        .only_commits
+        .as_ref()
+        .map(|commits| {
+            commits
+                .shas
+                .iter()
+                .map(|sha| Oid::from_str(sha))
+                .collect::<Result<Vec<_>>>()
+        })
+        .transpose()?;
+    let search_args = SearchCommitArgs {
+        query: SharedString::from(request.query.clone()),
+        authors: request
+            .author
+            .iter()
+            .chain(request.more_authors.iter())
+            .map(|author| SharedString::from(author.clone()))
+            .collect(),
+        case_sensitive: request.case_sensitive,
+        commits,
+        branch: request.branch.clone().map(SharedString::from),
+        path: request.path.clone().map(SharedString::from),
+        since: request.since,
+        until: request.until,
+        change: request.change.clone().map(SharedString::from),
+        merges,
+        sha_prefix: request.sha_prefix.clone().map(SharedString::from),
+    };
+    search_args.validate()?;
+    Ok(search_args)
+}
+
+/// Passes a remote search's results on. When the search uses a filter an older server would drop,
+/// an answer from a server that does not say it applies them all is refused, not shown: it would
+/// hold more commits than were asked for.
+async fn forward_remote_commit_search(
+    mut stream: impl Stream<Item = Result<proto::SearchCommitsResponse>> + Unpin,
+    requires_filters: bool,
+    request_tx: async_channel::Sender<Oid>,
+) -> Result<()> {
+    let mut filters_checked = !requires_filters;
+    while let Some(response) = stream.next().await {
+        let response = response?;
+        if !filters_checked {
+            anyhow::ensure!(
+                response
+                    .filters_version
+                    .is_some_and(|version| version >= SEARCH_COMMITS_FILTERS_VERSION),
+                OLD_SERVER_COMMIT_SEARCH_MESSAGE
+            );
+            filters_checked = true;
+        }
+        for sha in &response.shas {
+            let oid = Oid::from_str(sha)?;
+            if request_tx.send(oid).await.is_err() {
+                return Ok(());
+            }
+        }
+    }
+    anyhow::ensure!(filters_checked, OLD_SERVER_COMMIT_SEARCH_MESSAGE);
+    Ok(())
+}
+
 fn log_order_to_proto(log_order: LogOrder) -> i32 {
     match log_order {
         LogOrder::DateOrder => proto::get_initial_graph_data::LogOrder::DateOrder as i32,
@@ -12353,6 +13773,16 @@ impl Repository {
         cx.emit(RepositoryEvent::BranchListChanged);
     }
 
+    /// Stands in for a branch listing that read the ref files, which the fake repository does
+    /// not have.
+    pub fn apply_ref_storage_scan_for_test(
+        &mut self,
+        ref_storage: RefStorageScan,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_ref_storage_scan(ref_storage, cx);
+    }
+
     pub fn loaded_commit_data_for_test(&self) -> HashMap<Oid, CommitData> {
         self.commit_data
             .iter()
@@ -12382,6 +13812,161 @@ mod tests {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
         });
+    }
+
+    #[test]
+    fn test_search_commit_args_round_trip_through_proto() {
+        let full = SearchCommitArgs {
+            query: "直した".into(),
+            authors: vec!["山田".into(), "yamada@example.com".into()],
+            case_sensitive: true,
+            commits: Some(vec![Oid::from_bytes(&[7; 20]).unwrap()]),
+            branch: Some("refs/heads/feature".into()),
+            path: Some("src/*.rs".into()),
+            since: Some(1_700_000_000),
+            until: Some(1_800_000_000),
+            change: Some("needle".into()),
+            merges: MergeFilter::Only,
+            sha_prefix: Some("abcd".into()),
+        };
+        for args in [
+            full.clone(),
+            SearchCommitArgs {
+                query: "fix".into(),
+                ..SearchCommitArgs::default()
+            },
+            SearchCommitArgs {
+                merges: MergeFilter::Exclude,
+                commits: Some(Vec::new()),
+                ..SearchCommitArgs::default()
+            },
+        ] {
+            let request = search_commit_args_to_proto(1, 2, &LogSource::All, &args);
+            assert_eq!(search_commit_args_from_proto(&request).unwrap(), args);
+        }
+
+        let request = search_commit_args_to_proto(1, 2, &LogSource::All, &full);
+        assert_eq!(
+            request.author.as_deref(),
+            Some("山田"),
+            "the first author goes where an older server reads it"
+        );
+        assert_eq!(request.more_authors, ["yamada@example.com"]);
+
+        // A peer's request is checked like a local search: nothing that would widen it or reach
+        // git as an option gets through.
+        for request in [
+            proto::SearchCommits {
+                more_authors: vec![" ".into()],
+                ..request.clone()
+            },
+            proto::SearchCommits {
+                branch: Some("--all".into()),
+                ..request.clone()
+            },
+            proto::SearchCommits {
+                branch: Some("refs/heads/a..b".into()),
+                ..request.clone()
+            },
+            proto::SearchCommits {
+                path: Some("  ".into()),
+                ..request.clone()
+            },
+            proto::SearchCommits {
+                sha_prefix: Some("xyz0".into()),
+                ..request.clone()
+            },
+            proto::SearchCommits {
+                merges: Some(proto::SearchCommitsMerges::SearchCommitsOnlyMerges as i32 + 1),
+                ..request.clone()
+            },
+            proto::SearchCommits {
+                only_commits: Some(proto::SearchCommitsCommitSet {
+                    shas: vec!["not a sha".into()],
+                }),
+                ..request
+            },
+        ] {
+            assert!(
+                search_commit_args_from_proto(&request).is_err(),
+                "{request:?} should be refused"
+            );
+        }
+    }
+
+    #[gpui::test]
+    async fn test_remote_commit_search_refuses_an_old_servers_answer(cx: &mut TestAppContext) {
+        let sha = |byte: u8| Oid::from_bytes(&[byte; 20]).unwrap();
+        let response = |shas: &[u8], filters_version: Option<u32>| {
+            Ok(proto::SearchCommitsResponse {
+                shas: shas.iter().map(|byte| sha(*byte).to_string()).collect(),
+                filters_version,
+            })
+        };
+        let forward = async |responses: Vec<Result<proto::SearchCommitsResponse>>,
+                             requires_filters: bool| {
+            let (request_tx, request_rx) = async_channel::unbounded();
+            let result = forward_remote_commit_search(
+                futures::stream::iter(responses),
+                requires_filters,
+                request_tx,
+            )
+            .await;
+            let mut found = Vec::new();
+            while let Ok(oid) = request_rx.try_recv() {
+                found.push(oid);
+            }
+            (result, found)
+        };
+
+        let (result, found) = forward(
+            vec![
+                response(&[], Some(SEARCH_COMMITS_FILTERS_VERSION)),
+                response(&[1, 2], None),
+            ],
+            true,
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(found, [sha(1), sha(2)]);
+
+        // An older server drops the filters it does not know and answers with more commits than
+        // were asked for; none of them may reach the graph.
+        let (result, found) = forward(vec![response(&[1, 2], None)], true).await;
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .starts_with("接続先の Zed のサーバーが古いため"),
+        );
+        assert!(found.is_empty());
+        let (result, _) = forward(Vec::new(), true).await;
+        assert!(
+            result.is_err(),
+            "an older server with nothing to say is not taken for one that found nothing"
+        );
+
+        let (result, found) = forward(vec![response(&[1], None)], false).await;
+        assert!(
+            result.is_ok(),
+            "a plain search still works against an older server"
+        );
+        assert_eq!(found, [sha(1)]);
+
+        let (result, _) = forward(
+            vec![
+                response(&[], Some(SEARCH_COMMITS_FILTERS_VERSION)),
+                Err(anyhow!("ブランチ「x」はありません。")),
+            ],
+            true,
+        )
+        .await;
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "ブランチ「x」はありません。",
+            "the server's reason reaches the search box"
+        );
+        cx.run_until_parked();
     }
 
     type TestPasswordPrompt = (
@@ -12950,6 +14535,660 @@ mod tests {
         );
     }
 
+    /// `git` run in `directory` without the machine's global or system configuration, so that
+    /// signing, hooks or a default branch set there cannot change the history a test builds.
+    #[allow(clippy::disallowed_methods)]
+    #[track_caller]
+    fn run_git(directory: &Path, arguments: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .args(arguments)
+            .current_dir(directory)
+            .env("GIT_CONFIG_GLOBAL", "")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .expect("git should run");
+        assert!(
+            output.status.success(),
+            "git {arguments:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    /// The closing `rebase --onto` of `rewrite_range` replays every commit after the range, and a
+    /// plain rebase flattens a merge commit it meets there. Against a real git: a range below a
+    /// merge is refused before anything moves, and a range above one is rewritten with the merge
+    /// left a merge.
+    #[gpui::test]
+    async fn test_rewrite_range_refuses_a_merge_after_the_range(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        run_git(&repo_dir, &["init"]);
+        run_git(&repo_dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        // Local, because the rewrite's own git reads the machine's global configuration.
+        for (key, value) in [
+            ("user.name", "test"),
+            ("user.email", "test@zed.dev"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+        ] {
+            run_git(&repo_dir, &["config", key, value]);
+        }
+        let commit = |name: &str| {
+            std::fs::write(repo_dir.join(format!("{name}.txt")), format!("{name}\n")).unwrap();
+            run_git(&repo_dir, &["add", "."]);
+            run_git(&repo_dir, &["commit", "-m", name]);
+            run_git(&repo_dir, &["rev-parse", "HEAD"])
+        };
+        commit("initial");
+        let below_oldest = commit("A");
+        let below_newest = commit("B");
+        run_git(&repo_dir, &["checkout", "-b", "side"]);
+        let side = commit("S");
+        run_git(&repo_dir, &["checkout", "main"]);
+        commit("C");
+        run_git(&repo_dir, &["merge", "--no-ff", "--no-edit", "side"]);
+        let above_oldest = commit("E");
+        let above_newest = commit("F");
+        let head_before = run_git(&repo_dir, &["rev-parse", "HEAD"]);
+
+        let project = Project::test(
+            Arc::new(fs::RealFs::new(None, cx.executor())),
+            [repo_dir.as_path()],
+            cx,
+        )
+        .await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("the project is a repository")
+        });
+        assert_eq!(
+            repository.read_with(cx, |repository, _| repository.current_branch_name()),
+            Some("main".to_string())
+        );
+        let swapped = |oldest: &str, newest: &str| {
+            vec![
+                git::repository::RewriteGroup {
+                    shas: vec![newest.to_string()],
+                    message: None,
+                },
+                git::repository::RewriteGroup {
+                    shas: vec![oldest.to_string()],
+                    message: None,
+                },
+            ]
+        };
+
+        // A and B swapped: both are plain commits, but the merge above them would be replayed.
+        let error = repository
+            .update(cx, |repository, cx| {
+                repository.rewrite_range(
+                    below_oldest.clone(),
+                    below_newest.clone(),
+                    swapped(&below_oldest, &below_newest),
+                    vec![below_oldest.clone(), below_newest.clone()],
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .expect_err("a merge after the range must stop the rewrite");
+        assert!(
+            error.to_string().contains("マージコミット"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(
+            run_git(&repo_dir, &["rev-parse", "HEAD"]),
+            head_before,
+            "the branch must not move"
+        );
+        assert_eq!(
+            run_git(&repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "main"
+        );
+        assert_eq!(
+            run_git(
+                &repo_dir,
+                &[
+                    "branch",
+                    "--list",
+                    &git::repository::rewrite_scratch_branch_name(&below_newest),
+                ],
+            ),
+            "",
+            "no scratch branch may be left behind"
+        );
+
+        // E and F swapped: the merge is below the range, so it is only the base, never replayed.
+        let output = repository
+            .update(cx, |repository, cx| {
+                repository.rewrite_range(
+                    above_oldest.clone(),
+                    above_newest.clone(),
+                    swapped(&above_oldest, &above_newest),
+                    vec![above_oldest.clone(), above_newest.clone()],
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .expect("a range after the merge can be rewritten");
+        assert!(output.succeeded(), "{}", output.failure_message());
+        assert_eq!(
+            run_git(&repo_dir, &["log", "--format=%s", "-2"])
+                .lines()
+                .collect::<Vec<_>>(),
+            ["E", "F"]
+        );
+        assert_eq!(
+            run_git(&repo_dir, &["rev-parse", "HEAD~2^2"]),
+            side,
+            "the merge below the range is still a merge"
+        );
+    }
+
+    /// Only the commits of `groups` are applied onto the scratch branch, so against a real git: a
+    /// list that did not show the range git has (a commit in between it never showed, or one that
+    /// is not in the range), a commit from outside the list, a commit applied twice, or a range
+    /// whose oldest end is not on the branch is refused before anything moves, while a commit the
+    /// list showed and the user left out is dropped.
+    #[gpui::test]
+    async fn test_rewrite_range_refuses_groups_that_do_not_match_the_range(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        run_git(&repo_dir, &["init"]);
+        run_git(&repo_dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        for (key, value) in [
+            ("user.name", "test"),
+            ("user.email", "test@zed.dev"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+        ] {
+            run_git(&repo_dir, &["config", key, value]);
+        }
+        let commit = |name: &str| {
+            std::fs::write(repo_dir.join(format!("{name}.txt")), format!("{name}\n")).unwrap();
+            run_git(&repo_dir, &["add", "."]);
+            run_git(&repo_dir, &["commit", "-m", name]);
+            run_git(&repo_dir, &["rev-parse", "HEAD"])
+        };
+        commit("initial");
+        let first = commit("A");
+        run_git(&repo_dir, &["checkout", "-b", "side"]);
+        let elsewhere = commit("X");
+        run_git(&repo_dir, &["checkout", "main"]);
+        let second = commit("B");
+        let third = commit("C");
+        let head_before = run_git(&repo_dir, &["rev-parse", "HEAD"]);
+
+        let project = Project::test(
+            Arc::new(fs::RealFs::new(None, cx.executor())),
+            [repo_dir.as_path()],
+            cx,
+        )
+        .await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("the project is a repository")
+        });
+        let group = |sha: &String| git::repository::RewriteGroup {
+            shas: vec![sha.clone()],
+            message: None,
+        };
+
+        let refusals = [
+            // The list showed A and C as if they were next to each other: B, which it never
+            // showed, would silently leave the branch.
+            (
+                first.clone(),
+                third.clone(),
+                vec![group(&third), group(&first)],
+                vec![first.clone(), third.clone()],
+                "一致しません",
+            ),
+            // The list showed a commit the range does not have.
+            (
+                first.clone(),
+                second.clone(),
+                vec![group(&second), group(&first)],
+                vec![first.clone(), second.clone(), elsewhere.clone()],
+                "一致しません",
+            ),
+            (
+                first.clone(),
+                second.clone(),
+                vec![group(&second), group(&elsewhere), group(&first)],
+                vec![first.clone(), second.clone()],
+                "範囲に無いコミット",
+            ),
+            (
+                first.clone(),
+                second.clone(),
+                vec![group(&second), group(&first), group(&second)],
+                vec![first.clone(), second.clone()],
+                "2 回",
+            ),
+            (
+                elsewhere.clone(),
+                second.clone(),
+                vec![group(&second), group(&elsewhere)],
+                vec![elsewhere.clone(), second.clone()],
+                "現在のブランチの履歴に無い",
+            ),
+        ];
+        for (oldest, newest, groups, expected_shas, reason) in refusals {
+            let error = repository
+                .update(cx, |repository, cx| {
+                    repository.rewrite_range(oldest, newest, groups, expected_shas, cx)
+                })
+                .await
+                .unwrap()
+                .expect_err("groups that do not match the range must stop the rewrite");
+            assert!(
+                error.to_string().contains(reason),
+                "expected {reason:?}, got: {error:#}"
+            );
+            assert_eq!(
+                run_git(&repo_dir, &["rev-parse", "HEAD"]),
+                head_before,
+                "the branch must not move"
+            );
+            assert_eq!(
+                run_git(&repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"]),
+                "main"
+            );
+        }
+
+        // A shown in the list and left out of the groups is A dropped, which is still allowed.
+        let output = repository
+            .update(cx, |repository, cx| {
+                repository.rewrite_range(
+                    first.clone(),
+                    third.clone(),
+                    vec![group(&second), group(&third)],
+                    vec![first.clone(), second.clone(), third.clone()],
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .expect("dropping a commit of the range is a rewrite like any other");
+        assert!(output.succeeded(), "{}", output.failure_message());
+        assert_eq!(
+            run_git(&repo_dir, &["log", "--format=%s"])
+                .lines()
+                .collect::<Vec<_>>(),
+            ["C", "B", "initial"]
+        );
+    }
+
+    /// A file the branch ignores but an older commit still tracks (a local `.env` that was
+    /// committed once) must survive a rewrite that starts from before it stopped being tracked:
+    /// git counts ignored files as expendable, so a plain `switch` onto the range's base would
+    /// overwrite it, and replaying the commit that untracked it would then delete it.
+    #[gpui::test]
+    async fn test_rewrite_range_keeps_an_ignored_file_the_base_still_tracks(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        run_git(&repo_dir, &["init"]);
+        run_git(&repo_dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        for (key, value) in [
+            ("user.name", "test"),
+            ("user.email", "test@zed.dev"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+        ] {
+            run_git(&repo_dir, &["config", key, value]);
+        }
+        let commit = |name: &str| {
+            std::fs::write(repo_dir.join(format!("{name}.txt")), format!("{name}\n")).unwrap();
+            run_git(&repo_dir, &["add", "."]);
+            run_git(&repo_dir, &["commit", "-m", name]);
+            run_git(&repo_dir, &["rev-parse", "HEAD"])
+        };
+        std::fs::write(repo_dir.join(".env"), "committed once\n").unwrap();
+        commit("initial");
+        let first = commit("A");
+        let second = commit("B");
+        run_git(&repo_dir, &["rm", "--cached", "-q", ".env"]);
+        std::fs::write(repo_dir.join(".gitignore"), ".env\n").unwrap();
+        run_git(&repo_dir, &["add", ".gitignore"]);
+        run_git(&repo_dir, &["commit", "-m", "stop tracking .env"]);
+        commit("C");
+        std::fs::write(repo_dir.join(".env"), "local secret\n").unwrap();
+        let head_before = run_git(&repo_dir, &["rev-parse", "HEAD"]);
+
+        let project = Project::test(
+            Arc::new(fs::RealFs::new(None, cx.executor())),
+            [repo_dir.as_path()],
+            cx,
+        )
+        .await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("the project is a repository")
+        });
+
+        let group = |sha: &String| git::repository::RewriteGroup {
+            shas: vec![sha.clone()],
+            message: None,
+        };
+        let outcome = repository
+            .update(cx, |repository, cx| {
+                repository.rewrite_range(
+                    first.clone(),
+                    second.clone(),
+                    vec![group(&second), group(&first)],
+                    vec![first.clone(), second.clone()],
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        // git refusing to switch is the expected way out; what matters is that nothing moved.
+        if let Ok(output) = &outcome {
+            assert!(
+                !output.succeeded(),
+                "the rewrite cannot have gone through without touching the ignored file"
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(repo_dir.join(".env")).unwrap(),
+            "local secret\n",
+            "the ignored file must be left exactly as it was"
+        );
+        assert_eq!(run_git(&repo_dir, &["rev-parse", "HEAD"]), head_before);
+        assert_eq!(
+            run_git(&repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "main"
+        );
+        assert_eq!(
+            run_git(
+                &repo_dir,
+                &[
+                    "branch",
+                    "--list",
+                    &git::repository::rewrite_scratch_branch_name(&second),
+                ],
+            ),
+            "",
+            "no scratch branch may be left behind"
+        );
+    }
+
+    /// An older remote server refusing `ls-files` by name is told apart from any other failure,
+    /// and still refuses the rewrite.
+    #[test]
+    fn test_explain_old_server_refusing_ls_files() {
+        let refused =
+            explain_old_server_refusing_ls_files(anyhow!("unsupported git command: ls-files"));
+        assert_eq!(
+            refused.to_string(),
+            "接続先の Zed のサーバーが古いため、この書き換えは使えません。接続先の Zed を更新してください。"
+        );
+        for other in [
+            "unsupported git command argument: --others",
+            "connection lost",
+        ] {
+            assert_eq!(
+                explain_old_server_refusing_ls_files(anyhow!("{other}")).to_string(),
+                other
+            );
+        }
+    }
+
+    /// `cherry-pick` and the replay of a rebase overwrite an ignored local file with the version a
+    /// commit tracks, without a word, and delete it once a later commit stops tracking it. Against
+    /// a real git, every rewrite that would replay such a commit (reordering, dropping, squashing,
+    /// rewording, fixup, the merge-request box) is refused before anything moves, naming the file;
+    /// one that replays nothing touching it goes through with the file left alone.
+    #[gpui::test]
+    async fn test_history_rewrites_refuse_to_overwrite_an_ignored_file(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        run_git(&repo_dir, &["init"]);
+        run_git(&repo_dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        for (key, value) in [
+            ("user.name", "test"),
+            ("user.email", "test@zed.dev"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+        ] {
+            run_git(&repo_dir, &["config", key, value]);
+        }
+        let commit = |name: &str| {
+            std::fs::write(repo_dir.join(format!("{name}.txt")), format!("{name}\n")).unwrap();
+            run_git(&repo_dir, &["add", "."]);
+            run_git(&repo_dir, &["commit", "-m", name]);
+            run_git(&repo_dir, &["rev-parse", "HEAD"])
+        };
+        let initial = commit("initial");
+        let first = commit("A");
+        std::fs::write(repo_dir.join(".env"), "committed by mistake\n").unwrap();
+        let second = commit("B");
+        run_git(&repo_dir, &["rm", "--cached", "-q", ".env"]);
+        std::fs::write(repo_dir.join(".gitignore"), ".env\n").unwrap();
+        run_git(&repo_dir, &["add", ".gitignore"]);
+        run_git(&repo_dir, &["commit", "-m", "stop tracking .env"]);
+        let fourth = commit("D");
+        let fifth = commit("E");
+        std::fs::write(repo_dir.join(".env"), "local secret\n").unwrap();
+        let head_before = run_git(&repo_dir, &["rev-parse", "HEAD"]);
+
+        let project = Project::test(
+            Arc::new(fs::RealFs::new(None, cx.executor())),
+            [repo_dir.as_path()],
+            cx,
+        )
+        .await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("the project is a repository")
+        });
+        let assert_untouched = |operation: &str| {
+            assert_eq!(
+                std::fs::read_to_string(repo_dir.join(".env")).unwrap(),
+                "local secret\n",
+                "{operation} must leave the ignored file as it was"
+            );
+            assert_eq!(
+                run_git(&repo_dir, &["rev-parse", "HEAD"]),
+                head_before,
+                "{operation} must not move the branch"
+            );
+            assert_eq!(
+                run_git(&repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"]),
+                "main"
+            );
+            let scratch = format!("{}*", git::repository::REWRITE_SCRATCH_BRANCH_PREFIX);
+            assert_eq!(
+                run_git(&repo_dir, &["branch", "--list", &scratch]),
+                "",
+                "{operation} must not leave a scratch branch behind"
+            );
+        };
+        let assert_refused = |operation: &str, error: anyhow::Error| {
+            let message = format!("{error:#}");
+            assert!(
+                message.contains("無視されているローカルのファイル .env が"),
+                "{operation}: unexpected error: {message}"
+            );
+            assert_untouched(operation);
+        };
+        let group = |sha: &String| git::repository::RewriteGroup {
+            shas: vec![sha.clone()],
+            message: None,
+        };
+
+        // B tracks the file and a later commit stops tracking it, so each of these would replay
+        // B's version over the local one and then delete it.
+        let error = repository
+            .update(cx, |repository, cx| {
+                repository.rewrite_range(
+                    first.clone(),
+                    second.clone(),
+                    vec![group(&second), group(&first)],
+                    vec![first.clone(), second.clone()],
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .expect_err("reordering A and B must be refused");
+        assert_refused("rewrite_range", error);
+
+        let error = repository
+            .update(cx, |repository, cx| {
+                repository.drop_commit(first.clone(), cx)
+            })
+            .await
+            .unwrap()
+            .expect_err("dropping A must be refused");
+        assert_refused("drop_commit", error);
+
+        let error = repository
+            .update(cx, |repository, cx| {
+                repository.squash_range(first.clone(), second.clone(), "A と B".to_string(), cx)
+            })
+            .await
+            .unwrap()
+            .expect_err("squashing A and B must be refused");
+        assert_refused("squash_range", error);
+
+        let error = repository
+            .update(cx, |repository, cx| {
+                repository.reword_commit(first.clone(), "A (reworded)".to_string(), cx)
+            })
+            .await
+            .unwrap()
+            .expect_err("rewording A must be refused");
+        assert_refused("reword_commit", error);
+
+        std::fs::write(repo_dir.join("A.txt"), "A, amended\n").unwrap();
+        run_git(&repo_dir, &["add", "A.txt"]);
+        let error = repository
+            .update(cx, |repository, cx| {
+                repository.fixup_commit(first.clone(), git::repository::FixupChanges::Staged, cx)
+            })
+            .await
+            .unwrap()
+            .expect_err("a fixup of A must be refused");
+        assert_refused("fixup_commit", error);
+        assert_eq!(
+            run_git(&repo_dir, &["diff", "--cached", "--name-only"]),
+            "A.txt",
+            "the refused fixup leaves the staged change staged"
+        );
+        run_git(&repo_dir, &["reset", "-q", "--hard"]);
+
+        let merge_request = |shas: &[&String], branch: &str| MergeRequestBuild {
+            base: initial.clone(),
+            shas_oldest_first: shas.iter().map(|sha| sha.to_string()).collect(),
+            merge_request_branch: branch.to_string(),
+            message: "MR".to_string(),
+            recreate: false,
+            origin_branch: "main".to_string(),
+            scratch_branch: git::repository::merge_request_scratch_branch_name(
+                shas.last().map(|sha| sha.as_str()).unwrap_or_default(),
+            ),
+        };
+        let outcome = repository
+            .update(cx, |repository, cx| {
+                repository.build_merge_request_branch(merge_request(&[&second], "mr/b"), cx)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        let MergeRequestBuildOutcome::Refused {
+            reason,
+            left_on_scratch_branch: false,
+        } = outcome
+        else {
+            panic!("a box holding B must be refused, got {outcome:?}");
+        };
+        assert!(
+            reason.contains("無視されているローカルのファイル .env が"),
+            "{reason}"
+        );
+        assert_untouched("build_merge_request_branch");
+        assert_eq!(run_git(&repo_dir, &["branch", "--list", "mr/b"]), "");
+
+        // Neither D nor E touches the file: the ignored file being there changes nothing.
+        let outcome = repository
+            .update(cx, |repository, cx| {
+                repository.build_merge_request_branch(merge_request(&[&fourth], "mr/d"), cx)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(outcome, MergeRequestBuildOutcome::Created { .. }),
+            "{outcome:?}"
+        );
+        assert_untouched("a merge request that does not touch the file");
+
+        let output = repository
+            .update(cx, |repository, cx| {
+                repository.rewrite_range(
+                    fourth.clone(),
+                    fifth.clone(),
+                    vec![group(&fifth), group(&fourth)],
+                    vec![fourth.clone(), fifth.clone()],
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .expect("a rewrite that does not touch the file goes through");
+        assert!(output.succeeded(), "{}", output.failure_message());
+        assert_eq!(
+            run_git(&repo_dir, &["log", "--format=%s", "-2"])
+                .lines()
+                .collect::<Vec<_>>(),
+            ["D", "E"]
+        );
+        assert_eq!(
+            std::fs::read_to_string(repo_dir.join(".env")).unwrap(),
+            "local secret\n"
+        );
+    }
+
     fn verify_invariants(repository: &Repository) -> anyhow::Result<()> {
         match &repository.commit_data_handler {
             CommitDataHandlerState::Open(handler) => {
@@ -13425,6 +15664,813 @@ mod tests {
             );
         });
     }
+
+    async fn fake_repository(
+        cx: &mut TestAppContext,
+    ) -> (
+        Arc<FakeFs>,
+        Entity<Repository>,
+        Arc<Mutex<Vec<RepositoryEvent>>>,
+    ) {
+        use util::path;
+
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            Path::new(path!("/project")),
+            json!({
+                ".git": {},
+                "file.txt": "content",
+            }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [Path::new(path!("/project"))], cx).await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+        let events = Arc::new(Mutex::new(Vec::new()));
+        cx.update(|cx| {
+            let events = events.clone();
+            cx.subscribe(&repository, move |_, event: &RepositoryEvent, _| {
+                events.lock().push(event.clone());
+            })
+            .detach();
+        });
+        (fs, repository, events)
+    }
+
+    fn describe_invocations(fs: &FakeFs) -> Vec<String> {
+        fs.with_git_state(Path::new(util::path!("/project/.git")), false, |state| {
+            state
+                .run_command_log
+                .iter()
+                .filter(|(args, _)| args.first().map(String::as_str) == Some("describe"))
+                .filter_map(|(args, _)| args.last().cloned())
+                .collect()
+        })
+        .unwrap()
+    }
+
+    #[gpui::test]
+    async fn test_latest_describe_runs_only_the_newest_request(cx: &mut TestAppContext) {
+        let (fs, repository, _) = fake_repository(cx).await;
+        fs.with_git_state(Path::new(util::path!("/project/.git")), false, |state| {
+            for committish in ["first", "second", "third"] {
+                state.command_outputs.insert(
+                    format!("describe --tags --long {committish}"),
+                    GitCommandOutput {
+                        stdout: format!("v1-0-g{committish}\n"),
+                        stderr: String::new(),
+                        exit_code: Some(0),
+                    },
+                );
+            }
+        })
+        .unwrap();
+
+        let requester = EntityId::from(1u64);
+        let (first, second, third) = repository.update(cx, |repository, _| {
+            (
+                repository.latest_describe("first".into(), requester),
+                repository.latest_describe("second".into(), requester),
+                repository.latest_describe("third".into(), requester),
+            )
+        });
+        cx.run_until_parked();
+
+        assert_eq!(describe_invocations(&fs), ["third"]);
+        assert!(first.await.is_err(), "superseded requests are dropped");
+        assert!(second.await.is_err());
+        assert_eq!(
+            third
+                .await
+                .unwrap()
+                .unwrap()
+                .map(|distance| distance.short_sha),
+            Some("third".to_string())
+        );
+
+        // Another view's request, and plain `describe`, are never dropped for it.
+        let (other_view, plain) = repository.update(cx, |repository, _| {
+            (
+                repository.latest_describe("first".into(), requester),
+                repository.describe("second".into()),
+            )
+        });
+        let other_requester = repository.update(cx, |repository, _| {
+            repository.latest_describe("third".into(), EntityId::from(2u64))
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            describe_invocations(&fs),
+            ["third", "first", "second", "third"]
+        );
+        assert!(other_view.await.unwrap().is_ok());
+        assert!(plain.await.unwrap().is_ok());
+        assert!(other_requester.await.unwrap().is_ok());
+    }
+
+    #[gpui::test]
+    async fn test_tags_changed_follows_the_tags_fingerprint(cx: &mut TestAppContext) {
+        let (_fs, repository, events) = fake_repository(cx).await;
+        let tag_events = || {
+            events
+                .lock()
+                .drain(..)
+                .filter(|event| *event == RepositoryEvent::TagsChanged)
+                .count()
+        };
+        let scan = |tags_fingerprint: Option<u64>, loose_ref_count: Option<usize>| RefStorageScan {
+            loose_refs: loose_ref_count.map(|count| LooseRefCount {
+                count,
+                complete: true,
+            }),
+            tags_fingerprint,
+        };
+        tag_events();
+
+        // The fake repository reads no ref files, so its scans never announce anything.
+        repository.read_with(cx, |repository, _| {
+            assert_eq!(repository.snapshot.tags_fingerprint, None);
+            assert_eq!(repository.snapshot.loose_refs, None);
+        });
+
+        repository.update(cx, |repository, cx| {
+            repository.apply_ref_storage_scan_for_test(scan(Some(1), Some(1_500)), cx)
+        });
+        assert_eq!(tag_events(), 1, "the first fingerprint");
+        repository.update(cx, |repository, cx| {
+            repository.apply_ref_storage_scan_for_test(scan(Some(1), Some(10)), cx)
+        });
+        assert_eq!(tag_events(), 0, "a ref change that left the tags alone");
+        repository.read_with(cx, |repository, _| {
+            assert_eq!(
+                repository.snapshot.loose_refs,
+                Some(LooseRefCount {
+                    count: 10,
+                    complete: true,
+                })
+            );
+        });
+        repository.update(cx, |repository, cx| {
+            repository.apply_ref_storage_scan_for_test(scan(Some(2), Some(10)), cx)
+        });
+        assert_eq!(tag_events(), 1, "a tag change");
+        repository.update(cx, |repository, cx| {
+            repository.apply_ref_storage_scan_for_test(scan(None, None), cx)
+        });
+        assert_eq!(
+            tag_events(),
+            0,
+            "nothing is announced while the tags cannot be told"
+        );
+        repository.read_with(cx, |repository, _| {
+            assert_eq!(repository.snapshot.tags_fingerprint, None);
+        });
+    }
+
+    /// What a host sends about its refs arrives on the other end of an SSH project, and a host
+    /// too old to send it leaves the other end not knowing rather than guessing.
+    #[gpui::test]
+    async fn test_ref_storage_travels_in_repository_updates(cx: &mut TestAppContext) {
+        let (_fs, repository, events) = fake_repository(cx).await;
+        let host_update = repository.update(cx, |repository, cx| {
+            repository.apply_ref_storage_scan_for_test(
+                RefStorageScan {
+                    loose_refs: Some(LooseRefCount {
+                        count: 10_000,
+                        complete: false,
+                    }),
+                    tags_fingerprint: Some(7),
+                },
+                cx,
+            );
+            repository.snapshot.initial_update(1)
+        });
+        assert_eq!(host_update.tags_fingerprint, Some(7));
+        assert_eq!(host_update.loose_ref_count, Some(10_000));
+        assert!(host_update.loose_ref_count_is_lower_bound);
+
+        repository.update(cx, |repository, cx| {
+            repository.apply_ref_storage_scan_for_test(RefStorageScan::default(), cx);
+        });
+        events.lock().clear();
+        repository.update(cx, |repository, cx| {
+            repository
+                .apply_remote_update(host_update.clone(), cx)
+                .unwrap();
+        });
+        repository.read_with(cx, |repository, _| {
+            assert_eq!(repository.snapshot.tags_fingerprint, Some(7));
+            assert_eq!(
+                repository.snapshot.loose_refs,
+                Some(LooseRefCount {
+                    count: 10_000,
+                    complete: false,
+                })
+            );
+        });
+        assert!(events.lock().contains(&RepositoryEvent::TagsChanged));
+
+        events.lock().clear();
+        repository.update(cx, |repository, cx| {
+            repository
+                .apply_remote_update(
+                    proto::UpdateRepository {
+                        tags_fingerprint: None,
+                        loose_ref_count: None,
+                        loose_ref_count_is_lower_bound: false,
+                        ..host_update
+                    },
+                    cx,
+                )
+                .unwrap();
+        });
+        repository.read_with(cx, |repository, _| {
+            assert_eq!(repository.snapshot.tags_fingerprint, None);
+            assert_eq!(repository.snapshot.loose_refs, None);
+        });
+        assert!(!events.lock().contains(&RepositoryEvent::TagsChanged));
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    #[track_caller]
+    fn installed_git(directory: &Path, arguments: &[&str]) -> std::process::Output {
+        std::process::Command::new("git")
+            .args(arguments)
+            .current_dir(directory)
+            .env("GIT_CONFIG_GLOBAL", "")
+            .env("GIT_CONFIG_SYSTEM", "")
+            .env("GIT_AUTHOR_NAME", "test")
+            .env("GIT_AUTHOR_EMAIL", "test@zed.dev")
+            .env("GIT_COMMITTER_NAME", "test")
+            .env("GIT_COMMITTER_EMAIL", "test@zed.dev")
+            .output()
+            .expect("failed to run git")
+    }
+
+    #[track_caller]
+    fn installed_git_output(directory: &Path, arguments: &[&str]) -> String {
+        let output = installed_git(directory, arguments);
+        assert!(
+            output.status.success(),
+            "git {arguments:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    /// A repository on `dev` with four commits on top of `main` (A, a commit left out of the
+    /// merge request, B and C), each adding its own file.
+    fn merge_request_repository(
+        directory: &Path,
+    ) -> std::collections::BTreeMap<&'static str, String> {
+        std::fs::create_dir_all(directory).unwrap();
+        installed_git_output(directory, &["init"]);
+        installed_git_output(directory, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        // The job runs git the way Zed does, with whatever configuration the machine has, so
+        // everything that would get in its way is pinned in the repository itself.
+        for (key, value) in [
+            ("user.name", "test"),
+            ("user.email", "test@zed.dev"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+        ] {
+            installed_git_output(directory, &["config", key, value]);
+        }
+        let mut shas = std::collections::BTreeMap::new();
+        let mut commit = |name: &'static str, file: &str, contents: &str| {
+            std::fs::write(directory.join(file), contents).unwrap();
+            installed_git_output(directory, &["add", "."]);
+            installed_git_output(directory, &["commit", "-m", name]);
+            shas.insert(
+                name,
+                installed_git_output(directory, &["rev-parse", "HEAD"]),
+            );
+        };
+        commit("base", "base.txt", "base\n");
+        installed_git_output(directory, &["checkout", "-b", "dev"]);
+        commit("A", "a.txt", "a\n");
+        commit("left-out", "left-out.txt", "left out\n");
+        commit("B", "b.txt", "b\n");
+        commit("C", "c.txt", "c\n");
+        shas
+    }
+
+    fn merge_request_build(
+        base: &str,
+        shas: &[&String],
+        merge_request_branch: &str,
+        recreate: bool,
+    ) -> MergeRequestBuild {
+        let newest = shas.last().map(|sha| sha.as_str()).unwrap_or_default();
+        MergeRequestBuild {
+            base: base.to_string(),
+            shas_oldest_first: shas.iter().map(|sha| sha.to_string()).collect(),
+            merge_request_branch: merge_request_branch.to_string(),
+            message: "MR にまとめる".to_string(),
+            recreate,
+            origin_branch: "dev".to_string(),
+            scratch_branch: git::repository::merge_request_scratch_branch_name(newest),
+        }
+    }
+
+    async fn run_merge_request_build(
+        repository: &Entity<Repository>,
+        build: MergeRequestBuild,
+        cx: &mut TestAppContext,
+    ) -> MergeRequestBuildOutcome {
+        repository
+            .update(cx, |repository, cx| {
+                repository.build_merge_request_branch(build, cx)
+            })
+            .await
+            .expect("the job should run")
+            .expect("the build should come back with an outcome")
+    }
+
+    fn scratch_branches(directory: &Path) -> String {
+        let pattern = format!("{}*", git::repository::REWRITE_SCRATCH_BRANCH_PREFIX);
+        installed_git_output(directory, &["branch", "--list", &pattern])
+    }
+
+    /// The merge-request box's build against the installed git, end to end through the
+    /// repository's job queue: one commit on the base with exactly the picked changes, the user
+    /// back on their branch, nothing left behind; an existing branch only moved when asked (and
+    /// where it was reported); a dirty tree and a detached HEAD refused untouched; a conflict
+    /// either abandoned back to the start or continued and finished.
+    #[gpui::test]
+    async fn test_merge_request_build_on_installed_git(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.executor().allow_parking();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let directory = temp_dir.path().join("repo");
+        let shas = merge_request_repository(&directory);
+        let base = shas["base"].clone();
+
+        let project = Project::test(
+            Arc::new(fs::RealFs::new(None, cx.executor())),
+            [directory.as_path()],
+            cx,
+        )
+        .await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("the temporary repository should be found")
+        });
+
+        // (a)-(c): a new branch.
+        let build = merge_request_build(
+            "main",
+            &[&shas["A"], &shas["B"], &shas["C"]],
+            "mr/dev",
+            false,
+        );
+        let scratch = build.scratch_branch.clone();
+        let outcome = run_merge_request_build(&repository, build, cx).await;
+        let MergeRequestBuildOutcome::Created {
+            merge_request_sha,
+            previous_sha: None,
+            return_failure: None,
+        } = outcome
+        else {
+            panic!("the build should have worked, got {outcome:?}");
+        };
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "mr/dev"]),
+            merge_request_sha
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "mr/dev^"]),
+            base,
+            "the merge request is one commit on top of the base"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["log", "-1", "--format=%s", "mr/dev"]),
+            "MR にまとめる"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["diff", "--name-only", &base, "mr/dev"]),
+            "a.txt\nb.txt\nc.txt",
+            "the picked commits' changes and nothing of the one left out"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "dev"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "dev"]),
+            shas["C"],
+            "the development branch did not move"
+        );
+        assert_eq!(scratch_branches(&directory), "", "{scratch} should be gone");
+
+        // (d): the existing branch is refused without the checkbox, and moved with it.
+        std::fs::write(directory.join("d.txt"), "d\n").unwrap();
+        installed_git_output(&directory, &["add", "."]);
+        installed_git_output(&directory, &["commit", "-m", "D"]);
+        let d = installed_git_output(&directory, &["rev-parse", "HEAD"]);
+        let picked = [&shas["A"], &shas["B"], &shas["C"], &d];
+        let outcome = run_merge_request_build(
+            &repository,
+            merge_request_build("main", &picked, "mr/dev", false),
+            cx,
+        )
+        .await;
+        assert!(
+            matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("既にあります")),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "mr/dev"]),
+            merge_request_sha
+        );
+        let outcome = run_merge_request_build(
+            &repository,
+            merge_request_build("main", &picked, "mr/dev", true),
+            cx,
+        )
+        .await;
+        let MergeRequestBuildOutcome::Created {
+            merge_request_sha: recreated_sha,
+            previous_sha: Some(previous_sha),
+            return_failure: None,
+        } = outcome
+        else {
+            panic!("the recreate should have worked, got {outcome:?}");
+        };
+        assert_eq!(
+            previous_sha, merge_request_sha,
+            "where the branch was is reported"
+        );
+        assert_ne!(recreated_sha, merge_request_sha);
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "mr/dev^"]),
+            base
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["diff", "--name-only", &base, "mr/dev"]),
+            "a.txt\nb.txt\nc.txt\nd.txt"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "dev"
+        );
+
+        // (e): a dirty tree and a detached HEAD are refused with nothing moved.
+        std::fs::write(directory.join("a.txt"), "changed\n").unwrap();
+        let outcome = run_merge_request_build(
+            &repository,
+            merge_request_build("main", &[&shas["A"]], "mr/dirty", false),
+            cx,
+        )
+        .await;
+        assert!(
+            matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("未コミットの変更")),
+            "{outcome:?}"
+        );
+        installed_git_output(&directory, &["checkout", "--", "a.txt"]);
+        installed_git_output(&directory, &["checkout", "--detach"]);
+        let outcome = run_merge_request_build(
+            &repository,
+            merge_request_build("main", &[&shas["A"]], "mr/detached", false),
+            cx,
+        )
+        .await;
+        assert!(
+            matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("detached HEAD")),
+            "{outcome:?}"
+        );
+        installed_git_output(&directory, &["checkout", "dev"]);
+        for branch in ["mr/dirty", "mr/detached"] {
+            assert!(
+                !installed_git(&directory, &["rev-parse", "--verify", "--quiet", branch])
+                    .status
+                    .success(),
+                "{branch} must not have been created"
+            );
+        }
+        assert_eq!(scratch_branches(&directory), "");
+
+        // (f): a conflict stops on the scratch branch; abandoning it goes back to `dev`.
+        installed_git_output(&directory, &["checkout", "main"]);
+        std::fs::write(directory.join("base.txt"), "main\n").unwrap();
+        installed_git_output(&directory, &["commit", "-am", "main moves on"]);
+        installed_git_output(&directory, &["checkout", "dev"]);
+        std::fs::write(directory.join("base.txt"), "dev\n").unwrap();
+        installed_git_output(&directory, &["commit", "-am", "dev changes base"]);
+        let conflicting = installed_git_output(&directory, &["rev-parse", "HEAD"]);
+        let build = merge_request_build("main", &[&shas["A"], &conflicting], "mr/conflict", false);
+        let scratch = build.scratch_branch.clone();
+        let outcome = run_merge_request_build(&repository, build.clone(), cx).await;
+        let MergeRequestBuildOutcome::Stopped { base_sha, .. } = outcome else {
+            panic!("the conflict should stop the build, got {outcome:?}");
+        };
+        assert_eq!(
+            base_sha,
+            installed_git_output(&directory, &["rev-parse", "main"])
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            scratch
+        );
+        repository
+            .update(cx, |repository, cx| {
+                repository.sequencer_abort(SequencerKind::CherryPick, cx)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        let left = repository
+            .update(cx, |repository, cx| {
+                repository.leave_rewrite_scratch_branch("dev".to_string(), scratch.clone(), cx)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(left.succeeded(), "{}", left.failure_message());
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "dev"
+        );
+        assert_eq!(scratch_branches(&directory), "");
+        assert_eq!(
+            installed_git_output(&directory, &["status", "--porcelain"]),
+            ""
+        );
+
+        // The same conflict, resolved and continued, then finished from the box.
+        let outcome = run_merge_request_build(&repository, build, cx).await;
+        let MergeRequestBuildOutcome::Stopped { base_sha, .. } = outcome else {
+            panic!("the conflict should stop the build again, got {outcome:?}");
+        };
+        std::fs::write(directory.join("base.txt"), "resolved\n").unwrap();
+        installed_git_output(&directory, &["add", "base.txt"]);
+        let continued = repository
+            .update(cx, |repository, cx| {
+                repository.sequencer_continue(SequencerKind::CherryPick, cx)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(continued.succeeded(), "{}", continued.failure_message());
+        let continuation = MergeRequestContinuation {
+            base_sha: base_sha.clone(),
+            merge_request_branch: "mr/conflict".to_string(),
+            message: "MR にまとめる".to_string(),
+            recreate: false,
+            origin_branch: "dev".to_string(),
+            scratch_branch: scratch.clone(),
+        };
+
+        // "続きの手順" pressed from another branch folds nothing there, even one that starts from
+        // the base just like the scratch branch: `reset --soft` only ever runs on the scratch
+        // branch.
+        installed_git_output(&directory, &["checkout", "-b", "look-alike", &scratch]);
+        let look_alike_before = installed_git_output(&directory, &["rev-parse", "look-alike"]);
+        let elsewhere = repository
+            .update(cx, |repository, cx| {
+                repository.finish_merge_request_branch(continuation.clone(), cx)
+            })
+            .await
+            .unwrap();
+        assert!(elsewhere.is_err(), "{elsewhere:?}");
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "look-alike"]),
+            look_alike_before
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "look-alike"
+        );
+        assert!(
+            !installed_git(
+                &directory,
+                &["rev-parse", "--verify", "--quiet", "mr/conflict"]
+            )
+            .status
+            .success()
+        );
+        installed_git_output(&directory, &["checkout", &scratch]);
+        installed_git_output(&directory, &["branch", "-D", "look-alike"]);
+
+        let finished = repository
+            .update(cx, |repository, cx| {
+                repository.finish_merge_request_branch(continuation, cx)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(
+                finished,
+                MergeRequestBuildOutcome::Created {
+                    previous_sha: None,
+                    return_failure: None,
+                    ..
+                }
+            ),
+            "{finished:?}"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "mr/conflict^"]),
+            base_sha
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["show", "mr/conflict:base.txt"]),
+            "resolved"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "dev"
+        );
+        assert_eq!(scratch_branches(&directory), "");
+
+        // (g): the base itself is never the branch that gets recreated.
+        let main_before = installed_git_output(&directory, &["rev-parse", "main"]);
+        let outcome = run_merge_request_build(
+            &repository,
+            merge_request_build("main", &[&shas["A"]], "main", true),
+            cx,
+        )
+        .await;
+        assert!(
+            matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("基点")),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "main"]),
+            main_before
+        );
+
+        // Nor the default branch, even with the base elsewhere and "作り直す" ticked.
+        installed_git_output(
+            &directory,
+            &["update-ref", "refs/remotes/origin/main", "main"],
+        );
+        installed_git_output(
+            &directory,
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/main",
+            ],
+        );
+        for recreate in [false, true] {
+            let outcome = run_merge_request_build(
+                &repository,
+                merge_request_build(&base, &[&shas["A"]], "main", recreate),
+                cx,
+            )
+            .await;
+            assert!(
+                matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("デフォルトブランチ")),
+                "{outcome:?}"
+            );
+        }
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "main"]),
+            main_before
+        );
+
+        // (h): a file the user's branch ignores but the base tracks is neither overwritten on the
+        // way to the scratch branch nor deleted on the way back.
+        installed_git_output(&directory, &["checkout", "main"]);
+        std::fs::write(directory.join("local.cfg"), "base\n").unwrap();
+        installed_git_output(&directory, &["add", "local.cfg"]);
+        installed_git_output(&directory, &["commit", "-m", "track local.cfg"]);
+        installed_git_output(&directory, &["checkout", "dev"]);
+        std::fs::write(directory.join(".gitignore"), "local.cfg\n").unwrap();
+        installed_git_output(&directory, &["add", ".gitignore"]);
+        installed_git_output(&directory, &["commit", "-m", "ignore local.cfg"]);
+        std::fs::write(directory.join("local.cfg"), "my secret\n").unwrap();
+        let outcome = run_merge_request_build(
+            &repository,
+            merge_request_build("main", &[&shas["A"]], "mr/ignored", false),
+            cx,
+        )
+        .await;
+        assert!(
+            matches!(
+                &outcome,
+                MergeRequestBuildOutcome::Refused {
+                    left_on_scratch_branch: false,
+                    ..
+                }
+            ),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(directory.join("local.cfg")).unwrap(),
+            "my secret\n",
+            "the ignored file must survive"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "dev"
+        );
+        assert_eq!(scratch_branches(&directory), "");
+    }
+
+    /// The merge-request branch is pushed while the user stays on their own branch: a new one
+    /// gets its upstream, a recreated one goes with a lease, and the lease holds when somebody
+    /// else moved the branch on the remote in the meantime.
+    #[gpui::test]
+    async fn test_push_a_branch_that_is_not_checked_out_on_installed_git(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.executor().allow_parking();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let remote = temp_dir.path().join("remote.git");
+        std::fs::create_dir_all(&remote).unwrap();
+        installed_git_output(&remote, &["init", "--bare"]);
+        let directory = temp_dir.path().join("repo");
+        let shas = merge_request_repository(&directory);
+        let remote_url = remote.to_string_lossy().to_string();
+        installed_git_output(&directory, &["remote", "add", "origin", &remote_url]);
+        installed_git_output(&directory, &["push", "origin", "main"]);
+        installed_git_output(&directory, &["branch", "mr/dev", &shas["B"]]);
+
+        let project = Project::test(
+            Arc::new(fs::RealFs::new(None, cx.executor())),
+            [directory.as_path()],
+            cx,
+        )
+        .await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("the temporary repository should be found")
+        });
+        let push = |options: Option<PushOptions>, cx: &mut TestAppContext| {
+            let (askpass, _prompts) = test_askpass_delegate(cx);
+            repository.update(cx, |repository, cx| {
+                repository.push(
+                    "mr/dev".into(),
+                    "mr/dev".into(),
+                    "origin".into(),
+                    options,
+                    askpass,
+                    cx,
+                )
+            })
+        };
+
+        push(Some(PushOptions::SetUpstream), cx)
+            .await
+            .unwrap()
+            .expect("a new branch should push");
+        assert_eq!(
+            installed_git_output(&remote, &["rev-parse", "mr/dev"]),
+            shas["B"]
+        );
+        assert_eq!(
+            installed_git_output(
+                &directory,
+                &["rev-parse", "--abbrev-ref", "mr/dev@{upstream}"]
+            ),
+            "origin/mr/dev"
+        );
+        assert_eq!(
+            installed_git_output(&directory, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "dev",
+            "pushing never switches branches"
+        );
+
+        installed_git_output(&directory, &["branch", "-f", "mr/dev", &shas["C"]]);
+        push(Some(PushOptions::Force), cx)
+            .await
+            .unwrap()
+            .expect("a recreated branch should push with a lease");
+        assert_eq!(
+            installed_git_output(&remote, &["rev-parse", "mr/dev"]),
+            shas["C"]
+        );
+
+        // Somebody else pushes to the branch; the lease is still on what this repository last
+        // saw, so the next forced push is refused instead of throwing their commit away.
+        installed_git_output(&remote, &["update-ref", "refs/heads/mr/dev", &shas["A"]]);
+        installed_git_output(&directory, &["branch", "-f", "mr/dev", &shas["B"]]);
+        assert!(
+            push(Some(PushOptions::Force), cx).await.unwrap().is_err(),
+            "the lease should refuse to overwrite somebody else's push"
+        );
+        assert_eq!(
+            installed_git_output(&remote, &["rev-parse", "mr/dev"]),
+            shas["A"]
+        );
+    }
 }
 
 /// This snapshot computes the repository state on the foreground thread while
@@ -13478,6 +16524,7 @@ async fn compute_snapshot(
         let BranchesScanResult {
             branches,
             error: branch_list_error,
+            ref_storage,
         } = branches;
         let branch = branches.iter().find(|branch| branch.is_head).cloned();
         let branch_list: Arc<[Branch]> = branches.into();
@@ -13533,6 +16580,8 @@ async fn compute_snapshot(
             if branch_list_changed || branch_list_error_changed {
                 cx.emit(RepositoryEvent::BranchListChanged);
             }
+
+            this.apply_ref_storage_scan(ref_storage, cx);
 
             if worktrees_changed {
                 cx.emit(RepositoryEvent::GitWorktreeListChanged);

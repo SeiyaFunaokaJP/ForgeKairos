@@ -110,6 +110,8 @@ use zed_actions::{
 };
 
 const GIT_PANEL_KEY: &str = "GitPanel";
+const AMEND_FORCE_PUSH_NOTE: &str =
+    "プッシュ済みのため、この後に強制プッシュ (lease 付き) が必要です";
 const UPDATE_DEBOUNCE: Duration = Duration::from_millis(50);
 // TODO: We should revise this part. It seems the indentation width is not aligned with the one in project panel
 const TREE_INDENT: f32 = 16.0;
@@ -389,6 +391,8 @@ fn git_panel_context_menu(
             .action("パッチファイルを適用…", git::ApplyPatch.boxed_clone())
             .separator()
             .action("リポジトリを初期化", git::Init.boxed_clone())
+            .separator()
+            .action("Git の操作ガイド", git::ShowGuide.boxed_clone())
     })
 }
 
@@ -975,6 +979,64 @@ struct TreeNode {
     files: Vec<GitStatusEntry>,
 }
 
+/// Files dragged out of the git panel: onto the other section to stage or unstage them, or onto
+/// a commit row of the git graph to fold them into that commit (fixup).
+#[derive(Clone, Debug)]
+pub(crate) struct DraggedGitPanelEntries {
+    pub(crate) repository: WeakEntity<Repository>,
+    pub(crate) repo_paths: Vec<RepoPath>,
+    /// Whether the drag started among the staged changes rather than the unstaged ones.
+    pub(crate) from_staged: bool,
+}
+
+/// What follows the pointer while files are dragged out of the git panel.
+struct DraggedGitPanelEntriesView {
+    label: SharedString,
+}
+
+impl Render for DraggedGitPanelEntriesView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .gap_1()
+            .px_1p5()
+            .py_0p5()
+            .rounded_sm()
+            .elevation_2(cx)
+            .child(
+                Icon::new(IconName::File)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted),
+            )
+            .child(Label::new(self.label.clone()).size(LabelSize::Small))
+    }
+}
+
+/// The file's name for a single file, otherwise how many there are.
+fn dragged_entries_label(repo_paths: &[RepoPath]) -> SharedString {
+    match repo_paths {
+        [repo_path] => repo_path
+            .file_name()
+            .map(str::to_string)
+            .unwrap_or_else(|| repo_path.as_std_path().display().to_string())
+            .into(),
+        repo_paths => format!("{} ファイル", repo_paths.len()).into(),
+    }
+}
+
+/// What dropping files on `section` does, given whether they were dragged out of the staged
+/// section: `Some(true)` stages them, `Some(false)` unstages them, and `None` means nothing
+/// happens (the section they came from, or a section that is not about staging).
+fn section_drop_stage(from_staged: bool, section: Section) -> Option<bool> {
+    match section {
+        Section::Staged => (!from_staged).then_some(true),
+        Section::Unstaged => from_staged.then_some(false),
+        Section::Conflict | Section::Tracked | Section::New => None,
+    }
+}
+
+/// The hover group of a row that takes files dropped from the other staging section.
+const SECTION_DROP_ROW_GROUP: &str = "git-panel-section-drop-row";
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct GitStatusEntry {
     pub(crate) repo_path: RepoPath,
@@ -1099,6 +1161,11 @@ pub struct GitPanel {
     commit_menu_handle: PopoverMenuHandle<ContextMenu>,
     changes_actions_menu_handle: PopoverMenuHandle<ContextMenu>,
     remote_action_menu_handle: PopoverMenuHandle<ContextMenu>,
+    /// Whether the commit an amend would replace is already pushed, keyed by its SHA, so that the
+    /// amend checkbox can say a force push will be needed afterwards. `None` beside the SHA while
+    /// git has not answered (or could not).
+    amend_target_pushed: Option<(SharedString, Option<bool>)>,
+    _amend_pushed_probe: Task<()>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1332,6 +1399,9 @@ impl GitPanel {
                     | GitStoreEvent::ActiveRepositoryChanged(_) => {
                         this.schedule_update(window, cx);
                         this.refresh_sequencer_state(cx);
+                        if this.amend_pending {
+                            this.probe_amend_target_pushed(cx);
+                        }
                     }
                     GitStoreEvent::GlobalConfigurationUpdated => {
                         this.git_access = None;
@@ -1421,6 +1491,8 @@ impl GitPanel {
                 commit_menu_handle: PopoverMenuHandle::default(),
                 changes_actions_menu_handle: PopoverMenuHandle::default(),
                 remote_action_menu_handle: PopoverMenuHandle::default(),
+                amend_target_pushed: None,
+                _amend_pushed_probe: Task::ready(()),
             };
 
             this.schedule_update(window, cx);
@@ -2842,6 +2914,20 @@ impl GitPanel {
         entries: Vec<GitStatusEntry>,
         cx: &mut Context<Self>,
     ) {
+        let repo_paths = entries
+            .into_iter()
+            .map(|entry| entry.repo_path)
+            .unique()
+            .collect();
+        self.change_paths_stage(stage, repo_paths, cx);
+    }
+
+    fn change_paths_stage(
+        &mut self,
+        stage: bool,
+        repo_paths: Vec<RepoPath>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(active_repository) = self.active_repository.clone() else {
             return;
         };
@@ -2850,11 +2936,6 @@ impl GitPanel {
                 let result = this
                     .update(cx, |this, cx| {
                         let task = active_repository.update(cx, |repo, cx| {
-                            let repo_paths = entries
-                                .iter()
-                                .map(|entry| entry.repo_path.clone())
-                                .unique()
-                                .collect();
                             if stage {
                                 repo.stage_entries(repo_paths, cx)
                             } else {
@@ -2877,6 +2958,106 @@ impl GitPanel {
             }
         })
         .detach();
+    }
+
+    /// What dragging the file row at `ix` carries. Conflicted files are left out: staging one
+    /// marks the conflict resolved and unstaging a resolved one throws its merge stages away,
+    /// neither of which should happen by dropping a file somewhere.
+    fn dragged_entries_for(&self, ix: usize) -> Option<DraggedGitPanelEntries> {
+        let repository = self.active_repository.as_ref()?.downgrade();
+        let entry = self.entries.get(ix)?.status_entry()?;
+        let section = self.section_for_entry_index(ix);
+        if section == Some(Section::Conflict) {
+            return None;
+        }
+        Some(DraggedGitPanelEntries {
+            repository,
+            repo_paths: vec![entry.repo_path.clone()],
+            from_staged: section == Some(Section::Staged),
+        })
+    }
+
+    /// Whether dropping the files being dragged right now on `section` would stage them
+    /// (`Some(true)`) or unstage them (`Some(false)`), or `None` when it would do nothing.
+    fn active_drag_stage_for(&self, section: Section, cx: &App) -> Option<bool> {
+        let dragged = cx.active_drag_value::<DraggedGitPanelEntries>()?;
+        let active_repository = self.active_repository.as_ref()?;
+        if dragged.repository.entity_id() != active_repository.entity_id() {
+            return None;
+        }
+        section_drop_stage(dragged.from_staged, section)
+    }
+
+    /// Files dropped on the staged or unstaged section: staged or unstaged to match it.
+    fn drop_entries_on_section(
+        &mut self,
+        dragged: &DraggedGitPanelEntries,
+        section: Section,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(stage) = section_drop_stage(dragged.from_staged, section) else {
+            return;
+        };
+        let Some(active_repository) = self.active_repository.as_ref() else {
+            return;
+        };
+        if dragged.repository.entity_id() != active_repository.entity_id() {
+            log::warn!("git panel: ignored files dropped from another repository");
+            return;
+        }
+        self.change_paths_stage(stage, dragged.repo_paths.clone(), cx);
+    }
+
+    /// Makes a row of the staged or unstaged section (its header included) take files dragged
+    /// out of the other one. While such a drag is in flight the row lights up under the pointer
+    /// and says what letting go does; `group` is the row's hover group, which the note follows.
+    fn with_section_drop<E>(
+        &self,
+        element: E,
+        section: Section,
+        group: impl Into<SharedString>,
+        has_write_access: bool,
+        cx: &Context<Self>,
+    ) -> E
+    where
+        E: InteractiveElement + ParentElement + Styled,
+    {
+        if !has_write_access || !matches!(section, Section::Staged | Section::Unstaged) {
+            return element;
+        }
+        let element = element.on_drop(cx.listener(
+            move |this, dragged: &DraggedGitPanelEntries, _window, cx| {
+                this.drop_entries_on_section(dragged, section, cx);
+            },
+        ));
+        let Some(stage) = self.active_drag_stage_for(section, cx) else {
+            return element;
+        };
+        let note = if stage {
+            "ここに落とすと: ステージ"
+        } else {
+            "ここに落とすと: ステージを取り消す"
+        };
+        let drop_background = cx.theme().colors().drop_target_background;
+        element
+            .drag_over::<DraggedGitPanelEntries>(move |style, _, _, _| style.bg(drop_background))
+            .relative()
+            .child(
+                // Clear of the checkbox, which keeps the row from being hovered while the
+                // pointer is on it.
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .right_8()
+                    .flex()
+                    .items_center()
+                    .child(crate::git_graph::drop_hint::<DraggedGitPanelEntries>(
+                        group,
+                        note.into(),
+                        cx,
+                    )),
+            )
     }
 
     pub fn total_staged_count(&self) -> usize {
@@ -3174,6 +3355,11 @@ impl GitPanel {
         cx.spawn(async move |this, cx| {
             if let Ok(message) = detail_task.await.map(|detail| detail.message) {
                 this.update(cx, |this, cx| {
+                    // Unticked while git was answering: the untick has already put the user's
+                    // own message back, which the late one must not replace.
+                    if !this.amend_pending {
+                        return;
+                    }
                     this.commit_message_buffer(cx).update(cx, |buffer, cx| {
                         let start = buffer.anchor_before(0);
                         let end = buffer.anchor_after(buffer.len());
@@ -4040,6 +4226,44 @@ impl GitPanel {
         .detach();
     }
 
+    /// The force push of the Git menu and the guide, which, unlike the one offered right after a
+    /// rewrite, may be picked without having seen what it overwrites.
+    pub(crate) fn confirm_force_push(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(branch) = self
+            .active_repository
+            .as_ref()
+            .and_then(|repository| repository.read(cx).branch.clone())
+        else {
+            self.show_error_toast(
+                "push",
+                anyhow::anyhow!("ブランチがチェックアウトされていないため、プッシュできません。"),
+                cx,
+            );
+            return;
+        };
+        let branch_name = branch.name().to_string();
+        let prompt = window.prompt(
+            PromptLevel::Warning,
+            "強制プッシュ (lease 付き) しますか?",
+            Some(&format!(
+                "git push --force-with-lease で {branch_name} をリモートに上書きします。\
+                 \n前回のフェッチ以降に他の人がプッシュしたコミットがあれば、上書きせずに止まります。"
+            )),
+            &["強制プッシュ", "キャンセル"],
+            cx,
+        );
+        cx.spawn_in(window, async move |this, cx| {
+            if prompt.await.ok() != Some(0) {
+                return;
+            }
+            this.update_in(cx, |this, window, cx| {
+                this.push(PushForce::WithLease, false, window, cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     pub(crate) fn push(
         &mut self,
         force: PushForce,
@@ -4142,6 +4366,150 @@ impl GitPanel {
                 }
             })?;
 
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    /// Pushes `branch_name` of `repository`, which does not have to be the branch that is checked
+    /// out (or the panel's active repository): the merge-request box pushes the branch it built
+    /// while the user stays on their own.
+    ///
+    /// A lease is the only force on offer: this runs from a toast button, and a push without one
+    /// could overwrite somebody else's work on the remote with nothing in between to stop it.
+    pub(crate) fn push_branch(
+        &mut self,
+        repository: Entity<Repository>,
+        branch_name: SharedString,
+        force_with_lease: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.can_push_and_pull(cx) {
+            self.show_error_toast(
+                "push",
+                anyhow::anyhow!("共同編集中のプロジェクトからはプッシュできません。"),
+                cx,
+            );
+            return;
+        }
+        let branch = repository
+            .read(cx)
+            .snapshot()
+            .branch_list
+            .iter()
+            .find(|branch| !branch.is_remote() && branch.name() == branch_name.as_ref())
+            .cloned();
+        let Some(branch) = branch else {
+            self.show_error_toast(
+                "push",
+                anyhow::anyhow!("ブランチ「{branch_name}」が見つかりません。"),
+                cx,
+            );
+            return;
+        };
+        if !self.start_remote_operation(RemoteOperationKind::Push, cx) {
+            self.show_error_toast(
+                "push",
+                anyhow::anyhow!(
+                    "別のリモート操作を実行中です。終わってからもう一度プッシュしてください。"
+                ),
+                cx,
+            );
+            return;
+        }
+
+        let options = if force_with_lease {
+            Some(PushOptions::Force)
+        } else {
+            match branch.upstream {
+                Some(Upstream {
+                    tracking: UpstreamTracking::Gone,
+                    ..
+                })
+                | None => Some(PushOptions::SetUpstream),
+                _ => None,
+            }
+        };
+        let remote_branch: SharedString = branch
+            .upstream
+            .as_ref()
+            .filter(|upstream| matches!(upstream.tracking, UpstreamTracking::Tracked(_)))
+            .and_then(|upstream| upstream.branch_name())
+            .unwrap_or_else(|| branch.name())
+            .to_owned()
+            .into();
+        let remotes = repository.update(cx, |repository, _| {
+            repository.get_remotes(Some(branch_name.to_string()), true)
+        });
+        let workspace = self.workspace.clone();
+
+        cx.spawn_in(window, async move |this, cx| {
+            let _clear_pending_remote_operation = cx.on_drop(&this, |this, cx| {
+                this.clear_remote_operation(cx);
+            });
+
+            let remotes: Vec<SharedString> = match remotes.await {
+                Ok(Ok(remotes)) => remotes.into_iter().map(|remote| remote.name).collect(),
+                Ok(Err(error)) => {
+                    this.update(cx, |this, cx| this.show_error_toast("push", error, cx))
+                        .ok();
+                    return Ok(());
+                }
+                Err(_) => return Ok(()),
+            };
+            if remotes.is_empty() {
+                this.update(cx, |this, cx| {
+                    this.show_error_toast(
+                        "push",
+                        anyhow::anyhow!(
+                            "プッシュ先のリモートがありません。変更を発行するにはリモートを追加してください。"
+                        ),
+                        cx,
+                    )
+                })
+                .ok();
+                return Ok(());
+            }
+            let selection = cx
+                .update(|window, cx| {
+                    picker_prompt::prompt(
+                        "プッシュ先のリモートを選択",
+                        remotes.clone(),
+                        workspace,
+                        window,
+                        cx,
+                    )
+                })?
+                .await;
+            let Some(remote) = selection.and_then(|index| remotes.get(index).cloned()) else {
+                return Ok(());
+            };
+            let remote = Remote { name: remote };
+
+            let askpass_delegate = this.update_in(cx, |this, window, cx| {
+                this.askpass_delegate(format!("git push {}", remote.name), window, cx)
+            })?;
+            let push = repository.update(cx, |repository, cx| {
+                repository.push(
+                    branch_name.clone(),
+                    remote_branch,
+                    remote.name.clone(),
+                    options,
+                    askpass_delegate,
+                    cx,
+                )
+            });
+            let push_output = push.await?;
+
+            let action = RemoteAction::Push(branch_name, remote);
+            this.update(cx, |this, cx| match push_output {
+                Ok(push_output) => this.show_remote_output(action, push_output.output, cx),
+                Err(error) => {
+                    log::error!("Error while pushing {:?}", error);
+                    this.show_error_toast(action.name(), error, cx)
+                }
+            })?;
             anyhow::Ok(())
         })
         .detach_and_log_err(cx);
@@ -5454,6 +5822,9 @@ impl GitPanel {
                         git_panel.amend_pending = restored_commit_message.amend_pending;
                         git_panel.original_commit_message =
                             restored_commit_message.original_message;
+                        if git_panel.amend_pending {
+                            git_panel.probe_amend_target_pushed(cx);
+                        }
                         cx.notify();
 
                         if let Some(message) = restored_commit_message.message
@@ -6876,6 +7247,7 @@ impl GitPanel {
                         ),
                 )
             })
+            .children(self.render_amend_checkbox(cx))
             .child(
                 panel_editor_container(window, cx)
                     .id("commit-editor-container")
@@ -7130,8 +7502,13 @@ impl GitPanel {
                             )
                         })
                         .child(
-                            IconButton::new("git-graph-button", IconName::GitGraph)
-                                .icon_size(IconSize::Small)
+                            Button::new("git-graph-button", "履歴 (グラフ)")
+                                .label_size(LabelSize::Small)
+                                .start_icon(
+                                    Icon::new(IconName::GitGraph)
+                                        .size(IconSize::Small)
+                                        .color(Color::Muted),
+                                )
                                 .tooltip(|_window, cx| {
                                     Tooltip::for_action(
                                         "コミットグラフを開く",
@@ -7335,6 +7712,7 @@ impl GitPanel {
             CommitContextMenuData {
                 sha: commit.sha,
                 tag_names: commit.tag_names,
+                is_merge: None,
             },
             CommitContextMenuSource::GitPanel,
             None,
@@ -7848,6 +8226,27 @@ impl GitPanel {
         }
     }
 
+    /// The banner's description for a merge-request build that stopped on its scratch branch.
+    fn merge_request_scratch_banner_text(
+        hedge: &str,
+        resolve: &str,
+        scratch_branch: &str,
+        origin_branch: Option<&str>,
+    ) -> String {
+        let abort = match origin_branch {
+            Some(origin_branch) => format!(
+                "「中止」を押すと元のブランチ「{origin_branch}」に戻り、この一時ブランチは削除されます。"
+            ),
+            None => "元のブランチが分からないため、「中止」を押しても元のブランチには戻りません。中止した後に自分で切り替えてください。"
+                .to_string(),
+        };
+        format!(
+            "{hedge}MR ブランチの作成が一時ブランチ「{scratch_branch}」の上で止まっています。{resolve}\n\
+             {abort}\n\
+             「続行」で残りのコミットを当て終えたら、コミットグラフの「MR の箱」の「続きの手順」で MR ブランチに反映して元のブランチに戻ります。"
+        )
+    }
+
     /// The banner above the changes list for a `cherry-pick` / `revert` / `rebase` that stopped
     /// part-way, with the three ways out git offers.
     fn render_sequencer_banner(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
@@ -7866,6 +8265,20 @@ impl GitPanel {
         };
         let description = match &self.rewrite_scratch_origin {
             None => SharedString::from(description),
+            // A merge-request build stops on the same kind of scratch branch, but what is left to
+            // do after continuing is the merge-request box's, not a `rebase --onto`.
+            Some(RewriteScratchOrigin {
+                scratch_branch,
+                origin_branch,
+            }) if git::repository::is_merge_request_scratch_branch(scratch_branch) => {
+                Self::merge_request_scratch_banner_text(
+                    &hedge,
+                    resolve,
+                    scratch_branch,
+                    origin_branch.as_deref(),
+                )
+                .into()
+            }
             Some(RewriteScratchOrigin {
                 scratch_branch,
                 origin_branch: Some(origin_branch),
@@ -8046,6 +8459,15 @@ impl GitPanel {
                     )
                 })
                 .await;
+                if git::repository::is_merge_request_scratch_branch(&scratch_branch) {
+                    cx.update(|cx| {
+                        crate::merge_request_box::forget_pending(
+                            &work_directory_abs_path,
+                            &scratch_branch,
+                            cx,
+                        )
+                    });
+                }
             }
             this.update(cx, |this, cx| {
                 match result {
@@ -8459,7 +8881,11 @@ impl GitPanel {
                                             ));
                                         }
                                         Some(GitListEntry::EmptySection(section)) => {
-                                            items.push(this.render_empty_section(*section));
+                                            items.push(this.render_empty_section(
+                                                *section,
+                                                has_write_access,
+                                                cx,
+                                            ));
                                         }
                                         None => {}
                                     }
@@ -8524,6 +8950,7 @@ impl GitPanel {
         let id: ElementId = ElementId::Name(format!("header_{}", ix).into());
         let checkbox_id: ElementId = ElementId::Name(format!("header_{}_checkbox", ix).into());
         let group_name: SharedString = format!("header_{}", ix).into();
+        let drop_group_name = group_name.clone();
         let section = header.header;
         let weak = cx.weak_entity();
         let checkbox_weak = weak.clone();
@@ -8618,26 +9045,50 @@ impl GitPanel {
                 })
                 .ok();
             })
+            // The header stands for the whole section, so it shows where the files can go for as
+            // long as they are dragged, not only while the pointer is on it.
+            .when(
+                has_write_access && self.active_drag_stage_for(section, cx).is_some(),
+                |header| header.bg(cx.theme().colors().drop_target_background),
+            )
+            .map(|header| {
+                self.with_section_drop(header, section, drop_group_name, has_write_access, cx)
+            })
             .into_any_element()
     }
 
-    fn render_empty_section(&self, section: Section) -> AnyElement {
+    fn render_empty_section(
+        &self,
+        section: Section,
+        has_write_access: bool,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         let message = match section {
             Section::Staged => "ステージ済みの変更はまだありません",
             Section::Unstaged => "未ステージの変更はありません",
             _ => "変更はありません",
         };
-        h_flex()
+        let row = h_flex()
             .h(self.list_item_height())
             .w_full()
             .pl_2p5()
             .pr_1()
-            .opacity(0.8)
             .child(
                 Label::new(message)
                     .color(Color::Placeholder)
                     .size(LabelSize::Small),
             )
+            .group(SECTION_DROP_ROW_GROUP)
+            // An empty section is exactly where the first file gets dropped, so it lights up with
+            // its header for the whole drag.
+            .map(|row| {
+                if has_write_access && self.active_drag_stage_for(section, cx).is_some() {
+                    row.bg(cx.theme().colors().drop_target_background)
+                } else {
+                    row.opacity(0.8)
+                }
+            });
+        self.with_section_drop(row, section, SECTION_DROP_ROW_GROUP, has_write_access, cx)
             .into_any_element()
     }
 
@@ -9046,6 +9497,35 @@ impl GitPanel {
                     cx.stop_propagation();
                 },
             )
+            .when_some(self.dragged_entries_for(ix), |row, dragged| {
+                row.relative()
+                    .child(
+                        crate::git_guide::drag_grip(
+                            ElementId::NamedInteger("git-panel-entry-grip".into(), ix as u64),
+                            crate::git_guide::FILE_DRAG_HINT,
+                        )
+                        .absolute()
+                        .left_0()
+                        .top_0()
+                        .h_full()
+                        .visible_on_hover(SECTION_DROP_ROW_GROUP),
+                    )
+                    .on_drag(dragged, |dragged: &DraggedGitPanelEntries, _, _, cx| {
+                        let label = dragged_entries_label(&dragged.repo_paths);
+                        cx.new(|_| DraggedGitPanelEntriesView { label })
+                    })
+            })
+            .group(SECTION_DROP_ROW_GROUP)
+            .map(|row| match self.section_for_entry_index(ix) {
+                Some(section) => self.with_section_drop(
+                    row,
+                    section,
+                    SECTION_DROP_ROW_GROUP,
+                    has_write_access,
+                    cx,
+                ),
+                None => row,
+            })
             .into_any_element()
     }
 
@@ -9215,6 +9695,16 @@ impl GitPanel {
                     this.deploy_entry_context_menu(event.position, ix, window, cx);
                 }),
             )
+            .group(SECTION_DROP_ROW_GROUP)
+            .map(|row| {
+                self.with_section_drop(
+                    row,
+                    entry.key.section,
+                    SECTION_DROP_ROW_GROUP,
+                    has_write_access,
+                    cx,
+                )
+            })
             .into_any_element()
     }
 
@@ -9300,8 +9790,124 @@ impl GitPanel {
         }
 
         self.amend_pending = value;
+        if value {
+            self.probe_amend_target_pushed(cx);
+        }
         self.serialize(cx);
         cx.notify();
+    }
+
+    /// Asks git whether the commit an amend replaces (HEAD) is already on the upstream, the same
+    /// question the history rewrites ask before they run.
+    fn probe_amend_target_pushed(&mut self, cx: &mut Context<Self>) {
+        let Some(head) = self.head_commit(cx) else {
+            return;
+        };
+        let Some(repository) = self.active_repository.clone() else {
+            return;
+        };
+        if self
+            .amend_target_pushed
+            .as_ref()
+            .is_some_and(|(sha, _)| *sha == head.sha)
+        {
+            return;
+        }
+        let sha = head.sha;
+        // Marked before git answers, so that the status updates arriving meanwhile do not ask
+        // again for the same commit.
+        self.amend_target_pushed = Some((sha.clone(), None));
+        let pushed = repository.update(cx, |repository, _| {
+            repository.commit_is_pushed(sha.to_string())
+        });
+        self._amend_pushed_probe = cx.spawn(async move |this, cx| {
+            let pushed = match pushed.await {
+                Ok(Ok(pushed)) => pushed,
+                Ok(Err(error)) => {
+                    log::warn!("could not tell whether the commit to amend is pushed: {error:#}");
+                    return;
+                }
+                Err(_) => return,
+            };
+            this.update(cx, |this, cx| {
+                this.amend_target_pushed = Some((sha, Some(pushed)));
+                cx.notify();
+            })
+            .ok();
+        });
+    }
+
+    /// Whether amending now rewrites a commit the upstream already has. `false` until git has
+    /// answered for the current HEAD.
+    pub(crate) fn amend_needs_force_push(&self, cx: &App) -> bool {
+        let Some(head) = self.head_commit(cx) else {
+            return false;
+        };
+        self.amend_target_pushed
+            .as_ref()
+            .is_some_and(|(sha, pushed)| *sha == head.sha && *pushed == Some(true))
+    }
+
+    /// Where the Git menu and the graph's "amend" button lead: the changes tab with the amend
+    /// checkbox ticked (the last message loaded) and the cursor in the message.
+    pub(crate) fn begin_amend(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.head_commit(cx).is_none() {
+            return false;
+        }
+        self.set_active_tab(GitPanelTab::Changes, window, cx);
+        if !self.amend_pending {
+            self.toggle_amend_pending(cx);
+        }
+        self.commit_editor.update(cx, |editor, cx| {
+            window.focus(&editor.focus_handle(cx), cx);
+        });
+        cx.notify();
+        true
+    }
+
+    fn render_amend_checkbox(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.head_commit(cx)?;
+        let needs_force_push = self.amend_pending && self.amend_needs_force_push(cx);
+        Some(
+            v_flex()
+                .px_2()
+                .py_1()
+                .gap_0p5()
+                .border_t_1()
+                .border_color(cx.theme().colors().border.opacity(0.8))
+                .child(
+                    div().debug_selector(|| "git-panel-amend-checkbox".into()).child(
+                        Checkbox::new(
+                            "git-panel-amend-checkbox",
+                            ToggleState::from(self.amend_pending),
+                        )
+                        .label("直前のコミットを修正 (amend)")
+                        .label_size(LabelSize::Small)
+                        .tooltip(Tooltip::text(
+                            "オンにすると直前のメッセージが入り、コミットで直前のコミットを置き換えます",
+                        ))
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_amend_pending(cx))),
+                    ),
+                )
+                .when(needs_force_push, |this| {
+                    this.child(
+                        h_flex()
+                            .debug_selector(|| "git-panel-amend-force-push-note".into())
+                            .gap_1()
+                            .child(
+                                Icon::new(IconName::Warning)
+                                    .size(IconSize::XSmall)
+                                    .color(Color::Warning),
+                            )
+                            .child(
+                                Label::new(AMEND_FORCE_PUSH_NOTE)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Warning),
+                            ),
+                    )
+                })
+                .into_any_element(),
+        )
     }
 
     pub fn signoff_enabled(&self) -> bool {
@@ -10577,6 +11183,40 @@ mod tests {
             .any(|kind| args == ["rev-parse", "--verify", "--quiet", kind.in_progress_ref()])
     }
 
+    /// The probes that keep a history rewrite from overwriting ignored local files, when the
+    /// commits it replays (`revisions`: a range, or `--no-walk` and the commits) touch `paths`
+    /// (sorted), in the order they run.
+    fn rewrite_touch_commands(revisions: &str, paths: &[&str]) -> Vec<String> {
+        let mut commands = vec![format!(
+            "log --format= --name-only --no-renames -z {revisions}"
+        )];
+        if !paths.is_empty() {
+            let pathspecs = paths
+                .iter()
+                .map(|path| format!(":(top,literal){path}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            commands.push(format!(
+                "ls-files --others --ignored --exclude-standard -z -- {pathspecs}"
+            ));
+        }
+        commands
+    }
+
+    /// Answers [`rewrite_touch_commands`]: the commits touch `paths`, and `ignored` of them are
+    /// ignored files in the working tree.
+    fn set_fake_rewrite_touches(fs: &FakeFs, revisions: &str, paths: &[&str], ignored: &[&str]) {
+        let listing =
+            |paths: &[&str]| -> String { paths.iter().map(|path| format!("{path}\0")).collect() };
+        let commands = rewrite_touch_commands(revisions, paths);
+        let listed = listing(paths);
+        set_fake_git_command_result(fs, &commands[0], &listed, "", 0);
+        if let Some(ls_files) = commands.get(1) {
+            let found = listing(ignored);
+            set_fake_git_command_result(fs, ls_files, &found, "", 0);
+        }
+    }
+
     fn set_fake_git_command_result(
         fs: &FakeFs,
         args: &str,
@@ -10625,6 +11265,8 @@ mod tests {
         let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
 
         set_fake_git_command_result(&fs, "rev-parse --verify --quiet HEAD", HEAD_SHA, "", 0);
+        set_fake_git_command_result(&fs, "rev-parse --verify --quiet refs/stash", "", "", 1);
+        set_fake_rewrite_touches(&fs, &format!("{OLD_SHA}..HEAD"), &["file.txt"], &[]);
         set_fake_git_command_result(&fs, &format!("log --format=%H HEAD..{OLD_SHA}"), "", "", 0);
         set_fake_git_command_result(
             &fs,
@@ -10686,17 +11328,28 @@ mod tests {
             .collect();
         assert_eq!(
             commands,
-            vec![
+            [
                 "rev-parse --verify --quiet HEAD".to_string(),
                 format!("log --format=%H HEAD..{OLD_SHA}"),
                 format!("log --merges --format=%H {OLD_SHA}..HEAD"),
+            ]
+            .into_iter()
+            .chain(rewrite_touch_commands(
+                &format!("{OLD_SHA}..HEAD"),
+                &["file.txt"]
+            ))
+            .chain([
                 format!("log -1 --format=%an%x00%ae%x00%ad --date=raw {OLD_SHA}"),
                 format!("rev-parse --verify --quiet {OLD_SHA}^"),
                 format!(
                     "commit-tree {OLD_SHA}^{{tree}} -p 2222222222222222222222222222222222222222 -m 書き換え後"
                 ),
+                // Around the rebase: a new stash entry would be the autostash git kept.
+                "rev-parse --verify --quiet refs/stash".to_string(),
                 rebase_args.join(" "),
-            ]
+                "rev-parse --verify --quiet refs/stash".to_string(),
+            ])
+            .collect::<Vec<_>>()
         );
 
         // The rebuilt commit has to be authored by whoever wrote the original, which only the
@@ -10870,6 +11523,8 @@ mod tests {
         cx.run_until_parked();
 
         set_fake_git_command_result(&fs, "rev-parse --verify --quiet HEAD", HEAD_SHA, "", 0);
+        set_fake_git_command_result(&fs, "rev-parse --verify --quiet refs/stash", "", "", 1);
+        set_fake_rewrite_touches(&fs, &format!("{OLD_SHA}..HEAD"), &["file.txt"], &[]);
         set_fake_git_command_result(&fs, &format!("log --format=%H HEAD..{OLD_SHA}"), "", "", 0);
         set_fake_git_command_result(
             &fs,
@@ -11115,71 +11770,338 @@ mod tests {
         assert!(description.contains("確かめられません"), "{description}");
     }
 
-    /// The merge-request helper: branch off the base, apply the commits without committing, then
-    /// make one commit.
+    const MERGE_REQUEST_BASE: &str = "b000000000000000000000000000000000000000";
+    const MERGE_REQUEST_FIRST: &str = "a100000000000000000000000000000000000000";
+    const MERGE_REQUEST_LAST: &str = "c300000000000000000000000000000000000000";
+    const MERGE_REQUEST_NEW: &str = "d400000000000000000000000000000000000000";
+
+    /// The answers a merge-request build needs before it moves anything: on `dev`, nothing in
+    /// progress, a clean tree, no leftover scratch branch, and a base that resolves.
+    fn prepare_merge_request_build(fs: &FakeFs) -> String {
+        let scratch = git::repository::merge_request_scratch_branch_name(MERGE_REQUEST_LAST);
+        fs.set_branch_name(path!("/project/.git").as_ref(), Some("dev"));
+        set_fake_rewrite_touches(
+            fs,
+            &format!("--no-walk {MERGE_REQUEST_FIRST} {MERGE_REQUEST_LAST}"),
+            &["file.txt"],
+            &[],
+        );
+        set_fake_git_command_result(fs, "rev-parse --abbrev-ref HEAD", "dev\n", "", 0);
+        for kind in SequencerKind::all() {
+            set_fake_git_command_result(
+                fs,
+                &format!("rev-parse --verify --quiet {}", kind.in_progress_ref()),
+                "",
+                "",
+                1,
+            );
+        }
+        set_fake_git_command_result(fs, "rev-parse --verify --quiet MERGE_HEAD", "", "", 1);
+        set_fake_git_command_result(fs, "diff --name-only --diff-filter=U", "", "", 0);
+        set_fake_git_command_result(fs, "diff --quiet HEAD", "", "", 0);
+        set_fake_git_command_result(
+            fs,
+            &format!("rev-parse --verify --quiet refs/heads/{scratch}"),
+            "",
+            "",
+            1,
+        );
+        set_fake_git_command_result(
+            fs,
+            "rev-parse --verify --quiet origin/main^{commit}",
+            &format!("{MERGE_REQUEST_BASE}\n"),
+            "",
+            0,
+        );
+        scratch
+    }
+
+    fn merge_request_build(scratch: &str, recreate: bool) -> project::git_store::MergeRequestBuild {
+        project::git_store::MergeRequestBuild {
+            base: "origin/main".to_string(),
+            shas_oldest_first: vec![
+                MERGE_REQUEST_FIRST.to_string(),
+                MERGE_REQUEST_LAST.to_string(),
+            ],
+            merge_request_branch: "mr/dev".to_string(),
+            message: "まとめ".to_string(),
+            recreate,
+            origin_branch: "dev".to_string(),
+            scratch_branch: scratch.to_string(),
+        }
+    }
+
+    /// Only the commands that change something, in the order they ran.
+    fn merge_request_commands_since(fs: &FakeFs, already_logged: usize) -> Vec<String> {
+        fake_git_command_log(fs)
+            .into_iter()
+            .skip(already_logged)
+            .map(|(args, _)| args.join(" "))
+            .filter(|command| {
+                !command.starts_with("rev-parse --verify --quiet refs/heads/")
+                    && !command.starts_with("rev-parse --verify --quiet origin/main")
+                    && command != "diff --quiet HEAD"
+                    && !command.starts_with("log --format= --name-only")
+                    && !command.starts_with("ls-files ")
+            })
+            .collect()
+    }
+
+    /// The merge-request box's build: everything on a scratch branch, one commit on the base,
+    /// the merge-request branch pointed at it, and the user put back on `dev`.
     #[gpui::test]
-    async fn test_squash_to_new_branch_runs_the_three_steps_in_order(cx: &mut TestAppContext) {
+    async fn test_build_merge_request_branch_runs_on_a_scratch_branch(cx: &mut TestAppContext) {
         init_test(cx);
         let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
-
-        set_fake_git_command_result(&fs, "switch -c mr/1 origin/main", "", "", 0);
-        set_fake_git_command_result(&fs, "cherry-pick -n aaa bbb", "", "", 0);
-        set_fake_git_command_result(&fs, "commit -m まとめ", "", "", 0);
+        let scratch = prepare_merge_request_build(&fs);
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet refs/heads/mr/dev",
+            "",
+            "",
+            1,
+        );
+        let picks = [
+            format!("switch --no-overwrite-ignore -c {scratch} {MERGE_REQUEST_BASE}"),
+            format!(
+                "cherry-pick --keep-redundant-commits {MERGE_REQUEST_FIRST} {MERGE_REQUEST_LAST}"
+            ),
+        ];
+        for step in &picks {
+            set_fake_git_command_result(&fs, step, "", "", 0);
+        }
+        // Not empty: the box's changes are not all in the base already.
+        set_fake_git_command_result(
+            &fs,
+            &format!("diff --cached --quiet {MERGE_REQUEST_BASE}"),
+            "",
+            "",
+            1,
+        );
+        let finish = [
+            format!("reset --soft {MERGE_REQUEST_BASE}"),
+            "commit -m まとめ".to_string(),
+            "branch mr/dev HEAD".to_string(),
+        ];
+        for step in &finish {
+            set_fake_git_command_result(&fs, step, "", "", 0);
+        }
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet HEAD",
+            &format!("{MERGE_REQUEST_NEW}\n"),
+            "",
+            0,
+        );
+        set_fake_git_command_result(&fs, "switch dev", "", "", 0);
+        set_fake_git_command_result(&fs, &format!("branch -D {scratch}"), "", "", 0);
+        let already_logged = fake_git_command_log(&fs).len();
 
         let repository = active_repository(&panel, &mut cx);
-        let squash = repository.update(&mut cx, |repository, cx| {
-            repository.squash_to_new_branch(
-                "origin/main".to_string(),
-                vec!["aaa".to_string(), "bbb".to_string()],
-                "mr/1".to_string(),
-                "まとめ".to_string(),
-                cx,
-            )
-        });
-        assert!(squash.await.unwrap().unwrap().succeeded());
-
+        let outcome = repository
+            .update(&mut cx, |repository, cx| {
+                repository.build_merge_request_branch(merge_request_build(&scratch, false), cx)
+            })
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
-            fake_git_command_log(&fs)
-                .into_iter()
-                .map(|(args, _)| args.join(" "))
-                .collect::<Vec<_>>(),
+            outcome,
+            project::git_store::MergeRequestBuildOutcome::Created {
+                merge_request_sha: MERGE_REQUEST_NEW.to_string(),
+                previous_sha: None,
+                return_failure: None,
+            }
+        );
+        assert_eq!(
+            merge_request_commands_since(&fs, already_logged),
+            [
+                picks.to_vec(),
+                vec![format!("diff --cached --quiet {MERGE_REQUEST_BASE}")],
+                finish.to_vec(),
+                vec![
+                    "rev-parse --verify --quiet HEAD".to_string(),
+                    "switch dev".to_string(),
+                    format!("branch -D {scratch}"),
+                ],
+            ]
+            .concat()
+        );
+    }
+
+    /// An existing merge-request branch is only moved when the user asked for it, and a refusal
+    /// before the scratch branch exists leaves the repository exactly as it was.
+    #[gpui::test]
+    async fn test_build_merge_request_branch_refuses_an_existing_branch(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        let scratch = prepare_merge_request_build(&fs);
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet refs/heads/mr/dev",
+            &format!("{MERGE_REQUEST_NEW}\n"),
+            "",
+            0,
+        );
+        let already_logged = fake_git_command_log(&fs).len();
+
+        let repository = active_repository(&panel, &mut cx);
+        let outcome = repository
+            .update(&mut cx, |repository, cx| {
+                repository.build_merge_request_branch(merge_request_build(&scratch, false), cx)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        let project::git_store::MergeRequestBuildOutcome::Refused {
+            reason,
+            left_on_scratch_branch,
+        } = outcome
+        else {
+            panic!("an existing branch must be refused, got {outcome:?}");
+        };
+        assert!(reason.contains("既にあります"), "{reason}");
+        assert!(!left_on_scratch_branch);
+        assert_eq!(
+            merge_request_commands_since(&fs, already_logged),
+            Vec::<String>::new(),
+            "nothing may move before the checks pass"
+        );
+
+        // Asked for, the old branch is moved and where it pointed is reported.
+        let steps = [
+            format!("switch --no-overwrite-ignore -c {scratch} {MERGE_REQUEST_BASE}"),
+            format!(
+                "cherry-pick --keep-redundant-commits {MERGE_REQUEST_FIRST} {MERGE_REQUEST_LAST}"
+            ),
+            format!("diff --cached --quiet {MERGE_REQUEST_BASE}"),
+            format!("reset --soft {MERGE_REQUEST_BASE}"),
+            "commit -m まとめ".to_string(),
+            "branch -f mr/dev HEAD".to_string(),
+            "switch dev".to_string(),
+            format!("branch -D {scratch}"),
+        ];
+        for step in &steps {
+            let exit_code = if step.starts_with("diff --cached") {
+                1
+            } else {
+                0
+            };
+            set_fake_git_command_result(&fs, step, "", "", exit_code);
+        }
+        set_fake_git_command_result(&fs, "rev-parse --verify --quiet HEAD", "d5\n", "", 0);
+        let outcome = repository
+            .update(&mut cx, |repository, cx| {
+                repository.build_merge_request_branch(merge_request_build(&scratch, true), cx)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            outcome,
+            project::git_store::MergeRequestBuildOutcome::Created {
+                merge_request_sha: "d5".to_string(),
+                previous_sha: Some(MERGE_REQUEST_NEW.to_string()),
+                return_failure: None,
+            }
+        );
+    }
+
+    /// A pick git refuses without stopping on a conflict (a commit it cannot pick, say) is
+    /// cleaned up completely: whatever todo list it left is aborted, and the user is back on
+    /// `dev` with the scratch branch gone.
+    #[gpui::test]
+    async fn test_build_merge_request_branch_cleans_up_a_refused_pick(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        let scratch = prepare_merge_request_build(&fs);
+        set_fake_git_command_result(
+            &fs,
+            "rev-parse --verify --quiet refs/heads/mr/dev",
+            "",
+            "",
+            1,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!("switch --no-overwrite-ignore -c {scratch} {MERGE_REQUEST_BASE}"),
+            "",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            &fs,
+            &format!(
+                "cherry-pick --keep-redundant-commits {MERGE_REQUEST_FIRST} {MERGE_REQUEST_LAST}"
+            ),
+            "",
+            "error: commit is a merge but no -m option was given.\n",
+            128,
+        );
+        set_fake_git_command_result(&fs, "cherry-pick --abort", "", "", 0);
+        set_fake_git_command_result(&fs, "switch dev", "", "", 0);
+        set_fake_git_command_result(&fs, &format!("branch -D {scratch}"), "", "", 0);
+        let already_logged = fake_git_command_log(&fs).len();
+
+        let repository = active_repository(&panel, &mut cx);
+        let outcome = repository
+            .update(&mut cx, |repository, cx| {
+                repository.build_merge_request_branch(merge_request_build(&scratch, false), cx)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            outcome,
+            project::git_store::MergeRequestBuildOutcome::Refused {
+                reason: "error: commit is a merge but no -m option was given.".to_string(),
+                left_on_scratch_branch: false,
+            }
+        );
+        assert_eq!(
+            merge_request_commands_since(&fs, already_logged),
             vec![
-                "switch -c mr/1 origin/main".to_string(),
-                "cherry-pick -n aaa bbb".to_string(),
-                "commit -m まとめ".to_string(),
+                format!("switch --no-overwrite-ignore -c {scratch} {MERGE_REQUEST_BASE}"),
+                format!(
+                    "cherry-pick --keep-redundant-commits {MERGE_REQUEST_FIRST} {MERGE_REQUEST_LAST}"
+                ),
+                "cherry-pick --abort".to_string(),
+                "switch dev".to_string(),
+                format!("branch -D {scratch}"),
             ]
         );
     }
 
-    /// A step git refuses stops the sequence, so the user is told about the command that actually
-    /// failed rather than a later one that never ran.
-    #[gpui::test]
-    async fn test_squash_to_new_branch_stops_at_the_first_refused_step(cx: &mut TestAppContext) {
-        init_test(cx);
-        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
-
-        set_fake_git_command_result(
-            &fs,
-            "switch -c mr/1 origin/main",
+    /// A merge-request build stopped on its scratch branch is finished from the box, so the
+    /// banner says so instead of sending the user to `rebase --onto`.
+    #[test]
+    fn test_merge_request_scratch_banner_text() {
+        let text = GitPanel::merge_request_scratch_banner_text(
             "",
-            "fatal: a branch named 'mr/1' already exists\n",
-            128,
+            "解決してください。",
+            "zed-rewrite/mr-abcdef0",
+            Some("dev"),
         );
+        assert!(
+            text.starts_with("MR ブランチの作成が一時ブランチ「zed-rewrite/mr-abcdef0」"),
+            "{text}"
+        );
+        assert!(text.contains("元のブランチ「dev」に戻り"), "{text}");
+        assert!(text.contains("「続きの手順」"), "{text}");
+        assert!(!text.contains("rebase --onto"), "{text}");
 
-        let repository = active_repository(&panel, &mut cx);
-        let squash = repository.update(&mut cx, |repository, cx| {
-            repository.squash_to_new_branch(
-                "origin/main".to_string(),
-                vec!["aaa".to_string()],
-                "mr/1".to_string(),
-                "まとめ".to_string(),
-                cx,
-            )
-        });
-        let output = squash.await.unwrap().unwrap();
-        assert!(!output.succeeded());
-        assert!(output.stderr.contains("already exists"));
-        assert_eq!(fake_git_command_log(&fs).len(), 1);
+        let text = GitPanel::merge_request_scratch_banner_text(
+            "疑わしい
+",
+            "",
+            "zed-rewrite/mr-abcdef0",
+            None,
+        );
+        assert!(
+            text.starts_with("疑わしい"),
+            "the doubt still leads: {text}"
+        );
+        assert!(text.contains("元のブランチが分からない"), "{text}");
     }
 
     const REWRITE_BASE: &str = "0000000000000000000000000000000000000000";
@@ -11210,7 +12132,30 @@ mod tests {
         );
         set_fake_git_command_result(
             fs,
+            &format!("log --format=%H HEAD..{REWRITE_FIRST}"),
+            "",
+            "",
+            0,
+        );
+        set_fake_git_command_result(
+            fs,
             &format!("log --merges --format=%H {REWRITE_BASE}..{REWRITE_LAST}"),
+            "",
+            "",
+            0,
+        );
+        // What the range is made of, which every commit the rewrite applies has to come from.
+        set_fake_git_command_result(
+            fs,
+            &format!("log --format=%H {REWRITE_BASE}..{REWRITE_LAST}"),
+            &format!("{REWRITE_LAST}\n{REWRITE_THIRD}\n{REWRITE_SECOND}\n{REWRITE_FIRST}\n"),
+            "",
+            0,
+        );
+        // Nor after it, where the closing `rebase --onto` would flatten a merge.
+        set_fake_git_command_result(
+            fs,
+            &format!("log --merges --format=%H {REWRITE_LAST}..HEAD"),
             "",
             "",
             0,
@@ -11223,9 +12168,11 @@ mod tests {
             "",
             1,
         );
+        set_fake_rewrite_touches(fs, &format!("{REWRITE_BASE}..HEAD"), &["file.txt"], &[]);
+        set_fake_git_command_result(fs, "rev-parse --verify --quiet refs/stash", "", "", 1);
         set_fake_git_command_result(
             fs,
-            &format!("switch -c {scratch} {REWRITE_BASE}"),
+            &format!("switch --no-overwrite-ignore -c {scratch} {REWRITE_BASE}"),
             "",
             "",
             0,
@@ -11235,13 +12182,24 @@ mod tests {
 
     /// The commands run before the first commit is applied, in order.
     fn rewrite_prelude(scratch: &str) -> Vec<String> {
-        vec![
+        let mut prelude = vec![
             format!("rev-parse --verify --quiet {REWRITE_FIRST}^"),
             format!("log --format=%H HEAD..{REWRITE_LAST}"),
+            format!("log --format=%H HEAD..{REWRITE_FIRST}"),
             format!("log --merges --format=%H {REWRITE_BASE}..{REWRITE_LAST}"),
+            format!("log --format=%H {REWRITE_BASE}..{REWRITE_LAST}"),
+            format!("log --merges --format=%H {REWRITE_LAST}..HEAD"),
             format!("rev-parse --verify --quiet refs/heads/{scratch}"),
-            format!("switch -c {scratch} {REWRITE_BASE}"),
-        ]
+        ];
+        prelude.extend(rewrite_touch_commands(
+            &format!("{REWRITE_BASE}..HEAD"),
+            &["file.txt"],
+        ));
+        prelude.extend([
+            "rev-parse --verify --quiet refs/stash".to_string(),
+            format!("switch --no-overwrite-ignore -c {scratch} {REWRITE_BASE}"),
+        ]);
+        prelude
     }
 
     /// The third commit moved ahead of the first, the second folded into the first, and the
@@ -11269,6 +12227,9 @@ mod tests {
                 REWRITE_FIRST.to_string(),
                 REWRITE_LAST.to_string(),
                 rewrite_groups(),
+                [REWRITE_FIRST, REWRITE_SECOND, REWRITE_THIRD, REWRITE_LAST]
+                    .map(str::to_string)
+                    .to_vec(),
                 cx,
             )
         })
@@ -11339,6 +12300,8 @@ mod tests {
             format!("rebase --autostash --onto {scratch} {REWRITE_LAST} main"),
             "switch main".to_string(),
             format!("branch -D {scratch}"),
+            // A new stash entry would be the autostash the closing rebase could not put back.
+            "rev-parse --verify --quiet refs/stash".to_string(),
         ]);
         assert_eq!(commands, expected);
 
@@ -11527,6 +12490,50 @@ mod tests {
         );
     }
 
+    /// The closing `rebase --onto` replays every commit after the range, and would flatten a
+    /// merge commit among them, so such a merge stops the rewrite before anything is written.
+    #[gpui::test]
+    async fn test_rewrite_range_refuses_a_merge_after_the_range(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, _workspace, panel, mut cx) = setup_docked_git_panel(cx).await;
+        let scratch = prepare_rewrite_range(&fs);
+        set_fake_git_command_result(
+            &fs,
+            &format!("log --merges --format=%H {REWRITE_LAST}..HEAD"),
+            "5555555555555555555555555555555555555555\n",
+            "",
+            0,
+        );
+        cx.run_until_parked();
+
+        let repository = active_repository(&panel, &mut cx);
+        let error = run_rewrite_range(&repository, &mut cx)
+            .await
+            .unwrap()
+            .expect_err("a merge after the range must stop the rewrite");
+        assert!(
+            error.to_string().contains("マージコミット"),
+            "unexpected error: {error:#}"
+        );
+
+        let commands: Vec<String> = fake_git_command_log(&fs)
+            .into_iter()
+            .map(|(args, _)| args.join(" "))
+            .collect();
+        assert!(
+            !commands.iter().any(|command| command.starts_with("switch")
+                || command.starts_with("cherry-pick")
+                || command.starts_with("rebase")),
+            "nothing may be written once the rewrite is refused: {commands:?}"
+        );
+        assert!(
+            !commands
+                .iter()
+                .any(|command| command.contains(&format!("refs/heads/{scratch}"))),
+            "the refusal comes before the scratch branch is even looked at: {commands:?}"
+        );
+    }
+
     /// Dropping a single commit is one `rebase --onto` onto its parent, with the same refusal of a
     /// range containing a merge that the other rewrites make.
     #[gpui::test]
@@ -11564,6 +12571,8 @@ mod tests {
             "",
             0,
         );
+        set_fake_rewrite_touches(&fs, &format!("{REWRITE_SECOND}..HEAD"), &["file.txt"], &[]);
+        set_fake_git_command_result(&fs, "rev-parse --verify --quiet refs/stash", "", "", 1);
 
         let repository = active_repository(&panel, &mut cx);
         let dropped = repository.update(&mut cx, |repository, cx| {
@@ -11576,12 +12585,22 @@ mod tests {
                 .into_iter()
                 .map(|(args, _)| args.join(" "))
                 .collect::<Vec<_>>(),
-            vec![
+            [
                 format!("rev-parse --verify --quiet {REWRITE_THIRD}^"),
                 format!("log --format=%H HEAD..{REWRITE_THIRD}"),
                 format!("log --merges --format=%H {REWRITE_THIRD}..HEAD"),
-                format!("rebase --autostash --onto {REWRITE_SECOND} {REWRITE_THIRD} main"),
             ]
+            .into_iter()
+            .chain(rewrite_touch_commands(
+                &format!("{REWRITE_SECOND}..HEAD"),
+                &["file.txt"]
+            ))
+            .chain([
+                "rev-parse --verify --quiet refs/stash".to_string(),
+                format!("rebase --autostash --onto {REWRITE_SECOND} {REWRITE_THIRD} main"),
+                "rev-parse --verify --quiet refs/stash".to_string(),
+            ])
+            .collect::<Vec<_>>()
         );
     }
 
@@ -12007,6 +13026,170 @@ mod tests {
                 .active_modal::<crate::commit_context_menu::CommitTextModal>(cx)
                 .is_none()),
             "confirming closes it"
+        );
+    }
+
+    /// Everything the fixup job asks git before and after `commit --fixup`, answered for a
+    /// history `PARENT ← OLD_SHA ← … ← HEAD_SHA` where nothing is stopped and OLD_SHA is pushed.
+    fn script_fixup_of_old_sha(fs: &FakeFs) {
+        const PARENT: &str = "2222222222222222222222222222222222222222";
+        let replayed = format!("{HEAD_SHA}\n{OLD_SHA}");
+        for (args, stdout, exit_code) in [
+            (
+                format!("rev-parse --verify --quiet {OLD_SHA}^{{commit}}"),
+                OLD_SHA,
+                0,
+            ),
+            ("rev-parse --verify --quiet HEAD".to_string(), HEAD_SHA, 0),
+            ("rev-parse --verify --quiet refs/stash".to_string(), "", 1),
+            ("rev-parse --verify --quiet REBASE_HEAD".to_string(), "", 1),
+            (
+                "rev-parse --verify --quiet CHERRY_PICK_HEAD".to_string(),
+                "",
+                1,
+            ),
+            ("rev-parse --verify --quiet REVERT_HEAD".to_string(), "", 1),
+            ("rev-parse --verify --quiet MERGE_HEAD".to_string(), "", 1),
+            ("diff --name-only --diff-filter=U".to_string(), "", 0),
+            ("rev-parse --abbrev-ref HEAD".to_string(), "main", 0),
+            (format!("log --format=%H HEAD..{OLD_SHA}"), "", 0),
+            (format!("rev-parse --verify --quiet {OLD_SHA}^"), PARENT, 0),
+            (format!("log --merges --format=%H {PARENT}..HEAD"), "", 0),
+            (format!("log --format=%s {PARENT}..HEAD"), "later\nfirst", 0),
+            (format!("log -1 --format=%s {OLD_SHA}"), "first", 0),
+            (
+                format!("log --format=%H -1 @{{upstream}}..{OLD_SHA}"),
+                "",
+                0,
+            ),
+            ("diff HEAD --name-only".to_string(), "file", 0),
+            (
+                format!("log --format= --name-only --no-renames -z {PARENT}..HEAD"),
+                "file\0",
+                0,
+            ),
+            (
+                "ls-files --others --ignored --exclude-standard -z -- :(top,literal)file"
+                    .to_string(),
+                "",
+                0,
+            ),
+            (
+                format!("log --format=%H {PARENT}..HEAD"),
+                replayed.as_str(),
+                0,
+            ),
+            (format!("commit --fixup={OLD_SHA} -a"), "", 0),
+            ("diff --cached --raw --no-abbrev".to_string(), "", 0),
+            ("diff --name-only".to_string(), "", 0),
+            (
+                format!("rebase -i --autosquash --autostash --keep-empty {PARENT}"),
+                "",
+                0,
+            ),
+        ] {
+            set_fake_git_command_result(fs, &args, stdout, "", exit_code);
+        }
+    }
+
+    /// The fixup confirmation: refused up front when there is nothing to fold in; otherwise it
+    /// opens once git has vouched for the commit, starts on the staged changes, ↓ switches to
+    /// every change, Esc leaves without running anything, and Enter (bound the way the default
+    /// keymap binds it, with no editor in the modal to swallow it) runs `commit --fixup -a` and
+    /// the autosquash rebase.
+    #[gpui::test]
+    async fn test_fixup_modal_is_driven_by_the_keyboard(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (fs, _project, workspace, _panel, mut cx) = setup_docked_git_panel(cx).await;
+        let dot_git = Path::new(path!("/project/.git"));
+        cx.update(|_, cx| {
+            cx.bind_keys([
+                gpui::KeyBinding::new("enter", menu::Confirm, None),
+                gpui::KeyBinding::new("escape", menu::Cancel, None),
+                gpui::KeyBinding::new("down", menu::SelectNext, None),
+            ])
+        });
+        fs.set_branch_name(dot_git, Some("main"));
+        fs.set_status_for_repo(dot_git, &[]);
+        cx.run_until_parked();
+        let fixup_modal = |cx: &mut VisualTestContext| {
+            workspace.read_with(cx, |workspace, cx| {
+                workspace.active_modal::<crate::commit_context_menu::FixupModal>(cx)
+            })
+        };
+
+        cx.dispatch_action(git::FixupCommit {
+            sha: OLD_SHA.to_string(),
+        });
+        cx.run_until_parked();
+        assert!(fixup_modal(&mut cx).is_none(), "nothing to fold in");
+        assert!(
+            fake_git_command_log(&fs).is_empty(),
+            "the refusal comes before git is asked anything"
+        );
+
+        fs.set_status_for_repo(
+            dot_git,
+            &[(
+                "file",
+                git::status::FileStatus::Tracked(TrackedStatus {
+                    index_status: StatusCode::Modified,
+                    worktree_status: StatusCode::Modified,
+                }),
+            )],
+        );
+        script_fixup_of_old_sha(&fs);
+        cx.run_until_parked();
+
+        cx.dispatch_action(git::FixupCommit {
+            sha: OLD_SHA.to_string(),
+        });
+        cx.run_until_parked();
+        let modal = fixup_modal(&mut cx).expect("the fixup confirmation should open");
+        modal.read_with(&cx, |modal, _| {
+            assert_eq!(
+                modal.changes_for_test(),
+                git::repository::FixupChanges::Staged
+            );
+            assert_eq!(modal.target_for_test().subject, "first");
+            assert!(modal.target_for_test().pushed);
+        });
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        assert!(fixup_modal(&mut cx).is_none(), "Esc closes it");
+
+        cx.dispatch_action(git::FixupCommit {
+            sha: OLD_SHA.to_string(),
+        });
+        cx.run_until_parked();
+        let modal = fixup_modal(&mut cx).expect("the fixup confirmation should open again");
+        cx.simulate_keystrokes("down");
+        assert_eq!(
+            modal.read_with(&cx, |modal, _| modal.changes_for_test()),
+            git::repository::FixupChanges::AllTracked
+        );
+        let written_before = |fs: &FakeFs| {
+            fake_git_command_log(fs)
+                .into_iter()
+                .map(|(args, _)| args.join(" "))
+                .filter(|command| command.starts_with("commit") || command.starts_with("rebase"))
+                .collect::<Vec<_>>()
+        };
+        assert!(written_before(&fs).is_empty(), "Esc must not have run it");
+
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        assert!(
+            fixup_modal(&mut cx).is_none(),
+            "Enter confirms and closes it"
+        );
+        assert_eq!(
+            written_before(&fs),
+            vec![
+                format!("commit --fixup={OLD_SHA} -a"),
+                "rebase -i --autosquash --autostash --keep-empty 2222222222222222222222222222222222222222"
+                    .to_string(),
+            ]
         );
     }
 
@@ -16419,5 +17602,422 @@ mod tests {
                 Status(GitStatusEntry { staging: StageStatus::Unstaged, .. }),
             ],
         );
+    }
+
+    #[test]
+    fn test_section_drop_stage() {
+        // Dropped on the other section: files from the staged one are unstaged, anything else is
+        // staged.
+        assert_eq!(section_drop_stage(false, Section::Staged), Some(true));
+        assert_eq!(section_drop_stage(true, Section::Unstaged), Some(false));
+        // Dropped back where they came from, nothing happens.
+        assert_eq!(section_drop_stage(true, Section::Staged), None);
+        assert_eq!(section_drop_stage(false, Section::Unstaged), None);
+        // Sections that are not about staging take nothing.
+        for section in [Section::Conflict, Section::Tracked, Section::New] {
+            assert_eq!(section_drop_stage(false, section), None);
+            assert_eq!(section_drop_stage(true, section), None);
+        }
+    }
+
+    #[test]
+    fn test_dragged_entries_label() {
+        assert_eq!(
+            dragged_entries_label(&[repo_path("src/main.rs")]).as_ref(),
+            "main.rs"
+        );
+        assert_eq!(
+            dragged_entries_label(&[repo_path("a.rs"), repo_path("src/b.rs")]).as_ref(),
+            "2 ファイル"
+        );
+    }
+
+    /// A file dragged out of one staging section and dropped on the other is staged or unstaged to
+    /// match where it landed; dropped back on its own section, or coming from another repository,
+    /// it is left alone. Conflicted files are not dragged at all.
+    #[gpui::test]
+    async fn test_dropping_files_on_a_staging_section(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".git": {},
+                "conflict.rs": "conflict content",
+                "staged.rs": "staged content",
+                "unstaged.rs": "unstaged content",
+            }),
+        )
+        .await;
+        fs.set_status_for_repo(
+            path!("/project/.git").as_ref(),
+            &[
+                (
+                    "conflict.rs",
+                    UnmergedStatus {
+                        first_head: UnmergedStatusCode::Updated,
+                        second_head: UnmergedStatusCode::Updated,
+                    }
+                    .into(),
+                ),
+                ("staged.rs", FileStatus::index(StatusCode::Modified)),
+                ("unstaged.rs", StatusCode::Modified.worktree()),
+            ],
+        );
+
+        let project = Project::test(fs.clone(), [Path::new(path!("/project"))], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = window_handle
+            .read_with(cx, |mw, _| mw.workspace().clone())
+            .unwrap();
+        let mut cx = VisualTestContext::from_window(window_handle.into(), cx);
+
+        cx.update(|_window, cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.git_panel.get_or_insert_default().group_by =
+                        Some(GitPanelGroupBy::Staging);
+                })
+            });
+        });
+
+        let scan_complete = |cx: &mut VisualTestContext| {
+            cx.read(|cx| {
+                project
+                    .read(cx)
+                    .worktrees(cx)
+                    .next()
+                    .unwrap()
+                    .read(cx)
+                    .as_local()
+                    .unwrap()
+                    .scan_complete()
+            })
+        };
+        scan_complete(&mut cx).await;
+        cx.executor().run_until_parked();
+
+        let panel = workspace.update_in(&mut cx, GitPanel::new);
+        await_git_panel_entries(&panel, &mut cx).await;
+
+        let index_of = |path: &str| {
+            fs.with_git_state(path!("/project/.git").as_ref(), false, |state| {
+                state.index_contents.get(&repo_path(path)).cloned()
+            })
+            .unwrap()
+        };
+        let staged_index_before = index_of("staged.rs");
+        let unstaged_index_before = index_of("unstaged.rs");
+        assert_ne!(
+            unstaged_index_before.as_deref(),
+            Some(b"unstaged content".as_slice())
+        );
+
+        let (from_unstaged, from_staged) = panel.read_with(&cx, |panel, _| {
+            let active_repository = panel
+                .active_repository
+                .as_ref()
+                .expect("the panel has a repository")
+                .entity_id();
+            let conflict_row = panel
+                .entry_by_path_in_section(&repo_path("conflict.rs"), Section::Conflict)
+                .expect("the conflicted file has a row");
+            assert!(
+                panel.dragged_entries_for(conflict_row).is_none(),
+                "dropping must not be a way to resolve or unresolve a conflict"
+            );
+            let header_row = panel
+                .entries
+                .iter()
+                .position(|entry| matches!(entry, GitListEntry::Header(_)))
+                .expect("the sections have headers");
+            assert!(panel.dragged_entries_for(header_row).is_none());
+
+            let from_unstaged = panel
+                .entry_by_path_in_section(&repo_path("unstaged.rs"), Section::Unstaged)
+                .and_then(|row| panel.dragged_entries_for(row))
+                .expect("an unstaged file can be dragged");
+            let from_staged = panel
+                .entry_by_path_in_section(&repo_path("staged.rs"), Section::Staged)
+                .and_then(|row| panel.dragged_entries_for(row))
+                .expect("a staged file can be dragged");
+            assert_eq!(from_unstaged.repo_paths, vec![repo_path("unstaged.rs")]);
+            assert!(!from_unstaged.from_staged);
+            assert_eq!(from_unstaged.repository.entity_id(), active_repository);
+            assert_eq!(from_staged.repo_paths, vec![repo_path("staged.rs")]);
+            assert!(from_staged.from_staged);
+            (from_unstaged, from_staged)
+        });
+
+        // Back on its own section, or from a repository that is not this panel's: nothing.
+        let from_elsewhere = DraggedGitPanelEntries {
+            repository: WeakEntity::new_invalid(),
+            repo_paths: vec![repo_path("unstaged.rs")],
+            from_staged: false,
+        };
+        panel.update(&mut cx, |panel, cx| {
+            panel.drop_entries_on_section(&from_unstaged, Section::Unstaged, cx);
+            panel.drop_entries_on_section(&from_staged, Section::Staged, cx);
+            panel.drop_entries_on_section(&from_elsewhere, Section::Staged, cx);
+        });
+        scan_complete(&mut cx).await;
+        cx.executor().run_until_parked();
+        await_git_panel_entries(&panel, &mut cx).await;
+        assert_eq!(index_of("unstaged.rs"), unstaged_index_before);
+        assert_eq!(index_of("staged.rs"), staged_index_before);
+
+        // Onto the other section: staged and unstaged.
+        panel.update(&mut cx, |panel, cx| {
+            panel.drop_entries_on_section(&from_unstaged, Section::Staged, cx);
+            panel.drop_entries_on_section(&from_staged, Section::Unstaged, cx);
+        });
+        scan_complete(&mut cx).await;
+        cx.executor().run_until_parked();
+        await_git_panel_entries(&panel, &mut cx).await;
+
+        assert_eq!(
+            index_of("unstaged.rs").as_deref(),
+            Some(b"unstaged content".as_slice()),
+            "the dropped file's working copy is what the index holds now"
+        );
+        let staged_head = fs
+            .with_git_state(path!("/project/.git").as_ref(), false, |state| {
+                state.head_contents.get(&repo_path("staged.rs")).cloned()
+            })
+            .unwrap();
+        assert_eq!(
+            index_of("staged.rs"),
+            staged_head,
+            "unstaging puts HEAD's version back in the index"
+        );
+        panel.read_with(&cx, |panel, _| {
+            assert!(
+                panel
+                    .entry_by_path_in_section(&repo_path("unstaged.rs"), Section::Staged)
+                    .is_some()
+            );
+            assert!(
+                panel
+                    .entry_by_path_in_section(&repo_path("staged.rs"), Section::Unstaged)
+                    .is_some()
+            );
+            assert!(
+                panel
+                    .entry_by_path_in_section(&repo_path("staged.rs"), Section::Staged)
+                    .is_none()
+            );
+            // The conflict was not touched by any of it.
+            assert!(
+                panel
+                    .entry_by_path_in_section(&repo_path("conflict.rs"), Section::Conflict)
+                    .is_some()
+            );
+        });
+    }
+
+    /// A panel whose HEAD (the fake repository's `abc`) the upstream has (`pushed`) or not.
+    async fn amend_panel(
+        pushed: bool,
+        cx: &mut TestAppContext,
+    ) -> (Entity<GitPanel>, VisualTestContext) {
+        let (_fs, panel, cx) = amend_panel_with_fs(pushed, cx).await;
+        (panel, cx)
+    }
+
+    fn set_pushed_probe_answer(fs: &FakeFs, sha: &str, pushed: bool) {
+        fs.with_git_state(Path::new(path!("/root/project/.git")), false, |state| {
+            state.command_outputs.insert(
+                format!("log --format=%H -1 @{{upstream}}..{sha}"),
+                git::repository::GitCommandOutput {
+                    stdout: if pushed {
+                        String::new()
+                    } else {
+                        format!("{sha}\n")
+                    },
+                    stderr: String::new(),
+                    exit_code: Some(0),
+                },
+            );
+        })
+        .expect("fake repository should exist");
+    }
+
+    async fn amend_panel_with_fs(
+        pushed: bool,
+        cx: &mut TestAppContext,
+    ) -> (Arc<FakeFs>, Entity<GitPanel>, VisualTestContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(
+            "/root",
+            json!({
+                "project": {
+                    ".git": {},
+                    "src": {
+                        "main.rs": "fn main() {}"
+                    }
+                }
+            }),
+        )
+        .await;
+        fs.set_status_for_repo(
+            Path::new(path!("/root/project/.git")),
+            &[("src/main.rs", StatusCode::Modified.worktree())],
+        );
+        set_pushed_probe_answer(&fs, "abc", pushed);
+        let (panel, cx) = changes_panel_for_project(fs.clone(), cx).await;
+        (fs, panel, cx)
+    }
+
+    fn rendered(
+        selector: &'static str,
+        panel: &Entity<GitPanel>,
+        cx: &mut VisualTestContext,
+    ) -> Option<gpui::Bounds<Pixels>> {
+        panel.update(cx, |_, cx| cx.notify());
+        cx.run_until_parked();
+        cx.debug_bounds(selector)
+    }
+
+    #[gpui::test]
+    async fn test_amend_checkbox_toggles_amend_and_warns_about_pushed_commits(
+        cx: &mut TestAppContext,
+    ) {
+        let (panel, mut cx) = amend_panel(true, cx).await;
+        let checkbox = rendered("git-panel-amend-checkbox", &panel, &mut cx)
+            .expect("the checkbox shows while there is a commit to amend");
+        assert!(rendered("git-panel-amend-force-push-note", &panel, &mut cx).is_none());
+
+        cx.simulate_click(checkbox.center(), gpui::Modifiers::none());
+        cx.run_until_parked();
+        panel.read_with(&cx, |panel, cx| {
+            assert!(panel.amend_pending());
+            assert!(panel.amend_needs_force_push(cx));
+        });
+        assert!(
+            rendered("git-panel-amend-force-push-note", &panel, &mut cx).is_some(),
+            "amending a pushed commit needs a force push afterwards"
+        );
+
+        let checkbox = rendered("git-panel-amend-checkbox", &panel, &mut cx)
+            .expect("the checkbox stays while amending");
+        cx.simulate_click(checkbox.center(), gpui::Modifiers::none());
+        cx.run_until_parked();
+        panel.read_with(&cx, |panel, _| assert!(!panel.amend_pending()));
+        assert!(rendered("git-panel-amend-force-push-note", &panel, &mut cx).is_none());
+
+        // The menu's entry point ticks the same box.
+        cx.dispatch_action(git::StartAmend);
+        cx.run_until_parked();
+        panel.read_with(&cx, |panel, _| assert!(panel.amend_pending()));
+    }
+
+    /// The note is about the commit the amend replaces: when HEAD moves while amending, the new
+    /// HEAD is asked about, and what was said about the old one is not shown for it.
+    #[gpui::test]
+    async fn test_amend_force_push_note_follows_head(cx: &mut TestAppContext) {
+        let (fs, panel, mut cx) = amend_panel_with_fs(false, cx).await;
+        let checkbox = rendered("git-panel-amend-checkbox", &panel, &mut cx)
+            .expect("the checkbox shows while there is a commit to amend");
+        cx.simulate_click(checkbox.center(), gpui::Modifiers::none());
+        cx.run_until_parked();
+        assert!(rendered("git-panel-amend-force-push-note", &panel, &mut cx).is_none());
+
+        set_pushed_probe_answer(&fs, "def", true);
+        fs.set_head_for_repo(Path::new(path!("/root/project/.git")), &[], "def");
+        cx.executor().advance_clock(2 * UPDATE_DEBOUNCE);
+        cx.run_until_parked();
+        panel.read_with(&cx, |panel, cx| {
+            assert_eq!(
+                panel.head_commit(cx).map(|commit| commit.sha.to_string()),
+                Some("def".to_string())
+            );
+            assert!(panel.amend_pending());
+            assert!(panel.amend_needs_force_push(cx));
+        });
+        assert!(rendered("git-panel-amend-force-push-note", &panel, &mut cx).is_some());
+
+        // Back on the unpushed commit: what was said about `def` is not carried over to it.
+        fs.set_head_for_repo(Path::new(path!("/root/project/.git")), &[], "abc");
+        cx.executor().advance_clock(2 * UPDATE_DEBOUNCE);
+        cx.run_until_parked();
+        panel.read_with(&cx, |panel, cx| assert!(!panel.amend_needs_force_push(cx)));
+        assert!(rendered("git-panel-amend-force-push-note", &panel, &mut cx).is_none());
+    }
+
+    /// Unticking amend before the last commit's message has arrived keeps the message the untick
+    /// put back, rather than having it replaced by the late one.
+    #[gpui::test]
+    async fn test_quick_amend_untick_keeps_the_draft(cx: &mut TestAppContext) {
+        let (fs, panel, mut cx) = amend_panel_with_fs(false, cx).await;
+        fs.set_head_for_repo(Path::new(path!("/root/project/.git")), &[], "1".repeat(40));
+        cx.executor().advance_clock(2 * UPDATE_DEBOUNCE);
+        cx.run_until_parked();
+
+        panel.update(&mut cx, |panel, cx| {
+            panel
+                .commit_message_buffer(cx)
+                .update(cx, |buffer, cx| buffer.set_text("書きかけのメッセージ", cx));
+            panel.toggle_amend_pending(cx);
+            panel.toggle_amend_pending(cx);
+        });
+        cx.run_until_parked();
+        panel.update(&mut cx, |panel, cx| {
+            assert!(!panel.amend_pending());
+            assert_eq!(
+                panel.commit_message_buffer(cx).read(cx).text(),
+                "書きかけのメッセージ"
+            );
+        });
+
+        // Left ticked, the last commit's message does arrive.
+        panel.update(&mut cx, |panel, cx| panel.toggle_amend_pending(cx));
+        cx.run_until_parked();
+        panel.update(&mut cx, |panel, cx| {
+            assert!(panel.amend_pending());
+            assert_eq!(
+                panel.commit_message_buffer(cx).read(cx).text(),
+                "initial commit"
+            );
+        });
+    }
+
+    /// The Git menu's and the guide's force push asks first; cancelling pushes nothing.
+    #[gpui::test]
+    async fn test_confirmed_force_push_asks_first(cx: &mut TestAppContext) {
+        let (fs, panel, mut cx) = amend_panel_with_fs(true, cx).await;
+        fs.set_branch_name(Path::new(path!("/root/project/.git")), Some("main"));
+        cx.executor().advance_clock(2 * UPDATE_DEBOUNCE);
+        cx.run_until_parked();
+        cx.dispatch_action(git::ConfirmForcePush);
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt());
+        panel.read_with(&cx, |panel, _| {
+            assert!(
+                panel.pending_remote_operation.is_none(),
+                "nothing is pushed before the answer"
+            );
+        });
+        cx.simulate_prompt_answer("キャンセル");
+        cx.run_until_parked();
+        assert!(!cx.has_pending_prompt());
+        panel.read_with(&cx, |panel, _| {
+            assert!(panel.pending_remote_operation.is_none());
+        });
+    }
+
+    #[gpui::test]
+    async fn test_amend_checkbox_says_nothing_about_unpushed_commits(cx: &mut TestAppContext) {
+        let (panel, mut cx) = amend_panel(false, cx).await;
+        let checkbox = rendered("git-panel-amend-checkbox", &panel, &mut cx)
+            .expect("the checkbox shows while there is a commit to amend");
+        cx.simulate_click(checkbox.center(), gpui::Modifiers::none());
+        cx.run_until_parked();
+        panel.read_with(&cx, |panel, cx| {
+            assert!(panel.amend_pending());
+            assert!(!panel.amend_needs_force_push(cx));
+        });
+        assert!(rendered("git-panel-amend-force-push-note", &panel, &mut cx).is_none());
     }
 }

@@ -912,6 +912,9 @@ impl Database {
                             .as_deref()
                             .and_then(|s| serde_json::from_str(s).ok())
                             .unwrap_or_default(),
+                        tags_fingerprint: None,
+                        loose_ref_count: None,
+                        loose_ref_count_is_lower_bound: false,
                     });
                 }
             }

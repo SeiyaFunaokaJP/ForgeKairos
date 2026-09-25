@@ -1634,6 +1634,862 @@ mod trust_tests {
     }
 }
 
+/// Folding changes into an older commit (fixup), against a real git: the plumbing only proves
+/// itself when `commit --fixup` and `rebase -i --autosquash` actually run.
+mod fixup_tests {
+    use std::{
+        path::{Path, PathBuf},
+        process::Command,
+        sync::Arc,
+    };
+
+    use collections::HashSet;
+    use fs::RealFs;
+    use git::repository::{FixupChanges, FixupOutcome, repo_path};
+    use gpui::{Entity, TestAppContext};
+    use project::{
+        Project,
+        git_store::Repository,
+        trusted_worktrees::{self, DbTrustedPaths, PathTrust, TrustedWorktrees},
+    };
+    use serde_json::json;
+    use settings::SettingsStore;
+    use util::test::TempTree;
+    use worktree::WorktreeModelHandle as _;
+
+    fn init_test(cx: &mut TestAppContext) {
+        zlog::init_test();
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+        });
+        cx.executor().allow_parking();
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    #[track_caller]
+    fn git_output(work_dir: &Path, args: &[&str], author: Option<(&str, &str)>) -> String {
+        let mut command = Command::new("git");
+        command.current_dir(work_dir).args(args);
+        if let Some((name, date)) = author {
+            command
+                .env("GIT_AUTHOR_NAME", name)
+                .env("GIT_AUTHOR_EMAIL", format!("{name}@example.com"))
+                .env("GIT_AUTHOR_DATE", date);
+        }
+        let output = command.output().expect("git should run");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string()
+    }
+
+    #[track_caller]
+    fn git(work_dir: &Path, args: &[&str]) -> String {
+        git_output(work_dir, args, None)
+    }
+
+    /// A repository whose behaviour does not depend on the machine's git configuration: the
+    /// same identity, line endings and signing for the commits the test makes and the ones the
+    /// fixup makes.
+    fn init_repository(work_dir: &Path) {
+        git(work_dir, &["init", "-b", "main"]);
+        for (key, value) in [
+            ("user.name", "Committer"),
+            ("user.email", "committer@example.com"),
+            ("core.autocrlf", "false"),
+            ("commit.gpgsign", "false"),
+        ] {
+            git(work_dir, &["config", key, value]);
+        }
+    }
+
+    #[track_caller]
+    fn commit_file(
+        work_dir: &Path,
+        path: &str,
+        contents: &str,
+        message: &str,
+        author: (&str, &str),
+    ) -> String {
+        std::fs::write(work_dir.join(path), contents).expect("the file should be written");
+        git(work_dir, &["add", "--", path]);
+        git_output(work_dir, &["commit", "-q", "-m", message], Some(author));
+        git(work_dir, &["rev-parse", "HEAD"])
+    }
+
+    fn write(work_dir: &Path, path: &str, contents: &str) {
+        std::fs::write(work_dir.join(path), contents).expect("the file should be written");
+    }
+
+    fn read(work_dir: &Path, path: &str) -> String {
+        std::fs::read_to_string(work_dir.join(path)).expect("the file should be readable")
+    }
+
+    async fn open_repository(
+        work_dir: &Path,
+        cx: &mut TestAppContext,
+    ) -> (Entity<Project>, Entity<Repository>) {
+        let project =
+            Project::test(Arc::new(RealFs::new(None, cx.executor())), [work_dir], cx).await;
+        let tree = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+        });
+        tree.flush_fs_events(cx).await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        cx.executor().run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .repositories(cx)
+                .values()
+                .next()
+                .expect("the project has a repository")
+                .clone()
+        });
+        (project, repository)
+    }
+
+    async fn fixup(
+        repository: &Entity<Repository>,
+        sha: &str,
+        changes: FixupChanges,
+        cx: &mut TestAppContext,
+    ) -> anyhow::Result<FixupOutcome> {
+        repository
+            .update(cx, |repository, cx| {
+                repository.fixup_commit(sha.to_string(), changes, cx)
+            })
+            .await
+            .expect("the git job should not be dropped")
+    }
+
+    const ANN: (&str, &str) = ("Ann", "1700000000 +0900");
+    const BOB: (&str, &str) = ("Bob", "1700000100 +0900");
+    const CAROL: (&str, &str) = ("Carol", "1700000200 +0900");
+
+    /// base (base.txt, keep.txt) ← first (a.txt, the target) ← second (b.txt) ← third (c.txt),
+    /// returned as (base, first, third).
+    fn four_commits(work_dir: &Path) -> (String, String, String) {
+        init_repository(work_dir);
+        write(work_dir, "keep.txt", "keep\n");
+        git(work_dir, &["add", "keep.txt"]);
+        let base = commit_file(work_dir, "base.txt", "base\n", "base", ANN);
+        let first = commit_file(work_dir, "a.txt", "a\n", "first", ANN);
+        commit_file(work_dir, "b.txt", "b\n", "second", BOB);
+        let third = commit_file(work_dir, "c.txt", "c\n", "third", CAROL);
+        (base, first, third)
+    }
+
+    /// A fresh repository made by `setup`, which leaves the changes to fold in place and returns
+    /// the commit to fold them into and HEAD, and the fixup of `changes` into that commit.
+    async fn fixup_in_fresh_repository(
+        cx: &mut TestAppContext,
+        setup: impl Fn(&Path) -> (String, String),
+        changes: FixupChanges,
+    ) -> (TempTree, PathBuf, (String, String), FixupOutcome) {
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        let shas = setup(&work_dir);
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+        let outcome = fixup(&repository, &shas.0, changes, cx)
+            .await
+            .expect("the fixup should run");
+        (root, work_dir, shas, outcome)
+    }
+
+    /// The staged changes go into the older commit; the commits after it keep their authors,
+    /// dates, messages and changes; and what was not staged stays where it was.
+    #[gpui::test]
+    async fn test_fixup_folds_the_staged_changes_into_an_older_commit(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (_root, work_dir, (first, old_head), outcome) = fixup_in_fresh_repository(
+            cx,
+            |work_dir| {
+                let (_base, first, third) = four_commits(work_dir);
+                write(work_dir, "a.txt", "a\nfixed\n");
+                git(work_dir, &["add", "a.txt"]);
+                write(work_dir, "b.txt", "b\nnot staged\n");
+                write(work_dir, "untracked.txt", "untracked\n");
+                (first, third)
+            },
+            FixupChanges::Staged,
+        )
+        .await;
+
+        let FixupOutcome::Folded {
+            old_head: reported_old_head,
+            new_head,
+        } = outcome
+        else {
+            panic!("expected the changes to be folded in, got {outcome:?}");
+        };
+        assert_eq!(reported_old_head, old_head);
+        assert_eq!(new_head, git(&work_dir, &["rev-parse", "HEAD"]));
+        assert_ne!(new_head, old_head);
+
+        // (a) The target carries the change, and nothing else moved into or out of history.
+        assert_eq!(git(&work_dir, &["show", "HEAD~2:a.txt"]), "a\nfixed");
+        assert_eq!(
+            git(&work_dir, &["log", "--format=%s"]),
+            "third\nsecond\nfirst\nbase"
+        );
+        assert_eq!(
+            git(&work_dir, &["rev-parse", "HEAD~3"]),
+            git(&work_dir, &["rev-parse", &format!("{first}^")]),
+            "the commit before the target keeps its SHA"
+        );
+
+        // (b) The commits after it are the same commits with new SHAs.
+        assert_eq!(
+            git(
+                &work_dir,
+                &["log", "-3", "--format=%an|%ad|%s", "--date=raw"]
+            ),
+            "Carol|1700000200 +0900|third\nBob|1700000100 +0900|second\nAnn|1700000000 +0900|first"
+        );
+        assert_eq!(
+            git(&work_dir, &["diff", "--name-only", "HEAD~2", "HEAD~1"]),
+            "b.txt"
+        );
+        assert_eq!(
+            git(&work_dir, &["diff", "--name-only", "HEAD~1", "HEAD"]),
+            "c.txt"
+        );
+        assert_eq!(git(&work_dir, &["show", "HEAD~1:b.txt"]), "b");
+
+        // (c) The unstaged edit of another file is still in the working tree, still unstaged.
+        assert_eq!(read(&work_dir, "b.txt"), "b\nnot staged\n");
+        assert_eq!(git(&work_dir, &["diff", "--name-only"]), "b.txt");
+        assert_eq!(git(&work_dir, &["diff", "--cached", "--name-only"]), "");
+
+        // (d) The untracked file is untouched, and the autostash left nothing behind.
+        assert_eq!(read(&work_dir, "untracked.txt"), "untracked\n");
+        assert_eq!(
+            git(
+                &work_dir,
+                &["status", "--porcelain", "--untracked-files=all"]
+            ),
+            " M b.txt\n?? untracked.txt"
+        );
+        assert_eq!(git(&work_dir, &["stash", "list"]), "");
+    }
+
+    /// Picked files go in exactly as the working tree has them, an untracked one and a deletion
+    /// included, and nothing else does: not an unpicked untracked file a glob would have matched,
+    /// not another staged change, not another unstaged one.
+    #[gpui::test]
+    async fn test_fixup_of_picked_files_takes_them_and_nothing_else(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (_root, work_dir, _shas, outcome) = fixup_in_fresh_repository(
+            cx,
+            |work_dir| {
+                let (_base, first, third) = four_commits(work_dir);
+                std::fs::remove_file(work_dir.join("keep.txt"))
+                    .expect("keep.txt should be removable");
+                write(work_dir, "n[1].txt", "picked\n");
+                write(work_dir, "n1.txt", "not picked\n");
+                write(work_dir, "c.txt", "c\nstaged elsewhere\n");
+                git(work_dir, &["add", "c.txt"]);
+                write(work_dir, "a.txt", "a\nnot picked\n");
+                (first, third)
+            },
+            FixupChanges::Paths(vec![repo_path("keep.txt"), repo_path("n[1].txt")]),
+        )
+        .await;
+        assert!(
+            matches!(outcome, FixupOutcome::Folded { .. }),
+            "expected the files to be folded in, got {outcome:?}"
+        );
+
+        assert_eq!(
+            git(&work_dir, &["diff", "--name-status", "HEAD~3", "HEAD~2"]),
+            "A\ta.txt\nD\tkeep.txt\nA\tn[1].txt"
+        );
+        assert_eq!(git(&work_dir, &["show", "HEAD~2:n[1].txt"]), "picked");
+        assert_eq!(
+            git(&work_dir, &["log", "--format=%s"]),
+            "third\nsecond\nfirst\nbase"
+        );
+
+        assert_eq!(read(&work_dir, "n1.txt"), "not picked\n");
+        assert_eq!(read(&work_dir, "c.txt"), "c\nstaged elsewhere\n");
+        assert_eq!(read(&work_dir, "a.txt"), "a\nnot picked\n");
+        // The rebase's autostash hands the other staged change back unstaged, which is what the
+        // confirmation warns about.
+        assert_eq!(
+            git(
+                &work_dir,
+                &["status", "--porcelain", "--untracked-files=all"]
+            ),
+            " M a.txt\n M c.txt\n?? n1.txt"
+        );
+    }
+
+    /// The repository's first commit has no parent to rebase from, so the rebase starts at the
+    /// root.
+    #[gpui::test]
+    async fn test_fixup_of_the_first_commit(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (_root, work_dir, _shas, outcome) = fixup_in_fresh_repository(
+            cx,
+            |work_dir| {
+                init_repository(work_dir);
+                let first = commit_file(work_dir, "a.txt", "a\n", "first", ANN);
+                let second = commit_file(work_dir, "b.txt", "b\n", "second", BOB);
+                write(work_dir, "a.txt", "a\nfixed\n");
+                (first, second)
+            },
+            FixupChanges::AllTracked,
+        )
+        .await;
+        assert!(
+            matches!(outcome, FixupOutcome::Folded { .. }),
+            "expected the changes to be folded in, got {outcome:?}"
+        );
+        assert_eq!(git(&work_dir, &["show", "HEAD~1:a.txt"]), "a\nfixed");
+        assert_eq!(git(&work_dir, &["log", "--format=%s"]), "second\nfirst");
+        assert_eq!(git(&work_dir, &["status", "--porcelain"]), "");
+    }
+
+    /// A conflict stops the rebase for the banner to deal with, and aborting it leaves the
+    /// changes in the `fixup!` commit on top of the branch rather than losing them.
+    #[gpui::test]
+    async fn test_fixup_stopped_by_a_conflict_keeps_the_changes(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (_root, work_dir, (_first, old_head), outcome) = fixup_in_fresh_repository(
+            cx,
+            |work_dir| {
+                init_repository(work_dir);
+                commit_file(work_dir, "base.txt", "base\n", "base", ANN);
+                let first = commit_file(work_dir, "a.txt", "1\n", "first", ANN);
+                let second = commit_file(work_dir, "a.txt", "1\n2\n", "second", BOB);
+                write(work_dir, "a.txt", "1\n2\n3\n");
+                git(work_dir, &["add", "a.txt"]);
+                (first, second)
+            },
+            FixupChanges::Staged,
+        )
+        .await;
+        let FixupOutcome::RebaseStopped {
+            old_head: reported_old_head,
+            fixup_commit,
+            ..
+        } = outcome
+        else {
+            panic!("expected the rebase to stop on the conflict, got {outcome:?}");
+        };
+        assert_eq!(reported_old_head, old_head);
+        git(&work_dir, &["rev-parse", "--verify", "REBASE_HEAD"]);
+
+        git(&work_dir, &["rebase", "--abort"]);
+        assert_eq!(
+            git(&work_dir, &["log", "--format=%s"]),
+            "fixup! first\nsecond\nfirst\nbase"
+        );
+        // The SHA the toast names for getting the changes back after skipping the pick.
+        assert_eq!(git(&work_dir, &["rev-parse", "HEAD"]), fixup_commit);
+        assert_eq!(git(&work_dir, &["rev-parse", "HEAD~1"]), old_head);
+        assert_eq!(git(&work_dir, &["show", "HEAD:a.txt"]), "1\n2\n3");
+        assert_eq!(read(&work_dir, "a.txt"), "1\n2\n3\n");
+    }
+
+    /// A rebase that cannot even start leaves nothing replayed, so the `fixup!` commit comes
+    /// back off the branch and its changes stay staged: the state before the fixup.
+    #[gpui::test]
+    async fn test_fixup_whose_rebase_cannot_start_is_taken_back(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (_root, work_dir, (_first, old_head), outcome) = fixup_in_fresh_repository(
+            cx,
+            |work_dir| {
+                let (_base, first, third) = four_commits(work_dir);
+                write(work_dir, "a.txt", "a\nfixed\n");
+                git(work_dir, &["add", "a.txt"]);
+                // What an interrupted rebase leaves behind; git refuses to start another one
+                // over it.
+                let rebase_merge = git(work_dir, &["rev-parse", "--git-path", "rebase-merge"]);
+                std::fs::create_dir_all(work_dir.join(&rebase_merge))
+                    .expect("the directory should be created");
+                (first, third)
+            },
+            FixupChanges::Staged,
+        )
+        .await;
+        assert!(
+            matches!(
+                outcome,
+                FixupOutcome::RebaseRefused {
+                    rolled_back: true,
+                    ..
+                }
+            ),
+            "expected the fixup to be taken back, got {outcome:?}"
+        );
+        assert_eq!(git(&work_dir, &["rev-parse", "HEAD"]), old_head);
+        assert_eq!(
+            git(&work_dir, &["diff", "--cached", "--name-only"]),
+            "a.txt"
+        );
+        assert_eq!(read(&work_dir, "a.txt"), "a\nfixed\n");
+    }
+
+    /// Like [`open_repository`], with the worktree trusted so that the repository's hooks run.
+    async fn open_trusted_repository(
+        work_dir: &Path,
+        cx: &mut TestAppContext,
+    ) -> (Entity<Project>, Entity<Repository>) {
+        let project = Project::test_with_worktree_trust(
+            Arc::new(RealFs::new(None, cx.executor())),
+            [work_dir],
+            cx,
+        )
+        .await;
+        let tree = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+        });
+        tree.flush_fs_events(cx).await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let worktree_store = project.read_with(cx, |project, _| project.worktree_store());
+        let worktree_id = tree.read_with(cx, |tree, _| tree.id());
+        let trusted_worktrees = cx.update(|cx| {
+            TrustedWorktrees::try_get_global(cx).expect("the trust store is initialized")
+        });
+        trusted_worktrees.update(cx, |store, cx| {
+            store.trust(
+                &worktree_store,
+                HashSet::from_iter([PathTrust::Worktree(worktree_id)]),
+                cx,
+            );
+        });
+        cx.executor().run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .repositories(cx)
+                .values()
+                .next()
+                .expect("the project has a repository")
+                .clone()
+        });
+        assert!(repository.read_with(cx, |repository, _| repository.is_trusted()));
+        (project, repository)
+    }
+
+    /// git reports a rebase whose `--autostash` could not be put back as a success, keeping the
+    /// changes as a stash entry; the fixup says so instead of reporting a clean success.
+    #[gpui::test]
+    async fn test_fixup_whose_autostash_is_left_in_the_stash_says_so(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| trusted_worktrees::init(DbTrustedPaths::default(), cx));
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        let (_base, first, _third) = four_commits(&work_dir);
+        // Rewrites base.txt, which no commit touches, after the rebase and before git puts the
+        // autostash back, which then refuses to overwrite it.
+        install_post_rewrite_hook(&work_dir);
+        write(&work_dir, "a.txt", "a\nfixed\n");
+        git(&work_dir, &["add", "a.txt"]);
+        write(&work_dir, "base.txt", "base\nnot staged\n");
+        let (_project, repository) = open_trusted_repository(&work_dir, cx).await;
+
+        let outcome = fixup(&repository, &first, FixupChanges::Staged, cx)
+            .await
+            .expect("the fixup should run");
+        assert!(
+            matches!(outcome, FixupOutcome::ChangesLeftInStash { .. }),
+            "expected the autostash to be reported, got {outcome:?}"
+        );
+        assert_eq!(git(&work_dir, &["show", "HEAD~2:a.txt"]), "a\nfixed");
+        assert_eq!(
+            git(&work_dir, &["stash", "list", "--format=%gs"]),
+            "autostash"
+        );
+        assert_eq!(
+            git(&work_dir, &["show", "stash@{0}:base.txt"]),
+            "base\nnot staged"
+        );
+    }
+
+    fn install_post_rewrite_hook(work_dir: &Path) {
+        let hook = work_dir.join(git(
+            work_dir,
+            &["rev-parse", "--git-path", "hooks/post-rewrite"],
+        ));
+        let hooks = hook.parent().expect("the hook has a directory");
+        std::fs::create_dir_all(hooks).expect("the hooks directory should be created");
+        write(hooks, "post-rewrite", "#!/bin/sh\necho hooked > base.txt\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
+                .expect("the hook should be made executable");
+        }
+    }
+
+    /// The reword's `rebase --autostash` is held to the same standard as the fixup's.
+    #[gpui::test]
+    async fn test_reword_whose_autostash_is_left_in_the_stash_says_so(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| trusted_worktrees::init(DbTrustedPaths::default(), cx));
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        let (_base, first, _third) = four_commits(&work_dir);
+        install_post_rewrite_hook(&work_dir);
+        write(&work_dir, "base.txt", "base\nnot staged\n");
+        let (_project, repository) = open_trusted_repository(&work_dir, cx).await;
+
+        let result = repository
+            .update(cx, |repository, cx| {
+                repository.reword_commit(first.clone(), "first, reworded".to_string(), cx)
+            })
+            .await
+            .expect("the git job should not be dropped");
+        let error = result.expect_err("the stashed changes did not come back");
+        assert!(
+            error
+                .downcast_ref::<project::git_store::ChangesLeftInStash>()
+                .is_some(),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(
+            git(&work_dir, &["log", "--format=%s", "-3"]),
+            "third\nsecond\nfirst, reworded"
+        );
+        assert_eq!(
+            git(&work_dir, &["show", "stash@{0}:base.txt"]),
+            "base\nnot staged"
+        );
+    }
+
+    /// Dropping, squashing and reordering use the same `rebase --autostash` and are held to the
+    /// same standard: the rewrite is done, and the error says the changes are in the stash.
+    #[gpui::test]
+    async fn test_other_rewrites_whose_autostash_is_left_in_the_stash_say_so(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        cx.update(|cx| trusted_worktrees::init(DbTrustedPaths::default(), cx));
+        for rewrite in ["drop", "squash", "reorder"] {
+            let root = TempTree::new(json!({ "project": {} }));
+            let work_dir = root.path().join("project");
+            let (_base, first, _third) = four_commits(&work_dir);
+            let second = git(&work_dir, &["rev-parse", "HEAD~1"]);
+            install_post_rewrite_hook(&work_dir);
+            write(&work_dir, "base.txt", "base\nnot staged\n");
+            let (_project, repository) = open_trusted_repository(&work_dir, cx).await;
+
+            let result = repository
+                .update(cx, |repository, cx| match rewrite {
+                    "drop" => repository.drop_commit(first.clone(), cx),
+                    "squash" => repository.squash_range(
+                        first.clone(),
+                        second.clone(),
+                        "first and second".to_string(),
+                        cx,
+                    ),
+                    _ => repository.rewrite_range(
+                        first.clone(),
+                        second.clone(),
+                        [&second, &first]
+                            .map(|sha| git::repository::RewriteGroup {
+                                shas: vec![sha.clone()],
+                                message: None,
+                            })
+                            .to_vec(),
+                        vec![first.clone(), second.clone()],
+                        cx,
+                    ),
+                })
+                .await
+                .expect("the git job should not be dropped");
+            let error = result.expect_err("the stashed changes did not come back");
+            assert!(
+                error
+                    .downcast_ref::<project::git_store::ChangesLeftInStash>()
+                    .is_some(),
+                "{rewrite}: unexpected error: {error:#}"
+            );
+            assert_eq!(
+                git(&work_dir, &["log", "--format=%s", "-3"]),
+                match rewrite {
+                    "drop" => "third\nsecond\nbase",
+                    "squash" => "third\nfirst and second\nbase",
+                    _ => "third\nfirst\nsecond",
+                },
+                "{rewrite}: the rewrite itself went through"
+            );
+            assert_eq!(
+                git(&work_dir, &["show", "stash@{0}:base.txt"]),
+                "base\nnot staged",
+                "{rewrite}"
+            );
+        }
+    }
+
+    /// git refusing the commit itself changes nothing: HEAD stays, and the untracked file added
+    /// for the commit goes back to being untracked.
+    #[gpui::test]
+    async fn test_fixup_whose_commit_is_refused_changes_nothing(cx: &mut TestAppContext) {
+        init_test(cx);
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        let (_base, first, old_head) = four_commits(&work_dir);
+        write(&work_dir, "a.txt", "a\nfixed\n");
+        write(&work_dir, "new.txt", "new\n");
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+
+        // A picked file that is gone by the time the fixup runs: `add` takes the untracked one,
+        // and then `commit --only` refuses the path it cannot find.
+        let outcome = fixup(
+            &repository,
+            &first,
+            FixupChanges::Paths(vec![
+                repo_path("a.txt"),
+                repo_path("new.txt"),
+                repo_path("gone.txt"),
+            ]),
+            cx,
+        )
+        .await
+        .expect("the fixup should run");
+
+        assert!(
+            matches!(
+                outcome,
+                FixupOutcome::NotCommitted {
+                    head_moved: false,
+                    ..
+                }
+            ),
+            "expected the commit to be refused, got {outcome:?}"
+        );
+        assert_eq!(git(&work_dir, &["rev-parse", "HEAD"]), old_head);
+        assert_eq!(
+            git(
+                &work_dir,
+                &["status", "--porcelain", "--untracked-files=all"]
+            ),
+            " M a.txt\n?? new.txt"
+        );
+    }
+
+    #[track_caller]
+    fn assert_refused(result: anyhow::Result<FixupOutcome>, reason: &str) {
+        match result {
+            Err(error) => assert!(
+                format!("{error:#}").contains(reason),
+                "expected a refusal mentioning {reason:?}, got {error:#}"
+            ),
+            Ok(outcome) => panic!("expected a refusal mentioning {reason:?}, got {outcome:?}"),
+        }
+    }
+
+    /// A change to base.txt, which every commit of [`four_commits`] carries unchanged, staged so
+    /// that a refusal can only come from the situation under test.
+    fn stage_a_change(work_dir: &Path) {
+        write(work_dir, "base.txt", "base\nfixed\n");
+        git(work_dir, &["add", "base.txt"]);
+    }
+
+    /// A refused fixup wrote nothing: the branch is where it was and the change is still staged.
+    #[track_caller]
+    fn assert_nothing_written(work_dir: &Path, head: &str) {
+        assert_eq!(git(work_dir, &["rev-parse", "HEAD"]), head);
+        assert_eq!(
+            git(work_dir, &["diff", "--cached", "--name-only"]),
+            "base.txt"
+        );
+    }
+
+    /// Nothing to fold in: nothing staged, only untracked files, or a SHA that is not one.
+    #[gpui::test]
+    async fn test_fixup_refuses_a_fixup_with_nothing_in_it(cx: &mut TestAppContext) {
+        init_test(cx);
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        let (_base, first, head) = four_commits(&work_dir);
+        write(&work_dir, "untracked.txt", "untracked\n");
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+
+        assert_refused(
+            fixup(&repository, &first, FixupChanges::Staged, cx).await,
+            "ステージ済みの変更がありません",
+        );
+        assert_refused(
+            fixup(&repository, &first, FixupChanges::AllTracked, cx).await,
+            "コミットに入れる変更がありません",
+        );
+        assert_refused(
+            fixup(&repository, "--all", FixupChanges::AllTracked, cx).await,
+            "SHA として読めません",
+        );
+        assert_eq!(git(&work_dir, &["rev-parse", "HEAD"]), head);
+    }
+
+    /// A commit the current branch does not contain, which "すべてのブランチ" shows alongside.
+    #[gpui::test]
+    async fn test_fixup_refuses_a_commit_off_the_current_branch(cx: &mut TestAppContext) {
+        init_test(cx);
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        let (base, _first, head) = four_commits(&work_dir);
+        git(&work_dir, &["switch", "-q", "-c", "other", &base]);
+        let elsewhere = commit_file(&work_dir, "other.txt", "other\n", "elsewhere", BOB);
+        git(&work_dir, &["switch", "-q", "main"]);
+        stage_a_change(&work_dir);
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+
+        assert_refused(
+            fixup(&repository, &elsewhere, FixupChanges::Staged, cx).await,
+            "現在のブランチの履歴に無い",
+        );
+        assert_nothing_written(&work_dir, &head);
+    }
+
+    /// A merge in the range would be flattened by the rebase.
+    #[gpui::test]
+    async fn test_fixup_refuses_a_range_with_a_merge(cx: &mut TestAppContext) {
+        init_test(cx);
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        let (_base, first, _head) = four_commits(&work_dir);
+        git(&work_dir, &["switch", "-q", "-c", "side", &first]);
+        commit_file(&work_dir, "side.txt", "side\n", "side", BOB);
+        git(&work_dir, &["switch", "-q", "main"]);
+        git(&work_dir, &["merge", "-q", "--no-ff", "--no-edit", "side"]);
+        let head = git(&work_dir, &["rev-parse", "HEAD"]);
+        stage_a_change(&work_dir);
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+
+        assert_refused(
+            fixup(&repository, &first, FixupChanges::Staged, cx).await,
+            "マージコミット",
+        );
+        assert_nothing_written(&work_dir, &head);
+    }
+
+    /// A `fixup!` commit already waiting in the range would be folded in as well, without the
+    /// user having asked for it.
+    #[gpui::test]
+    async fn test_fixup_refuses_a_range_with_a_fixup_commit(cx: &mut TestAppContext) {
+        init_test(cx);
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        let (_base, first, _head) = four_commits(&work_dir);
+        let head = commit_file(&work_dir, "d.txt", "d\n", "fixup! second", BOB);
+        stage_a_change(&work_dir);
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+
+        assert_refused(
+            fixup(&repository, &first, FixupChanges::Staged, cx).await,
+            "fixup! / squash!",
+        );
+        assert_nothing_written(&work_dir, &head);
+    }
+
+    /// A cherry-pick stopped on a conflict: a commit now would conclude it instead.
+    #[gpui::test]
+    async fn test_fixup_refuses_while_a_cherry_pick_is_stopped(cx: &mut TestAppContext) {
+        init_test(cx);
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        let (base, first, head) = four_commits(&work_dir);
+        git(&work_dir, &["switch", "-q", "-c", "clash", &base]);
+        let clash = commit_file(&work_dir, "a.txt", "clash\n", "clash", BOB);
+        git(&work_dir, &["switch", "-q", "main"]);
+        #[allow(clippy::disallowed_methods)]
+        let cherry_pick = Command::new("git")
+            .current_dir(&work_dir)
+            .args(["cherry-pick", &clash])
+            .output()
+            .expect("git should run");
+        assert!(
+            !cherry_pick.status.success(),
+            "the cherry-pick should stop on the conflict"
+        );
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+
+        assert_refused(
+            fixup(&repository, &first, FixupChanges::AllTracked, cx).await,
+            "途中で止まっています",
+        );
+        assert_eq!(git(&work_dir, &["rev-parse", "HEAD"]), head);
+        git(&work_dir, &["rev-parse", "--verify", "CHERRY_PICK_HEAD"]);
+    }
+
+    /// A detached HEAD has no branch for the rebase to move.
+    #[gpui::test]
+    async fn test_fixup_refuses_a_detached_head(cx: &mut TestAppContext) {
+        init_test(cx);
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        let (_base, first, head) = four_commits(&work_dir);
+        git(&work_dir, &["switch", "-q", "--detach"]);
+        stage_a_change(&work_dir);
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+
+        assert_refused(
+            fixup(&repository, &first, FixupChanges::Staged, cx).await,
+            "detached HEAD",
+        );
+        assert_nothing_written(&work_dir, &head);
+    }
+
+    /// Only a commit the upstream already has is "pushed"; a branch without an upstream has
+    /// pushed nothing.
+    #[gpui::test]
+    async fn test_commit_is_pushed_follows_the_upstream(cx: &mut TestAppContext) {
+        init_test(cx);
+        let root = TempTree::new(json!({ "project": {}, "remote.git": {} }));
+        let work_dir = root.path().join("project");
+        let remote = root.path().join("remote.git");
+        init_repository(&work_dir);
+        commit_file(&work_dir, "base.txt", "base\n", "base", ANN);
+        let first = commit_file(&work_dir, "a.txt", "a\n", "first", ANN);
+        git(&remote, &["init", "-q", "--bare"]);
+        // Relative, because git does not take the temporary directory's verbatim (`\\?\`) path
+        // for a remote on Windows.
+        git(&work_dir, &["remote", "add", "origin", "../remote.git"]);
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+
+        let is_pushed = |sha: &str, cx: &mut TestAppContext| {
+            repository.update(cx, |repository, _| {
+                repository.commit_is_pushed(sha.to_string())
+            })
+        };
+        assert!(
+            !is_pushed(&first, cx).await.unwrap().unwrap(),
+            "without an upstream nothing counts as pushed"
+        );
+
+        git(&work_dir, &["push", "-q", "-u", "origin", "main"]);
+        let second = commit_file(&work_dir, "b.txt", "b\n", "second", BOB);
+        assert!(is_pushed(&first, cx).await.unwrap().unwrap());
+        assert!(!is_pushed(&second, cx).await.unwrap().unwrap());
+
+        let target = repository
+            .update(cx, |repository, _| repository.fixup_target(first.clone()))
+            .await
+            .unwrap()
+            .expect("first is a commit changes can be folded into");
+        assert_eq!(target.sha, first);
+        assert_eq!(target.subject, "first");
+        assert!(target.pushed);
+    }
+}
+
 mod resolve_worktree_tests {
     use fs::FakeFs;
     use gpui::TestAppContext;

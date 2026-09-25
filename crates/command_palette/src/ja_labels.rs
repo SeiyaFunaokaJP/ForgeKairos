@@ -881,6 +881,7 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("git::RemoveRemote", "Git: リモートを削除"),
     ("git::CreatePatch", "Git: パッチファイルを作成"),
     ("git::ApplyPatch", "Git: パッチファイルを適用"),
+    ("git::PackRefs", "Git: ref をまとめて速くする (pack-refs)"),
     (
         "git::CreateBranchFrom",
         "Git: このコミットからブランチを作成",
@@ -897,6 +898,10 @@ const LABEL_TABLE: &[(&str, &str)] = &[
     ("git::RevertCommit", "Git: このコミットを打ち消す"),
     ("git::RewordCommit", "Git: コミットのメッセージを書き換える"),
     ("git::DropCommit", "Git: このコミットを履歴から取り除く"),
+    (
+        "git::FixupCommit",
+        "Git: 今の変更をこのコミットに入れる (fixup)",
+    ),
     ("git::ResetToCommit", "Git: このコミットまで戻す"),
     ("git::CopyTagDistance", "Git: 直近のタグからの距離をコピー"),
     ("git::Init", "Git: リポジトリを初期化"),
@@ -948,6 +953,22 @@ const LABEL_TABLE: &[(&str, &str)] = &[
         "Git: ワークツリーを新しいウィンドウで開く",
     ),
     ("git_graph::Open", "Git: コミットグラフを開く"),
+    ("git::ShowGuide", "Git: 操作ガイドを開く"),
+    (
+        "git::StartAmend",
+        "Git: 直前のコミットの修正 (amend) を始める",
+    ),
+    (
+        "git::ChooseFixupCommit",
+        "Git: 今の変更を入れるコミットを選ぶ (fixup)",
+    ),
+    ("git::CompareRefs", "Git: 2 つのブランチ / タグを比較"),
+    ("git::ToggleMergeRequestBox", "Git: MR の箱を開閉"),
+    ("git::OpenMergeRequestBox", "Git: MR の箱を開く"),
+    (
+        "git::ConfirmForcePush",
+        "Git: 確認してから強制プッシュ (lease 付き)",
+    ),
     (
         "git_graph::EditSelectedCommits",
         "Git: 選択したコミットを並べ替え / まとめる / 捨てる",

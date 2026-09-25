@@ -264,6 +264,7 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                 ),
             ],
         },
+        git_menu(),
         Menu {
             name: "実行".into(),
             disabled: false,
@@ -355,4 +356,36 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
     }
 
     menus
+}
+
+/// The git operations that otherwise hide in the git panel's chevrons and the commit graph's
+/// right-click menus.
+fn git_menu() -> Menu {
+    Menu {
+        name: "Git".into(),
+        disabled: false,
+        items: vec![
+            MenuItem::action("コミットグラフを開く", git_ui::git_graph::Open),
+            MenuItem::separator(),
+            MenuItem::action("ブランチを作成…", zed_actions::git::Branch),
+            MenuItem::action("ブランチを切り替え…", zed_actions::git::Switch),
+            MenuItem::separator(),
+            MenuItem::action("直前のコミットを修正 (amend)", git::StartAmend),
+            MenuItem::action(
+                "今の変更を昔のコミットに入れる (fixup)…",
+                git::ChooseFixupCommit,
+            ),
+            MenuItem::action("MR を作る", git::OpenMergeRequestBox),
+            MenuItem::action("2 つのブランチを比較…", git::CompareRefs),
+            MenuItem::separator(),
+            MenuItem::action("フェッチ", git::Fetch),
+            MenuItem::action("プル", git::Pull),
+            MenuItem::action("プッシュ", git::Push),
+            MenuItem::action("強制プッシュ (lease 付き)…", git::ConfirmForcePush),
+            MenuItem::separator(),
+            MenuItem::action("stash…", zed_actions::git::ViewStash),
+            MenuItem::separator(),
+            MenuItem::action("Git の操作ガイド", git::ShowGuide),
+        ],
+    }
 }

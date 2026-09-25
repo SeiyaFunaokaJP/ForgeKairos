@@ -42,10 +42,13 @@ pub mod commit_view;
 mod conflict_view;
 mod diff_multibuffer;
 pub mod git_graph;
+mod git_guide;
 pub mod git_panel;
 mod git_panel_settings;
 pub mod git_picker;
 mod git_runtime_diagnostics;
+mod many_refs;
+pub(crate) mod merge_request_box;
 pub mod multi_diff_view;
 pub mod picker_prompt;
 pub mod project_diff;
@@ -140,6 +143,7 @@ pub fn init(cx: &mut App) {
         git_panel::register(workspace);
         repository_selector::register(workspace);
         git_picker::register(workspace);
+        git_guide::register(workspace);
 
         workspace.register_action(
             |workspace, action: &zed_actions::CreateWorktree, window, cx| {
@@ -207,6 +211,7 @@ pub fn init(cx: &mut App) {
         if project.is_read_only(cx) {
             return;
         }
+        merge_request_box::register(workspace);
         if !project.is_via_collab() {
             workspace.register_action(
                 |workspace, _: &zed_actions::git::CreatePullRequest, window, cx| {
@@ -257,6 +262,14 @@ pub fn init(cx: &mut App) {
                     panel.push(git_panel::PushForce::WithLease, false, window, cx);
                 });
             });
+            workspace.register_action(|workspace, _: &git::ConfirmForcePush, window, cx| {
+                let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                    return;
+                };
+                panel.update(cx, |panel, cx| {
+                    panel.confirm_force_push(window, cx);
+                });
+            });
             workspace.register_action(|workspace, _: &git::ForcePushWithoutLease, window, cx| {
                 let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
                     return;
@@ -291,6 +304,7 @@ pub fn init(cx: &mut App) {
             });
         }
         crate::commit_context_menu::register_commit_actions(workspace);
+        crate::many_refs::register(workspace);
         workspace.register_action(|workspace, _: &git::Merge, window, cx| {
             let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
                 return;

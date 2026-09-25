@@ -38,6 +38,7 @@ use std::mem::MaybeUninit;
 use async_tar::Archive;
 use futures::{AsyncRead, Stream, StreamExt, future::BoxFuture};
 use git::repository::{GitRepository, RealGitRepository};
+#[cfg(not(windows))]
 use is_executable::IsExecutable;
 use rope::Rope;
 use serde::{Deserialize, Serialize};
@@ -1141,10 +1142,17 @@ impl Fs for RealFs {
         let is_fifo = metadata.file_type().is_fifo();
 
         let path_buf = path.to_path_buf();
+        #[cfg(not(windows))]
         let is_executable = self
             .executor
             .spawn(async move { path_buf.is_executable() })
             .await;
+        #[cfg(windows)]
+        let is_executable = metadata.is_file()
+            && self
+                .executor
+                .spawn(async move { is_executable_on_windows(&path_buf) })
+                .await;
 
         Ok(Some(Metadata {
             inode,
@@ -3740,6 +3748,39 @@ fn read_recursive<'a>(
         Ok(())
     }
     .boxed()
+}
+
+/// Whether Windows would run the file: its extension is in `PATHEXT`, or, with no extension to
+/// go by, it starts like a PE image (`MZ`).
+///
+/// Not the `is_executable` crate, which answers the latter with `GetBinaryTypeW`. That call opens
+/// the file without `FILE_SHARE_WRITE` to map it as an image, and while it has it open no one can
+/// open the file for writing. Every change under `.git/logs` makes the worktree take the metadata
+/// of `.git/logs/HEAD`, which has no extension, so a rebase that appends to it right after its
+/// previous entry failed now and then with "unable to append to '.git/logs/HEAD': Permission
+/// denied" and stopped half done. Reading the first two bytes shares the file with any writer.
+#[cfg(target_os = "windows")]
+fn is_executable_on_windows(path: &Path) -> bool {
+    use std::io::Read as _;
+
+    if let Some(extension) = path.extension()
+        && let Some(executable_extensions) = std::env::var_os("PATHEXT")
+    {
+        let extension = extension.to_string_lossy();
+        return executable_extensions
+            .to_string_lossy()
+            .split(';')
+            .filter_map(|executable_extension| executable_extension.strip_prefix('.'))
+            .any(|executable_extension| {
+                !executable_extension.is_empty()
+                    && extension.eq_ignore_ascii_case(executable_extension)
+            });
+    }
+    let mut magic = [0; 2];
+    std::fs::File::open(path)
+        .and_then(|mut file| file.read_exact(&mut magic))
+        .is_ok()
+        && magic == *b"MZ"
 }
 
 // todo(windows)

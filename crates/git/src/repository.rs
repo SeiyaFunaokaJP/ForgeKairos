@@ -1,4 +1,5 @@
 use crate::commit::{CommitDiffObject, CommitDiffObjectKind, parse_git_diff_raw};
+use crate::commit_search::{self, MergeFilter};
 use crate::stash::GitStash;
 use crate::status::{
     DiffTreeType, FileStatus, GitStatus, StatusCode, TrackedStatus, TreeDiff, TreeDiffStatus,
@@ -35,6 +36,7 @@ use std::{
 };
 use sum_tree::MapSeekTarget;
 use thiserror::Error;
+use time::OffsetDateTime;
 use util::command::{Stdio, new_command};
 use util::paths::PathStyle;
 use util::rel_path::RelPath;
@@ -58,7 +60,8 @@ static LEGACY_GRAPH_COMMIT_FORMAT: &str = "--format=%H%x00%P%x00%d";
 
 /// Used to get commits that match with a search
 /// %H - Full commit hash
-static SEARCH_COMMIT_FORMAT: &str = "--format=%H";
+/// %an <%ae> - The author header, which a search for several authors checks each one against
+static SEARCH_COMMIT_FORMAT: &str = "--format=%H%x00%an <%ae>";
 
 /// Number of commits to load per chunk for the git graph.
 pub const GRAPH_CHUNK_SIZE: usize = 1000;
@@ -271,6 +274,9 @@ pub struct Branch {
 pub struct BranchesScanResult {
     pub branches: Vec<Branch>,
     pub error: Option<SharedString>,
+    /// What [`scan_ref_storage`] found next to the branch list; left empty by backends that do
+    /// not read the ref files themselves.
+    pub ref_storage: RefStorageScan,
 }
 
 impl From<Vec<Branch>> for BranchesScanResult {
@@ -278,8 +284,196 @@ impl From<Vec<Branch>> for BranchesScanResult {
         Self {
             branches,
             error: None,
+            ref_storage: RefStorageScan::default(),
         }
     }
+}
+
+/// How many refs a repository keeps as one file each ("loose") instead of in `packed-refs`.
+///
+/// Git reads every loose ref file when it lists refs, which on Windows costs a few seconds per
+/// ten thousand refs; `git pack-refs --all` folds them into `packed-refs`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LooseRefCount {
+    pub count: usize,
+    /// `false` when counting stopped at a limit, so that `count` is only a lower bound.
+    pub complete: bool,
+}
+
+/// What [`scan_ref_storage`] read from the ref files of a repository.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RefStorageScan {
+    /// `None` when the refs could not be counted at all.
+    pub loose_refs: Option<LooseRefCount>,
+    /// Changes whenever a tag may have been added, moved or deleted. `None` when that cannot be
+    /// told, in which case callers have to assume the tags may have changed at any time.
+    pub tags_fingerprint: Option<u64>,
+}
+
+/// Loose refs past this many are reported as "at least this many"; the count only decides
+/// whether suggesting `git pack-refs` is worthwhile.
+pub const LOOSE_REF_COUNT_LIMIT: usize = 10_000;
+/// The time [`scan_ref_storage`] may take. It runs on every ref change, next to the branch list.
+///
+/// Packed refs take it a few milliseconds. The budget is for 30,000 loose tags, which took
+/// 120-160 ms to walk on Windows and more under load: running out leaves the tags without a
+/// fingerprint, and then they are listed again (seconds, on the same queue as staging and
+/// committing) after every commit. The branch listing next to it already takes seconds then.
+pub const REF_STORAGE_SCAN_BUDGET: Duration = Duration::from_millis(500);
+
+/// Counts the loose ref files under `<common_dir>/refs` and fingerprints the tags from file
+/// metadata alone, so that noticing a changed tag does not need a `git for-each-ref` over all of
+/// them.
+///
+/// Every tag file is visited before anything else is counted, since a fingerprint that skipped
+/// some would miss changes to them; the other refs are then counted up to `loose_ref_limit`.
+/// Whatever is still unvisited when `time_budget` runs out is left out: the count becomes a
+/// lower bound and, if the tags were not all seen, the fingerprint is `None`.
+pub fn scan_ref_storage(
+    common_dir: &Path,
+    loose_ref_limit: usize,
+    time_budget: Duration,
+) -> RefStorageScan {
+    let deadline = Instant::now() + time_budget;
+    let refs_dir = common_dir.join("refs");
+    let reftable_dir = common_dir.join("reftable");
+    if reftable_dir.is_dir() {
+        // The reftable backend keeps no loose files; its table list is rewritten on every ref
+        // update, which over-reports tag changes but never misses one.
+        return RefStorageScan {
+            loose_refs: Some(LooseRefCount {
+                count: 0,
+                complete: true,
+            }),
+            tags_fingerprint: file_fingerprint(&reftable_dir.join("tables.list"))
+                .map(|fingerprint| hash_one(&("reftable", fingerprint))),
+        };
+    }
+
+    let tags_dir = refs_dir.join("tags");
+    let mut tag_entries_sum: u64 = 0;
+    let tags_walk = walk_loose_refs(&tags_dir, &[], usize::MAX, deadline, |path, metadata| {
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| modified.duration_since(SystemTime::UNIX_EPOCH).ok())
+            .map(|since_epoch| since_epoch.as_nanos());
+        tag_entries_sum = tag_entries_sum.wrapping_add(hash_one(&(path, metadata.len(), modified)));
+    });
+    let tags_fingerprint = tags_walk.complete.then(|| {
+        hash_one(&(
+            tag_entries_sum,
+            tags_walk.count,
+            file_fingerprint(&common_dir.join("packed-refs")),
+        ))
+    });
+
+    let other_refs_walk = if tags_walk.complete {
+        walk_loose_refs(
+            &refs_dir,
+            &[tags_dir.as_path()],
+            loose_ref_limit.saturating_sub(tags_walk.count),
+            deadline,
+            |_, _| {},
+        )
+    } else {
+        LooseRefWalk {
+            count: 0,
+            complete: false,
+        }
+    };
+
+    RefStorageScan {
+        loose_refs: refs_dir.is_dir().then(|| LooseRefCount {
+            count: tags_walk.count + other_refs_walk.count,
+            complete: tags_walk.complete && other_refs_walk.complete,
+        }),
+        tags_fingerprint,
+    }
+}
+
+struct LooseRefWalk {
+    count: usize,
+    complete: bool,
+}
+
+/// Visits the files below `root` (skipping the directories in `excluded`), stopping after
+/// `limit` of them or at `deadline`. Lock files are git's transient writes, not refs.
+fn walk_loose_refs(
+    root: &Path,
+    excluded: &[&Path],
+    limit: usize,
+    deadline: Instant,
+    mut visit: impl FnMut(&Path, &std::fs::Metadata),
+) -> LooseRefWalk {
+    let mut walk = LooseRefWalk {
+        count: 0,
+        complete: true,
+    };
+    let mut pending_directories = vec![root.to_path_buf()];
+    while let Some(directory) = pending_directories.pop() {
+        let entries = match std::fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                log::debug!("cannot read {}: {error}", directory.display());
+                walk.complete = false;
+                continue;
+            }
+        };
+        for entry in entries {
+            if Instant::now() >= deadline {
+                walk.complete = false;
+                return walk;
+            }
+            let Ok(entry) = entry else {
+                walk.complete = false;
+                continue;
+            };
+            let Ok(file_type) = entry.file_type() else {
+                walk.complete = false;
+                continue;
+            };
+            let path = entry.path();
+            if file_type.is_dir() {
+                if !excluded.contains(&path.as_path()) {
+                    pending_directories.push(path);
+                }
+                continue;
+            }
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "lock")
+            {
+                continue;
+            }
+            if walk.count >= limit {
+                walk.complete = false;
+                return walk;
+            }
+            match entry.metadata() {
+                Ok(metadata) => visit(&path, &metadata),
+                Err(_) => walk.complete = false,
+            }
+            walk.count += 1;
+        }
+    }
+    walk
+}
+
+fn file_fingerprint(path: &Path) -> Option<(u64, Option<u128>)> {
+    let metadata = std::fs::metadata(path).ok()?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|since_epoch| since_epoch.as_nanos());
+    Some((metadata.len(), modified))
+}
+
+fn hash_one(value: &impl std::hash::Hash) -> u64 {
+    use std::hash::{BuildHasher as _, BuildHasherDefault};
+    BuildHasherDefault::<std::collections::hash_map::DefaultHasher>::default().hash_one(value)
 }
 
 impl Branch {
@@ -764,63 +958,114 @@ impl LogSource {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SearchCommitArgs {
+    /// Text to look for in commit messages, or a sha prefix when it is 7 to 40 hex digits.
     pub query: SharedString,
-    /// Keeps only commits whose author header (name or address) contains this, taken from the
-    /// query's `author:` prefix by [`split_commit_search_query`].
-    pub author: Option<SharedString>,
+    /// Keeps only commits whose author header (name or address) contains every one of these.
+    pub authors: Vec<SharedString>,
     pub case_sensitive: bool,
+    /// Keeps only these commits: the ones a `タグ:` condition's tags point at.
+    pub commits: Option<Vec<Oid>>,
+    /// A full branch ref; keeps the commits on it that the default branch does not have.
+    pub branch: Option<SharedString>,
+    /// Keeps the commits that changed this file or folder (a glob when it holds `*`).
+    pub path: Option<SharedString>,
+    /// Commit dates, in seconds since the epoch.
+    pub since: Option<i64>,
+    pub until: Option<i64>,
+    /// Keeps the commits whose added or removed lines contain this text.
+    pub change: Option<SharedString>,
+    pub merges: MergeFilter,
+    pub sha_prefix: Option<SharedString>,
 }
 
 impl SearchCommitArgs {
-    /// The author to narrow the search by, with the whitespace around it removed.
+    /// The authors to narrow the search by, with the whitespace around them removed.
     ///
     /// An author filter that is only whitespace is refused rather than dropped: `--author=`
     /// matches every commit, so honouring it as "no author filter" would answer a search meant to
-    /// be narrowed with the whole history instead. [`split_commit_search_query`] never builds
-    /// one, but a request that arrived over RPC carries whatever the peer sent.
-    pub fn author_filter(&self) -> Result<Option<&str>> {
-        let Some(author) = self.author.as_deref().map(str::trim) else {
-            return Ok(None);
+    /// be narrowed with the whole history instead. [`commit_search::parse_commit_search_query`]
+    /// never builds one, but a request that arrived over RPC carries whatever the peer sent.
+    pub fn author_filters(&self) -> Result<Vec<&str>> {
+        self.authors
+            .iter()
+            .map(|author| {
+                let author = author.trim();
+                anyhow::ensure!(!author.is_empty(), "著者の指定が空です。");
+                Ok(author)
+            })
+            .collect()
+    }
+
+    /// Checks what a peer may have sent in the same spirit as [`Self::author_filters`]: a filter
+    /// that is present must narrow the search, and nothing may reach git as an option.
+    pub fn validate(&self) -> Result<()> {
+        self.author_filters()?;
+        if let Some(branch) = self.branch.as_deref() {
+            anyhow::ensure!(
+                commit_search::is_searchable_branch_ref(branch),
+                "ブランチ「{branch}」は検索に使えません。"
+            );
+        }
+        if let Some(path) = self.path.as_deref() {
+            anyhow::ensure!(
+                commit_search::normalize_search_path(path).is_some(),
+                "ファイルの指定「{path}」はリポジトリ全体を指すため、絞り込みになりません。"
+            );
+        }
+        if let Some(change) = self.change.as_deref() {
+            anyhow::ensure!(!change.is_empty(), "変更内容の指定が空です。");
+        }
+        if let Some(sha_prefix) = self.sha_prefix.as_deref() {
+            anyhow::ensure!(
+                (4..=40).contains(&sha_prefix.len())
+                    && sha_prefix.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                "sha の指定「{sha_prefix}」は 16 進数ではありません。"
+            );
+        }
+        Ok(())
+    }
+
+    /// Whether anything narrows the search. One that has nothing finds nothing rather than every
+    /// commit.
+    pub fn has_anything_to_match(&self) -> bool {
+        !self.query.trim().is_empty()
+            || !self.authors.is_empty()
+            || self.commits.is_some()
+            || self.branch.is_some()
+            || self.path.is_some()
+            || self.since.is_some()
+            || self.until.is_some()
+            || self.change.is_some()
+            || self.merges != MergeFilter::Include
+            || self.sha_prefix.is_some()
+    }
+
+    /// Whether the search needs more than a message text and one author, which is all a remote
+    /// Zed from before the other filters understands.
+    pub fn uses_filters_beyond_author(&self) -> bool {
+        // Compared as a whole rather than field by field, so that a filter added later counts
+        // without anyone remembering to list it here: missing it would let an older server
+        // quietly widen the search.
+        let older_server_search = SearchCommitArgs {
+            query: self.query.clone(),
+            authors: self.authors.iter().take(1).cloned().collect(),
+            case_sensitive: self.case_sensitive,
+            ..SearchCommitArgs::default()
         };
-        anyhow::ensure!(!author.is_empty(), "著者の指定が空です。");
-        Ok(Some(author))
+        *self != older_server_search
     }
-}
 
-/// The prefixes that introduce an author filter in a commit search query: the one git itself
-/// uses, and the Japanese one the search box offers, each with the halfwidth and the fullwidth
-/// colon a Japanese keyboard produces.
-const AUTHOR_QUERY_PREFIXES: [&str; 4] = ["author:", "author：", "著者:", "著者："];
-
-/// Splits a commit search query into its `author:` (or `著者:`) filter and the message text left
-/// over.
-///
-/// The value can be quoted (`author:"山田 太郎"`) to spell a name containing a space; unquoted it
-/// ends at the first space. A prefix whose value is empty is not a filter and stays part of the
-/// message text, so that a half-typed `author:` cannot quietly turn into "every commit".
-pub fn split_commit_search_query(query: &str) -> (Option<&str>, &str) {
-    let trimmed = query.trim();
-    let Some(rest) = AUTHOR_QUERY_PREFIXES.iter().find_map(|prefix| {
-        trimmed
-            .get(..prefix.len())
-            .filter(|candidate| candidate.eq_ignore_ascii_case(prefix))
-            .and_then(|_| trimmed.get(prefix.len()..))
-    }) else {
-        return (None, trimmed);
-    };
-
-    let (author, message) = if let Some(quoted) = rest.strip_prefix('"') {
-        quoted.split_once('"').unwrap_or((quoted, ""))
-    } else {
-        rest.split_once(char::is_whitespace).unwrap_or((rest, ""))
-    };
-
-    let author = author.trim();
-    if author.is_empty() {
-        return (None, trimmed);
+    /// Whether the tagged commits are the whole answer, which the graph can give without git.
+    pub fn is_only_commit_set(&self) -> bool {
+        self.commits.is_some()
+            && SearchCommitArgs {
+                commits: None,
+                case_sensitive: false,
+                ..self.clone()
+            } == SearchCommitArgs::default()
     }
-    (Some(author), message.trim())
 }
 
 pub fn commit_hash_search_query(query: &str) -> Option<&str> {
@@ -829,6 +1074,150 @@ pub fn commit_hash_search_query(query: &str) -> Option<&str> {
         .contains(&query.len())
         .then_some(query)
         .filter(|query| query.bytes().all(|byte| byte.is_ascii_hexdigit()))
+}
+
+/// The sha prefix a search narrows to: its `sha:` condition, or else a query that is nothing but
+/// 7 to 40 hex digits.
+fn search_hash_prefix(search_args: &SearchCommitArgs) -> Option<String> {
+    search_args
+        .sha_prefix
+        .as_deref()
+        .or_else(|| commit_hash_search_query(search_args.query.as_str()))
+        .map(str::to_ascii_lowercase)
+}
+
+/// A date for `--since` / `--until`, spelled out in full so that git's date parser has nothing
+/// to guess. Before the epoch is the epoch, git's own floor.
+fn format_search_date(timestamp: i64) -> Result<String> {
+    let datetime = OffsetDateTime::from_unix_timestamp(timestamp.max(0))?;
+    Ok(datetime.format(time::macros::format_description!(
+        "[year]-[month]-[day] [hour]:[minute]:[second] +0000"
+    ))?)
+}
+
+/// The pathspec of a `ファイル:` condition: taken literally, unless it holds a `*`, which makes it
+/// a glob. A glob with no `/` matches at any depth, as in `.gitignore`.
+fn search_pathspec(path: &str) -> Result<String> {
+    let Some(path) = commit_search::normalize_search_path(path) else {
+        bail!("ファイルの指定「{path}」はリポジトリ全体を指すため、絞り込みになりません。");
+    };
+    Ok(if !path.contains('*') {
+        format!(":(literal){path}")
+    } else if path.contains('/') {
+        format!(":(glob){path}")
+    } else {
+        format!(":(glob)**/{path}")
+    })
+}
+
+/// What `git log` is given for a commit search after `log` and the format, `revisions` being the
+/// commits to walk. `None` when there is nothing to match on, which finds nothing rather than
+/// every commit.
+fn commit_search_log_args(
+    search_args: &SearchCommitArgs,
+    revisions: Vec<String>,
+    version: Option<GitVersion>,
+) -> Result<Option<Vec<String>>> {
+    search_args.validate()?;
+    if !search_args.has_anything_to_match() {
+        return Ok(None);
+    }
+    let authors = search_args.author_filters()?;
+    let message_query = Some(search_args.query.trim())
+        .filter(|query| !query.is_empty())
+        .filter(|_| {
+            search_args.sha_prefix.is_some()
+                || commit_hash_search_query(search_args.query.as_str()).is_none()
+        });
+
+    let mut args = Vec::new();
+    if !authors.is_empty() || message_query.is_some() {
+        // `--fixed-strings` and `--regexp-ignore-case` cover `--author` as well as `--grep`,
+        // which is what makes an author filter a substring match.
+        args.push("--fixed-strings".to_string());
+        if !search_args.case_sensitive {
+            args.push("--regexp-ignore-case".to_string());
+        }
+        // Several `--author`s are ored by git; `search_commits` ands them afterwards.
+        args.extend(authors.iter().map(|author| format!("--author={author}")));
+        if let Some(message_query) = message_query {
+            args.push(format!("--grep={message_query}"));
+        }
+    }
+    if let Some(change) = search_args.change.as_deref() {
+        GitFeature::PickaxeRegex.require(version, "変更内容での検索")?;
+        args.push(format!(
+            "-G{}",
+            commit_search::change_search_pattern(change, search_args.case_sensitive)
+        ));
+    }
+    if let Some(since) = search_args.since {
+        args.push(format!("--since={}", format_search_date(since)?));
+    }
+    if let Some(until) = search_args.until {
+        args.push(format!("--until={}", format_search_date(until)?));
+    }
+    match search_args.merges {
+        MergeFilter::Include => {}
+        MergeFilter::Exclude => args.push("--no-merges".to_string()),
+        MergeFilter::Only => args.push("--merges".to_string()),
+    }
+    if let Some(path) = search_args.path.as_deref() {
+        anyhow::ensure!(
+            !revisions.iter().any(|revision| revision == "--"),
+            "ファイルの履歴では「ファイル:」は使えません。"
+        );
+        GitFeature::PathspecMagic.require(version, "ファイルでの絞り込み")?;
+        args.extend(revisions);
+        args.push("--".to_string());
+        args.push(search_pathspec(path)?);
+    } else {
+        args.extend(revisions);
+    }
+    Ok(Some(args))
+}
+
+/// The revisions a `ブランチ:` search walks: the branch less what the default branch has, or the
+/// whole branch when it is the default one. `existing_refs` are the full refs that exist among
+/// the branch and the candidates for the default branch.
+fn branch_search_revisions(
+    branch: &str,
+    default_branch: Option<&str>,
+    existing_refs: &HashSet<String>,
+) -> Result<Vec<String>> {
+    let short_name = branch
+        .strip_prefix("refs/heads/")
+        .or_else(|| branch.strip_prefix("refs/remotes/"))
+        .unwrap_or(branch);
+    anyhow::ensure!(
+        commit_search::is_searchable_branch_ref(branch) && existing_refs.contains(branch),
+        "ブランチ「{short_name}」はありません。"
+    );
+    let default_ref = default_branch.and_then(|default_branch| {
+        [
+            format!("refs/heads/{default_branch}"),
+            format!("refs/remotes/{default_branch}"),
+        ]
+        .into_iter()
+        .find(|candidate| {
+            existing_refs.contains(candidate) && commit_search::is_searchable_branch_ref(candidate)
+        })
+    });
+    let Some(default_ref) = default_ref else {
+        bail!("デフォルトブランチが見つからないため、「ブランチ:」では絞り込めません。");
+    };
+    // A local `main` whose default is `origin/main` is the default branch too.
+    let default_local_name = default_ref.strip_prefix("refs/heads/").or_else(|| {
+        default_ref
+            .strip_prefix("refs/remotes/")
+            .and_then(|remote_branch| remote_branch.split_once('/'))
+            .map(|(_, name)| name)
+    });
+    if branch == default_ref || branch.strip_prefix("refs/heads/") == default_local_name {
+        Ok(vec![branch.to_string()])
+    } else {
+        Ok(vec![branch.to_string(), "--not".to_string(), default_ref])
+    }
 }
 
 pub fn delete_branch_flag(is_remote_tracking_ref: bool, force: bool) -> &'static str {
@@ -891,6 +1280,7 @@ impl GitCommandOutput {
 /// subcommand keeps this one escape hatch limited to the operations the git
 /// panel actually needs.
 pub const ALLOWED_GIT_COMMANDS: &[&str] = &[
+    "add",
     "apply",
     "branch",
     "checkout",
@@ -902,7 +1292,9 @@ pub const ALLOWED_GIT_COMMANDS: &[&str] = &[
     "for-each-ref",
     "format-patch",
     "log",
+    "ls-files",
     "merge",
+    "pack-refs",
     "rebase",
     "reset",
     "rev-parse",
@@ -942,23 +1334,35 @@ pub const HOOK_RUNNING_GIT_COMMANDS: &[(&str, &str)] = &[
 /// over any file the host user can write, `--file=<path>` reads any file the host user can read
 /// into a message the caller can print back with `log`, `--ext-diff` and `--textconv` hand the
 /// repository's own configuration a program to run, and `--help` does the same through `help.*`.
+/// `--pathspec-from-file=<path>` (`add`, `commit`, `reset`, `checkout`) reads any file the host
+/// user can read and echoes each line back in the "did not match any files" error.
+/// `diff --no-index` prints any two files the host user can read, and `apply --unsafe-paths`
+/// writes the caller's patch (`run_command` takes stdin) outside the working tree.
+/// `ls-files --exclude-from=<path>` (`-X`) reads any file the host user can read as ignore
+/// patterns, and `--exclude-per-directory=<name>` reads the file of that name from every
+/// directory, `..` included, so the files it lists give away what those files say.
 /// No wrapper in this fork needs any of them, and `run_command` is reachable over RPC.
 const REFUSED_GIT_LONG_OPTIONS: &[&str] = &[
     "--exec",
     "--exec-path",
+    "--exclude-from",
+    "--exclude-per-directory",
     "--ext-diff",
     "--file",
     "--help",
+    "--no-index",
     "--output",
     "--output-directory",
+    "--pathspec-from-file",
     "--textconv",
+    "--unsafe-paths",
 ];
 
-/// The short spellings of [`REFUSED_GIT_LONG_OPTIONS`]: `-x` is `rebase --exec` and `-F` is
-/// `--file`. Either can carry its value attached (`-xcurl …`) or sit in a bundle of flags (`-nx`).
-/// `cherry-pick -x`, which only appends a line to the message, goes with them; nothing here needs
-/// it.
-const REFUSED_GIT_SHORT_OPTIONS: &[char] = &['x', 'F'];
+/// The short spellings of [`REFUSED_GIT_LONG_OPTIONS`]: `-x` is `rebase --exec`, `-F` is
+/// `--file`, `-o` is `format-patch --output-directory` and `-X` is `ls-files --exclude-from`. Each can carry its value attached
+/// (`-xcurl …`) or sit in a bundle of flags (`-nx`). `cherry-pick -x`, which only appends a line
+/// to the message, and `commit -o` (`--only`) go with them; nothing here needs them.
+const REFUSED_GIT_SHORT_OPTIONS: &[char] = &['x', 'F', 'o', 'X'];
 
 /// Subcommands whose `-m` / `--message` reads the next argument as free text.
 ///
@@ -997,11 +1401,43 @@ pub fn validate_git_command(args: &[String]) -> Result<&str> {
             continue;
         }
         anyhow::ensure!(
-            !is_refused_git_argument(argument),
+            !is_refused_git_argument(argument)
+                && !(subcommand == "diff" && names_a_path_outside_the_repository(argument)),
             "unsupported git command argument: {argument}"
         );
     }
     Ok(subcommand)
+}
+
+/// Whether `message` is [`validate_git_command`] refusing `subcommand` itself, which is how a remote
+/// Zed from before `subcommand` joined [`ALLOWED_GIT_COMMANDS`] answers a newer client.
+pub fn is_unknown_git_subcommand_refusal(message: &str, subcommand: &str) -> bool {
+    let refusal = format!("unsupported git command: {subcommand}");
+    message.match_indices(&refusal).any(|(index, _)| {
+        message.get(index + refusal.len()..).is_some_and(|rest| {
+            !rest.starts_with(|character: char| {
+                character.is_ascii_alphanumeric() || character == '-'
+            })
+        })
+    })
+}
+
+/// Whether `argument` could be a path outside the working tree: given two paths of which one is
+/// outside, `diff` compares the files themselves as `--no-index` would, without being asked to,
+/// and prints any file the host user can read. Absolute paths (`/…`, `\…`, `C:…`, UNC), `~…`, and
+/// anything with a `..` path component are refused; a revision range (`a..b`, `a...b`) has no
+/// separator around its dots and stays allowed.
+fn names_a_path_outside_the_repository(argument: &str) -> bool {
+    let mut characters = argument.chars();
+    let absolute = match (characters.next(), characters.next()) {
+        (Some('/' | '\\' | '~'), _) => true,
+        (Some(drive), Some(':')) => drive.is_ascii_alphabetic(),
+        _ => false,
+    };
+    absolute
+        || argument
+            .split(['/', '\\'])
+            .any(|component| component == "..")
 }
 
 fn is_refused_git_argument(argument: &str) -> bool {
@@ -1009,27 +1445,29 @@ fn is_refused_git_argument(argument: &str) -> bool {
         let name = long_option
             .split_once('=')
             .map_or(long_option, |(name, _)| name);
-        return REFUSED_GIT_LONG_OPTIONS
-            .iter()
-            .any(|refused| refused.strip_prefix("--") == Some(name));
+        // git takes any unambiguous prefix of a long option for the option itself (`rebase --exe
+        // <cmd>`, `add --pathspec-from=<path>`), so a prefix is refused as well. `--text` is the
+        // one real option (`diff -a`) that is also a prefix of a refused one, and git reads an
+        // exact name as that option rather than as an abbreviation.
+        return !name.is_empty()
+            && name != "text"
+            && REFUSED_GIT_LONG_OPTIONS.iter().any(|refused| {
+                refused
+                    .strip_prefix("--")
+                    .is_some_and(|refused| refused.starts_with(name))
+            });
     }
     let Some(short_options) = argument.strip_prefix('-') else {
         return false;
     };
-    match short_options.chars().next() {
-        // `-x<value>`, where git reads the rest of the argument as the option's value.
-        Some(letter) if REFUSED_GIT_SHORT_OPTIONS.contains(&letter) => true,
-        // A bundle of flags (`-nx`). Anything else starting with `-` is a value git will not read
-        // as an option, such as a negative number or a message.
-        _ => {
-            short_options
-                .chars()
-                .all(|letter| letter.is_ascii_alphabetic())
-                && short_options
-                    .chars()
-                    .any(|letter| REFUSED_GIT_SHORT_OPTIONS.contains(&letter))
-        }
-    }
+    // A bundle of flags (`-nx`), in which git reads whatever follows an option that takes a value
+    // as that value (`-xcurl …`, `-ix"sh …"`, `-ko/tmp`), so any refused letter up to the first
+    // character that cannot be a flag may be the option that gets it. Something starting with a
+    // digit or a space is a value git will not read as an option, such as a negative number.
+    short_options
+        .chars()
+        .take_while(|letter| letter.is_ascii_alphabetic())
+        .any(|letter| REFUSED_GIT_SHORT_OPTIONS.contains(&letter))
 }
 
 /// Rejects caller-supplied environment variables outside [`ALLOWED_GIT_COMMAND_ENV`].
@@ -1054,14 +1492,23 @@ pub struct TagInfo {
     pub created_at_unix: Option<i64>,
     /// First line of an annotated tag's message.
     pub subject: Option<String>,
+    /// First line of the tagged commit's message, for a lightweight tag, which has no message
+    /// of its own.
+    pub commit_subject: Option<String>,
     pub annotated: bool,
 }
 
 /// The `--format` `Repository::tags` hands to `for-each-ref`.
 ///
+/// `%(refname)` rather than `%(refname:short)`: shortening checks every tag name for ambiguity
+/// against the other refs, several file lookups per tag, which took seconds on a repository with
+/// tens of thousands of tags. [`TagInfo::rev`] is what disambiguates a tag instead.
+///
 /// `%(creatordate:raw)` rather than `:unix`, which git only learned in 2.9.4 (ADR-F47); the raw
 /// form has printed `<seconds> <offset>` since long before that.
-pub const TAG_LIST_FORMAT: &str = "%(refname:short)%00%(objecttype)%00%(objectname)%00%(*objectname)%00%(creatordate:raw)%00%(contents:subject)";
+pub const TAG_LIST_FORMAT: &str = "%(refname)%00%(objecttype)%00%(objectname)%00%(*objectname)%00%(creatordate:raw)%00%(contents:subject)";
+
+const TAG_REF_PREFIX: &str = "refs/tags/";
 
 impl TagInfo {
     /// Parses `for-each-ref` output produced with [`TAG_LIST_FORMAT`].
@@ -1069,9 +1516,15 @@ impl TagInfo {
         stdout.lines().filter_map(Self::parse_line).collect()
     }
 
+    /// The full ref name, for passing the tag to git as a revision: a branch of the same name
+    /// would win over the bare tag name in some commands and be ambiguous in the others.
+    pub fn rev(&self) -> String {
+        format!("{TAG_REF_PREFIX}{}", self.name)
+    }
+
     fn parse_line(line: &str) -> Option<TagInfo> {
         let mut fields = line.trim_end_matches('\r').split('\0');
-        let name = fields.next()?;
+        let name = fields.next()?.strip_prefix(TAG_REF_PREFIX)?;
         let object_type = fields.next()?;
         let object_sha = fields.next()?;
         let peeled_sha = fields.next()?;
@@ -1086,6 +1539,7 @@ impl TagInfo {
         } else {
             peeled_sha
         };
+        let subject = (!subject.is_empty()).then(|| subject.to_owned());
         Some(TagInfo {
             name: name.to_owned(),
             commit_sha: commit_sha.to_owned(),
@@ -1093,7 +1547,8 @@ impl TagInfo {
                 .split_whitespace()
                 .next()
                 .and_then(|seconds| seconds.parse().ok()),
-            subject: (annotated && !subject.is_empty()).then(|| subject.to_owned()),
+            subject: subject.clone().filter(|_| annotated),
+            commit_subject: subject.filter(|_| !annotated && object_type == "commit"),
             annotated,
         })
     }
@@ -1429,6 +1884,191 @@ pub fn rebase_onto_args(new_base: &str, upstream: &str, branch: Option<&str>) ->
     args
 }
 
+/// Which uncommitted changes a fixup folds into the commit it targets.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FixupChanges {
+    /// What is staged, and nothing else (`commit --fixup`).
+    Staged,
+    /// Every change to a tracked file, staged or not (`commit --fixup -a`). Untracked files stay
+    /// out, as they do from any `commit -a`.
+    AllTracked,
+    /// Exactly these files as the working tree has them, staged or not and tracked or not, and
+    /// nothing else that happens to be staged.
+    Paths(Vec<RepoPath>),
+}
+
+/// A path handed to git as nothing but itself: `:(literal)` keeps `*`, `?` and `[` from being
+/// read as a glob that pulls in files the user never picked, and a pathspec starting with `:`
+/// cannot be taken for an option either.
+fn literal_pathspec(path: &RepoPath) -> String {
+    format!(":(literal){}", path.as_unix_str())
+}
+
+/// The commands that record `changes` as a `fixup!` commit of `target`, in order; the last one
+/// is the commit.
+///
+/// `untracked` are the files of [`FixupChanges::Paths`] git does not track yet. `commit --only`
+/// takes a file from the working tree only when git already knows it, so those are added first,
+/// and only those: `add` refuses a path whose deletion is already staged, which `commit --only`
+/// records without help.
+pub fn fixup_commit_commands(
+    target: &str,
+    changes: &FixupChanges,
+    untracked: &[RepoPath],
+) -> Result<Vec<Vec<String>>> {
+    anyhow::ensure!(
+        !target.is_empty(),
+        "変更を入れる先のコミットが分かりません。"
+    );
+    let mut commit = vec!["commit".to_string(), format!("--fixup={target}")];
+    Ok(match changes {
+        FixupChanges::Staged => vec![commit],
+        FixupChanges::AllTracked => {
+            commit.push("-a".to_string());
+            vec![commit]
+        }
+        FixupChanges::Paths(paths) => {
+            anyhow::ensure!(!paths.is_empty(), "入れるファイルがありません。");
+            let mut commands = Vec::with_capacity(2);
+            if !untracked.is_empty() {
+                let mut add = vec!["add".to_string(), "--".to_string()];
+                add.extend(untracked.iter().map(literal_pathspec));
+                commands.push(add);
+            }
+            commit.extend(["--only".to_string(), "--".to_string()]);
+            commit.extend(paths.iter().map(literal_pathspec));
+            commands.push(commit);
+            commands
+        }
+    })
+}
+
+/// The `git diff --name-only` that lists what [`fixup_commit_commands`] would record, so that a
+/// fixup with nothing in it is refused before anything runs. Untracked files of
+/// [`FixupChanges::Paths`] never show up here; the caller counts those itself.
+pub fn fixup_changes_probe_args(changes: &FixupChanges) -> Vec<String> {
+    let mut args = vec!["diff".to_string()];
+    match changes {
+        FixupChanges::Staged => args.extend(["--cached".to_string(), "--name-only".to_string()]),
+        FixupChanges::AllTracked => args.extend(["HEAD".to_string(), "--name-only".to_string()]),
+        FixupChanges::Paths(paths) => {
+            args.extend([
+                "HEAD".to_string(),
+                "--name-only".to_string(),
+                "--".to_string(),
+            ]);
+            args.extend(paths.iter().map(literal_pathspec));
+        }
+    }
+    args
+}
+
+/// Takes the files [`fixup_commit_commands`] added back out of the index, for when the commit
+/// after it was refused: none of them was tracked, so this leaves them untracked again.
+pub fn fixup_unstage_args(untracked: &[RepoPath]) -> Option<Vec<String>> {
+    if untracked.is_empty() {
+        return None;
+    }
+    let mut args = vec!["reset".to_string(), "-q".to_string(), "--".to_string()];
+    args.extend(untracked.iter().map(literal_pathspec));
+    Some(args)
+}
+
+/// `git rebase -i --autosquash --autostash --keep-empty <parent of the target>` (`--root` when
+/// the target is the repository's first commit), which folds the `fixup!` commit into its target.
+///
+/// `-i` without anyone editing the todo list: `run_command` pins `GIT_SEQUENCE_EDITOR` to `:`, so
+/// git takes the list `--autosquash` arranged as it stands. `--keep-empty`, because a git before
+/// 2.26 comments out commits that were empty to begin with, and the untouched list would then drop
+/// them from the branch.
+pub fn fixup_rebase_args(target_parent: Option<&str>) -> Vec<String> {
+    let mut args = vec![
+        "rebase".to_string(),
+        "-i".to_string(),
+        "--autosquash".to_string(),
+        "--autostash".to_string(),
+        "--keep-empty".to_string(),
+    ];
+    match target_parent {
+        Some(parent) => args.push(parent.to_string()),
+        None => args.push("--root".to_string()),
+    }
+    args
+}
+
+/// Whether `rebase --autosquash` takes a commit with this subject for one to fold into another.
+///
+/// A fixup's rebase would fold every such commit it replays, including ones the user is keeping
+/// for later, so a range holding one is refused instead.
+pub fn is_autosquash_subject(subject: &str) -> bool {
+    ["fixup! ", "squash! ", "amend! "]
+        .iter()
+        .any(|prefix| subject.starts_with(prefix))
+}
+
+/// `git log --format=%H -1 @{upstream}..<sha>`: prints nothing when the current branch's
+/// upstream already contains `sha`. Read it with [`is_pushed_from_probe`].
+pub fn pushed_probe_args(sha: &str) -> Vec<String> {
+    vec![
+        "log".to_string(),
+        "--format=%H".to_string(),
+        "-1".to_string(),
+        format!("@{{upstream}}..{sha}"),
+    ]
+}
+
+/// Whether the commit [`pushed_probe_args`] asked about has been pushed, which is when rewriting
+/// it leaves the branch needing a force push.
+///
+/// A branch without an upstream (and a detached HEAD) makes git refuse `@{upstream}`, and counts
+/// as not pushed.
+pub fn is_pushed_from_probe(output: &GitCommandOutput) -> bool {
+    output.succeeded() && output.stdout.trim().is_empty()
+}
+
+/// What `Repository::fixup_target` found out about the commit changes are about to be folded into.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FixupTarget {
+    /// The full SHA the caller's SHA resolved to.
+    pub sha: String,
+    pub subject: String,
+    /// The current branch's upstream already has the commit, so folding into it rewrites pushed
+    /// history.
+    pub pushed: bool,
+}
+
+/// How a fixup ended.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FixupOutcome {
+    /// The changes are in the target, and the branch moved from `old_head` to `new_head`.
+    Folded { old_head: String, new_head: String },
+    /// git refused to record the changes (a hook, or nothing left to commit). History is as it
+    /// was; `head_moved` says whether HEAD is nonetheless somewhere else now.
+    NotCommitted {
+        output: GitCommandOutput,
+        head_moved: bool,
+    },
+    /// The rebase stopped part-way (a conflict). The git panel's banner continues or aborts it,
+    /// and aborting leaves the changes in the `fixup!` commit on top of `old_head`. Skipping the
+    /// `fixup!` pick drops them from the branch, leaving `fixup_commit` as the only way back.
+    RebaseStopped {
+        message: String,
+        old_head: String,
+        fixup_commit: String,
+    },
+    /// The rebase failed without stopping part-way. `rolled_back` is the `fixup!` commit taken
+    /// back off the branch (`reset --soft`, leaving its changes staged), which only happens when
+    /// git left the index and the working tree untouched; otherwise the commit is still on top of
+    /// the branch and the working tree may be half-way to the older tree.
+    RebaseRefused { message: String, rolled_back: bool },
+    /// The rebase finished but left the `fixup!` commit standing on its own, which only happens
+    /// when `--autosquash` could not pair it with the target.
+    LeftUnfolded { old_head: String, new_head: String },
+    /// The rebase finished, but git could not put the working-tree changes its `--autostash` had
+    /// set aside back, and kept them as the newest stash entry instead of failing.
+    ChangesLeftInStash { old_head: String, new_head: String },
+}
+
 /// Puts the user back on `branch` and throws the scratch branch away: the tail of a rewrite that
 /// worked, and the way back from one that did not.
 ///
@@ -1474,8 +2114,12 @@ pub fn rewrite_range_commands(
         !branch.is_empty() && !base.is_empty() && !upstream.is_empty(),
         "書き換える範囲を特定できませんでした。"
     );
+    // git counts ignored files as expendable: without `--no-overwrite-ignore`, a file the user's
+    // branch ignores (a local `.env`, say) but `base` still tracks would be overwritten here, and
+    // deleted once the branch is replayed past the commit that stopped tracking it.
     let mut commands = vec![RewriteCommand::plain(vec![
         "switch".to_string(),
+        "--no-overwrite-ignore".to_string(),
         "-c".to_string(),
         scratch_branch.to_string(),
         base.to_string(),
@@ -1520,6 +2164,335 @@ pub fn rewrite_range_commands(
             .map(RewriteCommand::plain),
     );
     Ok(commands)
+}
+
+/// The commits a history rewrite checks out or replays, for [`touched_paths_probe_commands`].
+#[derive(Clone, Copy, Debug)]
+pub enum RewrittenCommits<'a> {
+    /// A revision range for `git log` (`<base>..HEAD`, or `HEAD` for all of history).
+    Range(&'a str),
+    /// Exactly these commits, as the merge-request box replays them.
+    Commits(&'a [String]),
+}
+
+/// How many commits one `git log --no-walk` of [`touched_paths_probe_commands`] names.
+const TOUCHED_PATHS_PROBE_COMMITS: usize = 200;
+
+/// How long the pathspecs of one `git ls-files` of [`ignored_files_probe_commands`] may get:
+/// Windows refuses a command line over 32 767 characters.
+const IGNORED_FILES_PROBE_PATHSPEC_BUDGET: usize = 16_000;
+
+/// How many ignored files [`ignored_files_refusal`] names before it only counts the rest.
+const IGNORED_FILES_NAMED: usize = 5;
+
+/// The `git log` commands listing every path `commits` change, NUL-separated (see
+/// [`parse_nul_separated_paths`]).
+///
+/// git counts ignored files as expendable: `cherry-pick` and the replay of a `rebase` overwrite a
+/// local ignored file (a `.env`, say) with the version a commit tracks, without a word, and delete
+/// it once a later commit stops tracking it. Only the paths some rewritten commit touches can be
+/// written that way, which keeps [`ignored_files_probe_commands`] from walking every ignored file
+/// of the working tree (`target/`, `node_modules/`).
+pub fn touched_paths_probe_commands(commits: RewrittenCommits<'_>) -> Vec<Vec<String>> {
+    let log = || {
+        vec![
+            "log".to_string(),
+            "--format=".to_string(),
+            "--name-only".to_string(),
+            "--no-renames".to_string(),
+            "-z".to_string(),
+        ]
+    };
+    match commits {
+        RewrittenCommits::Range(range) => {
+            let mut args = log();
+            args.push(range.to_string());
+            vec![args]
+        }
+        RewrittenCommits::Commits(shas) => shas
+            .chunks(TOUCHED_PATHS_PROBE_COMMITS)
+            .map(|chunk| {
+                let mut args = log();
+                args.push("--no-walk".to_string());
+                args.extend(chunk.iter().cloned());
+                args
+            })
+            .collect(),
+    }
+}
+
+/// The paths of a `-z` listing from `git log --name-only` or `git ls-files`.
+pub fn parse_nul_separated_paths(stdout: &str) -> impl Iterator<Item = &str> {
+    stdout.split('\0').filter(|path| !path.is_empty())
+}
+
+/// The `git ls-files` commands that find which of `paths` (relative to the repository root, as
+/// `git log --name-only` prints them) are ignored files that exist in the working tree without
+/// being tracked. Empty when `paths` is.
+pub fn ignored_files_probe_commands<'a>(
+    paths: impl IntoIterator<Item = &'a str>,
+) -> Vec<Vec<String>> {
+    let command = || {
+        vec![
+            "ls-files".to_string(),
+            "--others".to_string(),
+            "--ignored".to_string(),
+            "--exclude-standard".to_string(),
+            "-z".to_string(),
+            "--".to_string(),
+        ]
+    };
+    let mut commands = Vec::new();
+    let mut current = command();
+    let mut length = 0;
+    for path in paths {
+        let pathspec = format!(":(top,literal){path}");
+        if length > 0 && length + pathspec.len() > IGNORED_FILES_PROBE_PATHSPEC_BUDGET {
+            commands.push(std::mem::replace(&mut current, command()));
+            length = 0;
+        }
+        length += pathspec.len() + 1;
+        current.push(pathspec);
+    }
+    if length > 0 {
+        commands.push(current);
+    }
+    commands
+}
+
+/// Why a history rewrite is refused when `ignored` (what [`ignored_files_probe_commands`] found)
+/// is not empty.
+pub fn ignored_files_refusal(ignored: &[String]) -> Option<String> {
+    if ignored.is_empty() {
+        return None;
+    }
+    let mut names = ignored
+        .iter()
+        .take(IGNORED_FILES_NAMED)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("、");
+    if ignored.len() > IGNORED_FILES_NAMED {
+        names.push_str(&format!(" ほか {} 個", ignored.len() - IGNORED_FILES_NAMED));
+    } else {
+        names.push(' ');
+    }
+    Some(format!(
+        "無視されているローカルのファイル {names}が、書き換えの途中で上書きされて失われるため中止しました。別の場所に退避してからやり直してください。"
+    ))
+}
+
+/// What sets a merge-request build's scratch branch apart from a history rewrite's inside
+/// [`REWRITE_SCRATCH_BRANCH_PREFIX`].
+const MERGE_REQUEST_SCRATCH_MARKER: &str = "mr-";
+
+/// The scratch branch a merge-request branch is built on, named after the newest commit of the
+/// merge-request box.
+///
+/// It lives in the rewrite namespace on purpose: a build that stops on a conflict parks the user
+/// on it, and the git panel's banner only knows how to take the user back from, and delete, a
+/// branch in that namespace ([`is_rewrite_scratch_branch`], [`rewrite_cleanup_commands`]).
+pub fn merge_request_scratch_branch_name(newest_sha: &str) -> String {
+    let short: String = newest_sha.chars().take(SHORT_SHA_LENGTH).collect();
+    format!("{REWRITE_SCRATCH_BRANCH_PREFIX}{MERGE_REQUEST_SCRATCH_MARKER}{short}")
+}
+
+/// Whether `branch` is the scratch branch of a merge-request build rather than of a rewrite.
+pub fn is_merge_request_scratch_branch(branch: &str) -> bool {
+    branch
+        .strip_prefix(REWRITE_SCRATCH_BRANCH_PREFIX)
+        .and_then(|rest| rest.strip_prefix(MERGE_REQUEST_SCRATCH_MARKER))
+        .is_some_and(|rest| !rest.is_empty())
+}
+
+/// Refuses a merge-request branch name that `git branch` would read as an option, that would put
+/// the branch among the scratch branches this fork deletes on its own, or that git would refuse
+/// as a ref name.
+///
+/// git's own refusal comes too late to rely on: `branch` is the last step of the build, after the
+/// cherry-picks, and a build that stopped on a conflict carries the name into a continuation that
+/// could then only be thrown away together with the conflict resolution. The rules are
+/// `git check-ref-format --branch`'s.
+pub fn validate_merge_request_branch_name(name: &str) -> Result<()> {
+    anyhow::ensure!(!name.trim().is_empty(), "MR ブランチ名を入力してください。");
+    anyhow::ensure!(
+        !name.starts_with('-'),
+        "「-」で始まるブランチ名は使えません。"
+    );
+    anyhow::ensure!(
+        !name
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control()),
+        "空白を含むブランチ名は使えません。"
+    );
+    anyhow::ensure!(
+        name != "HEAD" && name != "@",
+        "「{name}」はブランチ名に使えません。"
+    );
+    anyhow::ensure!(
+        !name.starts_with(REWRITE_SCRATCH_BRANCH_PREFIX),
+        "「{REWRITE_SCRATCH_BRANCH_PREFIX}」で始まる名前は一時ブランチ用のため使えません。"
+    );
+    // `refs/heads/x` would become the branch `refs/heads/refs/heads/x`, and pushing it by that
+    // name would push the branch `x` instead.
+    anyhow::ensure!(
+        !name.starts_with("refs/"),
+        "「refs/」で始まるブランチ名は使えません。"
+    );
+    anyhow::ensure!(
+        !name
+            .chars()
+            .any(|character| matches!(character, '~' | '^' | ':' | '?' | '*' | '[' | '\\')),
+        "ブランチ名に ~ ^ : ? * [ \\ は使えません。"
+    );
+    anyhow::ensure!(
+        !name.contains("..") && !name.contains("@{") && !name.contains("//"),
+        "ブランチ名に「..」「@{{」「//」は使えません。"
+    );
+    anyhow::ensure!(
+        !name.starts_with('/') && !name.ends_with('/') && !name.ends_with('.'),
+        "ブランチ名の先頭と末尾に「/」、末尾に「.」は使えません。"
+    );
+    anyhow::ensure!(
+        name.split('/')
+            .all(|component| !component.starts_with('.') && !component.ends_with(".lock")),
+        "「.」で始まる部分や「.lock」で終わる部分を含むブランチ名は使えません。"
+    );
+    Ok(())
+}
+
+/// Refuses the repository's default branch (its local name, `main` for `origin/main`) as the
+/// merge-request branch, whether or not the user asked for an existing branch to be recreated:
+/// moving it onto the merge request's commit is never what a merge request wants. An unknown
+/// default branch leaves the name to the other checks.
+pub fn ensure_merge_request_branch_is_not_default(
+    name: &str,
+    default_branch: Option<&str>,
+) -> Result<()> {
+    anyhow::ensure!(
+        default_branch != Some(name),
+        "「{name}」はリポジトリのデフォルトブランチのため、MR ブランチにはできません。別の名前にしてください。"
+    );
+    Ok(())
+}
+
+/// The first half of building a merge-request branch: a scratch branch at `base_sha` with every
+/// commit of the box replayed on it, oldest first.
+///
+/// Plain `cherry-pick` rather than `cherry-pick -n`: once one of several no-commit picks
+/// conflicts, git refuses to `--continue` (the index already differs from HEAD), which would
+/// leave nothing to do with a conflict but abort. `--keep-redundant-commits` keeps a commit whose
+/// change the base already has from stopping the pick as "now empty"; the replayed commits are
+/// folded into one right after, so the empty ones leave nothing behind.
+pub fn merge_request_pick_commands(
+    base_sha: &str,
+    shas_oldest_first: &[String],
+    scratch_branch: &str,
+) -> Result<Vec<Vec<String>>> {
+    anyhow::ensure!(
+        is_merge_request_scratch_branch(scratch_branch),
+        "一時ブランチではないブランチ「{scratch_branch}」の上では MR ブランチを組み立てられません。"
+    );
+    anyhow::ensure!(
+        !base_sha.is_empty() && !base_sha.starts_with('-'),
+        "基点のコミットを特定できませんでした。"
+    );
+    anyhow::ensure!(!shas_oldest_first.is_empty(), "箱にコミットがありません。");
+    anyhow::ensure!(
+        shas_oldest_first
+            .iter()
+            .all(|sha| !sha.is_empty() && !sha.starts_with('-')),
+        "箱のコミットを特定できませんでした。"
+    );
+    let mut cherry_pick = vec![
+        "cherry-pick".to_string(),
+        "--keep-redundant-commits".to_string(),
+    ];
+    cherry_pick.extend(shas_oldest_first.iter().cloned());
+    Ok(vec![
+        // git counts ignored files as expendable: without `--no-overwrite-ignore`, a file the
+        // user's branch ignores (a local `.env`, say) but the base tracks would be overwritten
+        // here, and deleted on the way back to the user's branch.
+        vec![
+            "switch".to_string(),
+            "--no-overwrite-ignore".to_string(),
+            "-c".to_string(),
+            scratch_branch.to_string(),
+            base_sha.to_string(),
+        ],
+        cherry_pick,
+    ])
+}
+
+/// What finishing a merge-request branch runs, split where the branch has been put in place, with
+/// the names the commands were checked against.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MergeRequestFinishCommands {
+    /// The replayed commits folded into one commit on top of the base, and the merge-request
+    /// branch pointed at it.
+    pub fold_and_point: Vec<Vec<String>>,
+    /// Back to the branch the user started from, and the scratch branch deleted.
+    pub return_to_origin: Vec<Vec<String>>,
+    pub base_sha: String,
+    pub merge_request_branch: String,
+    pub origin_branch: String,
+    pub scratch_branch: String,
+}
+
+/// The second half of building a merge-request branch, run on the scratch branch once every
+/// commit has been replayed on it: `reset --soft` to the base and one `commit`, then the
+/// merge-request branch is created (or, with `recreate`, moved) at that commit.
+///
+/// `commit` rather than `commit-tree`, so that a `commit-msg` hook (a review system's
+/// `Change-Id`, say) sees the merge request's commit the way it sees any other.
+pub fn merge_request_finish_commands(
+    base_sha: &str,
+    message: &str,
+    merge_request_branch: &str,
+    recreate: bool,
+    origin_branch: &str,
+    scratch_branch: &str,
+) -> Result<MergeRequestFinishCommands> {
+    validate_merge_request_branch_name(merge_request_branch)?;
+    anyhow::ensure!(
+        !message.trim().is_empty(),
+        "コミットメッセージを入力してください。"
+    );
+    anyhow::ensure!(
+        !base_sha.is_empty() && !base_sha.starts_with('-'),
+        "基点のコミットを特定できませんでした。"
+    );
+    // The scratch branch is checked out while the merge-request branch is moved, so `branch -f`
+    // would happily move the branch the user started from.
+    anyhow::ensure!(
+        merge_request_branch != origin_branch,
+        "元のブランチ「{origin_branch}」を MR ブランチにはできません。別の名前にしてください。"
+    );
+    anyhow::ensure!(
+        is_merge_request_scratch_branch(scratch_branch),
+        "一時ブランチではないブランチ「{scratch_branch}」の上では MR ブランチを組み立てられません。"
+    );
+    let mut point = vec!["branch".to_string()];
+    if recreate {
+        point.push("-f".to_string());
+    }
+    point.extend([merge_request_branch.to_string(), "HEAD".to_string()]);
+    Ok(MergeRequestFinishCommands {
+        fold_and_point: vec![
+            vec![
+                "reset".to_string(),
+                "--soft".to_string(),
+                base_sha.to_string(),
+            ],
+            vec!["commit".to_string(), "-m".to_string(), message.to_string()],
+            point,
+        ],
+        return_to_origin: rewrite_cleanup_commands(origin_branch, scratch_branch)?,
+        base_sha: base_sha.to_string(),
+        merge_request_branch: merge_request_branch.to_string(),
+        origin_branch: origin_branch.to_string(),
+        scratch_branch: scratch_branch.to_string(),
+    })
 }
 
 pub trait GitRepository: Send + Sync {
@@ -2884,6 +3857,7 @@ impl GitRepository for RealGitRepository {
 
     fn branches(&self) -> BoxFuture<'_, Result<BranchesScanResult>> {
         let git = self.git_binary();
+        let common_dir = self.common_dir.clone();
         self.executor
             .spawn(async move {
                 let version = git.version().await;
@@ -2904,12 +3878,15 @@ impl GitRepository for RealGitRepository {
                 let input = String::from_utf8_lossy(&output.stdout);
                 let mut branches = parse_branch_input(&input, version)?;
                 // Partial output would make listed upstreams look deleted.
-                if output.status.success() && !GitFeature::UpstreamGone.is_supported_by(version) {
+                if output.status.success() {
                     mark_missing_upstreams_gone(&mut branches);
                 }
                 if !GitFeature::BranchListAtoms.is_supported_by(version) {
                     complete_branches_without_head_and_track_atoms(&git, &mut branches).await;
                 }
+                count_head_tracking(&git, &mut branches).await;
+                let ref_storage =
+                    scan_ref_storage(&common_dir, LOOSE_REF_COUNT_LIMIT, REF_STORAGE_SCAN_BUDGET);
                 if branches.is_empty() {
                     let args = vec!["symbolic-ref", "--quiet", "HEAD"];
 
@@ -2929,7 +3906,11 @@ impl GitRepository for RealGitRepository {
                     }
                 }
 
-                Ok(BranchesScanResult { branches, error })
+                Ok(BranchesScanResult {
+                    branches,
+                    error,
+                    ref_storage,
+                })
             })
             .boxed()
     }
@@ -4396,77 +5377,146 @@ impl GitRepository for RealGitRepository {
         let git = self.git_binary();
 
         async move {
-            let log_source_args = log_source.get_args();
-            let mut args = vec!["log", SEARCH_COMMIT_FORMAT];
-            let hash_query = commit_hash_search_query(search_args.query.as_str())
-                .map(|query| query.to_ascii_lowercase());
-            let author_arg = search_args
-                .author_filter()?
-                .map(|author| format!("--author={author}"));
-            // An empty `--grep` matches every commit, so a query that is only an author filter
-            // must not carry one at all.
-            let message_query = (hash_query.is_none() && !search_args.query.is_empty())
-                .then(|| search_args.query.as_str());
-
-            if author_arg.is_none() && message_query.is_none() && hash_query.is_none() {
-                // A `git log` carrying no filter at all would stream every commit back as a
-                // "result", so a search with nothing to match on finds nothing.
+            search_args.validate()?;
+            if search_args
+                .commits
+                .as_ref()
+                .is_some_and(|commits| commits.is_empty())
+            {
                 return Ok(());
             }
-
-            if author_arg.is_some() || message_query.is_some() {
-                // `--fixed-strings` and `--regexp-ignore-case` cover `--author` as well as
-                // `--grep`, which is what makes an author filter a substring match.
-                args.push("--fixed-strings");
-
-                if !search_args.case_sensitive {
-                    args.push("--regexp-ignore-case");
+            let revisions = match search_args.branch.as_deref() {
+                Some(branch) => {
+                    anyhow::ensure!(
+                        matches!(log_source, LogSource::All),
+                        "「ブランチ:」はすべてのブランチを表示しているグラフでだけ使えます。"
+                    );
+                    let default_branch = self.default_branch(true).await?;
+                    let mut patterns = vec![
+                        "for-each-ref".to_string(),
+                        "--format=%(refname)".to_string(),
+                        branch.to_string(),
+                    ];
+                    if let Some(default_branch) = default_branch.as_deref() {
+                        patterns.push(format!("refs/heads/{default_branch}"));
+                        patterns.push(format!("refs/remotes/{default_branch}"));
+                    }
+                    let existing_refs = git
+                        .run(&patterns)
+                        .await?
+                        .lines()
+                        .map(str::to_string)
+                        .collect::<HashSet<_>>();
+                    branch_search_revisions(branch, default_branch.as_deref(), &existing_refs)?
                 }
+                None => log_source
+                    .get_args()
+                    .into_iter()
+                    .map(|arg| arg.into_owned())
+                    .collect(),
+            };
+            let version = git.version().await;
+            let Some(search_log_args) = commit_search_log_args(&search_args, revisions, version)?
+            else {
+                return Ok(());
+            };
 
-                if let Some(author_arg) = author_arg.as_deref() {
-                    args.push(author_arg);
+            let hash_prefix = search_hash_prefix(&search_args);
+            let fold_case = |text: &str| {
+                if search_args.case_sensitive {
+                    text.to_string()
+                } else {
+                    text.to_lowercase()
                 }
+            };
+            // git ors several `--author`s, so the second one on is checked here.
+            let authors_to_and = if search_args.authors.len() > 1 {
+                search_args
+                    .author_filters()?
+                    .into_iter()
+                    .map(fold_case)
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            let commit_set = search_args
+                .commits
+                .as_ref()
+                .map(|commits| commits.iter().copied().collect::<HashSet<_>>());
 
-                if let Some(message_query) = message_query {
-                    args.push("--grep");
-                    args.push(message_query);
-                }
-            }
-
-            args.extend(log_source_args.iter().map(|arg| arg.as_ref()));
+            let mut args = vec!["log".to_string(), SEARCH_COMMIT_FORMAT.to_string()];
+            args.extend(search_log_args);
             let mut command = git.build_command(&args).await;
             command.stdout(Stdio::piped());
-            command.stderr(Stdio::null());
+            command.stderr(Stdio::piped());
+            // A search for changed text reads every diff in the history; one given up on (the
+            // box cleared, the graph closed) must not keep git busy until the end.
+            command.kill_on_drop(true);
 
             let mut child = command.spawn()?;
             let stdout = child.stdout.take().context("failed to get stdout")?;
+            let stderr = child.stderr.take().context("failed to get stderr")?;
+            // Read alongside stdout: a pipe nobody drains stalls git once it fills.
+            let stderr_task = self.executor.spawn(async move {
+                let mut stderr_output = Vec::new();
+                BufReader::new(stderr)
+                    .read_to_end(&mut stderr_output)
+                    .await
+                    .log_err();
+                String::from_utf8_lossy(&stderr_output).into_owned()
+            });
             let mut reader = BufReader::new(stdout);
 
-            let mut line_buffer = String::new();
+            let mut line_buffer = Vec::new();
 
             loop {
                 line_buffer.clear();
-                let bytes_read = reader.read_line(&mut line_buffer).await?;
+                let bytes_read = reader.read_until(b'\n', &mut line_buffer).await?;
 
                 if bytes_read == 0 {
                     break;
                 }
 
-                let sha = line_buffer.trim_end_matches('\n');
-                if let Some(hash_query) = hash_query.as_ref()
-                    && !sha.to_ascii_lowercase().starts_with(hash_query)
+                // Author names in older histories are not always UTF-8, and one such commit must
+                // not fail the whole search.
+                let line = String::from_utf8_lossy(&line_buffer);
+                let line = line.trim_end_matches(['\n', '\r']);
+                let (sha, author) = line.split_once('\0').unwrap_or((line, ""));
+                if let Some(hash_prefix) = hash_prefix.as_ref()
+                    && !sha.to_ascii_lowercase().starts_with(hash_prefix)
                 {
                     continue;
                 }
+                if !authors_to_and.is_empty() {
+                    let author = fold_case(author);
+                    if !authors_to_and
+                        .iter()
+                        .all(|wanted| author.contains(wanted.as_str()))
+                    {
+                        continue;
+                    }
+                }
 
-                if let Ok(oid) = Oid::from_str(sha)
-                    && request_tx.send(oid).await.is_err()
+                let Ok(oid) = Oid::from_str(sha) else {
+                    continue;
+                };
+                if commit_set
+                    .as_ref()
+                    .is_some_and(|commit_set| !commit_set.contains(&oid))
                 {
-                    break;
+                    continue;
+                }
+                if request_tx.send(oid).await.is_err() {
+                    // Nobody is listening any more; dropping the child stops git.
+                    return Ok(());
                 }
             }
 
-            child.status().await?;
+            let status = child.status().await?;
+            if !status.success() {
+                let stderr_output = stderr_task.await;
+                bail!("コミットを検索できませんでした: {}", stderr_output.trim());
+            }
             Ok(())
         }
         .boxed()
@@ -4828,18 +5878,23 @@ enum GitFeature {
     /// The `REBASE_HEAD` ref, which is what a stopped rebase is recognized by. Older releases
     /// leave nothing behind that says a rebase rather than something else stopped.
     RebaseHeadRef,
+    /// `git log -G`.
+    PickaxeRegex,
+    /// The `:(literal)` and `:(glob)` pathspec magic.
+    PathspecMagic,
 }
 
 impl GitFeature {
     const fn minimum_version(self) -> GitVersion {
         match self {
+            Self::PickaxeRegex => GitVersion::new(1, 7, 4),
             Self::RemoteRemove => GitVersion::new(1, 7, 12),
             Self::SetUpstreamTo => GitVersion::new(1, 8, 0),
             Self::ShowNoPatch | Self::CatFileBatchFormat | Self::AuthorDateOrder => {
                 GitVersion::new(1, 8, 4)
             }
             Self::ForceWithLease => GitVersion::new(1, 8, 5),
-            Self::BranchListAtoms => GitVersion::new(1, 9, 0),
+            Self::BranchListAtoms | Self::PathspecMagic => GitVersion::new(1, 9, 0),
             Self::EmptyLogFormat => GitVersion::new(2, 2, 0),
             // Fixed by 2.2.0 and backported to 2.1.1.
             Self::EmptyConfigValue => GitVersion::new(2, 1, 1),
@@ -4916,7 +5971,8 @@ fn git_global_args(version: Option<GitVersion>, is_trusted: bool) -> Vec<&'stati
     if !is_trusted {
         // Without empty `-c` values these two overrides would fail every command reading the
         // setting. Such a git is refused remote operations in untrusted repositories anyway,
-        // and `build_command` gives `git diff` `--no-ext-diff`.
+        // and `build_command` gives `git diff` `--no-ext-diff` (see
+        // `untrusted_subcommand_guards`).
         let has_empty_config_values = GitFeature::EmptyConfigValue.is_supported_by(version);
         args.extend([
             "-c",
@@ -4933,6 +5989,22 @@ fn git_global_args(version: Option<GitVersion>, is_trusted: bool) -> Vec<&'stati
         }
     }
     args
+}
+
+/// Options that follow the subcommand of every command run in an untrusted repository.
+///
+/// The repository's own configuration can name a program for `diff`, `log`, `show` and `blame` to
+/// run on file contents: `diff.external` and a `diff.<driver>.command` picked by
+/// `.gitattributes` (off with `--no-ext-diff`), and `diff.<driver>.textconv` (off with
+/// `--no-textconv`). `git_global_args` also empties `diff.external`, which a recent git (2.47)
+/// reads as a program named "", failing every patch with `cannot spawn :` unless `--no-ext-diff`
+/// is given.
+fn untrusted_subcommand_guards(subcommand: &OsStr) -> &'static [&'static str] {
+    match subcommand.to_str() {
+        Some("diff" | "log" | "show") => &["--no-ext-diff", "--no-textconv"],
+        Some("blame") => &["--no-textconv"],
+        _ => &[],
+    }
 }
 
 fn git_status_args(
@@ -5064,11 +6136,12 @@ fn branch_list_args(version: Option<GitVersion>) -> Vec<String> {
     let has_branch_list_atoms = GitFeature::BranchListAtoms.is_supported_by(version);
     // Empty fields keep the layout `parse_branch_input` expects;
     // `complete_branches_without_head_and_track_atoms` makes up for them.
-    let (head, upstream_track) = if has_branch_list_atoms {
-        ("%(HEAD)", "%(upstream:track)")
-    } else {
-        ("", "")
-    };
+    let head = if has_branch_list_atoms { "%(HEAD)" } else { "" };
+    // `%(upstream:track)` walks the history of every branch with an upstream, which on a
+    // repository with thousands of them doubled the cost of the listing that runs on every ref
+    // change. Only the current branch's counts are shown anywhere, and `count_head_tracking`
+    // asks for just those.
+    let upstream_track = "";
     let committer_date = if GitFeature::UnixDateFormat.is_supported_by(version) {
         "%(committerdate:unix)"
     } else {
@@ -5102,8 +6175,9 @@ fn branch_list_args(version: Option<GitVersion>) -> Vec<String> {
     ]
 }
 
-/// Before git 2.13 `%(upstream:track)` has no `[gone]`: for an upstream that no longer exists
-/// (as after `git fetch --prune`) it reports nothing, or on git 1.9 a bogus count.
+/// Marks an upstream that no longer exists (as after `git fetch --prune`) as gone. The listing
+/// does not ask for `%(upstream:track)`, whose `[gone]` would say so (and which before git 2.13
+/// reported nothing, or on git 1.9 a bogus count, for such an upstream).
 fn mark_missing_upstreams_gone(branches: &mut [Branch]) {
     let listed_refs = branches
         .iter()
@@ -5120,9 +6194,7 @@ fn mark_missing_upstreams_gone(branches: &mut [Branch]) {
     }
 }
 
-/// Git before 1.9 has neither `%(HEAD)` nor `%(upstream:track)`, so this marks the current
-/// branch and counts its commits relative to its upstream separately. Other branches keep zero
-/// counts, since counting them would cost a process per branch.
+/// Git before 1.9 has no `%(HEAD)`, so this marks the current branch separately.
 async fn complete_branches_without_head_and_track_atoms(git: &GitBinary, branches: &mut [Branch]) {
     let output = match git
         .build_command(&["symbolic-ref", "--quiet", "HEAD"])
@@ -5141,13 +6213,21 @@ async fn complete_branches_without_head_and_track_atoms(git: &GitBinary, branche
         return;
     }
     let head = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let Some(branch) = branches
+    if let Some(branch) = branches
         .iter_mut()
         .find(|branch| branch.ref_name.as_ref() == head)
-    else {
+    {
+        branch.is_head = true;
+    }
+}
+
+/// Counts how far the current branch is ahead of and behind its upstream, in place of
+/// `%(upstream:track)` for every branch. Other branches keep zero counts: nothing shows them,
+/// and counting them would cost a history walk per branch.
+async fn count_head_tracking(git: &GitBinary, branches: &mut [Branch]) {
+    let Some(branch) = branches.iter_mut().find(|branch| branch.is_head) else {
         return;
     };
-    branch.is_head = true;
     let Some(upstream) = branch.upstream.as_mut() else {
         return;
     };
@@ -5697,13 +6777,17 @@ impl GitBinary {
             global_args.retain(|argument| *argument != "--no-pager");
         }
         command.args(global_args);
-        command.args(args);
-
-        // If the `diff` command is being used, we'll want to add the
-        // `--no-ext-diff` flag when working on an untrusted repository,
-        // preventing any external diff programs from being invoked.
-        if !self.is_trusted && args.iter().any(|arg| arg.as_ref() == "diff") {
-            command.arg("--no-ext-diff");
+        match args.split_first() {
+            // Right after the subcommand rather than at the end, where a `--` before it would
+            // turn the option into a pathspec and leave the repository's diff programs enabled.
+            Some((subcommand, rest)) if !self.is_trusted => {
+                command.arg(subcommand);
+                command.args(untrusted_subcommand_guards(subcommand.as_ref()));
+                command.args(rest);
+            }
+            _ => {
+                command.args(args);
+            }
         }
 
         if let Some(index_file_path) = self.index_file_path.as_ref() {
@@ -7372,11 +8456,19 @@ mod tests {
 
     #[test]
     fn test_tag_info_parse_list() {
-        let annotated =
-            "v2.0.0\u{0}tag\u{0}aaaa1111\u{0}bbbb2222\u{0}1700000000 +0900\u{0}リリース 2.0";
-        let lightweight = "v1.0.0\u{0}commit\u{0}cccc3333\u{0}\u{0}1600000000 +0000\u{0}";
-        let without_date = "wip\u{0}commit\u{0}dddd4444\u{0}\u{0}\u{0}";
-        let tags = TagInfo::parse_list(&format!("{annotated}\n{lightweight}\n{without_date}\n"));
+        let annotated = "refs/tags/v2.0.0\u{0}tag\u{0}aaaa1111\u{0}bbbb2222\u{0}1700000000 +0900\u{0}リリース 2.0";
+        let lightweight =
+            "refs/tags/v1.0.0\u{0}commit\u{0}cccc3333\u{0}\u{0}1600000000 +0000\u{0}最初の版";
+        let without_date = "refs/tags/wip\u{0}commit\u{0}dddd4444\u{0}\u{0}\u{0}";
+        // Tag names may be anything git allows, including multi-byte text and a nested path;
+        // only the `refs/tags/` in front is taken off.
+        let nested_multibyte =
+            "refs/tags/リリース/春\u{0}commit\u{0}eeee5555\u{0}\u{0}1650000000 +0900\u{0}";
+        // Not a tag: dropped rather than shown under a made-up name.
+        let not_a_tag = "refs/heads/main\u{0}commit\u{0}ffff6666\u{0}\u{0}1650000000 +0900\u{0}";
+        let tags = TagInfo::parse_list(&format!(
+            "{annotated}\n{lightweight}\r\n{without_date}\n{nested_multibyte}\n{not_a_tag}\nrefs/tags/\u{0}commit\u{0}abcd\n"
+        ));
 
         assert_eq!(
             tags,
@@ -7387,6 +8479,7 @@ mod tests {
                     commit_sha: "bbbb2222".into(),
                     created_at_unix: Some(1_700_000_000),
                     subject: Some("リリース 2.0".into()),
+                    commit_subject: None,
                     annotated: true,
                 },
                 TagInfo {
@@ -7394,6 +8487,7 @@ mod tests {
                     commit_sha: "cccc3333".into(),
                     created_at_unix: Some(1_600_000_000),
                     subject: None,
+                    commit_subject: Some("最初の版".into()),
                     annotated: false,
                 },
                 TagInfo {
@@ -7401,10 +8495,21 @@ mod tests {
                     commit_sha: "dddd4444".into(),
                     created_at_unix: None,
                     subject: None,
+                    commit_subject: None,
+                    annotated: false,
+                },
+                TagInfo {
+                    name: "リリース/春".into(),
+                    commit_sha: "eeee5555".into(),
+                    created_at_unix: Some(1_650_000_000),
+                    subject: None,
+                    commit_subject: None,
                     annotated: false,
                 },
             ]
         );
+        assert_eq!(tags[0].rev(), "refs/tags/v2.0.0");
+        assert_eq!(tags[3].rev(), "refs/tags/リリース/春");
     }
 
     #[test]
@@ -7500,9 +8605,65 @@ mod tests {
             // Reads any file the host user can read back out through `log`.
             vec!["commit", "-F/etc/shadow"],
             vec!["tag", "--file=/etc/shadow", "v1"],
+            // Echoes each line of any readable file back in "did not match any files".
+            vec!["add", "--pathspec-from-file=/etc/shadow"],
+            vec!["commit", "--pathspec-from-file", "/etc/shadow", "-m", "x"],
             // Runs whatever the repository's own configuration names.
             vec!["show", "--ext-diff"],
             vec!["log", "--help"],
+            // git accepts any unambiguous prefix of a long option as the option itself.
+            vec!["rebase", "--exe", "touch /tmp/pwned", "HEAD~2"],
+            vec!["rebase", "--exe=touch /tmp/pwned", "HEAD~2"],
+            vec!["add", "--pathspec-from=/etc/shadow"],
+            vec!["tag", "--fil=/etc/shadow", "v1"],
+            vec!["format-patch", "--output-dir=/home/user", "-1"],
+            vec!["show", "--ext", "HEAD"],
+            // Prints any file the host user can read.
+            vec!["diff", "--no-index", "/etc/shadow", "/dev/null"],
+            // Writes the patch on stdin outside the working tree.
+            vec!["apply", "--unsafe-paths", "-"],
+            vec!["apply", "--unsafe", "-"],
+            // Writes a patch file into any directory.
+            vec!["format-patch", "-o", "/home/user/.config/autostart", "-1"],
+            vec!["format-patch", "-ko/tmp", "-1"],
+            // A bundle whose refused flag takes the rest of the argument as its value.
+            vec!["rebase", "-ixsh /tmp/pwned.sh", "HEAD~2"],
+            vec!["commit", "-aF/etc/shadow"],
+            // `diff` given a path outside the working tree compares the files as `--no-index`
+            // would, on either side of `--`.
+            vec!["diff", "/etc/shadow", "x"],
+            vec!["diff", "--", "x", "/etc/shadow"],
+            vec!["diff", "../../etc/shadow", "x"],
+            vec!["diff", "src/../../secret", "x"],
+            vec!["diff", "src\\..\\..\\secret", "x"],
+            vec!["diff", "..", "x"],
+            vec!["diff", "C:\\Windows\\win.ini", "x"],
+            vec!["diff", "c:secret", "x"],
+            vec!["diff", "\\\\server\\share\\secret", "x"],
+            vec!["diff", "~/.ssh/id_ed25519", "x"],
+            // Reads any file as ignore patterns; which files it lists gives the lines away.
+            vec![
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-from=/etc/shadow",
+            ],
+            vec![
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-fr",
+                "/etc/shadow",
+            ],
+            vec![
+                "ls-files",
+                "--exclude-per-directory=../../../etc/shadow",
+                "-o",
+                "-i",
+            ],
+            vec!["ls-files", "--exclude-per", "shadow", "-o", "-i"],
+            vec!["ls-files", "-X", "/etc/shadow", "-o", "-i"],
+            vec!["ls-files", "-oiX/etc/shadow"],
         ] {
             let error = validate_git_command(&command(&args))
                 .expect_err("this argument names a program or a path outside the repository");
@@ -7537,6 +8698,29 @@ mod tests {
             ],
             vec!["for-each-ref", "--sort=-creatordate", "refs/tags/"],
             vec!["reset", "--hard", "origin/main"],
+            // Exact names that merely start like a refused option, and the `--` separator.
+            vec!["diff", "--text", "--no-ext-diff", "--no-textconv", "HEAD"],
+            vec!["add", "--", ":(literal)docs/a.md"],
+            // Revision ranges have no separator around their dots, and the `diff`s the git
+            // panel builds name paths relative to the repository.
+            vec!["diff", "HEAD..main", "--", "src/x"],
+            vec!["diff", "--name-status", "origin/main...feature/x"],
+            vec!["diff", "..main", "HEAD.."],
+            vec!["diff", "HEAD", "--name-only", "--", ":(literal)src/a..b.rs"],
+            vec!["diff", "--name-only", "--diff-filter=U"],
+            vec!["diff", "--cached", "--raw", "--no-abbrev"],
+            vec!["diff", "--binary", "--cached"],
+            vec![
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "-z",
+                "--",
+                ":(top,literal).env",
+            ],
+            // Only `diff` compares files outside the repository by itself.
+            vec!["log", "--format=%H", "--", "../moved.rs"],
         ] {
             validate_git_command(&command(&args))
                 .unwrap_or_else(|error| panic!("{args:?} must stay allowed: {error:#}"));
@@ -7615,6 +8799,174 @@ mod tests {
         assert!(
             error.to_string().contains("GIT_SSH_COMMAND"),
             "unexpected error: {error:#}"
+        );
+    }
+
+    /// Given a path outside the working tree, `diff` compares the files themselves even without
+    /// `--no-index`, which is how the real git would print any readable file; `run_command`
+    /// refuses the path, while a revision range over a path inside still works.
+    #[gpui::test]
+    async fn test_run_command_refuses_a_diff_of_a_file_outside_the_repository(
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        let secret = temp_dir.path().join("secret.txt");
+        fs::write(&secret, "the host's secret\n").unwrap();
+        fs::create_dir_all(repo_dir.join("src")).unwrap();
+        fs::write(repo_dir.join("src/x"), "one\n").unwrap();
+        git_command(&repo_dir, ["add", "src/x"]);
+        git_command(&repo_dir, ["commit", "-m", "first"]);
+        fs::write(repo_dir.join("src/x"), "two\n").unwrap();
+        git_command(&repo_dir, ["commit", "-am", "second"]);
+
+        // What the refusal stands in the way of (exit code 1: the files differ).
+        #[allow(clippy::disallowed_methods)]
+        let unguarded = std::process::Command::new("git")
+            .args(["diff", "../secret.txt", "src/x"])
+            .current_dir(&repo_dir)
+            .env("GIT_CONFIG_GLOBAL", "")
+            .env("GIT_CONFIG_SYSTEM", "")
+            .output()
+            .expect("failed to run git command");
+        assert!(
+            String::from_utf8_lossy(&unguarded.stdout).contains("the host's secret"),
+            "git itself diffs a file outside the repository"
+        );
+
+        let repository = open_repository(&repo_dir, cx);
+        let run = |args: Vec<String>| {
+            repository.run_command(args, None, Arc::new(HashMap::default()), HashMap::default())
+        };
+        for outside in [
+            "../secret.txt".to_string(),
+            secret.to_string_lossy().into_owned(),
+        ] {
+            let error = run(vec!["diff".into(), outside.clone(), "src/x".into()])
+                .await
+                .expect_err("a path outside the repository must be refused");
+            assert!(
+                error.to_string().contains("argument"),
+                "unexpected error for {outside}: {error:#}"
+            );
+        }
+
+        let diff = run(vec![
+            "diff".into(),
+            "HEAD~1..main".into(),
+            "--".into(),
+            "src/x".into(),
+        ])
+        .await
+        .unwrap();
+        assert!(diff.succeeded(), "{}", diff.failure_message());
+        assert!(diff.stdout.contains("+two"), "{}", diff.stdout);
+    }
+
+    /// An untrusted repository's own configuration names programs for diffs to run (an external
+    /// diff, a diff driver's command, a textconv filter). None of them may start, and the patches
+    /// still come out: the emptied `diff.external` alone makes git 2.47 fail them with
+    /// `cannot spawn :`, including a `diff` whose pathspec follows `--`.
+    #[gpui::test]
+    async fn test_untrusted_repository_runs_no_diff_programs(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        fs::write(repo_dir.join("f"), "one\n").unwrap();
+        git_command(&repo_dir, ["add", "f"]);
+        git_command(&repo_dir, ["commit", "-m", "first"]);
+        fs::write(repo_dir.join("f"), "two\n").unwrap();
+        git_command(&repo_dir, ["commit", "-am", "second"]);
+        fs::write(repo_dir.join("f"), "three\n").unwrap();
+
+        let marker = temp_dir.path().join("program-ran");
+        let record_run = format!(
+            "echo ran >> '{}'",
+            marker.to_string_lossy().replace('\\', "/")
+        );
+        let textconv = format!("{record_run}; cat");
+        let external = format!("{record_run}; true");
+        git_command(
+            &repo_dir,
+            ["config", "diff.evil.textconv", textconv.as_str()],
+        );
+        git_command(
+            &repo_dir,
+            ["config", "diff.evil.command", external.as_str()],
+        );
+        git_command(&repo_dir, ["config", "diff.external", external.as_str()]);
+        fs::write(repo_dir.join(".git/info/attributes"), "f diff=evil\n").unwrap();
+        for args in [vec!["diff"], vec!["diff", "--no-ext-diff"]] {
+            git_command_output(&repo_dir, &args);
+            assert!(
+                marker.exists(),
+                "the installed git runs the repository's programs for {args:?}"
+            );
+            fs::remove_file(&marker).unwrap();
+        }
+
+        let repository = open_repository(&repo_dir, cx);
+        if repository.is_trusted() {
+            // A git too old to disable hooks has the test repository trusted.
+            return;
+        }
+        for (args, expected) in [
+            (PatchSource::Worktree.args(), "+three"),
+            (
+                vec![
+                    "diff".to_string(),
+                    "HEAD~1".to_string(),
+                    "HEAD".to_string(),
+                    "--".to_string(),
+                    "f".to_string(),
+                ],
+                "+two",
+            ),
+            (
+                vec!["log".to_string(), "-p".to_string(), "-1".to_string()],
+                "+two",
+            ),
+            (vec!["show".to_string(), "HEAD".to_string()], "+two"),
+        ] {
+            let output = repository
+                .run_command(
+                    args.clone(),
+                    None,
+                    Arc::new(HashMap::default()),
+                    HashMap::default(),
+                )
+                .await
+                .unwrap();
+            assert!(output.succeeded(), "{args:?}: {}", output.failure_message());
+            assert!(
+                output.stdout.contains(expected),
+                "{args:?}: {}",
+                output.stdout
+            );
+            assert!(
+                !marker.exists(),
+                "{args:?} ran the repository's diff program"
+            );
+        }
+
+        let head = git_command_output(&repo_dir, ["rev-parse", "HEAD"]);
+        repository
+            .blame_at_revision(
+                RepoPath::new("f").unwrap(),
+                Oid::from_str(head.trim()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            !marker.exists(),
+            "blame ran the repository's textconv filter"
         );
     }
 
@@ -7792,6 +9144,7 @@ mod tests {
                 commit_sha: annotated_target,
                 created_at_unix: annotated.created_at_unix,
                 subject: Some("リリース 2.0".into()),
+                commit_subject: None,
                 annotated: true,
             }
         );
@@ -7805,11 +9158,12 @@ mod tests {
             lightweight,
             TagInfo {
                 name: "v1.0.0".into(),
-                commit_sha: tagged,
+                commit_sha: tagged.clone(),
                 created_at_unix: lightweight.created_at_unix,
                 // `%(contents:subject)` is the tagged commit's subject for a lightweight tag,
                 // which is not a tag message and must not be shown as one.
                 subject: None,
+                commit_subject: Some("first".into()),
                 annotated: false,
             }
         );
@@ -7823,7 +9177,7 @@ mod tests {
                     "HEAD".into(),
                 ],
                 None,
-                env,
+                env.clone(),
                 HashMap::default(),
             )
             .await
@@ -7834,6 +9188,47 @@ mod tests {
         assert_eq!(distance.tag, "v2.0.0");
         assert_eq!(distance.commits_since, 1);
         assert!(!distance.short_sha.is_empty());
+
+        // A branch named like a tag: `%(refname:short)` used to answer `tags/v1.0.0` for the tag
+        // then, and `TagInfo::rev` has to keep pointing at the tag rather than the branch.
+        git_command(repo_dir.path(), ["branch", "v1.0.0"]);
+        let branch_tip = git_command_output(repo_dir.path(), ["rev-parse", "HEAD"]);
+        let listed = repository
+            .run_command(
+                vec![
+                    "for-each-ref".into(),
+                    format!("--format={TAG_LIST_FORMAT}"),
+                    "refs/tags/".into(),
+                ],
+                None,
+                env.clone(),
+                HashMap::default(),
+            )
+            .await
+            .unwrap();
+        let tags = TagInfo::parse_list(&listed.stdout);
+        let lightweight = tags
+            .iter()
+            .find(|tag| tag.name == "v1.0.0")
+            .unwrap_or_else(|| panic!("v1.0.0 is missing from {:?}", listed.stdout));
+        assert_eq!(lightweight.rev(), "refs/tags/v1.0.0");
+        let resolve = async |rev: String| {
+            repository
+                .run_command(
+                    vec!["rev-parse".into(), "--verify".into(), rev],
+                    None,
+                    env.clone(),
+                    HashMap::default(),
+                )
+                .await
+                .unwrap()
+                .stdout
+                .trim()
+                .to_string()
+        };
+        assert_eq!(resolve(lightweight.rev()).await, tagged);
+        assert_eq!(resolve("refs/heads/v1.0.0".into()).await, branch_tip);
+        assert_ne!(tagged, branch_tip);
     }
 
     /// Rewording HEAD goes through `commit --amend --only -m`, which must leave whatever the user
@@ -9606,76 +11001,669 @@ mod tests {
     }
 
     #[test]
-    fn test_split_commit_search_query() {
-        assert_eq!(split_commit_search_query("直した"), (None, "直した"));
-        assert_eq!(
-            split_commit_search_query("author:alice 直した"),
-            (Some("alice"), "直した")
-        );
-        assert_eq!(
-            split_commit_search_query("著者:山田  直した"),
-            (Some("山田"), "直した")
-        );
-        assert_eq!(split_commit_search_query("著者：山田"), (Some("山田"), ""));
-        assert_eq!(
-            split_commit_search_query("  AUTHOR:alice@example.com  "),
-            (Some("alice@example.com"), "")
-        );
-        assert_eq!(
-            split_commit_search_query("author:\"山田 太郎\" 直した"),
-            (Some("山田 太郎"), "直した")
-        );
-        assert_eq!(
-            split_commit_search_query("author:山田　直した"),
-            (Some("山田"), "直した"),
-            "a fullwidth space ends the name too"
-        );
-        assert_eq!(
-            split_commit_search_query("author:"),
-            (None, "author:"),
-            "a prefix with nothing after it is not a filter that matches every commit"
-        );
-        assert_eq!(split_commit_search_query("著者:"), (None, "著者:"));
-        assert_eq!(
-            split_commit_search_query("著者: 直した"),
-            (None, "著者: 直した")
-        );
-        assert_eq!(split_commit_search_query("author::"), (Some(":"), ""));
-        assert_eq!(
-            split_commit_search_query("著者:\"未閉じ"),
-            (Some("未閉じ"), "")
-        );
-        assert_eq!(
-            split_commit_search_query("著"),
-            (None, "著"),
-            "a prefix cut short of a character boundary is not a prefix"
-        );
-        assert_eq!(
-            split_commit_search_query("直した author:alice"),
-            (None, "直した author:alice"),
-            "only a prefix leads the query"
-        );
-    }
-
-    #[test]
     fn test_author_filter_refuses_an_empty_author() {
-        let args = |author: Option<&str>| SearchCommitArgs {
-            query: "".into(),
-            author: author.map(SharedString::from),
-            case_sensitive: false,
+        let args = |authors: &[&str]| SearchCommitArgs {
+            authors: authors
+                .iter()
+                .map(|author| SharedString::from(*author))
+                .collect(),
+            ..SearchCommitArgs::default()
         };
-        assert_eq!(args(None).author_filter().unwrap(), None);
+        assert!(args(&[]).author_filters().unwrap().is_empty());
         assert_eq!(
-            args(Some("  山田 太郎 ")).author_filter().unwrap(),
-            Some("山田 太郎")
+            args(&["  山田 太郎 ", "yamada"]).author_filters().unwrap(),
+            ["山田 太郎", "yamada"]
         );
         // `--author=` matches every commit, so this may not come back as "no author filter".
         for empty in ["", " ", "\t\n", "　"] {
             assert!(
-                args(Some(empty)).author_filter().is_err(),
+                args(&["山田", empty]).author_filters().is_err(),
                 "an author of {empty:?} would widen the search to every commit"
             );
+            assert!(args(&[empty]).validate().is_err());
         }
+    }
+
+    #[test]
+    fn test_filters_an_older_server_would_drop() {
+        let plain = SearchCommitArgs {
+            query: "直した".into(),
+            authors: vec!["山田".into()],
+            case_sensitive: true,
+            ..SearchCommitArgs::default()
+        };
+        assert!(!plain.uses_filters_beyond_author());
+        assert!(!SearchCommitArgs::default().uses_filters_beyond_author());
+
+        let edits: [(&str, &dyn Fn(&mut SearchCommitArgs)); 9] = [
+            ("a second author", &|args| {
+                args.authors.push("yamada".into())
+            }),
+            ("tagged commits", &|args| args.commits = Some(Vec::new())),
+            ("a branch", &|args| {
+                args.branch = Some("refs/heads/feature".into())
+            }),
+            ("a path", &|args| args.path = Some("src".into())),
+            ("a start date", &|args| args.since = Some(0)),
+            ("an end date", &|args| args.until = Some(0)),
+            ("changed text", &|args| args.change = Some("x".into())),
+            ("a merge filter", &|args| args.merges = MergeFilter::Only),
+            ("a sha prefix", &|args| {
+                args.sha_prefix = Some("abcd".into())
+            }),
+        ];
+        for (name, edit) in edits {
+            let mut args = plain.clone();
+            edit(&mut args);
+            assert!(
+                args.uses_filters_beyond_author(),
+                "{name} must not be sent to a server that would drop it"
+            );
+        }
+    }
+
+    #[test]
+    fn test_commit_search_log_args() {
+        let all = || vec!["--branches".to_string(), "HEAD".to_string()];
+        let build = |args: SearchCommitArgs| {
+            commit_search_log_args(&args, all(), Some(GitVersion::new(2, 47, 0)))
+                .unwrap()
+                .unwrap_or_default()
+        };
+
+        assert!(
+            commit_search_log_args(&SearchCommitArgs::default(), all(), None)
+                .unwrap()
+                .is_none(),
+            "nothing to match on finds nothing rather than walking the whole history"
+        );
+        assert_eq!(
+            build(SearchCommitArgs {
+                query: "fix: typo".into(),
+                ..SearchCommitArgs::default()
+            }),
+            [
+                "--fixed-strings",
+                "--regexp-ignore-case",
+                "--grep=fix: typo",
+                "--branches",
+                "HEAD"
+            ]
+        );
+        assert_eq!(
+            build(SearchCommitArgs {
+                query: "abcdef1".into(),
+                authors: vec!["山田".into(), "-x".into()],
+                case_sensitive: true,
+                ..SearchCommitArgs::default()
+            }),
+            [
+                "--fixed-strings",
+                "--author=山田",
+                "--author=-x",
+                "--branches",
+                "HEAD"
+            ],
+            "a hex query is a sha prefix, filtered afterwards, not a --grep"
+        );
+        assert_eq!(
+            build(SearchCommitArgs {
+                query: "abcdef1".into(),
+                sha_prefix: Some("1234".into()),
+                ..SearchCommitArgs::default()
+            }),
+            [
+                "--fixed-strings",
+                "--regexp-ignore-case",
+                "--grep=abcdef1",
+                "--branches",
+                "HEAD"
+            ],
+            "with a sha: condition the hex text is message text again"
+        );
+        assert_eq!(
+            build(SearchCommitArgs {
+                change: Some("a.B".into()),
+                since: Some(0),
+                until: Some(1_788_220_800),
+                merges: MergeFilter::Exclude,
+                path: Some("./src/*.rs".into()),
+                ..SearchCommitArgs::default()
+            }),
+            [
+                "-G[aA]\\.[bB]",
+                "--since=1970-01-01 00:00:00 +0000",
+                "--until=2026-09-01 00:00:00 +0000",
+                "--no-merges",
+                "--branches",
+                "HEAD",
+                "--",
+                ":(glob)src/*.rs"
+            ]
+        );
+        assert_eq!(
+            build(SearchCommitArgs {
+                merges: MergeFilter::Only,
+                path: Some("-rf".into()),
+                ..SearchCommitArgs::default()
+            }),
+            ["--merges", "--branches", "HEAD", "--", ":(literal)-rf"]
+        );
+        assert!(
+            commit_search_log_args(
+                &SearchCommitArgs {
+                    path: Some("a".into()),
+                    ..SearchCommitArgs::default()
+                },
+                vec!["--follow".into(), "--".into(), "b".into()],
+                None
+            )
+            .is_err(),
+            "a file history already has its one pathspec"
+        );
+        assert!(
+            commit_search_log_args(
+                &SearchCommitArgs {
+                    authors: vec![" ".into()],
+                    ..SearchCommitArgs::default()
+                },
+                all(),
+                None
+            )
+            .is_err()
+        );
+
+        let old_git = Some(GitVersion::new(1, 7, 3));
+        let change = SearchCommitArgs {
+            change: Some("x".into()),
+            ..SearchCommitArgs::default()
+        };
+        let error = commit_search_log_args(&change, all(), old_git).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .starts_with("変更内容での検索には git 1.7.4 以上が必要です"),
+            "{error}"
+        );
+        let path = SearchCommitArgs {
+            path: Some("src".into()),
+            ..SearchCommitArgs::default()
+        };
+        assert!(commit_search_log_args(&path, all(), Some(GitVersion::new(1, 8, 5))).is_err());
+        assert!(commit_search_log_args(&path, all(), Some(GitVersion::new(1, 9, 0))).is_ok());
+    }
+
+    #[test]
+    fn test_search_pathspec() {
+        let pathspec = |path: &str| search_pathspec(path).unwrap();
+        assert_eq!(pathspec("src/"), ":(literal)src/");
+        assert_eq!(pathspec("./a b.txt"), ":(literal)a b.txt");
+        assert_eq!(pathspec("/src"), ":(literal)src");
+        assert_eq!(pathspec("[x].txt"), ":(literal)[x].txt");
+        assert_eq!(pathspec("*.rs"), ":(glob)**/*.rs");
+        assert_eq!(pathspec("src/**/*.rs"), ":(glob)src/**/*.rs");
+        assert_eq!(pathspec("src\\lib.rs"), ":(literal)src/lib.rs");
+        assert_eq!(pathspec("src\\*.rs"), ":(glob)src/*.rs");
+        for whole_repository in ["/", "./", "\\", "."] {
+            assert!(
+                search_pathspec(whole_repository).is_err(),
+                "{whole_repository:?} would search every file"
+            );
+        }
+    }
+
+    #[test]
+    fn test_branch_search_revisions() {
+        let refs = |names: &[&str]| {
+            names
+                .iter()
+                .map(|name| name.to_string())
+                .collect::<HashSet<_>>()
+        };
+        let existing = refs(&[
+            "refs/heads/main",
+            "refs/heads/feature",
+            "refs/remotes/origin/main",
+            "refs/remotes/origin/feature",
+        ]);
+        assert_eq!(
+            branch_search_revisions("refs/heads/feature", Some("main"), &existing).unwrap(),
+            ["refs/heads/feature", "--not", "refs/heads/main"]
+        );
+        assert_eq!(
+            branch_search_revisions("refs/heads/feature", Some("origin/main"), &existing).unwrap(),
+            ["refs/heads/feature", "--not", "refs/remotes/origin/main"]
+        );
+        assert_eq!(
+            branch_search_revisions("refs/heads/main", Some("main"), &existing).unwrap(),
+            ["refs/heads/main"]
+        );
+        assert_eq!(
+            branch_search_revisions("refs/heads/main", Some("origin/main"), &existing).unwrap(),
+            ["refs/heads/main"],
+            "the local branch of the default one is the default branch too"
+        );
+        assert_eq!(
+            branch_search_revisions("refs/remotes/origin/main", Some("origin/main"), &existing)
+                .unwrap(),
+            ["refs/remotes/origin/main"]
+        );
+        assert!(branch_search_revisions("refs/heads/gone", Some("main"), &existing).is_err());
+        assert!(branch_search_revisions("refs/heads/feature", None, &existing).is_err());
+        assert!(branch_search_revisions("refs/heads/feature", Some("develop"), &existing).is_err());
+        assert!(
+            branch_search_revisions("--all", Some("main"), &refs(&["--all", "refs/heads/main"]))
+                .is_err()
+        );
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    #[track_caller]
+    fn commit_as(
+        directory: &Path,
+        author: &str,
+        date: &str,
+        message: &str,
+        files: &[(&str, &str)],
+    ) -> Oid {
+        for (path, content) in files {
+            let path = directory.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, content).unwrap();
+            git_command(directory, ["add", "--all"]);
+        }
+        let (name, email) = author.split_once(" <").unwrap();
+        let email = email.trim_end_matches('>');
+        let output = std::process::Command::new("git")
+            .args(["commit", "--allow-empty", "-m", message])
+            .current_dir(directory)
+            .env("GIT_CONFIG_GLOBAL", "")
+            .env("GIT_CONFIG_SYSTEM", "")
+            .env("GIT_AUTHOR_NAME", name)
+            .env("GIT_AUTHOR_EMAIL", email)
+            .env("GIT_COMMITTER_NAME", name)
+            .env("GIT_COMMITTER_EMAIL", email)
+            .env("GIT_AUTHOR_DATE", date)
+            .env("GIT_COMMITTER_DATE", date)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Oid::from_str(&git_command_output(directory, ["rev-parse", "HEAD"])).unwrap()
+    }
+
+    #[gpui::test]
+    async fn test_commit_search_filters_on_installed_git(cx: &mut TestAppContext) {
+        use crate::commit_search::{
+            CommitSearchEnvironment, CommitSearchPlan, parse_commit_search_query,
+            plan_commit_search,
+        };
+
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let directory = temp_dir.path().join("repo");
+        git_init_repo(&directory);
+        let alice = "Alice <alice@example.com>";
+        let bob = "Bob <bob@example.com>";
+        let both = "Alice Bob <ab@example.com>";
+
+        let initial = commit_as(
+            &directory,
+            alice,
+            "2026-01-01T12:00:00+09:00",
+            "initial",
+            &[("a.txt", "a\n")],
+        );
+        let add_src = commit_as(
+            &directory,
+            bob,
+            "2026-02-01T12:00:00+09:00",
+            "add src",
+            &[("src/lib.rs", "fn hello() {}\n")],
+        );
+        git_command(&directory, ["tag", "v1.0"]);
+        git_command(&directory, ["checkout", "-b", "feature"]);
+        let feature = commit_as(
+            &directory,
+            both,
+            "2026-03-01T12:00:00+09:00",
+            "feature work",
+            &[("src/feature.rs", "let x = Needle.value;\n")],
+        );
+        git_command(&directory, ["tag", "-a", "release-2", "-m", "release two"]);
+        git_command(&directory, ["checkout", "main"]);
+        let docs = commit_as(
+            &directory,
+            alice,
+            "2026-03-15T12:00:00+09:00",
+            "docs",
+            &[("docs/readme.md", "NeedleXvalue\n")],
+        );
+        let merge_date = "2026-04-01T12:00:00+09:00";
+        {
+            #[allow(clippy::disallowed_methods)]
+            let output = std::process::Command::new("git")
+                .args(["merge", "--no-ff", "-m", "Merge feature", "feature"])
+                .current_dir(&directory)
+                .env("GIT_CONFIG_GLOBAL", "")
+                .env("GIT_CONFIG_SYSTEM", "")
+                .env("GIT_AUTHOR_NAME", "Bob")
+                .env("GIT_AUTHOR_EMAIL", "bob@example.com")
+                .env("GIT_COMMITTER_NAME", "Bob")
+                .env("GIT_COMMITTER_EMAIL", "bob@example.com")
+                .env("GIT_AUTHOR_DATE", merge_date)
+                .env("GIT_COMMITTER_DATE", merge_date)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let merge = Oid::from_str(&git_command_output(&directory, ["rev-parse", "HEAD"])).unwrap();
+        git_command(&directory, ["checkout", "-b", "feature2"]);
+        let feature2 = commit_as(
+            &directory,
+            "Carol <carol@example.com>",
+            "2026-05-01T12:00:00+09:00",
+            "feature2 only",
+            &[("b.txt", "b\n")],
+        );
+        git_command(&directory, ["checkout", "main"]);
+
+        let repository = open_repository(&directory, cx);
+        let search = async |args: SearchCommitArgs| -> Result<Vec<Oid>> {
+            let (search_tx, search_rx) = async_channel::unbounded();
+            repository
+                .search_commits(LogSource::All, args, search_tx)
+                .await?;
+            let mut found = Vec::new();
+            while let Ok(sha) = search_rx.try_recv() {
+                found.push(sha);
+            }
+            Ok(found)
+        };
+        let args = |edit: &dyn Fn(&mut SearchCommitArgs)| {
+            let mut args = SearchCommitArgs::default();
+            edit(&mut args);
+            args
+        };
+        let date = |value: &str| {
+            OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
+                .unwrap()
+                .unix_timestamp()
+        };
+
+        assert_eq!(
+            search(args(&|args| args.authors = vec!["alice".into()]))
+                .await
+                .unwrap(),
+            [docs, feature, initial]
+        );
+        assert_eq!(
+            search(args(
+                &|args| args.authors = vec!["alice".into(), "BOB".into()]
+            ))
+            .await
+            .unwrap(),
+            [feature],
+            "several authors are anded, although git ors its --author options"
+        );
+        assert_eq!(
+            search(args(&|args| {
+                args.authors = vec!["alice".into(), "BOB".into()];
+                args.case_sensitive = true;
+            }))
+            .await
+            .unwrap(),
+            Vec::<Oid>::new()
+        );
+
+        let listed = git_command_raw_output(
+            &directory,
+            [
+                "for-each-ref".to_string(),
+                format!("--format={TAG_LIST_FORMAT}"),
+                "refs/tags/".to_string(),
+            ],
+        );
+        let tags = TagInfo::parse_list(&listed);
+        let plan = |query: &str| {
+            plan_commit_search(
+                &parse_commit_search_query(query),
+                &CommitSearchEnvironment {
+                    now: OffsetDateTime::now_utc(),
+                    case_sensitive: false,
+                    branches: &[],
+                    tags: Some(&tags),
+                    log_source: &LogSource::All,
+                },
+            )
+        };
+        let CommitSearchPlan::Search(tag_search) = plan("tag:release") else {
+            panic!("expected a search");
+        };
+        assert_eq!(
+            search(tag_search).await.unwrap(),
+            [feature],
+            "an annotated tag names the commit it points at, not the tag object"
+        );
+        let CommitSearchPlan::Search(tag_search) = plan("tag:v1") else {
+            panic!("expected a search");
+        };
+        assert_eq!(search(tag_search).await.unwrap(), [add_src]);
+        let CommitSearchPlan::Search(tag_and_text) = plan("tag:v1 add") else {
+            panic!("expected a search");
+        };
+        assert_eq!(search(tag_and_text).await.unwrap(), [add_src]);
+        let CommitSearchPlan::Search(tag_and_text) = plan("tag:v1 work") else {
+            panic!("expected a search");
+        };
+        assert_eq!(
+            search(tag_and_text).await.unwrap(),
+            Vec::<Oid>::new(),
+            "the message text narrows the tagged commits rather than adding to them"
+        );
+
+        assert_eq!(
+            search(args(
+                &|args| args.branch = Some("refs/heads/feature2".into())
+            ))
+            .await
+            .unwrap(),
+            [feature2],
+            "a branch is searched for what the default branch does not have"
+        );
+        assert_eq!(
+            search(args(&|args| args.branch = Some("refs/heads/main".into())))
+                .await
+                .unwrap()
+                .len(),
+            5,
+            "the default branch itself is searched whole"
+        );
+        assert!(
+            search(args(&|args| args.branch = Some("refs/heads/missing".into())))
+                .await
+                .is_err()
+        );
+
+        assert_eq!(
+            search(args(&|args| args.path = Some("src/".into())))
+                .await
+                .unwrap(),
+            [feature, add_src]
+        );
+        assert_eq!(
+            search(args(&|args| args.path = Some("*.md".into())))
+                .await
+                .unwrap(),
+            [docs],
+            "a glob with no slash matches at any depth"
+        );
+        assert_eq!(
+            search(args(&|args| args.path = Some("src/*.rs".into())))
+                .await
+                .unwrap(),
+            [feature, add_src]
+        );
+        assert_eq!(
+            search(args(&|args| args.path = Some("src/lib.r?".into())))
+                .await
+                .unwrap(),
+            Vec::<Oid>::new(),
+            "without a `*` the path is literal, so `?` is not a wildcard"
+        );
+
+        assert_eq!(
+            search(args(
+                &|args| args.since = Some(date("2026-03-10T00:00:00+09:00"))
+            ))
+            .await
+            .unwrap(),
+            [feature2, merge, docs]
+        );
+        assert_eq!(
+            search(args(
+                &|args| args.until = Some(date("2026-02-15T00:00:00+09:00"))
+            ))
+            .await
+            .unwrap(),
+            [add_src, initial]
+        );
+
+        assert_eq!(
+            search(args(&|args| args.change = Some("needle.VALUE".into())))
+                .await
+                .unwrap(),
+            [feature],
+            "a `.` in the text is a dot, not any character, and case is ignored"
+        );
+        assert_eq!(
+            search(args(&|args| {
+                args.change = Some("needle.value".into());
+                args.case_sensitive = true;
+            }))
+            .await
+            .unwrap(),
+            Vec::<Oid>::new()
+        );
+
+        assert_eq!(
+            search(args(&|args| args.merges = MergeFilter::Only))
+                .await
+                .unwrap(),
+            [merge]
+        );
+        assert_eq!(
+            search(args(&|args| {
+                args.merges = MergeFilter::Exclude;
+                args.since = Some(date("2026-03-10T00:00:00+09:00"));
+            }))
+            .await
+            .unwrap(),
+            [feature2, docs]
+        );
+        assert_eq!(
+            search(args(&|args| {
+                args.query = "feature".into();
+                args.sha_prefix = Some(feature2.to_string()[..6].to_string().into());
+            }))
+            .await
+            .unwrap(),
+            [feature2]
+        );
+        assert_eq!(
+            search(args(&|args| args.commits = Some(Vec::new())))
+                .await
+                .unwrap(),
+            Vec::<Oid>::new()
+        );
+    }
+
+    #[gpui::test]
+    async fn test_commit_search_survives_an_author_that_is_not_utf8(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let directory = temp_dir.path().join("repo");
+        git_init_repo(&directory);
+        let tree = git_command_output(&directory, ["write-tree"]);
+        // A Latin-1 author with no encoding header, as older histories have: git prints the
+        // bytes as they are.
+        let mut commit_object = format!("tree {tree}\n").into_bytes();
+        commit_object.extend_from_slice(b"author Jos\xe9 <jose@example.com> 1700000000 +0000\n");
+        commit_object.extend_from_slice(b"committer Jos\xe9 <jose@example.com> 1700000000 +0000\n");
+        commit_object.extend_from_slice(b"\nneedle latin\n");
+        let object_path = temp_dir.path().join("commit-object");
+        fs::write(&object_path, &commit_object).unwrap();
+        let latin = git_command_output(
+            &directory,
+            [
+                OsString::from("hash-object"),
+                OsString::from("-t"),
+                OsString::from("commit"),
+                OsString::from("-w"),
+                object_path.into_os_string(),
+            ],
+        );
+        git_command(
+            &directory,
+            ["update-ref", "refs/heads/main", latin.as_str()],
+        );
+        let latin = Oid::from_str(&latin).unwrap();
+
+        let repository = open_repository(&directory, cx);
+        let search = async |args: SearchCommitArgs| -> Result<Vec<Oid>> {
+            let (search_tx, search_rx) = async_channel::unbounded();
+            repository
+                .search_commits(LogSource::All, args, search_tx)
+                .await?;
+            let mut found = Vec::new();
+            while let Ok(sha) = search_rx.try_recv() {
+                found.push(sha);
+            }
+            Ok(found)
+        };
+
+        assert_eq!(
+            search(SearchCommitArgs {
+                query: "needle".into(),
+                ..SearchCommitArgs::default()
+            })
+            .await
+            .unwrap(),
+            [latin]
+        );
+        assert_eq!(
+            search(SearchCommitArgs {
+                authors: vec!["jos".into(), "example.com".into()],
+                ..SearchCommitArgs::default()
+            })
+            .await
+            .unwrap(),
+            [latin],
+            "several authors are checked against the author header however it is encoded"
+        );
+
+        let error = search(SearchCommitArgs {
+            path: Some("../outside".into()),
+            ..SearchCommitArgs::default()
+        })
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.starts_with("コミットを検索できませんでした: ") && error.contains("outside"),
+            "git's own reason reaches the search box: {error}"
+        );
     }
 
     #[test]
@@ -10059,7 +12047,9 @@ mod tests {
 
     #[test]
     fn test_branch_list_args_follow_git_version() {
-        let modern_fields = "%(HEAD)%00%(objectname)%00%(parent)%00%(refname)%00%(upstream)%00%(upstream:track)%00%(committerdate:unix)%00%(authorname)%00%(contents:subject)";
+        // No `%(upstream:track)`: only the current branch's counts are wanted, and
+        // `count_head_tracking` asks for those alone.
+        let modern_fields = "%(HEAD)%00%(objectname)%00%(parent)%00%(refname)%00%(upstream)%00%00%(committerdate:unix)%00%(authorname)%00%(contents:subject)";
         let modern = strings(&[
             "for-each-ref",
             "refs/heads/**/*",
@@ -10205,6 +12195,129 @@ mod tests {
             tracking,
             [Some(false), Some(true), Some(false), Some(false), None]
         );
+    }
+
+    fn write_ref(common_dir: &Path, ref_name: &str, contents: &str) {
+        let path = common_dir.join(ref_name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents).unwrap();
+    }
+
+    fn scan_without_limits(common_dir: &Path) -> RefStorageScan {
+        scan_ref_storage(common_dir, usize::MAX, Duration::from_secs(60))
+    }
+
+    #[test]
+    fn test_scan_ref_storage_counts_loose_refs_up_to_the_limit() {
+        let common_dir = tempfile::tempdir().unwrap();
+        let common_dir = common_dir.path();
+        write_ref(common_dir, "refs/heads/main", "a\n");
+        write_ref(common_dir, "refs/heads/feature/login", "b\n");
+        write_ref(common_dir, "refs/remotes/origin/main", "a\n");
+        write_ref(common_dir, "refs/tags/v1", "a\n");
+        write_ref(common_dir, "refs/tags/リリース/春", "b\n");
+        // git's transient lock files are not refs.
+        write_ref(common_dir, "refs/heads/main.lock", "c\n");
+
+        assert_eq!(
+            scan_without_limits(common_dir).loose_refs,
+            Some(LooseRefCount {
+                count: 5,
+                complete: true,
+            })
+        );
+        // Tags are all counted first (the fingerprint needs every one of them); the other refs
+        // only up to what is left of the limit.
+        assert_eq!(
+            scan_ref_storage(common_dir, 3, Duration::from_secs(60)).loose_refs,
+            Some(LooseRefCount {
+                count: 3,
+                complete: false,
+            })
+        );
+        assert_eq!(
+            scan_ref_storage(common_dir, 5, Duration::from_secs(60)).loose_refs,
+            Some(LooseRefCount {
+                count: 5,
+                complete: true,
+            })
+        );
+
+        // Out of time before a single file: what little was counted is only a lower bound, and
+        // the tags cannot be vouched for.
+        let rushed = scan_ref_storage(common_dir, usize::MAX, Duration::ZERO);
+        assert_eq!(
+            rushed.loose_refs,
+            Some(LooseRefCount {
+                count: 0,
+                complete: false,
+            })
+        );
+        assert_eq!(rushed.tags_fingerprint, None);
+
+        let without_refs = tempfile::tempdir().unwrap();
+        assert_eq!(scan_without_limits(without_refs.path()).loose_refs, None);
+    }
+
+    #[test]
+    fn test_scan_ref_storage_fingerprints_only_the_tags() {
+        let common_dir = tempfile::tempdir().unwrap();
+        let common_dir = common_dir.path();
+        write_ref(common_dir, "refs/heads/main", "1111\n");
+        write_ref(common_dir, "refs/tags/v1", "1111\n");
+        let fingerprint = || scan_without_limits(common_dir).tags_fingerprint;
+
+        let initial = fingerprint();
+        assert!(initial.is_some());
+        assert_eq!(fingerprint(), initial, "nothing changed");
+
+        // A commit or a fetch moves branches, which must not look like a tag change.
+        write_ref(common_dir, "refs/heads/main", "22222\n");
+        write_ref(common_dir, "refs/remotes/origin/main", "22222\n");
+        assert_eq!(fingerprint(), initial);
+
+        write_ref(common_dir, "refs/tags/v2", "22222\n");
+        let with_new_tag = fingerprint();
+        assert_ne!(with_new_tag, initial, "a new tag");
+
+        write_ref(common_dir, "refs/tags/v2", "333333\n");
+        let with_moved_tag = fingerprint();
+        assert_ne!(with_moved_tag, with_new_tag, "a moved tag");
+
+        fs::remove_file(common_dir.join("refs/tags/v2")).unwrap();
+        let without_tag = fingerprint();
+        assert_ne!(without_tag, with_moved_tag, "a deleted tag");
+
+        // Packed tags (and the ones `git tag -d` deletes from there) live in `packed-refs`.
+        fs::write(common_dir.join("packed-refs"), "4444 refs/tags/v3\n").unwrap();
+        assert_ne!(fingerprint(), without_tag, "a packed tag");
+    }
+
+    #[test]
+    fn test_scan_ref_storage_with_reftable() {
+        let common_dir = tempfile::tempdir().unwrap();
+        let common_dir = common_dir.path();
+        // What `git init --ref-format=reftable` leaves: a stub `refs/heads` file for older gits
+        // and the tables themselves.
+        write_ref(
+            common_dir,
+            "refs/heads",
+            "this repository uses the reftable format\n",
+        );
+        write_ref(common_dir, "reftable/tables.list", "0x01.ref\n");
+
+        let scan = scan_without_limits(common_dir);
+        assert_eq!(
+            scan.loose_refs,
+            Some(LooseRefCount {
+                count: 0,
+                complete: true,
+            })
+        );
+        let initial = scan.tags_fingerprint;
+        assert!(initial.is_some());
+        write_ref(common_dir, "reftable/tables.list", "0x01.ref\n0x02.ref\n");
+        assert_ne!(scan_without_limits(common_dir).tags_fingerprint, initial);
     }
 
     #[test]
@@ -10524,6 +12637,44 @@ mod tests {
             scan.branches.iter().filter(|branch| branch.is_head).count(),
             1
         );
+        // The listing reads the ref files as well: a fresh clone keeps its branches as loose
+        // files, and the tags are fingerprinted.
+        assert!(
+            scan.ref_storage
+                .loose_refs
+                .is_some_and(|loose_refs| loose_refs.complete && loose_refs.count >= 3),
+            "{:?}",
+            scan.ref_storage
+        );
+        assert!(scan.ref_storage.tags_fingerprint.is_some());
+
+        // Only the current branch's counts are asked for; another branch with a live upstream
+        // stays at zero rather than costing a history walk of its own.
+        git_command(&clone_directory, ["branch", "behind", "origin/main"]);
+        git_command(
+            &clone_directory,
+            ["branch", "--set-upstream-to", "main", "behind"],
+        );
+        let scan = repository.branches().await.unwrap();
+        let behind = scan
+            .branches
+            .iter()
+            .find(|branch| branch.ref_name.as_ref() == "refs/heads/behind")
+            .unwrap_or_else(|| panic!("refs/heads/behind is missing from {:?}", scan.branches));
+        assert_eq!(
+            behind
+                .upstream
+                .as_ref()
+                .map(|upstream| upstream.ref_name.as_ref()),
+            Some("refs/heads/main")
+        );
+        assert_eq!(
+            behind.tracking_status(),
+            Some(UpstreamTrackingStatus {
+                ahead: 0,
+                behind: 0
+            })
+        );
     }
 
     #[gpui::test]
@@ -10705,8 +12856,8 @@ mod tests {
         assert_eq!(
             search(SearchCommitArgs {
                 query: "FEATURE".into(),
-                author: None,
                 case_sensitive: false,
+                ..SearchCommitArgs::default()
             })
             .await,
             [feature_head.as_str()]
@@ -10715,8 +12866,8 @@ mod tests {
         assert_eq!(
             search(SearchCommitArgs {
                 query: "".into(),
-                author: None,
                 case_sensitive: false,
+                ..SearchCommitArgs::default()
             })
             .await,
             Vec::<String>::new(),
@@ -10777,8 +12928,9 @@ mod tests {
         assert_eq!(
             search(SearchCommitArgs {
                 query: "".into(),
-                author: Some("other person".into()),
+                authors: vec!["other person".into()],
                 case_sensitive: false,
+                ..SearchCommitArgs::default()
             })
             .await,
             [other_head.as_str()],
@@ -10787,8 +12939,9 @@ mod tests {
         assert_eq!(
             search(SearchCommitArgs {
                 query: "".into(),
-                author: Some("other@example.com".into()),
+                authors: vec!["other@example.com".into()],
                 case_sensitive: false,
+                ..SearchCommitArgs::default()
             })
             .await,
             [other_head.as_str()],
@@ -10799,8 +12952,9 @@ mod tests {
         assert_eq!(
             search(SearchCommitArgs {
                 query: "feature".into(),
-                author: Some("Other".into()),
+                authors: vec!["Other".into()],
                 case_sensitive: false,
+                ..SearchCommitArgs::default()
             })
             .await,
             [other_head.as_str()],
@@ -10809,8 +12963,9 @@ mod tests {
         assert_eq!(
             search(SearchCommitArgs {
                 query: "initial".into(),
-                author: Some("Other".into()),
+                authors: vec!["Other".into()],
                 case_sensitive: false,
+                ..SearchCommitArgs::default()
             })
             .await,
             Vec::<String>::new(),
@@ -10819,8 +12974,9 @@ mod tests {
         assert_eq!(
             search(SearchCommitArgs {
                 query: "".into(),
-                author: Some("OTHER PERSON".into()),
+                authors: vec!["OTHER PERSON".into()],
                 case_sensitive: true,
+                ..SearchCommitArgs::default()
             })
             .await,
             Vec::<String>::new(),
@@ -10834,8 +12990,9 @@ mod tests {
                 LogSource::All,
                 SearchCommitArgs {
                     query: "".into(),
-                    author: Some("   ".into()),
+                    authors: vec!["   ".into()],
                     case_sensitive: false,
+                    ..SearchCommitArgs::default()
                 },
                 search_tx,
             )
@@ -11111,7 +13268,7 @@ mod tests {
                 .map(|command| command.args.join(" "))
                 .collect::<Vec<_>>(),
             vec![
-                "switch -c zed-rewrite/ddddddd 0000000000000000000000000000000000000000"
+                "switch --no-overwrite-ignore -c zed-rewrite/ddddddd 0000000000000000000000000000000000000000"
                     .to_string(),
                 "cherry-pick cccccccccccccccccccccccccccccccccccccccc".to_string(),
                 concat!(
@@ -11233,7 +13390,7 @@ mod tests {
                 .map(|command| command.args.join(" "))
                 .collect::<Vec<_>>(),
             vec![
-                "switch -c zed-rewrite/scratch base".to_string(),
+                "switch --no-overwrite-ignore -c zed-rewrite/scratch base".to_string(),
                 "rebase --autostash --onto zed-rewrite/scratch newest main".to_string(),
                 "switch main".to_string(),
                 "branch -D zed-rewrite/scratch".to_string(),
@@ -11268,6 +13425,565 @@ mod tests {
         );
         rewrite_range_commands("base", &[], "newest", "main", "main")
             .expect_err("a rewrite may not be built on a branch it would then delete");
+    }
+
+    /// The probes for ignored files a rewrite would overwrite: every path the rewritten commits
+    /// touch, listed with `-z`, and only those paths handed to `ls-files`, literally and from the
+    /// top, in commands short enough for Windows; all of them allowed by `run_command`.
+    #[test]
+    fn test_ignored_file_probes_only_ask_about_the_touched_paths() {
+        let log = |revisions: &[&str]| {
+            ["log", "--format=", "--name-only", "--no-renames", "-z"]
+                .iter()
+                .chain(revisions)
+                .map(|argument| argument.to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            touched_paths_probe_commands(RewrittenCommits::Range("abc..HEAD")),
+            vec![log(&["abc..HEAD"])]
+        );
+        let shas = (0..TOUCHED_PATHS_PROBE_COMMITS + 1)
+            .map(|index| format!("{index:040x}"))
+            .collect::<Vec<_>>();
+        let commands = touched_paths_probe_commands(RewrittenCommits::Commits(&shas));
+        assert_eq!(commands.len(), 2, "one `log` per chunk of commits");
+        assert_eq!(
+            commands[1],
+            log(&["--no-walk", shas[TOUCHED_PATHS_PROBE_COMMITS].as_str()])
+        );
+        assert_eq!(
+            commands
+                .iter()
+                .flat_map(|command| command.iter().skip(6))
+                .collect::<Vec<_>>(),
+            shas.iter().collect::<Vec<_>>(),
+            "every commit, in order, each once"
+        );
+
+        assert_eq!(
+            parse_nul_separated_paths("a.txt\0日本 語/b\nc.txt\0\0.env\0").collect::<Vec<_>>(),
+            vec!["a.txt", "日本 語/b\nc.txt", ".env"]
+        );
+
+        assert!(ignored_files_probe_commands(std::iter::empty()).is_empty());
+        assert_eq!(
+            ignored_files_probe_commands([".env", "-x/[a]*.txt"]),
+            vec![
+                [
+                    "ls-files",
+                    "--others",
+                    "--ignored",
+                    "--exclude-standard",
+                    "-z",
+                    "--",
+                    ":(top,literal).env",
+                    ":(top,literal)-x/[a]*.txt",
+                ]
+                .map(str::to_string)
+                .to_vec()
+            ]
+        );
+        let many = (0..2_000)
+            .map(|index| format!("some/deep/directory/file-{index}.txt"))
+            .collect::<Vec<_>>();
+        let commands = ignored_files_probe_commands(many.iter().map(String::as_str));
+        assert!(commands.len() > 1, "a long list is split");
+        for command in &commands {
+            let length = command
+                .iter()
+                .map(|argument| argument.len() + 1)
+                .sum::<usize>();
+            assert!(length < 32_767 / 2, "command line of {length} characters");
+            validate_git_command(command).expect("the probe must be allowed");
+        }
+        assert_eq!(
+            commands
+                .iter()
+                .flat_map(|command| command.iter().skip(6))
+                .map(|pathspec| pathspec.trim_start_matches(":(top,literal)"))
+                .collect::<Vec<_>>(),
+            many.iter().map(String::as_str).collect::<Vec<_>>(),
+            "every path, in order, each once"
+        );
+        for command in touched_paths_probe_commands(RewrittenCommits::Commits(&shas)) {
+            validate_git_command(&command).expect("the probe must be allowed");
+        }
+    }
+
+    #[test]
+    fn test_ignored_files_refusal_names_at_most_five_files() {
+        assert_eq!(ignored_files_refusal(&[]), None);
+        assert_eq!(
+            ignored_files_refusal(&[".env".to_string()]).as_deref(),
+            Some(
+                "無視されているローカルのファイル .env が、書き換えの途中で上書きされて失われるため中止しました。別の場所に退避してからやり直してください。"
+            )
+        );
+        let files = (1..=7).map(|index| format!("f{index}")).collect::<Vec<_>>();
+        let refusal = ignored_files_refusal(&files).unwrap();
+        assert!(
+            refusal
+                .starts_with("無視されているローカルのファイル f1、f2、f3、f4、f5 ほか 2 個が、"),
+            "{refusal}"
+        );
+        assert!(!refusal.contains("f6"), "{refusal}");
+    }
+
+    /// Only the refusal of the subcommand itself counts as an older server not knowing it.
+    #[test]
+    fn test_is_unknown_git_subcommand_refusal() {
+        let refused = format!(
+            "{:#}",
+            validate_git_command(&["frobnicate".to_string()]).unwrap_err()
+        );
+        assert!(is_unknown_git_subcommand_refusal(&refused, "frobnicate"));
+        assert!(is_unknown_git_subcommand_refusal(
+            "RPC failed: unsupported git command: ls-files
+",
+            "ls-files"
+        ));
+        assert!(!is_unknown_git_subcommand_refusal(
+            "unsupported git command: ls-files-extra",
+            "ls-files"
+        ));
+        assert!(!is_unknown_git_subcommand_refusal(
+            "unsupported git command argument: --exclude-from=/etc/shadow",
+            "ls-files"
+        ));
+        assert!(!is_unknown_git_subcommand_refusal(
+            "unsupported git command: log",
+            "ls-files"
+        ));
+    }
+
+    /// The options that keep an untrusted repository's diff programs from running follow the
+    /// subcommand, never the arguments after it.
+    #[test]
+    fn test_untrusted_subcommand_guards() {
+        for subcommand in ["diff", "log", "show"] {
+            assert_eq!(
+                untrusted_subcommand_guards(OsStr::new(subcommand)),
+                ["--no-ext-diff", "--no-textconv"]
+            );
+        }
+        assert_eq!(
+            untrusted_subcommand_guards(OsStr::new("blame")),
+            ["--no-textconv"]
+        );
+        for subcommand in [
+            "hash-object",
+            "status",
+            "format-patch",
+            "ls-files",
+            "rebase",
+        ] {
+            assert!(untrusted_subcommand_guards(OsStr::new(subcommand)).is_empty());
+        }
+    }
+
+    /// The merge-request build shares the rewrite namespace, so that the git panel's banner can
+    /// take the user back from it, while staying recognizable as a merge-request build.
+    #[test]
+    fn test_merge_request_scratch_branch_name() {
+        let scratch = merge_request_scratch_branch_name("abcdef0123456789abcdef0123456789abcdef01");
+        assert_eq!(scratch, "zed-rewrite/mr-abcdef0");
+        assert!(is_rewrite_scratch_branch(&scratch));
+        assert!(is_merge_request_scratch_branch(&scratch));
+        assert!(!is_merge_request_scratch_branch("zed-rewrite/abcdef0"));
+        assert!(!is_merge_request_scratch_branch("zed-rewrite/mr-"));
+        assert!(!is_merge_request_scratch_branch("mr-abcdef0"));
+    }
+
+    #[test]
+    fn test_validate_merge_request_branch_name() {
+        validate_merge_request_branch_name("mr/feature").unwrap();
+        validate_merge_request_branch_name("mr/日本語").unwrap();
+        validate_merge_request_branch_name("mr/v1.2-fix_a@b").unwrap();
+        for refused in [
+            "",
+            "   ",
+            "-D",
+            "--force",
+            "mr/two words",
+            "mr/\tfeature",
+            "HEAD",
+            "@",
+            "zed-rewrite/mr-abc",
+            "refs/heads/main",
+            "mr/a..b",
+            "mr/a@{1}",
+            "mr/a~1",
+            "mr/a^",
+            "mr:a",
+            "mr/a?",
+            "mr/*",
+            "mr/[a]",
+            "mr\\a",
+            "/mr",
+            "mr/",
+            "mr//a",
+            "mr/a.",
+            "mr/.hidden",
+            "mr/a.lock",
+            "mr/\u{7f}",
+        ] {
+            assert!(
+                validate_merge_request_branch_name(refused).is_err(),
+                "`{refused}` must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn test_merge_request_branch_is_never_the_default_branch() {
+        let refusal = ensure_merge_request_branch_is_not_default("main", Some("main"))
+            .expect_err("the default branch may not be the merge-request branch");
+        assert!(
+            refusal.to_string().contains("デフォルトブランチ"),
+            "{refusal}"
+        );
+        ensure_merge_request_branch_is_not_default("mr/main", Some("main")).unwrap();
+        ensure_merge_request_branch_is_not_default("main", None).unwrap();
+    }
+
+    /// A new merge-request branch: the scratch branch at the base, the commits replayed onto it
+    /// oldest first, folded into one commit, the branch created there, and the user put back.
+    #[test]
+    fn test_merge_request_commands_for_a_new_branch() {
+        let scratch = "zed-rewrite/mr-ccccccc";
+        let picks = merge_request_pick_commands(
+            "base0000",
+            &["aaa".to_string(), "bbb".to_string(), "ccc".to_string()],
+            scratch,
+        )
+        .unwrap();
+        assert_eq!(
+            picks
+                .iter()
+                .map(|command| command.join(" "))
+                .collect::<Vec<_>>(),
+            vec![
+                "switch --no-overwrite-ignore -c zed-rewrite/mr-ccccccc base0000".to_string(),
+                "cherry-pick --keep-redundant-commits aaa bbb ccc".to_string(),
+            ]
+        );
+        for command in &picks {
+            validate_git_command(command).unwrap();
+        }
+
+        let finish =
+            merge_request_finish_commands("base0000", "MR の本文", "mr/dev", false, "dev", scratch)
+                .unwrap();
+        assert_eq!(
+            finish
+                .fold_and_point
+                .iter()
+                .map(|command| command.join(" "))
+                .collect::<Vec<_>>(),
+            vec![
+                "reset --soft base0000".to_string(),
+                "commit -m MR の本文".to_string(),
+                "branch mr/dev HEAD".to_string(),
+            ]
+        );
+        assert_eq!(
+            finish.return_to_origin,
+            rewrite_cleanup_commands("dev", scratch).unwrap()
+        );
+        for command in finish.fold_and_point.iter().chain(&finish.return_to_origin) {
+            validate_git_command(command).unwrap();
+        }
+    }
+
+    /// Recreating moves the existing branch with `branch -f`; a message that looks like an option
+    /// still travels as one argument after `-m`.
+    #[test]
+    fn test_merge_request_commands_for_a_recreated_branch() {
+        let finish = merge_request_finish_commands(
+            "base0000",
+            "--amend",
+            "mr/dev",
+            true,
+            "dev",
+            "zed-rewrite/mr-ccccccc",
+        )
+        .unwrap();
+        assert_eq!(
+            finish.fold_and_point,
+            vec![
+                vec![
+                    "reset".to_string(),
+                    "--soft".to_string(),
+                    "base0000".to_string()
+                ],
+                vec![
+                    "commit".to_string(),
+                    "-m".to_string(),
+                    "--amend".to_string()
+                ],
+                vec![
+                    "branch".to_string(),
+                    "-f".to_string(),
+                    "mr/dev".to_string(),
+                    "HEAD".to_string()
+                ],
+            ]
+        );
+        for command in &finish.fold_and_point {
+            validate_git_command(command).unwrap();
+        }
+    }
+
+    /// Everything the build would move is checked before anything runs: the branch the user
+    /// started from can never be the one `branch -f` moves, and nothing outside the scratch
+    /// namespace is built on (and later deleted).
+    #[test]
+    fn test_merge_request_commands_refuse_what_they_cannot_undo() {
+        let scratch = "zed-rewrite/mr-ccccccc";
+        assert!(
+            merge_request_finish_commands("base", "m", "dev", true, "dev", scratch).is_err(),
+            "the branch the user started from may not be moved"
+        );
+        assert!(
+            merge_request_finish_commands("base", "  ", "mr/dev", false, "dev", scratch).is_err()
+        );
+        assert!(merge_request_finish_commands("base", "m", "-D", false, "dev", scratch).is_err());
+        assert!(merge_request_finish_commands("", "m", "mr/dev", false, "dev", scratch).is_err());
+        assert!(
+            merge_request_finish_commands("base", "m", "mr/dev", false, "dev", "zed-rewrite/abc")
+                .is_err(),
+            "a rewrite's scratch branch is not a merge-request build's"
+        );
+        assert!(
+            merge_request_finish_commands("base", "m", "mr/dev", false, "dev", "feature").is_err()
+        );
+        assert!(merge_request_pick_commands("base", &[], scratch).is_err());
+        assert!(merge_request_pick_commands("base", &["-x".to_string()], scratch).is_err());
+        assert!(merge_request_pick_commands("base", &["aaa".to_string()], "main").is_err());
+    }
+
+    #[gpui::test]
+    async fn test_merge_request_commands_on_installed_git(cx: &mut TestAppContext) {
+        check_merge_request_commands(installed_git_version(), cx).await;
+    }
+
+    /// The commands run against a real git: the branch ends up one commit on top of the base
+    /// carrying exactly the picked changes, even when one of them is already in the base.
+    async fn check_merge_request_commands(version: GitVersion, cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        let commit = |name: &str, contents: &str| {
+            fs::write(repo_dir.join(format!("{name}.txt")), contents).unwrap();
+            git_command(&repo_dir, ["add", "."]);
+            git_command(&repo_dir, ["commit", "-m", name]);
+            git_command_output(&repo_dir, ["rev-parse", "HEAD"])
+        };
+        commit("initial", "initial\n");
+        git_command(&repo_dir, ["checkout", "-b", "dev"]);
+        let first = commit("A", "A\n");
+        commit("left-out", "left out\n");
+        let already_in_base = commit("shared", "shared\n");
+        let last = commit("C", "C\n");
+        git_command(&repo_dir, ["checkout", "main"]);
+        let base = commit("shared", "shared\n");
+        git_command(&repo_dir, ["checkout", "dev"]);
+
+        let scratch = merge_request_scratch_branch_name(&last);
+        let shas = vec![first, already_in_base, last];
+        let picks = merge_request_pick_commands(&base, &shas, &scratch).unwrap();
+        let finish =
+            merge_request_finish_commands(&base, "MR にまとめる", "mr/dev", false, "dev", &scratch)
+                .unwrap();
+        for command in picks
+            .into_iter()
+            .chain(finish.fold_and_point)
+            .chain(finish.return_to_origin)
+        {
+            let adapted = adapt_command_to_git_version(command, Some(version));
+            git_command(&repo_dir, &adapted.args);
+        }
+
+        assert_eq!(
+            git_command_output(&repo_dir, ["rev-parse", "--abbrev-ref", "HEAD"]),
+            "dev"
+        );
+        assert_eq!(
+            git_command_output(&repo_dir, ["rev-parse", "mr/dev^"]),
+            base,
+            "the merge request is a single commit on top of the base"
+        );
+        assert_eq!(
+            git_command_output(&repo_dir, ["log", "-1", "--format=%s", "mr/dev"]),
+            "MR にまとめる"
+        );
+        assert_eq!(
+            git_command_output(&repo_dir, ["diff", "--name-only", &base, "mr/dev"]),
+            "A.txt\nC.txt"
+        );
+        assert!(
+            git_command_output(&repo_dir, ["branch", "--list", &scratch]).is_empty(),
+            "the scratch branch should have been deleted"
+        );
+    }
+
+    fn joined(commands: &[Vec<String>]) -> Vec<String> {
+        commands.iter().map(|args| args.join(" ")).collect()
+    }
+
+    /// Each kind of change a fixup can fold in, as the commands that record it, and every one of
+    /// them has to get past the checks `run_command` makes on the far side of an SSH connection.
+    #[test]
+    fn test_fixup_commit_commands_record_exactly_the_chosen_changes() {
+        let staged = fixup_commit_commands("abc", &FixupChanges::Staged, &[]).unwrap();
+        assert_eq!(joined(&staged), vec!["commit --fixup=abc".to_string()]);
+
+        let all = fixup_commit_commands("abc", &FixupChanges::AllTracked, &[]).unwrap();
+        assert_eq!(joined(&all), vec!["commit --fixup=abc -a".to_string()]);
+
+        // `*`, `[` and a leading `-` are all spelled out literally: a glob would pull in files
+        // nobody picked, and a bare `-x` would be read as an option.
+        let paths = vec![
+            repo_path("src/a[1].rs"),
+            repo_path("-x.txt"),
+            repo_path("docs/new.md"),
+        ];
+        let picked = fixup_commit_commands(
+            "abc",
+            &FixupChanges::Paths(paths.clone()),
+            &[repo_path("docs/new.md")],
+        )
+        .unwrap();
+        assert_eq!(
+            joined(&picked),
+            vec![
+                "add -- :(literal)docs/new.md".to_string(),
+                "commit --fixup=abc --only -- :(literal)src/a[1].rs :(literal)-x.txt :(literal)docs/new.md"
+                    .to_string(),
+            ]
+        );
+
+        // Only the untracked files are added: `add` refuses a path whose deletion is already
+        // staged, which `commit --only` records by itself.
+        let tracked_only = fixup_commit_commands("abc", &FixupChanges::Paths(paths), &[]).unwrap();
+        assert_eq!(tracked_only.len(), 1);
+        assert_eq!(tracked_only[0][0], "commit");
+
+        for args in staged.iter().chain(&all).chain(&picked) {
+            validate_git_command(args)
+                .unwrap_or_else(|error| panic!("{args:?} must be allowed: {error:#}"));
+        }
+
+        assert!(
+            fixup_commit_commands("abc", &FixupChanges::Paths(Vec::new()), &[]).is_err(),
+            "a fixup of no files has nothing to record"
+        );
+        assert!(fixup_commit_commands("", &FixupChanges::Staged, &[]).is_err());
+    }
+
+    /// The files added for a refused commit go back to being untracked, and nothing else is
+    /// touched.
+    #[test]
+    fn test_fixup_unstage_args_only_name_the_added_files() {
+        assert_eq!(fixup_unstage_args(&[]), None);
+        let args = fixup_unstage_args(&[repo_path("docs/new[1].md")]).unwrap();
+        assert_eq!(args.join(" "), "reset -q -- :(literal)docs/new[1].md");
+        validate_git_command(&args).unwrap();
+    }
+
+    /// `-i` with nobody editing the todo list, and `--root` for the repository's first commit,
+    /// which has no parent to start from.
+    #[test]
+    fn test_fixup_rebase_args() {
+        assert_eq!(
+            fixup_rebase_args(Some("parent")).join(" "),
+            "rebase -i --autosquash --autostash --keep-empty parent"
+        );
+        assert_eq!(
+            fixup_rebase_args(None).join(" "),
+            "rebase -i --autosquash --autostash --keep-empty --root"
+        );
+        for args in [fixup_rebase_args(Some("parent")), fixup_rebase_args(None)] {
+            validate_git_command(&args)
+                .unwrap_or_else(|error| panic!("{args:?} must be allowed: {error:#}"));
+        }
+
+        // A git without `--autostash` keeps everything else and refuses a dirty worktree instead.
+        let old = adapt_command_to_git_version(
+            fixup_rebase_args(Some("parent")),
+            Some(GitVersion::new(2, 5, 0)),
+        );
+        assert_eq!(
+            old.args.join(" "),
+            "rebase -i --autosquash --keep-empty parent"
+        );
+        assert!(old.dropped_autostash);
+    }
+
+    #[test]
+    fn test_fixup_changes_probe_args() {
+        assert_eq!(
+            fixup_changes_probe_args(&FixupChanges::Staged).join(" "),
+            "diff --cached --name-only"
+        );
+        assert_eq!(
+            fixup_changes_probe_args(&FixupChanges::AllTracked).join(" "),
+            "diff HEAD --name-only"
+        );
+        let probe = fixup_changes_probe_args(&FixupChanges::Paths(vec![repo_path("a*.rs")]));
+        assert_eq!(probe.join(" "), "diff HEAD --name-only -- :(literal)a*.rs");
+        validate_git_command(&probe).unwrap();
+    }
+
+    /// Exactly the prefixes `rebase --autosquash` acts on, space included.
+    #[test]
+    fn test_is_autosquash_subject() {
+        for subject in [
+            "fixup! first",
+            "squash! first",
+            "amend! first",
+            "fixup! fixup! a",
+        ] {
+            assert!(is_autosquash_subject(subject), "{subject}");
+        }
+        for subject in [
+            "first",
+            "fixup!first",
+            "Fixup! first",
+            "a fixup! b",
+            "fixup!",
+        ] {
+            assert!(!is_autosquash_subject(subject), "{subject}");
+        }
+    }
+
+    /// Empty output means the upstream already has the commit; no upstream at all (git refuses
+    /// `@{upstream}`) counts as not pushed.
+    #[test]
+    fn test_is_pushed_from_probe() {
+        assert_eq!(
+            pushed_probe_args("abc").join(" "),
+            "log --format=%H -1 @{upstream}..abc"
+        );
+        validate_git_command(&pushed_probe_args("abc")).unwrap();
+
+        let output = |stdout: &str, exit_code: i32| GitCommandOutput {
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            exit_code: Some(exit_code),
+        };
+        assert!(is_pushed_from_probe(&output("", 0)));
+        assert!(is_pushed_from_probe(&output("\n", 0)));
+        assert!(!is_pushed_from_probe(&output("abc\n", 0)));
+        assert!(!is_pushed_from_probe(&GitCommandOutput {
+            stdout: String::new(),
+            stderr: "fatal: no upstream configured for branch 'main'".to_string(),
+            exit_code: Some(128),
+        }));
     }
 
     #[gpui::test]

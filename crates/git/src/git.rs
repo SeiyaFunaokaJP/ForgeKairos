@@ -1,5 +1,6 @@
 pub mod blame;
 pub mod commit;
+pub mod commit_search;
 mod hosting_provider;
 pub mod patch_summary;
 mod remote;
@@ -156,6 +157,22 @@ actions!(
         ApplyPatch,
         /// lease を使わずに強制プッシュします (他の人が push したコミットも上書きします)。
         ForcePushWithoutLease,
+        /// ファイルのまま散らばった ref をまとめて、ブランチやタグの多いリポジトリを速くします (git pack-refs --all)。
+        PackRefs,
+        /// コミットグラフの「MR の箱」を開閉します。
+        ToggleMergeRequestBox,
+        /// Git の操作ガイド (やりたいことから操作を引く一覧) を開きます。
+        ShowGuide,
+        /// Git パネルを開いて、直前のコミットの修正 (amend) を始めます。
+        StartAmend,
+        /// コミットグラフを開いて、今の変更を入れる先のコミット (fixup) を選べるようにします。
+        ChooseFixupCommit,
+        /// 2 つのブランチ / タグを選んで中身を比べます。
+        CompareRefs,
+        /// 確認してから強制プッシュ (lease 付き) します。
+        ConfirmForcePush,
+        /// コミットグラフの「MR の箱」を開きます (開いていれば閉じずにそのまま)。
+        OpenMergeRequestBox,
     ]
 );
 
@@ -215,6 +232,16 @@ pub struct RevertCommit {
 #[serde(deny_unknown_fields)]
 pub struct RewordCommit {
     /// 書き換えるコミットの SHA。
+    #[serde(default)]
+    pub sha: String,
+}
+
+/// 今の変更を選択したコミットに入れます (fixup。以降のコミットの SHA が変わります)。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct FixupCommit {
+    /// 変更を入れる先のコミットの SHA。
     #[serde(default)]
     pub sha: String,
 }

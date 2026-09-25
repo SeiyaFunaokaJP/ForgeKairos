@@ -290,7 +290,7 @@ impl BranchList {
             branch_selection_behavior,
             cx,
         );
-        delegate.all_branches = all_branches;
+        delegate.set_all_branches(all_branches);
         delegate.branch_list_error = branch_list_error;
 
         let picker = cx.new(|cx| {
@@ -323,10 +323,11 @@ impl BranchList {
                                 .matches
                                 .get(picker.delegate.selected_index)
                                 .and_then(|entry| entry.as_branch().map(|b| b.ref_name.clone()));
-                            picker.delegate.all_branches = process_branches(
+                            let branches = process_branches(
                                 &branch_list,
                                 !picker.delegate.branch_selection_behavior.is_select_only(),
                             );
+                            picker.delegate.set_all_branches(branches);
                             picker.delegate.branch_list_error = branch_list_error;
                             picker.refresh(window, cx);
                         });
@@ -656,10 +657,36 @@ fn branch_filter_menu(
     })
 }
 
+/// The fuzzy-match candidates of one branch filter, built once per branch list rather than on
+/// every keystroke. A candidate's id is the branch's index in `all_branches`.
+#[derive(Clone)]
+struct BranchCandidates {
+    filter: BranchFilter,
+    candidates: Arc<[StringMatchCandidate]>,
+}
+
+fn branch_candidates(branches: &[Branch], filter: BranchFilter) -> BranchCandidates {
+    BranchCandidates {
+        filter,
+        candidates: branches
+            .iter()
+            .enumerate()
+            .filter(|(_, branch)| match filter {
+                BranchFilter::All => true,
+                BranchFilter::Local => !branch.is_remote(),
+                BranchFilter::Remote => branch.is_remote(),
+            })
+            .map(|(index, branch)| StringMatchCandidate::new(index, branch.name().to_string()))
+            .collect(),
+    }
+}
+
 pub struct BranchListDelegate {
     workspace: WeakEntity<Workspace>,
     matches: Vec<Entry>,
-    all_branches: Vec<Branch>,
+    /// Shared with the matching task of every keystroke instead of copied into it.
+    all_branches: Arc<[Branch]>,
+    branch_candidates: Option<BranchCandidates>,
     branch_list_error: Option<SharedString>,
     default_branch: Option<SharedString>,
     repo: Option<Entity<Repository>>,
@@ -978,6 +1005,11 @@ fn process_branches(branches: &Arc<[Branch]>, collapse_tracked_remotes: bool) ->
 }
 
 impl BranchListDelegate {
+    fn set_all_branches(&mut self, branches: Vec<Branch>) {
+        self.all_branches = branches.into();
+        self.branch_candidates = None;
+    }
+
     fn new(
         workspace: WeakEntity<Workspace>,
         repo: Option<Entity<Repository>>,
@@ -1000,7 +1032,8 @@ impl BranchListDelegate {
             matches: vec![],
             repo,
             style,
-            all_branches: Vec::new(),
+            all_branches: Arc::from([]),
+            branch_candidates: None,
             branch_list_error: None,
             default_branch: None,
             selected_index: 0,
@@ -1196,10 +1229,14 @@ impl BranchListDelegate {
                 picker.delegate.matches.retain(|e| e != &entry);
 
                 if let Entry::Branch { branch, .. } = &entry {
-                    picker
+                    let remaining = picker
                         .delegate
                         .all_branches
-                        .retain(|e| e.ref_name != branch.ref_name);
+                        .iter()
+                        .filter(|e| e.ref_name != branch.ref_name)
+                        .cloned()
+                        .collect();
+                    picker.delegate.set_all_branches(remaining);
                 }
 
                 if picker.delegate.matches.is_empty() {
@@ -1419,59 +1456,64 @@ impl PickerDelegate for BranchListDelegate {
         });
 
         let branch_filter = self.branch_filter;
+        let cached_candidates = self
+            .branch_candidates
+            .clone()
+            .filter(|candidates| candidates.filter == branch_filter);
         cx.spawn_in(window, async move |picker, cx| {
-            let branch_matches_filter = |branch: &Branch| match branch_filter {
-                BranchFilter::All => true,
-                BranchFilter::Local => !branch.is_remote(),
-                BranchFilter::Remote => branch.is_remote(),
-            };
-
-            let mut matches: Vec<Entry> = if query.is_empty() {
-                let mut matches: Vec<Entry> = all_branches
-                    .iter()
-                    .filter(|branch| branch_matches_filter(branch))
-                    .map(|branch| Entry::Branch {
-                        branch: branch.clone(),
-                        positions: Vec::new(),
-                    })
-                    .collect();
-
-                sort_branch_entries(&mut matches, branch_selection_context.as_ref());
-
-                matches
-            } else {
-                let branches = all_branches
-                    .iter()
-                    .filter(|branch| branch_matches_filter(branch))
-                    .collect::<Vec<_>>();
-                let candidates = branches
-                    .iter()
-                    .enumerate()
-                    .map(|(ix, branch)| StringMatchCandidate::new(ix, branch.name()))
-                    .collect::<Vec<StringMatchCandidate>>();
-                let mut matches: Vec<Entry> = fuzzy_nucleo::match_strings_async(
-                    &candidates,
-                    &query,
-                    fuzzy_nucleo::Case::Smart,
-                    fuzzy_nucleo::LengthPenalty::On,
-                    10000,
-                    &Default::default(),
-                    cx.background_executor().clone(),
-                )
-                .await
-                .into_iter()
-                .map(|candidate| Entry::Branch {
-                    branch: branches[candidate.candidate_id].clone(),
-                    positions: candidate.positions,
+            let executor = cx.background_executor().clone();
+            // With tens of thousands of branches, building, matching and sorting the entries
+            // takes long enough to drop frames, so none of it happens on this thread.
+            let (mut matches, candidates, query_names_a_branch) = cx
+                .background_spawn({
+                    let all_branches = all_branches.clone();
+                    let query = query.clone();
+                    async move {
+                        let candidates = cached_candidates
+                            .unwrap_or_else(|| branch_candidates(&all_branches, branch_filter));
+                        let mut matches: Vec<Entry> = if query.is_empty() {
+                            candidates
+                                .candidates
+                                .iter()
+                                .filter_map(|candidate| all_branches.get(candidate.id))
+                                .map(|branch| Entry::Branch {
+                                    branch: branch.clone(),
+                                    positions: Vec::new(),
+                                })
+                                .collect()
+                        } else {
+                            fuzzy_nucleo::match_strings_async(
+                                &candidates.candidates,
+                                &query,
+                                fuzzy_nucleo::Case::Smart,
+                                fuzzy_nucleo::LengthPenalty::On,
+                                10000,
+                                &Default::default(),
+                                executor,
+                            )
+                            .await
+                            .into_iter()
+                            .filter_map(|candidate| {
+                                Some(Entry::Branch {
+                                    branch: all_branches.get(candidate.candidate_id)?.clone(),
+                                    positions: candidate.positions,
+                                })
+                            })
+                            .collect()
+                        };
+                        sort_branch_entries(&mut matches, branch_selection_context.as_ref());
+                        let query_names_a_branch =
+                            all_branches.iter().any(|branch| branch.name() == query);
+                        (matches, candidates, query_names_a_branch)
+                    }
                 })
-                .collect();
-
-                sort_branch_entries(&mut matches, branch_selection_context.as_ref());
-
-                matches
-            };
+                .await;
             picker
                 .update(cx, |picker, _| {
+                    // A branch list replaced while this ran gets candidates of its own.
+                    if Arc::ptr_eq(&picker.delegate.all_branches, &all_branches) {
+                        picker.delegate.branch_candidates = Some(candidates);
+                    }
                     if let PickerState::CreateRemote(url) = &picker.delegate.state {
                         let query = normalize_branch_name(&query);
                         if !query.is_empty() {
@@ -1490,7 +1532,7 @@ impl PickerDelegate for BranchListDelegate {
 
                     if !picker.delegate.is_select_only()
                         && !query.is_empty()
-                        && !all_branches.iter().any(|branch| branch.name() == query)
+                        && !query_names_a_branch
                     {
                         let query = normalize_branch_name(&query);
                         let is_url = query.trim_start_matches("git@").parse::<Url>().is_ok();
@@ -2219,6 +2261,38 @@ mod tests {
     }
 
     #[test]
+    fn test_branch_candidates_follow_the_filter_and_the_branch_list() {
+        let branches = vec![
+            create_test_branch("main", true, None, Some(1000)),
+            create_test_branch("main", false, Some("origin"), Some(900)),
+            create_test_branch("feature", false, None, Some(800)),
+        ];
+        let ids = |candidates: &BranchCandidates| {
+            candidates
+                .candidates
+                .iter()
+                .map(|candidate| (candidate.id, candidate.string.to_string()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            ids(&branch_candidates(&branches, BranchFilter::All)),
+            [
+                (0, "main".to_string()),
+                (1, "origin/main".to_string()),
+                (2, "feature".to_string()),
+            ]
+        );
+        assert_eq!(
+            ids(&branch_candidates(&branches, BranchFilter::Local)),
+            [(0, "main".to_string()), (2, "feature".to_string())]
+        );
+        assert_eq!(
+            ids(&branch_candidates(&branches, BranchFilter::Remote)),
+            [(1, "origin/main".to_string())]
+        );
+    }
+
+    #[test]
     fn test_select_branch_shows_tracked_remotes_and_prioritizes_active_remote_branches() {
         let selected_branch = SharedString::from("origin/main");
         let branches: Arc<[Branch]> = Arc::from([
@@ -2327,7 +2401,7 @@ mod tests {
                         BranchSelectionBehavior::Checkout,
                         cx,
                     );
-                    delegate.all_branches = branches;
+                    delegate.set_all_branches(branches);
                     let picker = cx.new(|cx| Picker::uniform_list(delegate, window, cx));
                     let picker_focus_handle = picker.focus_handle(cx);
                     picker.update(cx, |picker, _| {
@@ -2386,6 +2460,66 @@ mod tests {
     ) -> (Entity<Project>, Entity<Repository>) {
         let (_, project, repository) = init_fake_repository_with_fs(cx).await;
         (project, repository)
+    }
+
+    #[gpui::test]
+    async fn test_branch_candidates_are_built_once_per_branch_list(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let branches = create_test_branches();
+        let (branch_list, mut ctx) = init_branch_list_test(None, branches, cx).await;
+        let cx = &mut ctx;
+        async fn search(
+            branch_list: &Entity<BranchList>,
+            query: &str,
+            cx: &mut VisualTestContext,
+        ) -> (usize, Option<Arc<[StringMatchCandidate]>>) {
+            let query = query.to_string();
+            branch_list
+                .update_in(cx, |branch_list, window, cx| {
+                    branch_list.picker.update(cx, |picker, cx| {
+                        picker.delegate.update_matches(query, window, cx)
+                    })
+                })
+                .await;
+            cx.run_until_parked();
+            branch_list.read_with(&*cx, |branch_list, cx| {
+                let delegate = &branch_list.picker.read(cx).delegate;
+                (
+                    delegate.matches.len(),
+                    delegate
+                        .branch_candidates
+                        .as_ref()
+                        .map(|candidates| candidates.candidates.clone()),
+                )
+            })
+        }
+
+        let (_, first) = search(&branch_list, "f", cx).await;
+        let first = first.expect("the first search builds the candidates");
+        let (matches, second) = search(&branch_list, "fe", cx).await;
+        assert!(matches >= 2);
+        assert!(
+            second.is_some_and(|second| Arc::ptr_eq(&first, &second)),
+            "a keystroke reuses them"
+        );
+
+        branch_list.update(cx, |branch_list, cx| {
+            branch_list.picker.update(cx, |picker, _| {
+                picker.delegate.set_all_branches(vec![create_test_branch(
+                    "fresh",
+                    true,
+                    None,
+                    Some(1),
+                )]);
+            })
+        });
+        let (matches, rebuilt) = search(&branch_list, "fresh", cx).await;
+        assert_eq!(matches, 1);
+        assert!(
+            rebuilt.is_some_and(|rebuilt| !Arc::ptr_eq(&first, &rebuilt)),
+            "a new branch list gets candidates of its own"
+        );
     }
 
     #[gpui::test]
