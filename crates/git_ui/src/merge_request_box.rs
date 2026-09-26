@@ -2598,6 +2598,10 @@ impl Render for MergeRequestBox {
                     )
                     .child(Label::new("MR の箱"))
                     .child(div().flex_1())
+                    .child(crate::git_guide::guide_button(
+                        "merge-request-box-guide",
+                        Some(crate::git_guide::MERGE_REQUEST_TOPIC),
+                    ))
                     .child(
                         IconButton::new("merge-request-box-close", IconName::Close)
                             .icon_size(IconSize::Small)

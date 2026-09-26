@@ -1,4 +1,7 @@
 use crate::commit_view::CommitView;
+use crate::git_terms::{
+    RESET_HARD_SUMMARY, RESET_MIXED_SUMMARY, RESET_SOFT_SUMMARY, commit_operation_help, help_aside,
+};
 use anyhow::{Result, anyhow};
 use editor::Editor;
 use futures::channel::oneshot;
@@ -367,20 +370,25 @@ fn commit_rewrite_entries(
     facts: CommitFacts,
 ) -> ContextMenu {
     let sha = sha.to_string();
-    let entry = |menu: ContextMenu, label: &'static str, operation: CommitMenuOperation| {
+    let entry = |menu: ContextMenu, label: &str, operation: CommitMenuOperation| {
+        let help = commit_operation_help(operation);
         match commit_operation_refusal(operation, &facts) {
             Some(reason) => menu.item(
-                ContextMenuEntry::new(label)
+                ContextMenuEntry::new(label.to_string())
                     .action(operation.action(&sha))
                     .disabled(true)
-                    .documentation_aside(DocumentationSide::Right, move |_cx| {
-                        Label::new(reason.clone()).into_any_element()
-                    }),
+                    .documentation_aside(DocumentationSide::Right, help_aside(help, Some(reason))),
             ),
-            None => menu.entry(
-                label,
-                Some(operation.action(&sha)),
-                commit_action_handler(&repository, &workspace, &sha, operation),
+            None => menu.item(
+                ContextMenuEntry::new(label.to_string())
+                    .action(operation.action(&sha))
+                    .handler(commit_action_handler(
+                        &repository,
+                        &workspace,
+                        &sha,
+                        operation,
+                    ))
+                    .documentation_aside(DocumentationSide::Right, help_aside(help, None)),
             ),
         }
     };
@@ -414,17 +422,17 @@ fn commit_rewrite_entries(
     let menu = menu.separator();
     let menu = entry(
         menu,
-        "このコミットまで戻す (soft: 変更をステージに残す)",
+        &format!("このコミットまで戻す (soft: {RESET_SOFT_SUMMARY})"),
         CommitMenuOperation::ResetSoft,
     );
     let menu = entry(
         menu,
-        "このコミットまで戻す (mixed: 変更を作業ツリーに残す)",
+        &format!("このコミットまで戻す (mixed: {RESET_MIXED_SUMMARY})"),
         CommitMenuOperation::ResetMixed,
     );
     let menu = entry(
         menu,
-        "このコミットまで戻す (hard: 変更を捨てる)…",
+        &format!("このコミットまで戻す (hard: {RESET_HARD_SUMMARY})…"),
         CommitMenuOperation::ResetHard,
     );
     let menu = menu.separator();

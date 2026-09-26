@@ -47,6 +47,7 @@ pub mod git_panel;
 mod git_panel_settings;
 pub mod git_picker;
 mod git_runtime_diagnostics;
+mod git_terms;
 mod many_refs;
 pub(crate) mod merge_request_box;
 pub mod multi_diff_view;

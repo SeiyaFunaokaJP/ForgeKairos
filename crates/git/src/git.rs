@@ -161,8 +161,6 @@ actions!(
         PackRefs,
         /// コミットグラフの「MR の箱」を開閉します。
         ToggleMergeRequestBox,
-        /// Git の操作ガイド (やりたいことから操作を引く一覧) を開きます。
-        ShowGuide,
         /// Git パネルを開いて、直前のコミットの修正 (amend) を始めます。
         StartAmend,
         /// コミットグラフを開いて、今の変更を入れる先のコミット (fixup) を選べるようにします。
@@ -175,6 +173,21 @@ actions!(
         OpenMergeRequestBox,
     ]
 );
+
+/// Git の操作ガイド (やりたいことから操作を引く一覧) を開きます。
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct ShowGuide {
+    /// 先頭に出す項目の話題 (例: "merge_request")。省略すると通常の並び。
+    #[serde(default)]
+    pub topic: Option<String>,
+}
+
+/// `git::ShowGuide` without a topic, spelled like the unit action it used to be so that menus,
+/// buttons and tests that name it as a value keep working.
+#[allow(non_upper_case_globals)]
+pub const ShowGuide: ShowGuide = ShowGuide { topic: None };
 
 /// 選択したコミットを基点に新しいブランチを作成します。
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]

@@ -7121,7 +7121,8 @@ impl GitPanel {
                     h_flex()
                         .gap_1()
                         .child(self.render_view_options_menu("view_options_menu"))
-                        .child(self.render_git_changes_actions_button(cx)),
+                        .child(self.render_git_changes_actions_button(cx))
+                        .child(crate::git_guide::guide_button("git-panel-guide", None)),
                 ),
         )
     }

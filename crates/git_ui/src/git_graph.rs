@@ -4,6 +4,7 @@ use crate::{
     commit_tooltip::CommitAvatar,
     commit_view::CommitView,
     git_status_icon,
+    git_terms::{self, help_aside},
     merge_request_box::{self, MergeRequestBox, MergeRequestCandidate, RowMark, RowMarks},
     rewrite_range_modal::{self, RewriteCommitRow, RewriteRangeModal},
 };
@@ -55,11 +56,12 @@ use theme::AccentColors;
 use time::{OffsetDateTime, UtcOffset, format_description::BorrowedFormatItem};
 use ui::{
     Chip, ColumnWidthConfig, CommonAnimationExt as _, ContextMenu, ContextMenuEntry, DiffStat,
-    Divider, HeaderResizeInfo, HighlightedLabel, IndentGuideColors, ListItem, ListItemSpacing,
-    PopoverMenu, RedistributableColumnsState, ScrollableHandle, Table, TableInteractionState,
-    TableRenderContext, TableResizeBehavior, Tooltip, WithScrollbar, bind_redistributable_columns,
-    prelude::*, redistribute_hidden_fractions, redistribute_hidden_widths,
-    render_redistributable_columns_resize_handles, render_table_header, table_row::TableRow,
+    Divider, DocumentationSide, HeaderResizeInfo, HighlightedLabel, IndentGuideColors, ListItem,
+    ListItemSpacing, PopoverMenu, RedistributableColumnsState, ScrollableHandle, Table,
+    TableInteractionState, TableRenderContext, TableResizeBehavior, Tooltip, WithScrollbar,
+    bind_redistributable_columns, prelude::*, redistribute_hidden_fractions,
+    redistribute_hidden_widths, render_redistributable_columns_resize_handles, render_table_header,
+    table_row::TableRow,
 };
 use util::{ResultExt, debug_panic};
 use workspace::{
@@ -6367,81 +6369,95 @@ impl GitGraph {
             let mut menu = menu
                 .context(focus_handle)
                 .header(format!("{count} 件を選択中"));
-            menu = menu.entry(
-                format!("選択した {count} 件を現在のブランチに取り込む (cherry-pick)"),
-                None,
-                {
+            menu = menu.item(
+                ContextMenuEntry::new(format!(
+                    "選択した {count} 件を現在のブランチに取り込む (cherry-pick)"
+                ))
+                .handler({
                     let graph = graph.clone();
                     move |window, cx| {
                         graph.update(cx, |graph, cx| graph.cherry_pick_rows(window, cx));
                     }
-                },
+                })
+                .documentation_aside(
+                    DocumentationSide::Right,
+                    help_aside(git_terms::CHERRY_PICK_SELECTION_HELP, None),
+                ),
             );
             // Squashing rewrites the checked-out branch in place, so it is only
             // offered for an unbroken range that lives on that branch; the
             // disabled entry says which of the two is missing.
             let range_refusal = action_bar::range_rewrite_refusal(rewrite_facts);
+            let squash_aside = help_aside(
+                git_terms::SQUASH_SELECTION_HELP,
+                range_refusal.map(SharedString::from),
+            );
             menu = match range_refusal {
-                None => menu.entry(
-                    format!("選択した {count} 件を 1 つにまとめる (squash)"),
-                    None,
-                    {
-                        let graph = graph.clone();
-                        move |window, cx| {
-                            graph.update(cx, |graph, cx| graph.squash_rows(window, cx));
-                        }
-                    },
+                None => menu.item(
+                    ContextMenuEntry::new(format!("選択した {count} 件を 1 つにまとめる (squash)"))
+                        .handler({
+                            let graph = graph.clone();
+                            move |window, cx| {
+                                graph.update(cx, |graph, cx| graph.squash_rows(window, cx));
+                            }
+                        })
+                        .documentation_aside(DocumentationSide::Right, squash_aside),
                 ),
                 Some(reason) => menu.item(
                     ContextMenuEntry::new(format!("1 つにまとめる (squash) — {reason}"))
-                        .disabled(true),
+                        .disabled(true)
+                        .documentation_aside(DocumentationSide::Right, squash_aside),
                 ),
             };
             // The todo editor rewrites the same range squashing does, so it is offered under the
             // same two conditions.
+            let rewrite_aside = help_aside(
+                git_terms::REWRITE_SELECTION_HELP,
+                range_refusal.map(SharedString::from),
+            );
             menu = match range_refusal {
-                None => menu.entry(
-                    format!("選択した {count} 件を並べ替え / まとめる / 捨てる…"),
-                    Some(EditSelectedCommits.boxed_clone()),
-                    {
+                None => menu.item(
+                    ContextMenuEntry::new(format!(
+                        "選択した {count} 件を並べ替え / まとめる / 捨てる…"
+                    ))
+                    .action(EditSelectedCommits.boxed_clone())
+                    .handler({
                         let graph = graph.clone();
                         move |window, cx| {
                             graph
                                 .update(cx, |graph, cx| graph.open_rewrite_range_modal(window, cx));
                         }
-                    },
+                    })
+                    .documentation_aside(DocumentationSide::Right, rewrite_aside),
                 ),
                 Some(reason) => menu.item(
                     ContextMenuEntry::new(format!("並べ替え / まとめる / 捨てる — {reason}"))
-                        .disabled(true),
+                        .disabled(true)
+                        .documentation_aside(DocumentationSide::Right, rewrite_aside),
                 ),
             };
             // Both open the merge-request box with the picked commits in it; the first keeps the
             // wording people know the feature by.
-            menu = menu.entry(
+            for label in [
                 format!("選択した {count} 件を MR 用の新しいブランチに 1 コミットとしてまとめる…"),
-                None,
-                {
-                    let graph = graph.clone();
-                    move |window, cx| {
-                        graph.update(cx, |graph, cx| {
-                            graph.add_selection_to_merge_request_box(window, cx)
-                        });
-                    }
-                },
-            );
-            menu = menu.entry(
                 format!("選択した {count} 件を MR の箱に入れる"),
-                None,
-                {
-                    let graph = graph.clone();
-                    move |window, cx| {
-                        graph.update(cx, |graph, cx| {
-                            graph.add_selection_to_merge_request_box(window, cx)
-                        });
-                    }
-                },
-            );
+            ] {
+                menu = menu.item(
+                    ContextMenuEntry::new(label)
+                        .handler({
+                            let graph = graph.clone();
+                            move |window, cx| {
+                                graph.update(cx, |graph, cx| {
+                                    graph.add_selection_to_merge_request_box(window, cx)
+                                });
+                            }
+                        })
+                        .documentation_aside(
+                            DocumentationSide::Right,
+                            help_aside(git_terms::MERGE_REQUEST_BOX_HELP, None),
+                        ),
+                );
+            }
             menu.separator().entry(
                 format!("SHA をコピー ({count} 件)"),
                 None,
@@ -6490,97 +6506,118 @@ impl GitGraph {
                     .color(Color::Muted),
             )
             .child(
-                PopoverMenu::new("git-graph-log-source")
-                    .menu({
-                        move |window, cx| {
-                            let graph = graph.clone();
-                            let head_branch_name = head_branch_name.clone();
-                            Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
-                                let mut menu = menu.entry("すべてのブランチ", None, {
-                                    let graph = graph.clone();
-                                    move |_window, cx| {
-                                        graph.update(cx, |graph, cx| {
-                                            graph.set_log_source(LogSource::All, cx);
-                                        });
+                self.help_hover_area(
+                    "git-graph-log-source-hover",
+                    action_bar::HoveredHelp::Toolbar(action_bar::ToolbarHelp::LogSource),
+                    cx,
+                )
+                .child(
+                    PopoverMenu::new("git-graph-log-source")
+                        .menu({
+                            move |window, cx| {
+                                let graph = graph.clone();
+                                let head_branch_name = head_branch_name.clone();
+                                Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
+                                    let mut menu = menu.entry("すべてのブランチ", None, {
+                                        let graph = graph.clone();
+                                        move |_window, cx| {
+                                            graph.update(cx, |graph, cx| {
+                                                graph.set_log_source(LogSource::All, cx);
+                                            });
+                                        }
+                                    });
+                                    if let Some(branch) = head_branch_name.clone() {
+                                        menu = menu.entry(
+                                            format!("現在のブランチ ({branch})"),
+                                            None,
+                                            {
+                                                let graph = graph.clone();
+                                                move |_window, cx| {
+                                                    let branch = branch.clone();
+                                                    graph.update(cx, |graph, cx| {
+                                                        graph.set_log_source(
+                                                            LogSource::Branch(branch),
+                                                            cx,
+                                                        );
+                                                    });
+                                                }
+                                            },
+                                        );
                                     }
-                                });
-                                if let Some(branch) = head_branch_name.clone() {
-                                    menu = menu.entry(
-                                        format!("現在のブランチ ({branch})"),
+                                    menu.separator().entry(
+                                        "ブランチを選ぶ…",
                                         None,
-                                        {
-                                            let graph = graph.clone();
-                                            move |_window, cx| {
-                                                let branch = branch.clone();
-                                                graph.update(cx, |graph, cx| {
-                                                    graph.set_log_source(
-                                                        LogSource::Branch(branch),
-                                                        cx,
-                                                    );
-                                                });
-                                            }
+                                        move |window, cx| {
+                                            graph.update(cx, |graph, cx| {
+                                                graph.pick_log_source_branch(window, cx);
+                                            });
                                         },
-                                    );
-                                }
-                                menu.separator().entry(
-                                    "ブランチを選ぶ…",
-                                    None,
-                                    move |window, cx| {
-                                        graph.update(cx, |graph, cx| {
-                                            graph.pick_log_source_branch(window, cx);
-                                        });
-                                    },
-                                )
-                            }))
-                        }
-                    })
-                    .trigger_with_tooltip(
-                        Button::new("git-graph-log-source-trigger", source_label)
-                            .label_size(LabelSize::Small)
-                            .end_icon(
-                                Icon::new(IconName::ChevronDown)
-                                    .size(IconSize::XSmall)
-                                    .color(Color::Muted),
-                            ),
-                        Tooltip::text("グラフに出すコミットの範囲を選びます"),
-                    ),
+                                    )
+                                }))
+                            }
+                        })
+                        .trigger_with_tooltip(
+                            Button::new("git-graph-log-source-trigger", source_label)
+                                .label_size(LabelSize::Small)
+                                .end_icon(
+                                    Icon::new(IconName::ChevronDown)
+                                        .size(IconSize::XSmall)
+                                        .color(Color::Muted),
+                                ),
+                            Tooltip::text(action_bar::ToolbarHelp::LogSource.help().sentence()),
+                        ),
+                ),
             )
             .child(Divider::vertical())
             .child(
-                Button::new("git-graph-tags-trigger", "タグ一覧")
-                    .label_size(LabelSize::Small)
-                    .start_icon(
-                        Icon::new(IconName::Bookmark)
-                            .size(IconSize::XSmall)
-                            .color(Color::Muted),
-                    )
-                    .end_icon(
-                        Icon::new(IconName::ChevronDown)
-                            .size(IconSize::XSmall)
-                            .color(Color::Muted),
-                    )
-                    .tooltip(Tooltip::text(
-                        "タグを検索して選ぶと、そのコミットまで移動します",
-                    ))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.open_tag_picker(window, cx);
-                    })),
+                self.help_hover_area(
+                    "git-graph-tags-hover",
+                    action_bar::HoveredHelp::Toolbar(action_bar::ToolbarHelp::TagList),
+                    cx,
+                )
+                .child(
+                    Button::new("git-graph-tags-trigger", "タグ一覧")
+                        .label_size(LabelSize::Small)
+                        .start_icon(
+                            Icon::new(IconName::Bookmark)
+                                .size(IconSize::XSmall)
+                                .color(Color::Muted),
+                        )
+                        .end_icon(
+                            Icon::new(IconName::ChevronDown)
+                                .size(IconSize::XSmall)
+                                .color(Color::Muted),
+                        )
+                        .tooltip(Tooltip::text(
+                            action_bar::ToolbarHelp::TagList.help().sentence(),
+                        ))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_tag_picker(window, cx);
+                        })),
+                ),
             )
             .child(Divider::vertical())
             .child(
-                Button::new("git-graph-compare-refs", "比較…")
-                    .label_size(LabelSize::Small)
-                    .start_icon(
-                        Icon::new(IconName::Diff)
-                            .size(IconSize::XSmall)
-                            .color(Color::Muted),
-                    )
-                    .tooltip(Tooltip::text(
-                        "2 つのブランチ / タグの中身を比べます (全部移植できているかの確認に)",
-                    ))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.open_ref_comparison(window, cx);
-                    })),
+                self.help_hover_area(
+                    "git-graph-compare-refs-hover",
+                    action_bar::HoveredHelp::Toolbar(action_bar::ToolbarHelp::CompareRefs),
+                    cx,
+                )
+                .child(
+                    Button::new("git-graph-compare-refs", "比較…")
+                        .label_size(LabelSize::Small)
+                        .start_icon(
+                            Icon::new(IconName::Diff)
+                                .size(IconSize::XSmall)
+                                .color(Color::Muted),
+                        )
+                        .tooltip(Tooltip::text(
+                            action_bar::ToolbarHelp::CompareRefs.help().sentence(),
+                        ))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_ref_comparison(window, cx);
+                        })),
+                ),
             )
             .child(self.render_merge_request_box_button(cx))
             .child(div().flex_1())
@@ -6601,6 +6638,7 @@ impl GitGraph {
                         })),
                 )
             })
+            .child(crate::git_guide::guide_button("git-graph-guide", None))
             .into_any_element()
     }
 
@@ -6781,24 +6819,31 @@ impl GitGraph {
     }
 
     fn render_merge_request_box_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        Button::new("git-graph-merge-request-box", "MR を作る")
-            .label_size(LabelSize::Small)
-            .start_icon(
-                Icon::new(IconName::GitBranch)
-                    .size(IconSize::XSmall)
-                    .color(Color::Muted),
-            )
-            .toggle_state(self.merge_request_box_open)
-            .tooltip(|_window, cx| {
-                Tooltip::for_action(
-                    "コミットを箱に集めて、MR 用に 1 コミットのブランチを作ります",
-                    &git::ToggleMergeRequestBox,
-                    cx,
+        self.help_hover_area(
+            "git-graph-merge-request-box-hover",
+            action_bar::HoveredHelp::Toolbar(action_bar::ToolbarHelp::MergeRequest),
+            cx,
+        )
+        .child(
+            Button::new("git-graph-merge-request-box", "MR を作る")
+                .label_size(LabelSize::Small)
+                .start_icon(
+                    Icon::new(IconName::GitBranch)
+                        .size(IconSize::XSmall)
+                        .color(Color::Muted),
                 )
-            })
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.toggle_merge_request_box(window, cx);
-            }))
+                .toggle_state(self.merge_request_box_open)
+                .tooltip(|_window, cx| {
+                    Tooltip::for_action(
+                        action_bar::ToolbarHelp::MergeRequest.help().sentence(),
+                        &git::ToggleMergeRequestBox,
+                        cx,
+                    )
+                })
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.toggle_merge_request_box(window, cx);
+                })),
+        )
     }
 
     #[cfg(test)]
@@ -7280,7 +7325,17 @@ impl Render for GitGraph {
                     .children(self.render_loose_refs_banner(cx))
                     .children(self.render_first_run_hints(cx))
                     .children(self.render_commit_action_bar(cx))
-                    .child(div().flex_1().child(content)),
+                    .children(self.render_action_description(cx))
+                    // Without `min_h_0` the content cannot get shorter than its contents, where the
+                    // MR box's scrolling body counts at full height: the column then overflows and
+                    // squeezes the rows above instead.
+                    .child(
+                        div()
+                            .debug_selector(|| "git-graph-content".into())
+                            .flex_1()
+                            .min_h_0()
+                            .child(content),
+                    ),
             )
             .children(self.context_menu.as_ref().map(|context_menu| {
                 deferred(
@@ -7940,6 +7995,9 @@ mod tests {
             cx.set_global(settings_store);
             theme_settings::init(theme::LoadThemes::JustBase, cx);
             language_model::init(cx);
+            // The tag picker's search box is built through the editor factory, which only
+            // `editor::init` registers; without it the test depends on another test running first.
+            editor::init(cx);
             crate::init(cx);
         });
     }

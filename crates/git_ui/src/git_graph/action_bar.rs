@@ -6,8 +6,14 @@ use super::*;
 use crate::commit_context_menu::{
     CommitFacts, CommitMenuOperation, commit_operation_refusal, run_commit_menu_operation,
 };
+use crate::git_terms::{
+    AMEND_HELP, CHERRY_PICK_SELECTION_HELP, COMPARE_REFS_HELP, LOG_SOURCE_HELP,
+    MERGE_REQUEST_BOX_HELP, MERGE_REQUEST_TOOLBAR_HELP, MORE_MENU_HELP, OperationHelp,
+    RESET_HARD_SUMMARY, RESET_MENU_HELP, RESET_MIXED_SUMMARY, RESET_SOFT_SUMMARY,
+    REWRITE_SELECTION_HELP, TAG_LIST_HELP, commit_operation_help, help_aside,
+};
 use db::kvp::Dismissable;
-use gpui::canvas;
+use gpui::{Stateful, canvas};
 
 /// "次回から表示しない" on the graph's hint band.
 pub(super) struct GitGraphHints;
@@ -25,6 +31,8 @@ pub(super) struct GraphGuideState {
     /// The multi-selection facts, which walk the loaded history, for the selection, commit count
     /// and HEAD they were worked out for.
     selection_facts: Option<(BTreeSet<usize>, usize, Option<Oid>, bool, bool)>,
+    /// What the mouse is over, whose explanation the line under the button row shows.
+    pub(super) hovered_help: Option<HoveredHelp>,
 }
 
 impl GraphGuideState {
@@ -34,7 +42,97 @@ impl GraphGuideState {
                 && !GitGraphHints::dismissed(cx),
             bar_width: Rc::new(Cell::new(None)),
             selection_facts: None,
+            hovered_help: None,
         }
+    }
+}
+
+/// A control whose explanation the line under the button row shows while the mouse is over it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum HoveredHelp {
+    /// A button of the row, for the rows picked when the mouse came over it: a button that is
+    /// taken off screen under the mouse (by a click that changes the selection) never hears that
+    /// the mouse left, and must not go on explaining itself for another selection.
+    BarButton {
+        action: CommitBarAction,
+        rows: Vec<usize>,
+    },
+    MoreMenu {
+        rows: Vec<usize>,
+    },
+    Toolbar(ToolbarHelp),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ToolbarHelp {
+    LogSource,
+    TagList,
+    CompareRefs,
+    MergeRequest,
+}
+
+impl ToolbarHelp {
+    pub(super) fn help(self) -> OperationHelp {
+        match self {
+            Self::LogSource => LOG_SOURCE_HELP,
+            Self::TagList => TAG_LIST_HELP,
+            Self::CompareRefs => COMPARE_REFS_HELP,
+            Self::MergeRequest => MERGE_REQUEST_TOOLBAR_HELP,
+        }
+    }
+}
+
+/// What the row's buttons are about, whatever their label says for the selection.
+pub(super) fn commit_bar_help(action: CommitBarAction) -> OperationHelp {
+    match action {
+        CommitBarAction::Menu(operation) => commit_operation_help(operation),
+        CommitBarAction::ResetMenu => RESET_MENU_HELP,
+        CommitBarAction::Amend => AMEND_HELP,
+        CommitBarAction::MergeRequestBox => MERGE_REQUEST_BOX_HELP,
+        CommitBarAction::CherryPickSelection => CHERRY_PICK_SELECTION_HELP,
+        CommitBarAction::RewriteSelection => REWRITE_SELECTION_HELP,
+    }
+}
+
+const SINGLE_SELECTION_DESCRIPTION: &str =
+    "ボタンにマウスを乗せると、ここに説明が出ます。用語の意味は操作ガイドでも調べられます";
+
+/// The line under the button row: what the hovered control does (or why it cannot be pressed),
+/// otherwise what the selection allows. With nothing picked the row itself already says what to
+/// do, so the line stays empty.
+pub(super) fn action_description(
+    selection: &CommitBarSelection,
+    buttons: &[CommitBarButton],
+    rows: &[usize],
+    hovered: Option<&HoveredHelp>,
+) -> SharedString {
+    match hovered {
+        Some(HoveredHelp::Toolbar(toolbar)) => return toolbar.help().line().into(),
+        Some(HoveredHelp::BarButton {
+            action,
+            rows: hovered_rows,
+        }) if hovered_rows.as_slice() == rows => {
+            if let Some(button) = buttons.iter().find(|button| button.action == *action) {
+                return match &button.refusal {
+                    Some(refusal) => {
+                        format!("「{}」は今は使えません: {refusal}", button.label).into()
+                    }
+                    None => button.help.line().into(),
+                };
+            }
+        }
+        Some(HoveredHelp::MoreMenu { rows: hovered_rows }) if hovered_rows.as_slice() == rows => {
+            return MORE_MENU_HELP.line().into();
+        }
+        _ => {}
+    }
+    match selection {
+        CommitBarSelection::Nothing => SharedString::default(),
+        CommitBarSelection::Single { .. } => SINGLE_SELECTION_DESCRIPTION.into(),
+        CommitBarSelection::Multiple { count, .. } => format!(
+            "選んだ {count} 件をまとめて取り込む・並べ替える・MR の箱に入れることができます。ボタンにマウスを乗せると説明が出ます"
+        )
+        .into(),
     }
 }
 
@@ -58,7 +156,7 @@ pub(super) enum CommitBarAction {
 pub(super) struct CommitBarButton {
     pub(super) action: CommitBarAction,
     pub(super) label: SharedString,
-    pub(super) tooltip: SharedString,
+    pub(super) help: OperationHelp,
     /// Why the button cannot be pressed now; it shows greyed out with this as its tooltip.
     pub(super) refusal: Option<SharedString>,
 }
@@ -114,23 +212,21 @@ pub(super) fn commit_bar_buttons(
     selection: &CommitBarSelection,
     can_hold_merge_request_box: bool,
 ) -> Vec<CommitBarButton> {
-    let button =
-        |action, label: &str, tooltip: &str, refusal: Option<SharedString>| CommitBarButton {
-            action,
-            label: SharedString::from(label.to_string()),
-            tooltip: SharedString::from(tooltip.to_string()),
-            refusal,
-        };
+    let button = |action, label: &str, refusal: Option<SharedString>| CommitBarButton {
+        action,
+        label: SharedString::from(label.to_string()),
+        help: commit_bar_help(action),
+        refusal,
+    };
     let merge_request_box_refusal =
         (!can_hold_merge_request_box).then_some(SharedString::from(MERGE_REQUEST_BOX_REFUSAL));
     match selection {
         CommitBarSelection::Nothing => Vec::new(),
         CommitBarSelection::Single { facts } => {
-            let menu = |operation, label: &str, tooltip: &str| {
+            let menu = |operation, label: &str| {
                 button(
                     CommitBarAction::Menu(operation),
                     label,
-                    tooltip,
                     commit_operation_refusal(operation, facts),
                 )
             };
@@ -139,51 +235,20 @@ pub(super) fn commit_bar_buttons(
                 buttons.push(button(
                     CommitBarAction::Amend,
                     "直前のコミットを修正 (amend)",
-                    "Git パネルで、今の変更とメッセージで直前のコミットを置き換えます",
                     None,
                 ));
             }
             buttons.extend([
-                menu(
-                    CommitMenuOperation::CreateBranch,
-                    "ここからブランチ",
-                    "このコミットを基点に新しいブランチを作ります",
-                ),
-                menu(
-                    CommitMenuOperation::Checkout,
-                    "チェックアウト",
-                    "このコミットをチェックアウトします (detached HEAD になります)",
-                ),
-                menu(
-                    CommitMenuOperation::CherryPick,
-                    "取り込む (cherry-pick)",
-                    "このコミットの変更を現在のブランチに新しいコミットとして積みます",
-                ),
-                menu(
-                    CommitMenuOperation::Revert,
-                    "打ち消す (revert)",
-                    "このコミットの変更を打ち消すコミットを作ります (履歴は書き換えません)",
-                ),
-                menu(
-                    CommitMenuOperation::Reword,
-                    "メッセージを書き換え",
-                    "このコミットのメッセージを書き換えます (以降のコミットの SHA が変わります)",
-                ),
-                menu(
-                    CommitMenuOperation::Fixup,
-                    "今の変更を入れる (fixup)",
-                    "今の変更をこのコミットに入れます (以降のコミットの SHA が変わります)",
-                ),
-                button(
-                    CommitBarAction::ResetMenu,
-                    "このコミットまで戻す",
-                    "現在のブランチをこのコミットまで戻します (soft / mixed / hard を選びます)",
-                    None,
-                ),
+                menu(CommitMenuOperation::CreateBranch, "ここからブランチ"),
+                menu(CommitMenuOperation::Checkout, "チェックアウト"),
+                menu(CommitMenuOperation::CherryPick, "取り込む (cherry-pick)"),
+                menu(CommitMenuOperation::Revert, "打ち消す (revert)"),
+                menu(CommitMenuOperation::Reword, "メッセージを書き換え"),
+                menu(CommitMenuOperation::Fixup, "今の変更を入れる (fixup)"),
+                button(CommitBarAction::ResetMenu, "このコミットまで戻す", None),
                 button(
                     CommitBarAction::MergeRequestBox,
                     "MR の箱に入れる",
-                    "このコミットを MR の箱に入れます",
                     merge_request_box_refusal,
                 ),
             ]);
@@ -193,20 +258,17 @@ pub(super) fn commit_bar_buttons(
             button(
                 CommitBarAction::CherryPickSelection,
                 &format!("{count} 件を取り込む"),
-                "選んだコミットの変更を、古い順に現在のブランチに積みます (cherry-pick)",
                 None,
             ),
             button(
                 CommitBarAction::RewriteSelection,
                 "並べ替え / まとめる / 捨てる…",
-                "選んだ範囲のコミットの順番・まとめ方・メッセージを編集します",
                 range_rewrite_refusal(*rewrite)
                     .map(|reason| SharedString::from(format!("{reason}。"))),
             ),
             button(
                 CommitBarAction::MergeRequestBox,
                 &format!("MR の箱に入れる ({count} 件)"),
-                "選んだコミットを MR の箱に入れます",
                 merge_request_box_refusal,
             ),
         ],
@@ -454,6 +516,9 @@ impl GitGraph {
             .relative()
             .w_full()
             .min_w_0()
+            // `overflow_hidden` lets a flex item shrink to nothing, so the row has to opt out of
+            // shrinking or it is the first thing a crowded tab squeezes.
+            .flex_none()
             .overflow_hidden()
             .px_1p5()
             .py_1()
@@ -474,11 +539,15 @@ impl GitGraph {
                 .absolute()
                 .size_full()
             })
+            // As tall as a button, so that the row does not change height between nothing
+            // picked (the label alone) and a pick (the buttons).
             .child(
-                Label::new(leading_label)
-                    .size(LabelSize::Small)
-                    .color(Color::Muted)
-                    .truncate(),
+                h_flex().min_w_0().h(ButtonSize::Default.rems()).child(
+                    Label::new(leading_label)
+                        .size(LabelSize::Small)
+                        .color(Color::Muted)
+                        .truncate(),
+                ),
             );
 
         for (index, button) in inline_buttons.iter().enumerate() {
@@ -499,13 +568,21 @@ impl GitGraph {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let selector = format!("git-graph-action-{}", commit_bar_selector(button.action));
-        let tooltip = button.refusal.clone().unwrap_or(button.tooltip.clone());
+        let tooltip: SharedString = button
+            .refusal
+            .clone()
+            .unwrap_or_else(|| button.help.sentence().into());
+        let hover_target = HoveredHelp::BarButton {
+            action: button.action,
+            rows: self.selected_rows(),
+        };
         if button.action == CommitBarAction::ResetMenu {
             let Some(sha) = sha else {
                 return Empty.into_any_element();
             };
             let workspace = self.workspace.clone();
-            return div()
+            return self
+                .help_hover_area(("git-graph-action-hover", index), hover_target, cx)
                 .flex_none()
                 .debug_selector(move || selector)
                 .child(
@@ -531,7 +608,7 @@ impl GitGraph {
                 .into_any_element();
         }
         let handler = self.commit_bar_handler(button.action, sha, cx);
-        div()
+        self.help_hover_area(("git-graph-action-hover", index), hover_target, cx)
             .flex_none()
             .debug_selector(move || selector)
             .child(
@@ -562,7 +639,10 @@ impl GitGraph {
             })
             .collect::<Vec<_>>();
         let workspace = self.workspace.clone();
-        div()
+        let hover_target = HoveredHelp::MoreMenu {
+            rows: self.selected_rows(),
+        };
+        self.help_hover_area("git-graph-action-more-hover", hover_target, cx)
             .flex_none()
             .debug_selector(|| "git-graph-action-more".into())
             .child(
@@ -589,24 +669,17 @@ impl GitGraph {
                                     });
                                     continue;
                                 }
-                                menu = match button.refusal.clone() {
-                                    Some(reason) => menu.item(
-                                        ContextMenuEntry::new(button.label.clone())
-                                            .disabled(true)
-                                            .documentation_aside(
-                                                ui::DocumentationSide::Right,
-                                                move |_cx| {
-                                                    Label::new(reason.clone()).into_any_element()
-                                                },
-                                            ),
-                                    ),
-                                    None => {
-                                        let handler = handler.clone();
-                                        menu.entry(button.label.clone(), None, move |window, cx| {
-                                            handler(window, cx)
-                                        })
-                                    }
-                                };
+                                let entry = ContextMenuEntry::new(button.label.clone())
+                                    .documentation_aside(
+                                        ui::DocumentationSide::Right,
+                                        help_aside(button.help, button.refusal.clone()),
+                                    );
+                                menu = menu.item(if button.refusal.is_some() {
+                                    entry.disabled(true)
+                                } else {
+                                    let handler = handler.clone();
+                                    entry.handler(move |window, cx| handler(window, cx))
+                                });
                             }
                             menu
                         }))
@@ -619,10 +692,82 @@ impl GitGraph {
                                     .size(IconSize::XSmall)
                                     .color(Color::Muted),
                             ),
-                        Tooltip::text("幅が足りずに入らなかった操作"),
+                        Tooltip::text(MORE_MENU_HELP.sentence()),
                     ),
             )
             .into_any_element()
+    }
+
+    /// A box around a control that tells the line under the button row when the mouse is over
+    /// the control.
+    pub(super) fn help_hover_area(
+        &self,
+        id: impl Into<ElementId>,
+        target: HoveredHelp,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let id = id.into();
+        div()
+            .id(id.clone())
+            .debug_selector(move || id.to_string())
+            .on_hover(cx.listener(move |this, hovered: &bool, _window, cx| {
+                this.set_hovered_help(target.clone(), *hovered, cx);
+            }))
+    }
+
+    fn set_hovered_help(&mut self, target: HoveredHelp, hovered: bool, cx: &mut Context<Self>) {
+        if hovered {
+            if self.guide.hovered_help.as_ref() != Some(&target) {
+                self.guide.hovered_help = Some(target);
+                cx.notify();
+            }
+        } else if self.guide.hovered_help.as_ref() == Some(&target) {
+            self.guide.hovered_help = None;
+            cx.notify();
+        }
+    }
+
+    pub(super) fn action_description_text(&mut self, cx: &App) -> SharedString {
+        let selection = self.commit_bar_selection(cx);
+        let buttons = commit_bar_buttons(&selection, self.can_hold_merge_request_box());
+        action_description(
+            &selection,
+            &buttons,
+            &self.selected_rows(),
+            self.guide.hovered_help.as_ref(),
+        )
+    }
+
+    /// The line under the button row. It is always there, one line high, so that hovering or
+    /// picking a commit never moves the table.
+    pub(super) fn render_action_description(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        if self.graph_data.commits.is_empty() {
+            return None;
+        }
+        let text = self.action_description_text(cx);
+        Some(
+            h_flex()
+                .debug_selector(|| "git-graph-action-description".into())
+                .flex_none()
+                .w_full()
+                .min_w_0()
+                .h_6()
+                .px_2()
+                .overflow_hidden()
+                .border_b_1()
+                .border_color(cx.theme().colors().border_variant)
+                .child(
+                    Label::new(text)
+                        .size(LabelSize::Small)
+                        .color(Color::Muted)
+                        .single_line()
+                        .truncate(),
+                )
+                .into_any_element(),
+        )
     }
 
     /// Three lines on what the graph can do that nothing on screen shows, until the user says
@@ -725,29 +870,51 @@ fn reset_menu_entries(
 ) -> ContextMenu {
     let sha = sha.to_string();
     [
-        (CommitMenuOperation::ResetSoft, "soft: 変更をステージに残す"),
+        (
+            CommitMenuOperation::ResetSoft,
+            format!("soft: {RESET_SOFT_SUMMARY}"),
+        ),
         (
             CommitMenuOperation::ResetMixed,
-            "mixed: 変更を作業ツリーに残す",
+            format!("mixed: {RESET_MIXED_SUMMARY}"),
         ),
-        (CommitMenuOperation::ResetHard, "hard: 変更を捨てる…"),
+        (
+            CommitMenuOperation::ResetHard,
+            format!("hard: {RESET_HARD_SUMMARY}…"),
+        ),
     ]
     .into_iter()
     .fold(menu, |menu, (operation, label)| {
         let repository = repository.clone();
         let workspace = workspace.clone();
+        let action = operation.action(&sha);
         let sha = sha.clone();
-        menu.entry(label, Some(operation.action(&sha)), move |window, cx| {
-            let (Some(repository), Some(workspace)) = (
-                repository
-                    .as_ref()
-                    .and_then(|repository| repository.upgrade()),
-                workspace.upgrade(),
-            ) else {
-                return;
-            };
-            run_commit_menu_operation(operation, repository, workspace, sha.clone(), window, cx);
-        })
+        menu.item(
+            ContextMenuEntry::new(label)
+                .action(action)
+                .handler(move |window, cx| {
+                    let (Some(repository), Some(workspace)) = (
+                        repository
+                            .as_ref()
+                            .and_then(|repository| repository.upgrade()),
+                        workspace.upgrade(),
+                    ) else {
+                        return;
+                    };
+                    run_commit_menu_operation(
+                        operation,
+                        repository,
+                        workspace,
+                        sha.clone(),
+                        window,
+                        cx,
+                    );
+                })
+                .documentation_aside(
+                    ui::DocumentationSide::Right,
+                    help_aside(commit_operation_help(operation), None),
+                ),
+        )
     })
 }
 
@@ -1255,6 +1422,75 @@ mod tests {
         panel.read_with(&*cx, |panel, _| assert!(panel.amend_pending()));
     }
 
+    /// The row is as tall with nothing picked as with the buttons of a pick, and opening the MR
+    /// box next to the graph, in a tab too short for the box's contents, leaves it so with its
+    /// buttons whole inside it.
+    #[gpui::test]
+    async fn test_bar_keeps_its_height_when_the_box_opens(cx: &mut TestAppContext) {
+        let commits = vec![commit(3, &[2]), commit(2, &[1]), commit(1, &[])];
+        let (_fs, _repository, multi_workspace, graph, cx) = open_graph(commits, cx).await;
+        cx.simulate_resize(gpui::size(px(1200.), px(500.)));
+        graph.update(cx, |_, cx| cx.notify());
+        cx.run_until_parked();
+        let nothing_picked = cx
+            .debug_bounds("git-graph-action-bar")
+            .expect("the row is there before anything is picked");
+        select_rows(&graph, &[1], &multi_workspace, cx);
+        let measure = |window_height: Option<Pixels>, cx: &mut VisualTestContext| {
+            // The row measures its width on the first frame and settles on the next.
+            for _ in 0..2 {
+                graph.update(cx, |_, cx| cx.notify());
+                cx.run_until_parked();
+            }
+            let bar = cx
+                .debug_bounds("git-graph-action-bar")
+                .expect("the row is on screen");
+            let button = cx
+                .debug_bounds("git-graph-action-branch")
+                .expect("ここからブランチ is on screen");
+            assert!(
+                bar.top() <= button.top() && button.bottom() <= bar.bottom(),
+                "{button:?} is cut off by {bar:?}"
+            );
+            let description = cx
+                .debug_bounds("git-graph-action-description")
+                .expect("the line under the row is on screen");
+            // Keeping the rows whole is not enough: a graph (or box) taller than what is left
+            // would run off the bottom of the tab, out of reach of its own scrolling.
+            if let Some(window_height) = window_height {
+                let content = cx
+                    .debug_bounds("git-graph-content")
+                    .expect("the graph is on screen");
+                assert!(
+                    content.bottom() <= window_height,
+                    "{content:?} runs past the window's {window_height:?}"
+                );
+            }
+            (bar.size.height, description.size.height)
+        };
+        let closed = measure(Some(px(500.)), cx);
+        assert_eq!(closed.0, nothing_picked.size.height);
+
+        graph.update_in(cx, |graph, window, cx| {
+            graph.toggle_merge_request_box(window, cx);
+        });
+        cx.run_until_parked();
+        assert!(graph.read_with(&*cx, |graph, _| graph.visible_merge_request_box().is_some()));
+        let open = measure(Some(px(500.)), cx);
+        assert_eq!(open, closed);
+
+        // Shorter still, the rows keep their heights and the graph and the box give way.
+        cx.simulate_resize(gpui::size(px(1200.), px(400.)));
+        let short = measure(Some(px(400.)), cx);
+        assert_eq!(short, closed);
+
+        // Too short for the rows themselves, the graph has nothing left to give, and the row
+        // still does not give way to the rows above it.
+        cx.simulate_resize(gpui::size(px(1200.), px(160.)));
+        let cramped = measure(None, cx);
+        assert_eq!(cramped, closed);
+    }
+
     #[gpui::test]
     async fn test_hints_stay_away_once_dismissed(cx: &mut TestAppContext) {
         // A database of its own: the one tests share would carry the dismissal into other tests.
@@ -1282,5 +1518,267 @@ mod tests {
             )
         });
         reopened.read_with(&*cx, |graph, _| assert!(!graph.guide.hints_visible));
+    }
+
+    /// Wider than this, the line under the row would not fit next to the details panel at 1280px.
+    const DESCRIPTION_LINE_WIDTH: Pixels = px(900.);
+
+    #[test]
+    fn test_every_bar_button_is_explained() {
+        let plain = CommitFacts {
+            is_head: false,
+            is_merge: Some(false),
+            fixup_refusal: None,
+        };
+        let selections = [
+            single(plain.clone()),
+            single(CommitFacts {
+                is_head: true,
+                ..plain.clone()
+            }),
+            single(CommitFacts {
+                is_merge: Some(true),
+                ..plain
+            }),
+            CommitBarSelection::Multiple {
+                count: 2,
+                rewrite: RangeRewriteFacts {
+                    contiguous: true,
+                    on_current_branch: true,
+                    head_is_branch: true,
+                    worktree_dirty: false,
+                },
+            },
+        ];
+        let mut explained = Vec::new();
+        for selection in &selections {
+            for button in commit_bar_buttons(selection, true) {
+                assert_eq!(button.help, commit_bar_help(button.action));
+                if !explained.contains(&button.action) {
+                    explained.push(button.action);
+                }
+            }
+        }
+        let every_action = [
+            CommitBarAction::Amend,
+            CommitBarAction::Menu(CommitMenuOperation::CreateBranch),
+            CommitBarAction::Menu(CommitMenuOperation::Checkout),
+            CommitBarAction::Menu(CommitMenuOperation::CherryPick),
+            CommitBarAction::Menu(CommitMenuOperation::Revert),
+            CommitBarAction::Menu(CommitMenuOperation::Reword),
+            CommitBarAction::Menu(CommitMenuOperation::Fixup),
+            CommitBarAction::ResetMenu,
+            CommitBarAction::MergeRequestBox,
+            CommitBarAction::CherryPickSelection,
+            CommitBarAction::RewriteSelection,
+        ];
+        for action in every_action {
+            assert!(explained.contains(&action), "{action:?} is on the row");
+        }
+        assert_eq!(explained.len(), every_action.len(), "{explained:?}");
+        // The row's own buttons carry the words of what they do, so that two of them trading
+        // explanations is caught (the commit menu's operations are checked in `git_terms`).
+        for (action, in_title, in_explanation) in [
+            (CommitBarAction::Amend, "amend", "直前のコミット"),
+            (CommitBarAction::ResetMenu, "reset", "soft / mixed / hard"),
+            (CommitBarAction::MergeRequestBox, "MR の箱", "MR 用"),
+            (
+                CommitBarAction::CherryPickSelection,
+                "cherry-pick",
+                "古い順",
+            ),
+            (CommitBarAction::RewriteSelection, "並べ替え", "squash"),
+        ] {
+            let help = commit_bar_help(action);
+            assert!(help.title.contains(in_title), "{action:?}: {help:?}");
+            assert!(
+                help.explanation.contains(in_explanation),
+                "{action:?}: {help:?}"
+            );
+        }
+
+        let helps = every_action
+            .iter()
+            .map(|action| commit_bar_help(*action))
+            .chain(
+                [
+                    CommitMenuOperation::CreateTag,
+                    CommitMenuOperation::Drop,
+                    CommitMenuOperation::ResetSoft,
+                    CommitMenuOperation::ResetMixed,
+                    CommitMenuOperation::ResetHard,
+                    CommitMenuOperation::CopyTagDistance,
+                ]
+                .map(commit_operation_help),
+            )
+            .chain(
+                [
+                    ToolbarHelp::LogSource,
+                    ToolbarHelp::TagList,
+                    ToolbarHelp::CompareRefs,
+                    ToolbarHelp::MergeRequest,
+                ]
+                .map(ToolbarHelp::help),
+            )
+            .chain([MORE_MENU_HELP, crate::git_terms::SQUASH_SELECTION_HELP])
+            .collect::<Vec<_>>();
+        for (index, help) in helps.iter().enumerate() {
+            assert!(!help.title.is_empty() && !help.explanation.is_empty());
+            assert!(
+                !help.explanation.ends_with('。'),
+                "the sentence adds the full stop: {help:?}"
+            );
+            assert!(
+                estimated_button_width(&help.line()) <= DESCRIPTION_LINE_WIDTH,
+                "fits on the line under the row: {}",
+                help.line()
+            );
+            assert!(
+                helps[..index]
+                    .iter()
+                    .all(|other| other.explanation != help.explanation),
+                "no two operations share an explanation: {help:?}"
+            );
+        }
+        for text in [
+            SINGLE_SELECTION_DESCRIPTION.to_string(),
+            action_description(
+                &selections[3],
+                &commit_bar_buttons(&selections[3], true),
+                &[0, 1],
+                None,
+            )
+            .to_string(),
+        ] {
+            assert!(
+                estimated_button_width(&text) <= DESCRIPTION_LINE_WIDTH,
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_action_description_follows_the_hovered_control() {
+        let facts = CommitFacts {
+            is_head: false,
+            is_merge: Some(true),
+            fixup_refusal: None,
+        };
+        let selection = single(facts);
+        let buttons = commit_bar_buttons(&selection, true);
+        let describe = |hovered: Option<HoveredHelp>| {
+            action_description(&selection, &buttons, &[1], hovered.as_ref()).to_string()
+        };
+        let hovering = |action| HoveredHelp::BarButton {
+            action,
+            rows: vec![1],
+        };
+
+        assert_eq!(describe(None), SINGLE_SELECTION_DESCRIPTION);
+        assert_eq!(
+            describe(Some(hovering(CommitBarAction::Menu(
+                CommitMenuOperation::Checkout
+            )))),
+            commit_operation_help(CommitMenuOperation::Checkout).line()
+        );
+        assert_eq!(
+            describe(Some(hovering(CommitBarAction::Menu(
+                CommitMenuOperation::Revert
+            )))),
+            "「打ち消す (revert)」は今は使えません: マージコミットは打ち消せません。",
+            "a greyed-out button says why"
+        );
+        assert_eq!(
+            describe(Some(HoveredHelp::BarButton {
+                action: CommitBarAction::Menu(CommitMenuOperation::Checkout),
+                rows: vec![2],
+            })),
+            SINGLE_SELECTION_DESCRIPTION,
+            "a hover left over from another selection is not this selection's"
+        );
+        assert_eq!(
+            describe(Some(hovering(CommitBarAction::CherryPickSelection))),
+            SINGLE_SELECTION_DESCRIPTION,
+            "a button this selection does not have explains nothing"
+        );
+        assert_eq!(
+            describe(Some(HoveredHelp::Toolbar(ToolbarHelp::CompareRefs))),
+            COMPARE_REFS_HELP.line()
+        );
+        assert_eq!(
+            action_description(&CommitBarSelection::Nothing, &[], &[], None),
+            SharedString::default()
+        );
+    }
+
+    /// Moving the mouse onto a button explains it on the line under the row, and off it brings the
+    /// selection's hint back, without the line (and so the table) moving.
+    #[gpui::test]
+    async fn test_hovering_a_bar_button_explains_it(cx: &mut TestAppContext) {
+        let commits = vec![commit(3, &[2]), commit(2, &[1]), commit(1, &[])];
+        let (_fs, _repository, multi_workspace, graph, cx) = open_graph(commits, cx).await;
+        let description = |graph: &Entity<GitGraph>, cx: &mut VisualTestContext| {
+            graph.update(cx, |graph, cx| {
+                graph.action_description_text(cx).to_string()
+            })
+        };
+
+        draw_workspace(&multi_workspace, cx);
+        let empty_bounds = cx
+            .debug_bounds("git-graph-action-description")
+            .expect("the line is there before anything is picked");
+        assert_eq!(description(&graph, cx), "");
+
+        select_rows(&graph, &[1], &multi_workspace, cx);
+        assert_eq!(description(&graph, cx), SINGLE_SELECTION_DESCRIPTION);
+        let picked_bounds = cx
+            .debug_bounds("git-graph-action-description")
+            .expect("the line stays");
+        assert_eq!(
+            picked_bounds.size, empty_bounds.size,
+            "an empty line is as high as a full one"
+        );
+        let revert = cx
+            .debug_bounds("git-graph-action-revert")
+            .expect("the revert button is on screen");
+        cx.simulate_mouse_move(revert.center(), None, Modifiers::none());
+        draw_workspace(&multi_workspace, cx);
+        assert_eq!(
+            description(&graph, cx),
+            commit_operation_help(CommitMenuOperation::Revert).line()
+        );
+        let hovered_bounds = cx
+            .debug_bounds("git-graph-action-description")
+            .expect("the line stays");
+        assert_eq!(
+            hovered_bounds, picked_bounds,
+            "hovering never moves the line"
+        );
+
+        let checkout = cx
+            .debug_bounds("git-graph-action-checkout")
+            .expect("the checkout button is on screen");
+        cx.simulate_mouse_move(checkout.center(), None, Modifiers::none());
+        draw_workspace(&multi_workspace, cx);
+        assert_eq!(
+            description(&graph, cx),
+            commit_operation_help(CommitMenuOperation::Checkout).line()
+        );
+
+        cx.simulate_mouse_move(hovered_bounds.center(), None, Modifiers::none());
+        draw_workspace(&multi_workspace, cx);
+        assert_eq!(description(&graph, cx), SINGLE_SELECTION_DESCRIPTION);
+
+        // The toolbar's buttons explain themselves on the same line.
+        let compare = cx
+            .debug_bounds("git-graph-compare-refs-hover")
+            .expect("the compare button is on screen");
+        cx.simulate_mouse_move(compare.center(), None, Modifiers::none());
+        draw_workspace(&multi_workspace, cx);
+        assert_eq!(description(&graph, cx), COMPARE_REFS_HELP.line());
+        assert_eq!(
+            cx.debug_bounds("git-graph-action-description"),
+            Some(picked_bounds)
+        );
     }
 }
