@@ -17,9 +17,9 @@ use editor::{Editor, EditorEvent};
 use futures::StreamExt as _;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
-    App, AsyncWindowContext, BackgroundExecutor, DismissEvent, ElementId, Entity, EntityId,
-    EventEmitter, FocusHandle, Focusable, FutureExt as _, Render, ScrollHandle, Subscription, Task,
-    WeakEntity, Window, actions,
+    App, AsyncWindowContext, BackgroundExecutor, DismissEvent, Entity, EntityId, EventEmitter,
+    FocusHandle, Focusable, FutureExt as _, Render, ScrollHandle, Subscription, Task, WeakEntity,
+    Window, actions,
 };
 use picker::{Picker, PickerDelegate};
 use project::Fs;
@@ -38,10 +38,10 @@ use terminal::{
     terminal_settings::TerminalSettings,
 };
 use ui::{
-    Checkbox, ContextMenu, Disclosure, DropdownMenu, DropdownStyle, HighlightedLabel,
-    InputFrameSize, ListItem, ListItemSpacing, Modal, ModalFooter, ModalHeader, Section,
-    ToggleState, Tooltip, WithScrollbar, input_frame, input_frame_sized, prelude::*,
-    right_click_menu,
+    Checkbox, ContextMenu, ContextMenuEntry, Disclosure, DocumentationSide, DropdownMenu,
+    DropdownStyle, HighlightedLabel, InputFrameSize, ListItem, ListItemSpacing, Modal, ModalFooter,
+    ModalHeader, PopoverMenu, Section, ToggleState, Tooltip, WithScrollbar, input_frame,
+    input_frame_sized, prelude::*, right_click_menu,
 };
 use util::ResultExt as _;
 use util::command::Stdio;
@@ -1592,16 +1592,17 @@ impl StepKind {
         }
     }
 
-    /// Element id of the kind's 「追加」 button, unique within one row of them.
-    fn add_button_id(&self) -> &'static str {
+    /// What a card of this kind shows beside its label, and what the 「+」
+    /// menu shows beside the kind.
+    fn icon(&self) -> IconName {
         match self {
-            StepKind::Send => "add-send",
-            StepKind::WaitFor => "add-wait-for",
-            StepKind::Sleep => "add-sleep",
-            StepKind::Clear => "add-clear",
-            StepKind::Repeat => "add-repeat",
-            StepKind::If => "add-if",
-            StepKind::SetVariable => "add-set-variable",
+            StepKind::Send => IconName::Send,
+            StepKind::WaitFor => IconName::CountdownTimer,
+            StepKind::Sleep => IconName::Clock,
+            StepKind::Clear => IconName::Eraser,
+            StepKind::Repeat => IconName::RotateCw,
+            StepKind::If => IconName::GitBranch,
+            StepKind::SetVariable => IconName::Hash,
         }
     }
 
@@ -1815,6 +1816,82 @@ impl StepPath {
         }
         selector
     }
+
+    /// The list the row sits in and its index there.
+    fn lane_position(&self) -> Option<(Option<(StepPath, StepList)>, usize)> {
+        let ((list, index), parent) = self.0.split_last()?;
+        if parent.is_empty() {
+            return Some((None, *index));
+        }
+        Some((Some((StepPath(Rc::new(parent.to_vec())), *list)), *index))
+    }
+
+    /// Whether `other` is this row or a row somewhere under it.
+    fn contains(&self, other: &StepPath) -> bool {
+        other.0.starts_with(&self.0)
+    }
+}
+
+/// Where a step goes in: position `index` of the list `parent` names, `None`
+/// being the macro's own steps. `index` may be the list's length, which is the
+/// 「+」 at its end.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct InsertionPoint {
+    parent: Option<(StepPath, StepList)>,
+    index: usize,
+}
+
+impl InsertionPoint {
+    fn path(&self) -> StepPath {
+        lane_step_path(&self.parent, self.index)
+    }
+
+    /// Names the drawn 「+」 for [`gpui::VisualTestContext::debug_bounds`]:
+    /// `macro-insert-top-0` before the macro's first step, `macro-insert-2-else-1`
+    /// between the first and second step of the 「それ以外」 side of step 2.
+    fn debug_selector(&self) -> String {
+        format!("macro-insert-{}-{}", lane_key(&self.parent), self.index)
+    }
+
+    /// Whether moving the row at `from` here would change anything the
+    /// macro does. A row cannot go inside itself, and dropping it right before
+    /// or right after itself leaves it where it is.
+    fn accepts(&self, from: &StepPath) -> bool {
+        if let Some((parent, _)) = &self.parent
+            && from.contains(parent)
+        {
+            return false;
+        }
+        match from.lane_position() {
+            Some((lane, index)) => {
+                !(lane == self.parent && (self.index == index || self.index == index + 1))
+            }
+            None => false,
+        }
+    }
+}
+
+fn lane_step_path(parent: &Option<(StepPath, StepList)>, index: usize) -> StepPath {
+    match parent {
+        Some((path, list)) => path.child(*list, index),
+        None => StepPath::top(index),
+    }
+}
+
+/// A position-based name for a list, for selectors and element ids: `top` for
+/// the macro's own steps, `2-else` for the 「それ以外」 side of step 2.
+fn lane_key(parent: &Option<(StepPath, StepList)>) -> String {
+    match parent {
+        Some((path, list)) => {
+            let list = match list {
+                StepList::Main => "main",
+                StepList::Else => "else",
+                StepList::Timeout => "timeout",
+            };
+            format!("{}-{list}", path.label())
+        }
+        None => "top".to_string(),
+    }
 }
 
 /// One editable row. The editors travel with the row when it is reordered, so
@@ -1852,6 +1929,9 @@ struct StepRow {
     /// with no fields; its `kind` is [`StepKind::Clear`] only so that every
     /// helper reading the fields treats it as a step without any.
     unknown: Option<MacroStep>,
+    /// Whether the card shows its fields or only its header. Not saved: it is
+    /// how the form is looked at, not part of the macro.
+    expanded: bool,
     /// The last pattern text compiled for the row, so drawing the form does
     /// not compile every regular expression in it on every frame.
     pattern_check: RefCell<Option<PatternCheck>>,
@@ -1996,6 +2076,7 @@ impl StepRow {
             else_children,
             timeout_children,
             unknown,
+            expanded: true,
             pattern_check: RefCell::new(None),
             #[cfg(test)]
             pattern_compilations: std::cell::Cell::new(0),
@@ -2415,6 +2496,86 @@ impl StepRow {
         };
         window.focus(&field.focus_handle(cx), cx);
     }
+
+    /// The one line a folded card shows in place of its fields.
+    fn summary(&self, cx: &App) -> String {
+        if let Some(step) = &self.unknown {
+            return match step.unknown_kind() {
+                Some(kind) => format!("この版では扱えない種類のステップ「{kind}」です"),
+                None => "この版では扱えない種類のステップです".to_string(),
+            };
+        }
+        match self.kind {
+            StepKind::Sleep => {
+                let seconds = self.number.read(cx).text(cx);
+                match seconds.trim() {
+                    "" => self.kind.description().to_string(),
+                    seconds => format!("{seconds} 秒待ちます"),
+                }
+            }
+            StepKind::Repeat => match self.count.read(cx).text(cx).trim().parse::<u32>() {
+                Ok(0) => "中止まで繰り返します".to_string(),
+                Ok(count) => format!("{count} 回繰り返します"),
+                Err(_) => "繰り返し回数が未入力です".to_string(),
+            },
+            _ => {
+                if let Some(description) = self.describe(cx) {
+                    return description;
+                }
+                let text = self.text.read(cx).text(cx);
+                let text = text.trim();
+                if text.is_empty() {
+                    return self.kind.description().to_string();
+                }
+                let mut summary = text.chars().take(SUMMARY_LENGTH).collect::<String>();
+                if text.chars().count() > SUMMARY_LENGTH {
+                    summary.push('…');
+                }
+                summary
+            }
+        }
+    }
+}
+
+/// How much of a step's text a folded card shows.
+const SUMMARY_LENGTH: usize = 60;
+
+/// Up to this many cards (children included), a macro opens with every card
+/// unfolded; past it, folded, so the flow fits on screen before the details do.
+const UNFOLDED_CARD_LIMIT: usize = 8;
+
+/// 「3 回」 for the count field of a 繰り返し, as its folded card and the
+/// heading of its lane put it.
+fn repeat_times_label(count: &str) -> String {
+    match count.trim().parse::<u32>() {
+        Ok(0) => "中止まで".to_string(),
+        Ok(count) => format!("{count} 回"),
+        Err(_) => "回数が未入力".to_string(),
+    }
+}
+
+/// Cards drawn for `rows`, their children included.
+fn card_count(rows: &[StepRow]) -> usize {
+    rows.iter()
+        .map(|row| {
+            1 + row
+                .live_lists()
+                .iter()
+                .map(|list| card_count(row.list(*list)))
+                .sum::<usize>()
+        })
+        .sum()
+}
+
+/// Folds or unfolds every card of `rows`, including the children of lists a
+/// kind switch has hidden, so switching back does not bring back a stale mix.
+fn set_expanded(rows: &mut [StepRow], expanded: bool) {
+    for row in rows {
+        row.expanded = expanded;
+        set_expanded(&mut row.children, expanded);
+        set_expanded(&mut row.else_children, expanded);
+        set_expanded(&mut row.timeout_children, expanded);
+    }
 }
 
 fn record_reach_of(
@@ -2674,6 +2835,9 @@ pub struct MacroEditor {
     form_scroll: ScrollHandle,
     /// Whether the 「分岐と変数の使い方」 panel is open.
     show_help: bool,
+    /// Whether the saved-macro tree is drawn beside the form. Hiding it gives
+    /// the form, and the side-by-side lanes of a 分岐, the modal's full width.
+    show_macro_list: bool,
     error: Option<SharedString>,
     /// Macro whose 削除 has been asked for but not yet confirmed.
     pending_delete: Option<MacroKey>,
@@ -2740,6 +2904,8 @@ impl MacroEditor {
             steps: Vec::new(),
             form_scroll: ScrollHandle::new(),
             show_help: false,
+            show_macro_list: window.viewport_size().width
+                >= rems(MACRO_LIST_MIN_VIEWPORT_WIDTH).to_pixels(window.rem_size()),
             error: None,
             pending_delete: None,
             pending_folder_delete: None,
@@ -2784,6 +2950,8 @@ impl MacroEditor {
             .iter()
             .map(|step| StepRow::new(step, window, cx))
             .collect();
+        let expanded = card_count(&self.steps) <= UNFOLDED_CARD_LIMIT;
+        set_expanded(&mut self.steps, expanded);
         self.error = None;
         self.pending_delete = None;
         self.pending_folder_delete = None;
@@ -2794,6 +2962,15 @@ impl MacroEditor {
         self.form_scroll.set_offset(gpui::Point::default());
         window.focus(&self.name.focus_handle(cx), cx);
         cx.notify();
+    }
+
+    /// The heading over the form, which names the open macro — the only
+    /// place that does while the tree is hidden.
+    fn form_heading(&self) -> String {
+        match &self.original_key {
+            Some((_, name)) => format!("『{name}』を編集"),
+            None => "新規マクロ".to_string(),
+        }
     }
 
     fn snapshot(&self, cx: &App) -> FormSnapshot {
@@ -3047,18 +3224,22 @@ impl MacroEditor {
         }
     }
 
+    #[cfg(test)]
     fn add_step(&mut self, kind: StepKind, window: &mut Window, cx: &mut Context<Self>) {
-        let step = Self::blank_step(kind);
-        let row = StepRow::new(&step, window, cx);
-        row.focus_first_field(window, cx);
-        self.steps.push(row);
-        // The new row lands under everything else, which on a long macro is
-        // below the part of the form that is showing.
-        self.form_scroll.scroll_to_bottom();
-        cx.notify();
+        let index = self.steps.len();
+        self.insert_step(
+            InsertionPoint {
+                parent: None,
+                index,
+            },
+            kind,
+            window,
+            cx,
+        );
     }
 
     /// Appends a step to one of the child lists of the row at `parent`.
+    #[cfg(test)]
     fn add_child_step(
         &mut self,
         parent: &StepPath,
@@ -3067,14 +3248,162 @@ impl MacroEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let step = Self::blank_step(kind);
-        let row = StepRow::new(&step, window, cx);
-        let Some(parent_row) = self.row_mut(parent) else {
+        let Some(index) = self.row(parent).map(|row| row.list(list).len()) else {
             return;
         };
+        self.insert_step(
+            InsertionPoint {
+                parent: Some((parent.clone(), list)),
+                index,
+            },
+            kind,
+            window,
+            cx,
+        );
+    }
+
+    /// Puts a blank step of `kind` at `at`, unfolded and with the cursor in its
+    /// first field.
+    fn insert_step(
+        &mut self,
+        at: InsertionPoint,
+        kind: StepKind,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let step = Self::blank_step(kind);
+        let row = StepRow::new(&step, window, cx);
+        let appended_to_macro = at.parent.is_none() && at.index >= self.steps.len();
+        let Some(lane) = self.lane_mut(&at.parent) else {
+            return;
+        };
+        if at.index > lane.len() {
+            return;
+        }
         row.focus_first_field(window, cx);
-        parent_row.list_mut(list).push(row);
+        lane.insert(at.index, row);
+        // A step added at the end of the macro lands under everything else,
+        // which on a long macro is below the part of the form that is
+        // showing. Anywhere else it goes where the 「+」 that was just
+        // clicked is, which is on screen already.
+        if appended_to_macro {
+            self.form_scroll.scroll_to_bottom();
+        }
         cx.notify();
+    }
+
+    /// すべて展開 / すべて折りたたむ.
+    fn set_all_expanded(&mut self, expanded: bool, cx: &mut Context<Self>) {
+        set_expanded(&mut self.steps, expanded);
+        cx.notify();
+    }
+
+    /// The list `parent` names: the macro's own steps for `None`.
+    fn lane(&self, parent: &Option<(StepPath, StepList)>) -> Option<&Vec<StepRow>> {
+        match parent {
+            Some((path, list)) => Some(self.row(path)?.list(*list)),
+            None => Some(&self.steps),
+        }
+    }
+
+    fn lane_mut(&mut self, parent: &Option<(StepPath, StepList)>) -> Option<&mut Vec<StepRow>> {
+        match parent {
+            Some((path, list)) => Some(self.row_mut(path)?.list_mut(*list)),
+            None => Some(&mut self.steps),
+        }
+    }
+
+    /// Moves the row at `from`, with everything under it, to `to`. `to` is
+    /// read as the form stands before the move, which is how the 「+」 it was
+    /// dropped on was drawn. Refused (`false`) when `to` is inside the row
+    /// itself or would leave the row where it is.
+    fn move_row(&mut self, from: &StepPath, to: InsertionPoint) -> bool {
+        if !to.accepts(from) {
+            return false;
+        }
+        let Some((from_lane, from_index)) = from.lane_position() else {
+            return false;
+        };
+        let target_exists = self
+            .lane(&to.parent)
+            .is_some_and(|lane| to.index <= lane.len());
+        if !target_exists || self.row(from).is_none() {
+            return false;
+        }
+
+        // Taking the row out shifts up whatever came after it in its list, the
+        // list the drop lands in included when it sits under one of those
+        // rows.
+        let depth = from.depth() - 1;
+        let target_parent = to.parent.map(|(parent, list)| {
+            let mut segments = parent.0.as_ref().clone();
+            if segments.len() > depth
+                && segments[..depth] == from.0[..depth]
+                && segments[depth].0 == from.0[depth].0
+                && segments[depth].1 > from_index
+            {
+                segments[depth].1 -= 1;
+            }
+            (StepPath(Rc::new(segments)), list)
+        });
+        let target_index = if from_lane == target_parent && to.index > from_index {
+            to.index - 1
+        } else {
+            to.index
+        };
+
+        let Some(row) = self
+            .lane_mut(&from_lane)
+            .and_then(|lane| (from_index < lane.len()).then(|| lane.remove(from_index)))
+        else {
+            return false;
+        };
+        match self.lane_mut(&target_parent) {
+            Some(lane) if target_index <= lane.len() => {
+                lane.insert(target_index, row);
+                true
+            }
+            _ => {
+                log::error!("macro editor: the drop target vanished while moving a step");
+                if let Some(lane) = self.lane_mut(&from_lane) {
+                    lane.insert(from_index.min(lane.len()), row);
+                }
+                false
+            }
+        }
+    }
+
+    /// Swaps the row at `path` with its neighbour, for 「上へ移動」 and
+    /// 「下へ移動」.
+    fn move_step_by_one(&mut self, path: &StepPath, up: bool) -> bool {
+        let index = path.index();
+        let Some(siblings) = self.siblings_mut(path) else {
+            return false;
+        };
+        let Some(target) = (if up {
+            index.checked_sub(1)
+        } else {
+            Some(index + 1)
+        }) else {
+            return false;
+        };
+        if index >= siblings.len() || target >= siblings.len() {
+            return false;
+        }
+        siblings.swap(index, target);
+        true
+    }
+
+    fn delete_step(&mut self, path: &StepPath) -> bool {
+        let index = path.index();
+        let Some(siblings) = self.siblings_mut(path) else {
+            return false;
+        };
+        if index >= siblings.len() {
+            return false;
+        }
+        siblings.remove(index);
+        true
     }
 
     /// Every variable the form gives a value to, with the first row that does,
@@ -4216,13 +4545,16 @@ impl MacroEditor {
         DropdownMenu::new("macro-folder-choices", selected, menu).style(DropdownStyle::Outlined)
     }
 
-    /// One child list of a row — the body of a 繰り返し, a side of a 分岐, or the
-    /// 「タイムアウト時」 steps of a 期待文字を待つ — indented under its heading.
+    /// One child list of a card — the body of a 繰り返し, a side of a 分岐, or
+    /// the 「タイムアウト時」 steps of a 期待文字を待つ — as a lane of its own
+    /// under a heading. `width` is what the lane has to itself.
+    #[allow(clippy::too_many_arguments)]
     fn render_child_list(
         &self,
         path: &StepPath,
         list: StepList,
-        heading: &'static str,
+        heading: String,
+        width: Pixels,
         reach: &VariableReach,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -4230,15 +4562,20 @@ impl MacroEditor {
         let Some(row) = self.row(path) else {
             return div().into_any_element();
         };
-        let element_id = row.element_id();
         let child_count = row.list(list).len();
+        let frame = v_flex()
+            .w_full()
+            .min_w_0()
+            .gap_0p5()
+            .p_1()
+            .rounded_sm()
+            .border_1()
+            .border_color(cx.theme().colors().border_variant);
         // Deeper levels stay in the row tree and are written back untouched;
         // only the form stops drawing them, because the indentation (and the
         // step numbers) stop being readable.
         if path.depth() >= MAX_EDITABLE_STEP_DEPTH {
-            return v_flex()
-                .w_full()
-                .pl_4()
+            return frame
                 .child(
                     Label::new(format!(
                         "{heading}: {child_count} ステップ (これより深い入れ子は JSON で編集してください)"
@@ -4248,64 +4585,158 @@ impl MacroEditor {
                 )
                 .into_any_element();
         }
-
-        let child_rows = (0..child_count)
-            .map(|index| self.render_step(&path.child(list, index), reach, window, cx))
-            .collect::<Vec<_>>();
-        let add_id = match list {
-            StepList::Main => "add-main-step",
-            StepList::Else => "add-else-step",
-            StepList::Timeout => "add-timeout-step",
-        };
-        v_flex()
-            .w_full()
-            .gap_1()
-            .pl_4()
+        frame
             .child(
                 Label::new(heading)
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
-            .children(child_rows)
-            .child(self.render_add_buttons(
+            .child(self.render_lane(
                 Some((path.clone(), list)),
-                (add_id, element_id).into(),
+                (width - LANE_CHROME).max(px(0.)),
+                reach,
+                window,
                 cx,
             ))
             .into_any_element()
     }
 
-    /// One button per step kind under every step list, so that 分岐 and
-    /// 変数に設定 are in plain view rather than behind the kind dropdown of a
-    /// step that already exists. `parent` is `None` for the macro's own list.
-    fn render_add_buttons(
+    /// The cards of one list joined by a line, with a 「+」 before each card
+    /// and one at the end: each is where a new step goes in and where a
+    /// dragged card can be dropped. `width` is what each card has.
+    fn render_lane(
         &self,
         parent: Option<(StepPath, StepList)>,
-        id: ElementId,
+        width: Pixels,
+        reach: &VariableReach,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        h_flex()
-            .id(id)
+        let count = self.lane(&parent).map_or(0, Vec::len);
+        let mut lane = v_flex().w_full().min_w_0().items_center();
+        for index in 0..count {
+            let point = InsertionPoint {
+                parent: parent.clone(),
+                index,
+            };
+            lane = lane
+                .child(self.render_insertion_point(&point, false, cx))
+                .child(self.render_step(&point.path(), width, reach, window, cx));
+        }
+        lane.child(self.render_insertion_point(
+            &InsertionPoint {
+                parent,
+                index: count,
+            },
+            true,
+            cx,
+        ))
+        .into_any_element()
+    }
+
+    /// A 「+」 on the line between two cards, or under the last one when
+    /// `last` is set: a menu of the step kinds to put in there, and a drop
+    /// target for a card being dragged.
+    fn render_insertion_point(
+        &self,
+        point: &InsertionPoint,
+        last: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let colors = cx.theme().colors();
+        let (line, drop_background, drop_border) = (
+            colors.border,
+            colors.drop_target_background,
+            colors.drop_target_border,
+        );
+        let empty_lane = last && point.index == 0;
+        let selector = point.debug_selector();
+        let id_prefix = SharedString::from(format!("step-insert-{}", lane_key(&point.parent)));
+        let accepted = point.clone();
+        let dropped = point.clone();
+        let offered = point.clone();
+        let view = cx.weak_entity();
+        let connector = || div().w(px(1.)).h(px(6.)).bg(line);
+        v_flex()
+            .id((id_prefix, point.index))
             .w_full()
-            .flex_wrap()
-            .gap_1()
-            .child(
-                Label::new("追加:")
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
-            )
-            .children(StepKind::ALL.map(|kind| {
-                let parent = parent.clone();
-                Button::new(kind.add_button_id(), kind.label())
-                    .label_size(LabelSize::Small)
-                    .style(ButtonStyle::Outlined)
-                    .start_icon(Icon::new(IconName::Plus).size(IconSize::XSmall))
-                    .tooltip(Tooltip::text(kind.description()))
-                    .on_click(cx.listener(move |this, _, window, cx| match &parent {
-                        Some((path, list)) => this.add_child_step(path, *list, kind, window, cx),
-                        None => this.add_step(kind, window, cx),
-                    }))
+            .items_center()
+            .rounded_sm()
+            .border_1()
+            .border_color(gpui::transparent_black())
+            .debug_selector(move || selector)
+            .can_drop(move |dragged, _, _| {
+                dragged
+                    .downcast_ref::<DraggedStep>()
+                    .is_some_and(|dragged| accepted.accepts(&dragged.path))
+            })
+            .drag_over::<DraggedStep>(move |style, _, _, _| {
+                style.bg(drop_background).border_color(drop_border)
+            })
+            .on_drop(cx.listener(move |this, dragged: &DraggedStep, _, cx| {
+                // The path was taken when the drag began; if the rows have
+                // changed since, it may name some other row now.
+                if this.row(&dragged.path).map(StepRow::element_id) != Some(dragged.row) {
+                    log::warn!("macro editor: dropped a step whose row has moved since the drag");
+                    return;
+                }
+                if this.move_row(&dragged.path, dropped.clone()) {
+                    cx.notify();
+                }
             }))
+            .child(connector())
+            .child(
+                h_flex()
+                    .gap_1()
+                    .child(
+                        PopoverMenu::new("step-insert-menu")
+                            .trigger_with_tooltip(
+                                IconButton::new("step-insert-button", IconName::Plus)
+                                    .icon_size(IconSize::XSmall)
+                                    .style(ButtonStyle::Outlined),
+                                Tooltip::text("ここにステップを追加します"),
+                            )
+                            .menu(move |window, cx| {
+                                let view = view.clone();
+                                let point = offered.clone();
+                                Some(ContextMenu::build(window, cx, move |mut menu, _, _| {
+                                    for kind in StepKind::ALL {
+                                        let view = view.clone();
+                                        let point = point.clone();
+                                        menu = menu.item(
+                                            ContextMenuEntry::new(kind.label())
+                                                .icon(kind.icon())
+                                                .icon_color(Color::Muted)
+                                                .handler(move |window, cx| {
+                                                    let point = point.clone();
+                                                    view.update(cx, |this, cx| {
+                                                        this.insert_step(point, kind, window, cx);
+                                                    })
+                                                    .ok();
+                                                })
+                                                .documentation_aside(
+                                                    DocumentationSide::Right,
+                                                    move |_| {
+                                                        Label::new(kind.description())
+                                                            .size(LabelSize::Small)
+                                                            .into_any_element()
+                                                    },
+                                                ),
+                                        );
+                                    }
+                                    menu
+                                }))
+                            }),
+                    )
+                    .when(empty_lane, |this| {
+                        this.child(
+                            Label::new("ステップを追加")
+                                .size(LabelSize::XSmall)
+                                .color(Color::Muted),
+                        )
+                    }),
+            )
+            .when(!last, |this| this.child(connector()))
             .into_any_element()
     }
 
@@ -4340,9 +4771,32 @@ impl MacroEditor {
                     .gap_2()
                     .justify_between()
                     .child(
-                        Label::new(format!("ステップ ({} 個)", self.steps.len()))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
+                        h_flex()
+                            .gap_1()
+                            .flex_wrap()
+                            .child(
+                                Label::new(format!("ステップ ({} 個)", self.steps.len()))
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .child(
+                                Button::new("macro-expand-all", "すべて展開")
+                                    .label_size(LabelSize::Small)
+                                    .tooltip(Tooltip::text("すべてのステップの入力欄を表示します"))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_all_expanded(true, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("macro-collapse-all", "すべて折りたたむ")
+                                    .label_size(LabelSize::Small)
+                                    .tooltip(Tooltip::text(
+                                        "すべてのステップを見出しと要約だけにします",
+                                    ))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_all_expanded(false, cx);
+                                    })),
+                            ),
                     )
                     .child(
                         Button::new(
@@ -4388,9 +4842,108 @@ impl MacroEditor {
             .into_any_element()
     }
 
+    /// What is wrong with the row's own fields, in the order the expanded card
+    /// lists it: a folded card sums it up as one icon in its header.
+    fn step_notes(&self, row: &StepRow, reach: &VariableReach, cx: &App) -> Vec<(String, Color)> {
+        let mut notes = Vec::new();
+        if let Some(error) = row.pattern_error(cx) {
+            notes.push((format!("正規表現が不正です: {error}"), Color::Error));
+        }
+        for name in row.repeated_references(cx) {
+            notes.push((
+                format!(
+                    "${{{name}}} の直後の繰り返し指定は値の最後の 1 文字にしか掛からず、値が空のときは前の文字に掛かるか、正規表現が不正になります。値全体に掛けるときは (?:${{{name}}}) と囲みます。"
+                ),
+                Color::Warning,
+            ));
+        }
+        for warning in unset_reference_warnings(&row.undefined_references(reach, cx)) {
+            notes.push((warning, Color::Warning));
+        }
+        if let Some(unset) = row.undefined_scope_variable(reach, cx) {
+            let name = unset.name;
+            notes.push((
+                if unset.set_later {
+                    format!(
+                        "${{{name}}} に値が入るのはこの分岐より後のため、ここでは「それ以外」を実行します。"
+                    )
+                } else {
+                    format!(
+                        "${{{name}}} に値を入れるステップがないため、この分岐は常に「それ以外」を実行します。"
+                    )
+                },
+                Color::Warning,
+            ));
+        }
+        notes
+    }
+
+    /// 折りたたむ / 展開, 上へ移動 / 下へ移動 and 削除 for one card, behind its
+    /// 「…」 button and its right-click menu alike.
+    fn step_menu(
+        view: WeakEntity<Self>,
+        path: StepPath,
+        expanded: bool,
+        can_move_up: bool,
+        can_move_down: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<ContextMenu> {
+        ContextMenu::build(window, cx, move |menu, _, _| {
+            let action = |update: fn(&mut MacroEditor, &StepPath) -> bool| {
+                let view = view.clone();
+                let path = path.clone();
+                move |_: &mut Window, cx: &mut App| {
+                    view.update(cx, |this, cx| {
+                        if update(this, &path) {
+                            cx.notify();
+                        }
+                    })
+                    .ok();
+                }
+            };
+            menu.item(
+                ContextMenuEntry::new(if expanded {
+                    "折りたたむ"
+                } else {
+                    "展開"
+                })
+                .handler(action(|this, path| {
+                    this.row_mut(path)
+                        .map(|row| row.expanded = !row.expanded)
+                        .is_some()
+                })),
+            )
+            .separator()
+            .item(
+                ContextMenuEntry::new("上へ移動")
+                    .icon(IconName::ArrowUp)
+                    .disabled(!can_move_up)
+                    .handler(action(|this, path| this.move_step_by_one(path, true))),
+            )
+            .item(
+                ContextMenuEntry::new("下へ移動")
+                    .icon(IconName::ArrowDown)
+                    .disabled(!can_move_down)
+                    .handler(action(|this, path| this.move_step_by_one(path, false))),
+            )
+            .separator()
+            .item(
+                ContextMenuEntry::new("削除")
+                    .icon(IconName::Trash)
+                    .handler(action(|this, path| this.delete_step(path))),
+            )
+        })
+    }
+
+    /// One step as a card: a header (number, kind, what it does, and the
+    /// handle it is dragged by), its fields while unfolded, and the lanes of
+    /// the steps it holds. `width` is what the card has, which decides whether
+    /// the two sides of a 分岐 fit beside each other.
     fn render_step(
         &self,
         path: &StepPath,
+        width: Pixels,
         reach: &VariableReach,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -4401,71 +4954,72 @@ impl MacroEditor {
         let kind = row.kind;
         let element_id = row.element_id();
         let index = path.index();
+        let expanded = row.expanded;
         let unknown_kind = row.unknown.as_ref().map(|step| step.unknown_kind());
-        let sibling_count = match path.0.split_last() {
-            Some((_, [])) => self.steps.len(),
-            Some((last, parent)) => self
-                .row(&StepPath(Rc::new(parent.to_vec())))
-                .map(|parent_row| parent_row.list(last.0).len())
-                .unwrap_or(0),
+        let sibling_count = match path.lane_position() {
+            Some((parent, _)) => self.lane(&parent).map_or(0, Vec::len),
             None => 0,
         };
 
+        // The dropdowns only exist on an unfolded card; a long folded macro
+        // should not build three menus per card on every frame.
         let view = cx.weak_entity();
-        let kind_menu = ContextMenu::build(window, cx, {
-            let path = path.clone();
-            move |mut menu, _, _| {
-                for candidate in StepKind::ALL {
-                    let view = view.clone();
-                    let path = path.clone();
-                    menu = menu.toggleable_entry(
-                        candidate.label(),
-                        candidate == kind,
-                        IconPosition::Start,
-                        None,
-                        move |window, cx| {
-                            view.update(cx, |this, cx| {
-                                let Some(row) = this.row_mut(&path) else {
-                                    return;
-                                };
-                                row.kind = candidate;
-                                // Switching into a step that needs a duration
-                                // would otherwise leave the field blank and
-                                // fail validation on save.
-                                if candidate.has_duration()
-                                    && row.number.read(cx).text(cx).trim().is_empty()
-                                {
-                                    let seconds = match candidate {
-                                        StepKind::WaitFor => format_seconds(
-                                            terminal::terminal_macro::DEFAULT_WAIT_TIMEOUT_MS,
-                                        ),
-                                        _ => format_seconds(1_000),
+        let kind_menu = (expanded && unknown_kind.is_none()).then(|| {
+            ContextMenu::build(window, cx, {
+                let path = path.clone();
+                move |mut menu, _, _| {
+                    for candidate in StepKind::ALL {
+                        let view = view.clone();
+                        let path = path.clone();
+                        menu = menu.toggleable_entry(
+                            candidate.label(),
+                            candidate == kind,
+                            IconPosition::Start,
+                            None,
+                            move |window, cx| {
+                                view.update(cx, |this, cx| {
+                                    let Some(row) = this.row_mut(&path) else {
+                                        return;
                                     };
-                                    row.number.update(cx, |editor, cx| {
-                                        editor.set_text(seconds, window, cx)
+                                    row.kind = candidate;
+                                    // Switching into a step that needs a duration
+                                    // would otherwise leave the field blank and
+                                    // fail validation on save.
+                                    if candidate.has_duration()
+                                        && row.number.read(cx).text(cx).trim().is_empty()
+                                    {
+                                        let seconds = match candidate {
+                                            StepKind::WaitFor => format_seconds(
+                                                terminal::terminal_macro::DEFAULT_WAIT_TIMEOUT_MS,
+                                            ),
+                                            _ => format_seconds(1_000),
+                                        };
+                                        row.number.update(cx, |editor, cx| {
+                                            editor.set_text(seconds, window, cx)
+                                        });
+                                    }
+                                    // The hints name the fields, so they follow the
+                                    // kind the row was just switched to.
+                                    let placeholder = candidate.text_placeholder();
+                                    row.text.update(cx, |editor, cx| {
+                                        editor.set_placeholder_text(placeholder, window, cx);
                                     });
-                                }
-                                // The hints name the fields, so they follow the
-                                // kind the row was just switched to.
-                                let placeholder = candidate.text_placeholder();
-                                row.text.update(cx, |editor, cx| {
-                                    editor.set_placeholder_text(placeholder, window, cx);
-                                });
-                                let placeholder = candidate.capture_placeholder();
-                                row.capture.update(cx, |editor, cx| {
-                                    editor.set_placeholder_text(placeholder, window, cx);
-                                });
-                                cx.notify();
-                            })
-                            .ok();
-                        },
-                    );
+                                    let placeholder = candidate.capture_placeholder();
+                                    row.capture.update(cx, |editor, cx| {
+                                        editor.set_placeholder_text(placeholder, window, cx);
+                                    });
+                                    cx.notify();
+                                })
+                                .ok();
+                            },
+                        );
+                    }
+                    menu
                 }
-                menu
-            }
+            })
         });
 
-        let scope_menu = (kind == StepKind::If).then(|| {
+        let scope_menu = (expanded && kind == StepKind::If).then(|| {
             let view = cx.weak_entity();
             let path = path.clone();
             let selected = row.scope;
@@ -4493,7 +5047,7 @@ impl MacroEditor {
             })
         });
 
-        let timeout_menu = (kind == StepKind::WaitFor).then(|| {
+        let timeout_menu = (expanded && kind == StepKind::WaitFor).then(|| {
             let view = cx.weak_entity();
             let path = path.clone();
             let selected = row.continue_on_timeout;
@@ -4521,30 +5075,106 @@ impl MacroEditor {
             })
         });
 
-        let repeat_children = (kind == StepKind::Repeat).then(|| {
-            self.render_child_list(path, StepList::Main, "繰り返す内容", reach, window, cx)
+        let inner_width = (width - CARD_CHROME).max(px(0.));
+        let lane_gap = px(8.);
+        let min_lane_width = rems(MIN_LANE_WIDTH).to_pixels(window.rem_size());
+        let side_by_side = inner_width >= min_lane_width * 2. + lane_gap;
+        let lanes = match kind {
+            StepKind::Repeat => vec![self.render_child_list(
+                path,
+                StepList::Main,
+                format!(
+                    "繰り返す内容 ({})",
+                    repeat_times_label(&row.count.read(cx).text(cx))
+                ),
+                inner_width,
+                reach,
+                window,
+                cx,
+            )],
+            StepKind::If => {
+                let lane_width = if side_by_side {
+                    ((inner_width - lane_gap) / 2.).max(px(0.))
+                } else {
+                    inner_width
+                };
+                vec![
+                    self.render_child_list(
+                        path,
+                        StepList::Main,
+                        "そのとき".to_string(),
+                        lane_width,
+                        reach,
+                        window,
+                        cx,
+                    ),
+                    self.render_child_list(
+                        path,
+                        StepList::Else,
+                        "それ以外".to_string(),
+                        lane_width,
+                        reach,
+                        window,
+                        cx,
+                    ),
+                ]
+            }
+            StepKind::WaitFor if row.continue_on_timeout => vec![self.render_child_list(
+                path,
+                StepList::Timeout,
+                "タイムアウト時".to_string(),
+                inner_width,
+                reach,
+                window,
+                cx,
+            )],
+            _ => Vec::new(),
+        };
+        let lanes = (!lanes.is_empty()).then(|| {
+            if lanes.len() > 1 && side_by_side {
+                h_flex()
+                    .w_full()
+                    .items_start()
+                    .gap(lane_gap)
+                    .children(
+                        lanes
+                            .into_iter()
+                            .map(|lane| div().flex_1().min_w_0().child(lane)),
+                    )
+                    .into_any_element()
+            } else {
+                v_flex()
+                    .w_full()
+                    .gap(lane_gap)
+                    .children(lanes)
+                    .into_any_element()
+            }
         });
-        let branch_children = (kind == StepKind::If).then(|| {
-            [
-                self.render_child_list(path, StepList::Main, "そのとき", reach, window, cx),
-                self.render_child_list(path, StepList::Else, "それ以外", reach, window, cx),
-            ]
-        });
-        let timeout_children = (kind == StepKind::WaitFor && row.continue_on_timeout).then(|| {
-            self.render_child_list(path, StepList::Timeout, "タイムアウト時", reach, window, cx)
-        });
-        let description = row.describe(cx);
-        let undefined = row.undefined_references(reach, cx);
-        let undefined_scope = row.undefined_scope_variable(reach, cx);
-        let pattern_error = row.pattern_error(cx);
-        let repeated_references = row.repeated_references(cx);
 
-        let move_up = path.clone();
-        let move_down = path.clone();
+        let description = row.describe(cx);
+        let notes = self.step_notes(row, reach, cx);
+        let summary = row.summary(cx);
+        let kind_label: SharedString = if unknown_kind.is_some() {
+            "不明なステップ".into()
+        } else {
+            kind.label().into()
+        };
+        let kind_icon = if unknown_kind.is_some() {
+            IconName::Warning
+        } else {
+            kind.icon()
+        };
+
+        let toggle_path = path.clone();
+        let title_path = path.clone();
         let delete = path.clone();
         let newline_path = path.clone();
         let regex_path = path.clone();
         let selector = path.debug_selector();
+        let header_selector = format!("{selector}-header");
+        let notes_selector = format!("{selector}-notes");
+        let can_move_up = index > 0;
+        let can_move_down = index + 1 < sibling_count;
         let small_field = |editor: &Entity<Editor>, width: Rems, window: &mut Window, cx: &App| {
             input_frame_sized(
                 InputFrameSize::Compact,
@@ -4554,322 +5184,456 @@ impl MacroEditor {
             .w(width)
             .child(editor.clone())
         };
-        v_flex()
+
+        let dragged = DraggedStep {
+            path: path.clone(),
+            row: element_id,
+            number: path.label().into(),
+            kind: kind_label.clone(),
+            icon: kind_icon,
+            summary: summary.clone().into(),
+        };
+        let folded_notes = (!expanded && !notes.is_empty()).then(|| {
+            let color = if notes.iter().any(|(_, color)| *color == Color::Error) {
+                Color::Error
+            } else {
+                Color::Warning
+            };
+            let tooltip = notes
+                .iter()
+                .map(|(note, _)| note.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            div()
+                .id(("step-notes", element_id))
+                .flex_none()
+                .debug_selector(move || notes_selector)
+                .tooltip(Tooltip::text(tooltip))
+                .child(
+                    Icon::new(IconName::Warning)
+                        .size(IconSize::Small)
+                        .color(color),
+                )
+        });
+        let menu_view = cx.weak_entity();
+        let menu_path = path.clone();
+        let header = h_flex()
+            .id(("step-header", element_id))
             .w_full()
+            .min_w_0()
             .gap_1()
-            .p_1p5()
-            .rounded_sm()
-            .border_1()
-            .border_color(cx.theme().colors().border_variant)
-            .debug_selector(move || selector)
+            .debug_selector(move || header_selector)
+            .on_drag(dragged, |dragged: &DraggedStep, _, _, cx| {
+                let dragged = dragged.clone();
+                cx.new(|_| DraggedStepHeader(dragged))
+            })
+            .child(
+                Disclosure::new(("step-toggle", element_id), expanded).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        if let Some(row) = this.row_mut(&toggle_path) {
+                            row.expanded = !row.expanded;
+                            cx.notify();
+                        }
+                    },
+                )),
+            )
             .child(
                 h_flex()
-                    .w_full()
+                    .id(("step-title", element_id))
+                    .flex_1()
+                    .min_w_0()
                     .gap_1()
-                    .justify_between()
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(row) = this.row_mut(&title_path) {
+                            row.expanded = !row.expanded;
+                            cx.notify();
+                        }
+                    }))
                     .child(
-                        h_flex()
-                            .gap_1()
-                            .child(
-                                Label::new(path.label())
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
-                            )
-                            .map(|this| match unknown_kind {
-                                // Switching the kind would throw away what
-                                // the later version wrote, so the row only
-                                // offers moving and deleting.
-                                Some(_) => this.child(
-                                    Label::new("不明なステップ")
-                                        .size(LabelSize::Small)
-                                        .color(Color::Warning),
-                                ),
-                                None => this.child(
-                                    DropdownMenu::new(
-                                        ("step-kind", element_id),
-                                        kind.label(),
-                                        kind_menu,
-                                    )
-                                    .style(DropdownStyle::Outlined),
-                                ),
-                            }),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_0p5()
-                            .child(
-                                IconButton::new(("step-up", element_id), IconName::ArrowUp)
-                                    .icon_size(IconSize::Small)
-                                    .disabled(index == 0)
-                                    .tooltip(Tooltip::text("ひとつ上へ移動します"))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        let Some(siblings) = this.siblings_mut(&move_up) else {
-                                            return;
-                                        };
-                                        if index > 0 && index < siblings.len() {
-                                            siblings.swap(index, index - 1);
-                                            cx.notify();
-                                        }
-                                    })),
-                            )
-                            .child(
-                                IconButton::new(("step-down", element_id), IconName::ArrowDown)
-                                    .icon_size(IconSize::Small)
-                                    .disabled(index + 1 >= sibling_count)
-                                    .tooltip(Tooltip::text("ひとつ下へ移動します"))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        let Some(siblings) = this.siblings_mut(&move_down) else {
-                                            return;
-                                        };
-                                        if index + 1 < siblings.len() {
-                                            siblings.swap(index, index + 1);
-                                            cx.notify();
-                                        }
-                                    })),
-                            )
-                            .child(
-                                IconButton::new(("step-delete", element_id), IconName::Trash)
-                                    .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("このステップを削除します"))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        let Some(siblings) = this.siblings_mut(&delete) else {
-                                            return;
-                                        };
-                                        if index < siblings.len() {
-                                            siblings.remove(index);
-                                            cx.notify();
-                                        }
-                                    })),
-                            ),
-                    ),
-            )
-            .when_some(unknown_kind, |this, unknown_kind| {
-                let kind = unknown_kind
-                    .map(|kind| format!("「{kind}」"))
-                    .unwrap_or_default();
-                this.child(
-                    Label::new(format!(
-                        "この版では扱えない種類のステップ{kind}です。保存しても元の内容のまま残りますが、このステップを含むマクロは実行できません。"
-                    ))
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
-                )
-            })
-            .when_some(description, |this, description| {
-                this.child(
-                    Label::new(description)
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
-                )
-            })
-            .when(kind == StepKind::SetVariable, |this| {
-                this.child(
-                    h_flex()
-                        .w_full()
-                        .gap_2()
-                        .child(
-                            Label::new("変数名")
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        )
-                        .child(small_field(&row.capture, rems(10.), window, cx))
-                        .child(
-                            Label::new("値")
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        )
-                        .child(
-                            input_frame_sized(
-                                InputFrameSize::Compact,
-                                row.text.focus_handle(cx).contains_focused(window, cx),
-                                cx,
-                            )
-                            .flex_1()
-                            .min_w_0()
-                            .child(row.text.clone()),
-                        ),
-                )
-            })
-            .when(kind.has_text() && kind != StepKind::SetVariable, |this| {
-                this.child(
-                    input_frame_sized(
-                        InputFrameSize::Compact,
-                        row.text.focus_handle(cx).contains_focused(window, cx),
-                        cx,
-                    )
-                    .child(row.text.clone()),
-                )
-            })
-            .when(kind == StepKind::Send, |this| {
-                this.child(
-                    Checkbox::new(("step-newline", element_id), row.newline.into())
-                        .label("末尾で Enter を送る")
-                        .label_size(LabelSize::Small)
-                        .on_click(cx.listener(move |this, state: &ToggleState, _, cx| {
-                            let checked = *state == ToggleState::Selected;
-                            if let Some(row) = this.row_mut(&newline_path)
-                                && row.newline != checked
-                            {
-                                row.newline = checked;
-                                cx.notify();
-                            }
-                        })),
-                )
-            })
-            .when(kind == StepKind::Repeat, |this| {
-                this.child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Label::new("繰り返し回数")
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        )
-                        .child(small_field(&row.count, rems(4.), window, cx))
-                        .child(
-                            Label::new("(0 回は中止まで繰り返します)")
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        ),
-                )
-            })
-            .when(kind.has_duration(), |this| {
-                this.child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Label::new(if kind == StepKind::WaitFor {
-                                "タイムアウト (秒)"
-                            } else {
-                                "秒数"
-                            })
+                        Label::new(path.label())
                             .size(LabelSize::Small)
                             .color(Color::Muted),
+                    )
+                    .child(Icon::new(kind_icon).size(IconSize::Small).color(
+                        if unknown_kind.is_some() {
+                            Color::Warning
+                        } else {
+                            Color::Muted
+                        },
+                    ))
+                    .child(Label::new(kind_label).size(LabelSize::Small).color(
+                        if unknown_kind.is_some() {
+                            Color::Warning
+                        } else {
+                            Color::Default
+                        },
+                    ))
+                    .when(!expanded, |this| {
+                        this.child(
+                            div().flex_1().min_w_0().child(
+                                Label::new(summary)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted)
+                                    .truncate(),
+                            ),
                         )
-                        .child(small_field(&row.number, rems(6.), window, cx)),
+                    }),
+            )
+            .children(folded_notes)
+            .child(
+                PopoverMenu::new(("step-menu", element_id))
+                    .trigger_with_tooltip(
+                        IconButton::new(("step-more", element_id), IconName::Ellipsis)
+                            .icon_size(IconSize::Small),
+                        Tooltip::text("移動や折りたたみのメニューを開きます"),
+                    )
+                    .menu({
+                        let view = cx.weak_entity();
+                        let path = path.clone();
+                        move |window, cx| {
+                            Some(Self::step_menu(
+                                view.clone(),
+                                path.clone(),
+                                expanded,
+                                can_move_up,
+                                can_move_down,
+                                window,
+                                cx,
+                            ))
+                        }
+                    }),
+            )
+            .child(
+                IconButton::new(("step-delete", element_id), IconName::Trash)
+                    .icon_size(IconSize::Small)
+                    .tooltip(Tooltip::text("このステップを削除します"))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if this.delete_step(&delete) {
+                            cx.notify();
+                        }
+                    })),
+            )
+            .child(
+                div()
+                    .id(("step-grip", element_id))
+                    .flex_none()
+                    .cursor_grab()
+                    .tooltip(Tooltip::text(
+                        "ドラッグして、線の途中や末尾の「+」に落とすと移動します",
+                    ))
+                    .child(
+                        Icon::new(IconName::Menu)
+                            .size(IconSize::Small)
+                            .color(Color::Muted),
+                    ),
+            );
+        let header = right_click_menu(("step-context-menu", element_id))
+            .trigger(move |_, _, _| header)
+            .menu(move |window, cx| {
+                Self::step_menu(
+                    menu_view.clone(),
+                    menu_path.clone(),
+                    expanded,
+                    can_move_up,
+                    can_move_down,
+                    window,
+                    cx,
                 )
-            })
-            .when(kind.has_pattern(), |this| {
-                this.child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap_2()
-                        .child(
-                            Checkbox::new(("step-regex", element_id), row.regex.into())
-                                .label("正規表現")
-                                .label_size(LabelSize::Small)
-                                .on_click(cx.listener(move |this, state: &ToggleState, _, cx| {
-                                    let checked = *state == ToggleState::Selected;
-                                    if let Some(row) = this.row_mut(&regex_path)
-                                        && row.regex != checked
-                                    {
-                                        row.regex = checked;
-                                        cx.notify();
-                                    }
-                                })),
-                        )
-                        .when_some(scope_menu, |this, menu| {
-                            this.child(
-                                Label::new("対象")
+            });
+
+        let body = expanded.then(|| {
+            v_flex()
+                .w_full()
+                .gap_1()
+                .when_some(kind_menu, |this, kind_menu| {
+                    this.child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Label::new("種類")
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
                             .child(
                                 DropdownMenu::new(
-                                    ("step-scope", element_id),
-                                    row.scope.label(),
-                                    menu,
+                                    ("step-kind", element_id),
+                                    kind.label(),
+                                    kind_menu,
                                 )
                                 .style(DropdownStyle::Outlined),
-                            )
-                        })
-                        .when(
-                            kind == StepKind::If && row.scope == ScopeChoice::Variable,
-                            |this| {
-                                this.child(
-                                    Label::new("調べる変数名")
-                                        .size(LabelSize::Small)
-                                        .color(Color::Muted),
-                                )
-                                .child(small_field(&row.scope_variable, rems(8.), window, cx))
-                            },
-                        ),
-                )
-            })
-            .when(kind == StepKind::WaitFor || kind == StepKind::If, |this| {
-                this.child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap_2()
-                        .child(
-                            Label::new("取り込む変数名")
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        )
-                        .child(small_field(&row.capture, rems(8.), window, cx))
-                        .when(kind == StepKind::WaitFor, |this| {
-                            this.child(
-                                Label::new("タイムアウト時")
+                            ),
+                    )
+                })
+                .when_some(unknown_kind, |this, unknown_kind| {
+                    let kind = unknown_kind
+                        .map(|kind| format!("「{kind}」"))
+                        .unwrap_or_default();
+                    // Switching the kind would throw away what the later
+                    // version wrote, so the card only offers moving and
+                    // deleting.
+                    this.child(
+                        Label::new(format!(
+                            "この版では扱えない種類のステップ{kind}です。保存しても元の内容のまま残りますが、このステップを含むマクロは実行できません。"
+                        ))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                    )
+                })
+                .when_some(description, |this, description| {
+                    this.child(
+                        Label::new(description)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                })
+                .when(kind == StepKind::SetVariable, |this| {
+                    this.child(
+                        h_flex()
+                            .w_full()
+                            .gap_2()
+                            .child(
+                                Label::new("変数名")
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
-                            .when_some(timeout_menu, |this, menu| {
+                            .child(small_field(&row.capture, rems(10.), window, cx))
+                            .child(
+                                Label::new("値")
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .child(
+                                input_frame_sized(
+                                    InputFrameSize::Compact,
+                                    row.text.focus_handle(cx).contains_focused(window, cx),
+                                    cx,
+                                )
+                                .flex_1()
+                                .min_w_0()
+                                .child(row.text.clone()),
+                            ),
+                    )
+                })
+                .when(kind.has_text() && kind != StepKind::SetVariable, |this| {
+                    this.child(
+                        input_frame_sized(
+                            InputFrameSize::Compact,
+                            row.text.focus_handle(cx).contains_focused(window, cx),
+                            cx,
+                        )
+                        .child(row.text.clone()),
+                    )
+                })
+                .when(kind == StepKind::Send, |this| {
+                    this.child(
+                        Checkbox::new(("step-newline", element_id), row.newline.into())
+                            .label("末尾で Enter を送る")
+                            .label_size(LabelSize::Small)
+                            .on_click(cx.listener(move |this, state: &ToggleState, _, cx| {
+                                let checked = *state == ToggleState::Selected;
+                                if let Some(row) = this.row_mut(&newline_path)
+                                    && row.newline != checked
+                                {
+                                    row.newline = checked;
+                                    cx.notify();
+                                }
+                            })),
+                    )
+                })
+                .when(kind == StepKind::Repeat, |this| {
+                    this.child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Label::new("繰り返し回数")
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .child(small_field(&row.count, rems(4.), window, cx))
+                            .child(
+                                Label::new("(0 回は中止まで繰り返します)")
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            ),
+                    )
+                })
+                .when(kind.has_duration(), |this| {
+                    this.child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Label::new(if kind == StepKind::WaitFor {
+                                    "タイムアウト (秒)"
+                                } else {
+                                    "秒数"
+                                })
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                            )
+                            .child(small_field(&row.number, rems(6.), window, cx)),
+                    )
+                })
+                .when(kind.has_pattern(), |this| {
+                    this.child(
+                        h_flex()
+                            .flex_wrap()
+                            .gap_2()
+                            .child(
+                                Checkbox::new(("step-regex", element_id), row.regex.into())
+                                    .label("正規表現")
+                                    .label_size(LabelSize::Small)
+                                    .on_click(cx.listener(
+                                        move |this, state: &ToggleState, _, cx| {
+                                            let checked = *state == ToggleState::Selected;
+                                            if let Some(row) = this.row_mut(&regex_path)
+                                                && row.regex != checked
+                                            {
+                                                row.regex = checked;
+                                                cx.notify();
+                                            }
+                                        },
+                                    )),
+                            )
+                            .when_some(scope_menu, |this, menu| {
                                 this.child(
+                                    Label::new("対象")
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                )
+                                .child(
                                     DropdownMenu::new(
-                                        ("step-timeout", element_id),
-                                        timeout_choice_label(row.continue_on_timeout),
+                                        ("step-scope", element_id),
+                                        row.scope.label(),
                                         menu,
                                     )
                                     .style(DropdownStyle::Outlined),
                                 )
                             })
-                        }),
-                )
-            })
-            .when_some(pattern_error, |this, error| {
-                this.child(
-                    Label::new(format!("正規表現が不正です: {error}"))
-                        .size(LabelSize::Small)
-                        .color(Color::Error),
-                )
-            })
-            .when(!repeated_references.is_empty(), |this| {
-                let warnings = repeated_references.iter().map(|name| {
-                    format!(
-                        "${{{name}}} の直後の繰り返し指定は値の最後の 1 文字にしか掛からず、値が空のときは前の文字に掛かるか、正規表現が不正になります。値全体に掛けるときは (?:${{{name}}}) と囲みます。"
+                            .when(
+                                kind == StepKind::If && row.scope == ScopeChoice::Variable,
+                                |this| {
+                                    this.child(
+                                        Label::new("調べる変数名")
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted),
+                                    )
+                                    .child(small_field(&row.scope_variable, rems(8.), window, cx))
+                                },
+                            ),
                     )
-                });
-                this.children(warnings.map(|warning| {
-                    Label::new(warning)
-                        .size(LabelSize::Small)
-                        .color(Color::Warning)
+                })
+                .when(kind == StepKind::WaitFor || kind == StepKind::If, |this| {
+                    this.child(
+                        h_flex()
+                            .flex_wrap()
+                            .gap_2()
+                            .child(
+                                Label::new("取り込む変数名")
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .child(small_field(&row.capture, rems(8.), window, cx))
+                            .when(kind == StepKind::WaitFor, |this| {
+                                this.child(
+                                    Label::new("タイムアウト時")
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                )
+                                .when_some(timeout_menu, |this, menu| {
+                                    this.child(
+                                        DropdownMenu::new(
+                                            ("step-timeout", element_id),
+                                            timeout_choice_label(row.continue_on_timeout),
+                                            menu,
+                                        )
+                                        .style(DropdownStyle::Outlined),
+                                    )
+                                })
+                            }),
+                    )
+                })
+                .children(notes.into_iter().map(|(note, color)| {
+                    Label::new(note).size(LabelSize::Small).color(color)
                 }))
-            })
-            .children(unset_reference_warnings(&undefined).into_iter().map(|warning| {
-                Label::new(warning)
-                    .size(LabelSize::Small)
-                    .color(Color::Warning)
-            }))
-            .when_some(undefined_scope, |this, unset| {
-                let name = unset.name;
-                this.child(
-                    Label::new(if unset.set_later {
-                        format!(
-                            "${{{name}}} に値が入るのはこの分岐より後のため、ここでは「それ以外」を実行します。"
-                        )
-                    } else {
-                        format!(
-                            "${{{name}}} に値を入れるステップがないため、この分岐は常に「それ以外」を実行します。"
-                        )
-                    })
-                    .size(LabelSize::Small)
-                    .color(Color::Warning),
-                )
-            })
-            .children(timeout_children)
-            .children(branch_children.into_iter().flatten())
-            .children(repeat_children)
+        });
+
+        v_flex()
+            .w_full()
+            .min_w_0()
+            .gap_1()
+            .p_1p5()
+            .rounded_md()
+            .border_1()
+            .border_color(cx.theme().colors().border_variant)
+            .bg(cx.theme().colors().surface_background)
+            .debug_selector(move || selector)
+            .child(header)
+            .children(body)
+            .children(lanes)
             .into_any_element()
+    }
+}
+
+/// A card's border and padding on both sides, which its lanes do not get.
+const CARD_CHROME: Pixels = px(14.);
+
+/// A lane's border and padding on both sides, which its cards do not get.
+const LANE_CHROME: Pixels = px(10.);
+
+/// The narrowest a lane is drawn; a 分岐 whose card cannot give both of its
+/// sides this much stacks them instead of putting them side by side.
+const MIN_LANE_WIDTH: f32 = 16.;
+
+/// Below this viewport width (in rems) the editor opens with the saved-macro
+/// tree hidden, so the form keeps a width worth editing in.
+const MACRO_LIST_MIN_VIEWPORT_WIDTH: f32 = 56.;
+
+/// A step card dragged by its header onto a 「+」.
+#[derive(Clone)]
+struct DraggedStep {
+    path: StepPath,
+    /// [`StepRow::element_id`] of the dragged row, which the drop checks
+    /// `path` still leads to.
+    row: EntityId,
+    number: SharedString,
+    kind: SharedString,
+    icon: IconName,
+    summary: SharedString,
+}
+
+/// What follows the pointer while a card is dragged: a copy of its header.
+struct DraggedStepHeader(DraggedStep);
+
+impl Render for DraggedStepHeader {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let dragged = &self.0;
+        h_flex()
+            .max_w(rems(24.))
+            .gap_1()
+            .px_1p5()
+            .py_0p5()
+            .rounded_sm()
+            .elevation_2(cx)
+            .child(
+                Label::new(dragged.number.clone())
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
+            .child(
+                Icon::new(dragged.icon)
+                    .size(IconSize::Small)
+                    .color(Color::Muted),
+            )
+            .child(Label::new(dragged.kind.clone()).size(LabelSize::Small))
+            .child(
+                div().min_w_0().child(
+                    Label::new(dragged.summary.clone())
+                        .size(LabelSize::Small)
+                        .color(Color::Muted)
+                        .truncate(),
+                ),
+            )
     }
 }
 
@@ -4923,12 +5687,34 @@ impl Render for MacroEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let defined = self.defined_variables(cx);
         let reach = self.variable_reach(&defined, cx);
-        let steps = (0..self.steps.len())
-            .map(|index| self.render_step(&StepPath::top(index), &reach, window, cx))
-            .collect::<Vec<_>>();
+        let viewport = window.viewport_size();
+        let rem_size = window.rem_size();
+        // The modal takes what the window can give it, up to a size past
+        // which a wider form only spreads the same cards thinner.
+        let modal_width = (viewport.width - px(64.))
+            .min(rems(72.).to_pixels(rem_size))
+            .max(px(0.));
+        let modal_height = (viewport.height - px(96.))
+            .min(rems(52.).to_pixels(rem_size))
+            .max(px(0.));
+        // What the cards of the macro's own list get: the modal less its
+        // padding, the tree beside the form when it is shown, and the room
+        // the form keeps for its scrollbar.
+        let tree_width = if self.show_macro_list {
+            rems(17.).to_pixels(rem_size) + px(12.)
+        } else {
+            px(0.)
+        };
+        let form_width = (modal_width
+            - DynamicSpacing::Base12.rems(cx).to_pixels(rem_size) * 2.
+            - tree_width
+            - px(12.))
+        .max(px(0.));
+        let steps = self.render_lane(None, form_width, &reach, window, cx);
         let steps_header = self.render_steps_header(&defined, cx);
-        let add_buttons = self.render_add_buttons(None, "add-top-step".into(), cx);
-        let tree = self.render_macro_tree(window, cx);
+        let tree = self
+            .show_macro_list
+            .then(|| self.render_macro_tree(window, cx));
         let listed = self.listed_macros(cx).len();
         let total = self.store.read(cx).macros().len();
         let tree_header = if listed == total {
@@ -4936,10 +5722,8 @@ impl Render for MacroEditor {
         } else {
             format!("保存済みのマクロ ({listed} / {total} 件)")
         };
-        let form_header = match &self.original_key {
-            Some((_, name)) => format!("『{name}』を編集"),
-            None => "新規マクロ".to_string(),
-        };
+        let form_header = self.form_heading();
+        let show_macro_list = self.show_macro_list;
         let editing = self.original_key.clone();
         let pending_delete = self.pending_delete.clone();
         let pending_folder_delete = self.pending_folder_delete.clone();
@@ -4977,15 +5761,12 @@ impl Render for MacroEditor {
         let description_field = field(&self.description, window, cx);
         let repeat_field = field(&self.repeat, window, cx).w(rems(4.));
         let repeat_interval_field = field(&self.repeat_interval, window, cx).w(rems(4.));
-        let viewport = window.viewport_size();
 
         v_flex()
             // The two panes need a bounded box: the tree and the form each
             // scroll inside it rather than growing the modal off screen.
-            .w(rems(60.))
-            .h(rems(38.))
-            .max_w(viewport.width - px(64.))
-            .max_h(viewport.height - px(96.))
+            .w(modal_width)
+            .h(modal_height)
             .overflow_hidden()
             .elevation_3(cx)
             .key_context("TerminalMacroEditor")
@@ -5002,9 +5783,10 @@ impl Render for MacroEditor {
                             .min_h_0()
                             .px(DynamicSpacing::Base12.rems(cx))
                             .gap_3()
-                            .child(
+                            .when_some(tree, |this, tree| this.child(
                                 v_flex()
                                     .w(rems(17.))
+                                    .debug_selector(|| "macro-list-pane".into())
                                     .flex_none()
                                     .h_full()
                                     .min_h_0()
@@ -5061,7 +5843,7 @@ impl Render for MacroEditor {
                                     .child(list_filter_field)
                                     .children(new_folder_in_tree)
                                     .child(v_flex().flex_1().min_h_0().child(tree)),
-                            )
+                            ))
                             .child(
                                 v_flex()
                                     .flex_1()
@@ -5075,10 +5857,50 @@ impl Render for MacroEditor {
                                             .gap_1()
                                             .justify_between()
                                             .child(
-                                                Label::new(form_header)
-                                                    .size(LabelSize::Small)
-                                                    .color(Color::Muted)
-                                                    .truncate(),
+                                                h_flex()
+                                                    .min_w_0()
+                                                    .gap_1()
+                                                    .child(
+                                                        div()
+                                                            .debug_selector(|| {
+                                                                "macro-list-toggle".into()
+                                                            })
+                                                            .child(IconButton::new(
+                                                            "macro-list-toggle",
+                                                            if show_macro_list {
+                                                                IconName::ThreadsSidebarLeftOpen
+                                                            } else {
+                                                                IconName::ThreadsSidebarLeftClosed
+                                                            },
+                                                        )
+                                                        .icon_size(IconSize::Small)
+                                                        .toggle_state(show_macro_list)
+                                                        .tooltip(Tooltip::text(
+                                                            if show_macro_list {
+                                                                "保存済みのマクロの一覧を隠して、編集欄を広げます"
+                                                            } else {
+                                                                "保存済みのマクロの一覧を表示します"
+                                                            },
+                                                        ))
+                                                        .on_click(cx.listener(|this, _, _, cx| {
+                                                            this.show_macro_list =
+                                                                !this.show_macro_list;
+                                                            cx.notify();
+                                                        }))),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .min_w_0()
+                                                            .debug_selector(|| {
+                                                                "macro-form-header".into()
+                                                            })
+                                                            .child(
+                                                                Label::new(form_header)
+                                                                    .size(LabelSize::Small)
+                                                                    .color(Color::Muted)
+                                                                    .truncate(),
+                                                            ),
+                                                    ),
                                             )
                                             .when_some(editing, |this, key| {
                                                 this.child(
@@ -5174,8 +5996,7 @@ impl Render for MacroEditor {
                                                     )
 
                                                     .child(steps_header)
-                                                    .children(steps)
-                                                    .child(add_buttons),
+                                                    .child(steps),
                                             )
                                             .vertical_scrollbar_for(&self.form_scroll, window, cx),
                                     )
@@ -6477,7 +7298,7 @@ mod tests {
         rc::Rc,
     };
 
-    use gpui::{TestAppContext, VisualTestContext};
+    use gpui::{Modifiers, MouseButton, TestAppContext, VisualTestContext, point, size};
     use project::{FakeFs, Project};
     use settings::SettingsStore;
     use terminal::terminal_macro::parse_sessions_file;
@@ -8197,6 +9018,23 @@ mod tests {
             );
         }
 
+        // A wide form puts the two sides next to each other…
+        let then_side = cx
+            .debug_bounds("macro-step-2-1")
+            .expect("the 「そのとき」 row should have been drawn");
+        let else_side = cx
+            .debug_bounds("macro-step-2-e1")
+            .expect("the 「それ以外」 row should have been drawn");
+        assert!(
+            then_side.right() <= else_side.left() && then_side.top() == else_side.top(),
+            "「そのとき」 spans {:?} and 「それ以外」 {:?}, which are not side by side",
+            then_side,
+            else_side
+        );
+
+        // …and one too narrow for two lanes stacks them.
+        cx.simulate_resize(size(px(600.), px(900.)));
+        cx.run_until_parked();
         let then_side = cx
             .debug_bounds("macro-step-2-1")
             .expect("the 「そのとき」 row should have been drawn");
@@ -8397,6 +9235,702 @@ mod tests {
                 else_steps: vec![send("一"), send("三"), send("二")],
             }]
         );
+    }
+
+    fn sent(text: &str) -> MacroStep {
+        MacroStep::Send {
+            text: text.to_string(),
+            newline: true,
+        }
+    }
+
+    /// The form's steps as one line, a 送信 standing for itself by its text:
+    /// `a b 分岐(t1 t2 | e1) 繰り返し(r1) c`.
+    fn outline(rows: &[StepRow], cx: &App) -> String {
+        rows.iter()
+            .map(|row| match row.kind {
+                StepKind::Send => row.text.read(cx).text(cx),
+                StepKind::If => format!(
+                    "分岐({} | {})",
+                    outline(&row.children, cx),
+                    outline(&row.else_children, cx)
+                ),
+                StepKind::Repeat => format!("繰り返し({})", outline(&row.children, cx)),
+                kind => kind.label().to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn reorder_macro() -> TerminalMacro {
+        TerminalMacro {
+            name: "並べ替え".to_string(),
+            steps: vec![
+                sent("a"),
+                sent("b"),
+                MacroStep::If {
+                    pattern: "点検".to_string(),
+                    regex: false,
+                    scope: MatchScope::SinceLastSend,
+                    capture: None,
+                    then_steps: vec![sent("t1"), sent("t2")],
+                    else_steps: vec![sent("e1")],
+                },
+                MacroStep::Repeat {
+                    count: 2,
+                    steps: vec![sent("r1")],
+                },
+                sent("c"),
+            ],
+            ..TerminalMacro::default()
+        }
+    }
+
+    fn at(parent: Option<(StepPath, StepList)>, index: usize) -> InsertionPoint {
+        InsertionPoint { parent, index }
+    }
+
+    #[gpui::test]
+    async fn moving_a_row_lands_it_where_the_drop_was_drawn(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+        let editor = open_editor(&workspace, &store, cx);
+
+        let branch = StepPath::top(2);
+        let repeat = StepPath::top(3);
+        let original = "a b 分岐(t1 t2 | e1) 繰り返し(r1) c";
+        // (what, row moved, where it is dropped, the form after it, or `None`
+        // for a drop that has to be refused and change nothing).
+        let cases: Vec<(&str, StepPath, InsertionPoint, Option<&str>)> = vec![
+            (
+                "later in the same list: the drop counts positions before the row left",
+                StepPath::top(0),
+                at(None, 2),
+                Some("b a 分岐(t1 t2 | e1) 繰り返し(r1) c"),
+            ),
+            (
+                "earlier in the same list",
+                StepPath::top(4),
+                at(None, 0),
+                Some("c a b 分岐(t1 t2 | e1) 繰り返し(r1)"),
+            ),
+            (
+                "the 「+」 at the end of its own list",
+                StepPath::top(0),
+                at(None, 5),
+                Some("b 分岐(t1 t2 | e1) 繰り返し(r1) c a"),
+            ),
+            (
+                "from 「そのとき」 to 「それ以外」",
+                branch.child(StepList::Main, 1),
+                at(Some((branch.clone(), StepList::Else)), 0),
+                Some("a b 分岐(t1 | t2 e1) 繰り返し(r1) c"),
+            ),
+            (
+                "into a list whose card comes after the row, which moves up one",
+                StepPath::top(1),
+                at(Some((branch.clone(), StepList::Main)), 0),
+                Some("a 分岐(b t1 t2 | e1) 繰り返し(r1) c"),
+            ),
+            (
+                "out of a 繰り返し to the top of the macro",
+                repeat.child(StepList::Main, 0),
+                at(None, 0),
+                Some("r1 a b 分岐(t1 t2 | e1) 繰り返し() c"),
+            ),
+            (
+                "out of 「それ以外」 to just after its 分岐",
+                branch.child(StepList::Else, 0),
+                at(None, 3),
+                Some("a b 分岐(t1 t2 | ) e1 繰り返し(r1) c"),
+            ),
+            (
+                "from one card's list into another card's",
+                branch.child(StepList::Main, 1),
+                at(Some((repeat, StepList::Main)), 1),
+                Some("a b 分岐(t1 | e1) 繰り返し(r1 t2) c"),
+            ),
+            (
+                "into its own 「そのとき」",
+                branch.clone(),
+                at(Some((branch.clone(), StepList::Main)), 0),
+                None,
+            ),
+            (
+                "into its own 「それ以外」, at the end",
+                branch.clone(),
+                at(Some((branch, StepList::Else)), 1),
+                None,
+            ),
+            (
+                "onto the 「+」 right before itself",
+                StepPath::top(1),
+                at(None, 1),
+                None,
+            ),
+            (
+                "onto the 「+」 right after itself",
+                StepPath::top(1),
+                at(None, 2),
+                None,
+            ),
+            (
+                "past the end of the list",
+                StepPath::top(0),
+                at(None, 6),
+                None,
+            ),
+            (
+                "into a card that does not exist",
+                StepPath::top(0),
+                at(Some((StepPath::top(9), StepList::Main)), 0),
+                None,
+            ),
+            (
+                "a row that does not exist",
+                StepPath::top(9),
+                at(None, 0),
+                None,
+            ),
+        ];
+
+        for (what, from, to, expected) in cases {
+            editor.update_in(cx, |editor, window, cx| {
+                editor.load_macro(Some(reorder_macro()), window, cx);
+                let moved = editor.move_row(&from, to.clone());
+                assert_eq!(moved, expected.is_some(), "{what}");
+                assert_eq!(
+                    outline(&editor.steps, cx),
+                    expected.unwrap_or(original),
+                    "{what}"
+                );
+            });
+        }
+
+        // Deeper than one level: the outer 繰り返し cannot go into the 分岐
+        // inside it either.
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(deeply_nested_macro()), window, cx);
+            let inner_branch = StepPath::top(0).child(StepList::Main, 0);
+            assert!(!editor.move_row(
+                &StepPath::top(0),
+                at(Some((inner_branch.clone(), StepList::Else)), 0),
+            ));
+            assert!(
+                !InsertionPoint {
+                    parent: Some((inner_branch, StepList::Main)),
+                    index: 0,
+                }
+                .accepts(&StepPath::top(0))
+            );
+        });
+
+        // The row's fields travel with it: the moved row still holds what was
+        // typed into it, in the very editors it had.
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(reorder_macro()), window, cx);
+            editor.steps[0].text.update(cx, |text, cx| {
+                text.set_text("a (typed)", window, cx);
+            });
+            let editors = editor.steps[0].text.entity_id();
+            assert!(editor.move_row(
+                &StepPath::top(0),
+                at(Some((StepPath::top(2), StepList::Else)), 1),
+            ));
+            let moved = &editor.steps[1].else_children[1];
+            assert_eq!(moved.text.entity_id(), editors);
+            assert_eq!(moved.text.read(cx).text(cx), "a (typed)");
+        });
+    }
+
+    /// Presses on `from`, moves past the drag threshold, and lets go on `to`.
+    fn drag(cx: &mut VisualTestContext, from: &'static str, to: &'static str) {
+        let from = cx
+            .debug_bounds(from)
+            .unwrap_or_else(|| panic!("{from} should be on screen"));
+        let to = cx
+            .debug_bounds(to)
+            .unwrap_or_else(|| panic!("{to} should be on screen"));
+        cx.simulate_mouse_down(from.center(), MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(
+            from.center() + point(px(20.), px(0.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.simulate_mouse_move(to.center(), MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_up(to.center(), MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn dragging_a_card_by_its_header_onto_a_plus_moves_it(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(
+                Some(TerminalMacro {
+                    name: "ドラッグ".to_string(),
+                    steps: vec![
+                        sent("a"),
+                        sent("b"),
+                        sent("c"),
+                        MacroStep::If {
+                            pattern: "点検".to_string(),
+                            regex: false,
+                            scope: MatchScope::SinceLastSend,
+                            capture: None,
+                            then_steps: vec![sent("t1")],
+                            else_steps: Vec::new(),
+                        },
+                    ],
+                    ..TerminalMacro::default()
+                }),
+                window,
+                cx,
+            );
+        });
+        // Folded, every card and 「+」 fits in the form without scrolling.
+        editor.update(cx, |editor, cx| editor.set_all_expanded(false, cx));
+        cx.run_until_parked();
+
+        drag(cx, "macro-step-1-header", "macro-insert-top-4");
+        editor.read_with(cx, |editor, cx| {
+            assert_eq!(outline(&editor.steps, cx), "b c 分岐(t1 | ) a");
+        });
+
+        // Across lanes: into the empty 「それ以外」 of the 分岐, now step 3.
+        drag(cx, "macro-step-4-header", "macro-insert-3-else-0");
+        editor.read_with(cx, |editor, cx| {
+            assert_eq!(outline(&editor.steps, cx), "b c 分岐(t1 | a)");
+        });
+
+        // A card dropped into itself stays where it is.
+        drag(cx, "macro-step-3-header", "macro-insert-3-main-0");
+        editor.read_with(cx, |editor, cx| {
+            assert_eq!(outline(&editor.steps, cx), "b c 分岐(t1 | a)");
+        });
+    }
+
+    #[gpui::test]
+    async fn a_drop_after_the_rows_changed_under_the_drag_moves_nothing(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(
+                Some(TerminalMacro {
+                    name: "途中で消える".to_string(),
+                    steps: vec![sent("a"), sent("b"), sent("c"), sent("d")],
+                    ..TerminalMacro::default()
+                }),
+                window,
+                cx,
+            );
+            editor.set_all_expanded(false, cx);
+        });
+        cx.run_until_parked();
+
+        let from = cx
+            .debug_bounds("macro-step-1-header")
+            .expect("step 1 should be on screen");
+        cx.simulate_mouse_down(from.center(), MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(
+            from.center() + point(px(20.), px(0.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        // The dragged 「a」 goes away mid-drag, so the path the drag carries
+        // now leads to 「b」.
+        editor.update(cx, |editor, cx| {
+            assert!(editor.delete_step(&StepPath::top(0)));
+            cx.notify();
+        });
+        cx.run_until_parked();
+        let to = cx
+            .debug_bounds("macro-insert-top-3")
+            .expect("the 「+」 at the end should be on screen");
+        cx.simulate_mouse_move(to.center(), MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_up(to.center(), MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+
+        editor.read_with(cx, |editor, cx| {
+            assert_eq!(outline(&editor.steps, cx), "b c d");
+        });
+    }
+
+    #[gpui::test]
+    async fn moving_a_row_between_nested_lists_finds_the_list_it_was_dropped_in(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+        let editor = open_editor(&workspace, &store, cx);
+
+        let branch = |then_steps: Vec<MacroStep>, else_steps: Vec<MacroStep>| MacroStep::If {
+            pattern: "点検".to_string(),
+            regex: false,
+            scope: MatchScope::SinceLastSend,
+            capture: None,
+            then_steps,
+            else_steps,
+        };
+        let repeat = |steps: Vec<MacroStep>| MacroStep::Repeat { count: 2, steps };
+        let nested = TerminalMacro {
+            name: "入れ子".to_string(),
+            steps: vec![
+                branch(
+                    vec![sent("t1"), repeat(vec![sent("r1")])],
+                    vec![sent("e1"), repeat(vec![sent("q1")])],
+                ),
+                branch(vec![sent("u1"), repeat(vec![sent("w1")])], Vec::new()),
+            ],
+            ..TerminalMacro::default()
+        };
+        let first = StepPath::top(0);
+        let second = StepPath::top(1);
+        let cases: Vec<(&str, StepPath, InsertionPoint, &str)> = vec![
+            (
+                "into the 繰り返し after it in the same 「そのとき」, which moves up one",
+                first.child(StepList::Main, 0),
+                at(Some((first.child(StepList::Main, 1), StepList::Main)), 0),
+                "分岐(繰り返し(t1 r1) | e1 繰り返し(q1)) 分岐(u1 繰り返し(w1) | )",
+            ),
+            (
+                "from 「それ以外」 into the 繰り返し of 「そのとき」, which stays put",
+                first.child(StepList::Else, 0),
+                at(Some((first.child(StepList::Main, 1), StepList::Main)), 1),
+                "分岐(t1 繰り返し(r1 e1) | 繰り返し(q1)) 分岐(u1 繰り返し(w1) | )",
+            ),
+            (
+                "into the second 分岐's 繰り返し, whose path only looks like a later sibling's",
+                first.child(StepList::Main, 0),
+                at(Some((second.child(StepList::Main, 1), StepList::Main)), 0),
+                "分岐(繰り返し(r1) | e1 繰り返し(q1)) 分岐(u1 繰り返し(t1 w1) | )",
+            ),
+            (
+                "into the next 分岐 from inside the first, which does not shift it",
+                first.child(StepList::Main, 0),
+                at(Some((second.clone(), StepList::Main)), 0),
+                "分岐(繰り返し(r1) | e1 繰り返し(q1)) 分岐(t1 u1 繰り返し(w1) | )",
+            ),
+            (
+                "two levels up, to the other side of its 分岐",
+                first.child(StepList::Main, 1).child(StepList::Main, 0),
+                at(Some((first.clone(), StepList::Else)), 0),
+                "分岐(t1 繰り返し() | r1 e1 繰り返し(q1)) 分岐(u1 繰り返し(w1) | )",
+            ),
+            (
+                "a whole 分岐 into a list two levels inside the card after it",
+                first,
+                at(Some((second.child(StepList::Main, 1), StepList::Main)), 1),
+                "分岐(u1 繰り返し(w1 分岐(t1 繰り返し(r1) | e1 繰り返し(q1))) | )",
+            ),
+        ];
+        for (what, from, to, expected) in cases {
+            editor.update_in(cx, |editor, window, cx| {
+                editor.load_macro(Some(nested.clone()), window, cx);
+                assert!(editor.move_row(&from, to.clone()), "{what}");
+                assert_eq!(outline(&editor.steps, cx), expected, "{what}");
+            });
+        }
+    }
+
+    #[gpui::test]
+    async fn a_step_put_in_between_renumbers_the_steps_after_it(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(
+                Some(TerminalMacro {
+                    name: "挿入".to_string(),
+                    steps: vec![
+                        sent("a"),
+                        sent("b"),
+                        MacroStep::If {
+                            pattern: "点検".to_string(),
+                            regex: false,
+                            scope: MatchScope::SinceLastSend,
+                            capture: None,
+                            then_steps: vec![sent("t1")],
+                            else_steps: Vec::new(),
+                        },
+                    ],
+                    ..TerminalMacro::default()
+                }),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("macro-step-4").is_none());
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.insert_step(at(None, 1), StepKind::Sleep, window, cx);
+        });
+        cx.run_until_parked();
+        editor.update_in(cx, |editor, window, cx| {
+            assert_eq!(outline(&editor.steps, cx), "a 秒待ち b 分岐(t1 | )");
+            let inserted = &editor.steps[1];
+            assert!(inserted.expanded, "a new card opens unfolded");
+            assert!(
+                inserted
+                    .number
+                    .focus_handle(cx)
+                    .contains_focused(window, cx),
+                "the new 秒待ち should be ready to type its 秒数 into"
+            );
+        });
+        let first = cx
+            .debug_bounds("macro-step-1")
+            .expect("step 1 should have been drawn");
+        let inserted = cx
+            .debug_bounds("macro-step-2")
+            .expect("the inserted step should be numbered 2");
+        let pushed_down = cx
+            .debug_bounds("macro-step-3")
+            .expect("the old step 2 should now be step 3");
+        assert!(
+            first.bottom() <= inserted.top() && inserted.bottom() <= pushed_down.top(),
+            "the inserted card should be drawn between steps 1 and 3"
+        );
+        assert!(
+            cx.debug_bounds("macro-step-4-1").is_some(),
+            "the 分岐 is step 4 now, and its 「そのとき」 is numbered after it"
+        );
+
+        // Into the empty 「それ以外」 lane, through its 「+」.
+        assert!(cx.debug_bounds("macro-insert-4-else-0").is_some());
+        editor.update_in(cx, |editor, window, cx| {
+            editor.insert_step(
+                at(Some((StepPath::top(3), StepList::Else)), 0),
+                StepKind::SetVariable,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        editor.update_in(cx, |editor, window, cx| {
+            assert_eq!(
+                outline(&editor.steps, cx),
+                "a 秒待ち b 分岐(t1 | 変数に設定)"
+            );
+            assert!(
+                editor.steps[3].else_children[0]
+                    .capture
+                    .focus_handle(cx)
+                    .contains_focused(window, cx),
+                "the new 変数に設定 should be ready to type its 変数名 into"
+            );
+        });
+        assert!(cx.debug_bounds("macro-step-4-e1").is_some());
+    }
+
+    fn repeat_of(count: usize) -> TerminalMacro {
+        TerminalMacro {
+            name: format!("{count} 枚"),
+            steps: vec![MacroStep::Repeat {
+                count: 2,
+                steps: (0..count - 1)
+                    .map(|index| sent(&index.to_string()))
+                    .collect(),
+            }],
+            ..TerminalMacro::default()
+        }
+    }
+
+    fn every_card_expanded(rows: &[StepRow]) -> Vec<bool> {
+        rows.iter()
+            .flat_map(|row| std::iter::once(row.expanded).chain(every_card_expanded(&row.children)))
+            .collect()
+    }
+
+    #[gpui::test]
+    async fn a_macro_opens_unfolded_up_to_eight_cards(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            // Eight cards counting the steps inside the 繰り返し.
+            editor.load_macro(Some(repeat_of(8)), window, cx);
+            assert_eq!(card_count(&editor.steps), 8);
+            assert_eq!(every_card_expanded(&editor.steps), vec![true; 8]);
+
+            editor.load_macro(Some(repeat_of(9)), window, cx);
+            assert_eq!(card_count(&editor.steps), 9);
+            assert_eq!(every_card_expanded(&editor.steps), vec![false; 9]);
+
+            editor.set_all_expanded(true, cx);
+            assert_eq!(every_card_expanded(&editor.steps), vec![true; 9]);
+            editor.set_all_expanded(false, cx);
+            assert_eq!(every_card_expanded(&editor.steps), vec![false; 9]);
+        });
+    }
+
+    #[gpui::test]
+    async fn a_folded_card_shows_that_something_in_it_is_wrong(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(
+                Some(TerminalMacro {
+                    name: "壊れた正規表現".to_string(),
+                    steps: vec![
+                        MacroStep::If {
+                            pattern: "(?<ver>".to_string(),
+                            regex: true,
+                            scope: MatchScope::Screen,
+                            capture: None,
+                            then_steps: Vec::new(),
+                            else_steps: Vec::new(),
+                        },
+                        sent("show version"),
+                    ],
+                    ..TerminalMacro::default()
+                }),
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("macro-step-1-notes").is_none(),
+            "an unfolded card lists the error under its fields instead"
+        );
+
+        editor.update(cx, |editor, cx| editor.set_all_expanded(false, cx));
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("macro-step-1-notes").is_some(),
+            "a folded card with a broken regex has to say so in its header"
+        );
+        assert!(
+            cx.debug_bounds("macro-step-2-notes").is_none(),
+            "a card with nothing wrong gets no mark"
+        );
+        editor.read_with(cx, |editor, cx| {
+            let defined = editor.defined_variables(cx);
+            let reach = editor.variable_reach(&defined, cx);
+            let notes = editor.step_notes(&editor.steps[0], &reach, cx);
+            assert!(
+                matches!(notes.first(), Some((note, Color::Error)) if note.starts_with("正規表現が不正です")),
+                "{notes:?}"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn folding_cards_is_not_an_edit_and_does_not_change_what_is_saved(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let edited = branching_macro();
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(edited.clone()), window, cx);
+            editor.set_all_expanded(false, cx);
+            if let Some(row) = editor.row_mut(&StepPath::top(1).child(StepList::Main, 0)) {
+                row.expanded = true;
+            }
+            assert!(
+                !editor.has_unsaved_edits(cx),
+                "folding a card is how the form is looked at, not a change to the macro"
+            );
+            editor.save(cx);
+        });
+        cx.run_until_parked();
+
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        assert_eq!(parse_sessions_file(&contents).macros, vec![edited]);
+    }
+
+    #[gpui::test]
+    async fn a_narrow_window_opens_the_editor_with_the_macro_list_hidden(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "name": "ルーター", "steps": [{ "type": "clear" }] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("macro-list-pane").is_some(),
+            "a wide window shows the list beside the form"
+        );
+        editor.update(cx, |_, cx| cx.emit(DismissEvent));
+        cx.run_until_parked();
+
+        // 50 rem wide, whatever the test's rem is.
+        let width = cx.update(|window, _| rems(50.).to_pixels(window.rem_size()));
+        cx.simulate_resize(size(width, px(700.)));
+        cx.run_until_parked();
+        let editor = open_editor(&workspace, &store, cx);
+        let terminal_macro = stored_macro(&editor, None, "ルーター", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(terminal_macro), window, cx);
+        });
+        cx.run_until_parked();
+
+        assert!(cx.debug_bounds("macro-list-pane").is_none());
+        assert!(
+            cx.debug_bounds("macro-form-header").is_some(),
+            "with the list hidden, the form's heading is what names the open macro"
+        );
+        editor.read_with(cx, |editor, _| {
+            assert!(!editor.show_macro_list);
+            assert_eq!(editor.form_heading(), "『ルーター』を編集");
+        });
+        let modal = cx
+            .debug_bounds("macro-editor")
+            .expect("the editor should have been drawn");
+        assert!(
+            modal.size.width <= width - px(64.) && modal.size.height <= px(700. - 96.),
+            "the modal is {:?}, which does not leave the window its margin",
+            modal.size
+        );
+
+        let toggle = cx
+            .debug_bounds("macro-list-toggle")
+            .expect("the list button should have been drawn");
+        cx.simulate_click(toggle.center(), Modifiers::none());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("macro-list-pane").is_some(),
+            "the button brings the list back"
+        );
+        assert!(cx.debug_bounds("macro-form-header").is_some());
     }
 
     #[gpui::test]
