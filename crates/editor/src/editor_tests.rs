@@ -45403,6 +45403,127 @@ async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
         あと"#});
 }
 
+/// A fence opened inside another fence would close that block and take the
+/// rest of it along, so a cursor in a code block sends the diagram past the
+/// block's closing line, and several cursors in one block send one diagram.
+#[gpui::test]
+async fn test_insert_mermaid_diagram_inside_a_code_block(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_lang()), cx));
+    let insert_pie = InsertMermaidDiagram {
+        diagram: MermaidDiagramKind::Pie,
+    };
+
+    cx.set_state(indoc! {"
+        前
+        ```rust
+        let ˇa = 1;
+        let ˇb = «2ˇ»;
+        ```
+        後"});
+    cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
+    cx.assert_editor_state(indoc! {r#"
+        前
+        ```rust
+        let a = 1;
+        let b = 2;
+        ```
+
+        ```mermaid
+        ˇpie title 内訳
+            "設計" : 30
+            "実装" : 50
+            "テスト" : 20
+        ```
+
+        後"#});
+
+    // On the opening fence line too, and at the end of the document.
+    cx.set_state(indoc! {"
+        ```mermaidˇ
+        flowchart LR
+          A --> B
+        ```"});
+    cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
+    cx.assert_editor_state(indoc! {r#"
+        ```mermaid
+        flowchart LR
+          A --> B
+        ```
+
+        ```mermaid
+        ˇpie title 内訳
+            "設計" : 30
+            "実装" : 50
+            "テスト" : 20
+        ```"#});
+
+    // A `~~~` block and a block holding a shorter fence are stepped over
+    // whole.
+    cx.set_state(indoc! {"
+        ~~~
+        ˇa
+        ~~~
+        ````markdown
+        ```mermaid
+        ˇpie
+        ```
+        ````
+        後"});
+    cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
+    cx.assert_editor_state(indoc! {r#"
+        ~~~
+        a
+        ~~~
+
+        ```mermaid
+        ˇpie title 内訳
+            "設計" : 30
+            "実装" : 50
+            "テスト" : 20
+        ```
+
+        ````markdown
+        ```mermaid
+        pie
+        ```
+        ````
+
+        ```mermaid
+        ˇpie title 内訳
+            "設計" : 30
+            "実装" : 50
+            "テスト" : 20
+        ```
+
+        後"#});
+
+    // A block that is never closed has no line after it: the diagram goes in
+    // front of it instead of closing it.
+    cx.set_state(indoc! {"
+        前
+
+        ```rust
+        let ˇa = 1;
+        後"});
+    cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
+    cx.assert_editor_state(indoc! {r#"
+        前
+
+        ```mermaid
+        ˇpie title 内訳
+            "設計" : 30
+            "実装" : 50
+            "テスト" : 20
+        ```
+
+        ```rust
+        let a = 1;
+        後"#});
+}
+
 #[gpui::test]
 async fn test_insert_markdown_details(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
@@ -46152,6 +46273,9 @@ fn test_mermaid_diagram_templates_declare_a_renderable_type(_cx: &mut TestAppCon
         (MermaidDiagramKind::GitGraph, "gitGraph"),
         (MermaidDiagramKind::Mindmap, "mindmap"),
         (MermaidDiagramKind::Timeline, "timeline"),
+        (MermaidDiagramKind::Journey, "journey"),
+        (MermaidDiagramKind::QuadrantChart, "quadrantChart"),
+        (MermaidDiagramKind::XyChart, "xychart-beta"),
     ];
     assert_eq!(expected_first_tokens.len(), MermaidDiagramKind::ALL.len());
 

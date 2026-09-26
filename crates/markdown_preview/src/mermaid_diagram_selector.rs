@@ -77,6 +77,20 @@ fn diagram_keyword(diagram: MermaidDiagramKind) -> &'static str {
     diagram.template().split_whitespace().next().unwrap_or("")
 }
 
+/// The diagram types whose Japanese name or Mermaid keyword contains `query`,
+/// ignoring case, in menu order.
+fn matching_diagrams(query: &str) -> Vec<MermaidDiagramKind> {
+    let query = query.trim().to_lowercase();
+    MermaidDiagramKind::ALL
+        .into_iter()
+        .filter(|diagram| {
+            query.is_empty()
+                || diagram.label().to_lowercase().contains(&query)
+                || diagram_keyword(*diagram).to_lowercase().contains(&query)
+        })
+        .collect()
+}
+
 impl PickerDelegate for MermaidDiagramSelectorDelegate {
     type ListItem = ListItem;
 
@@ -111,15 +125,7 @@ impl PickerDelegate for MermaidDiagramSelectorDelegate {
         _window: &mut Window,
         _cx: &mut Context<Picker<Self>>,
     ) -> Task<()> {
-        let query = query.trim().to_lowercase();
-        self.matches = MermaidDiagramKind::ALL
-            .into_iter()
-            .filter(|diagram| {
-                query.is_empty()
-                    || diagram.label().to_lowercase().contains(&query)
-                    || diagram_keyword(*diagram).to_lowercase().contains(&query)
-            })
-            .collect();
+        self.matches = matching_diagrams(&query);
         self.selected_index = 0;
         Task::ready(())
     }
@@ -161,5 +167,54 @@ impl PickerDelegate for MermaidDiagramSelectorDelegate {
                         .color(Color::Muted),
                 ),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A template the preview does not draw would be inserted as a code block
+    /// that never turns into a picture, and one `merman` cannot parse would be
+    /// drawn as an error. Every entry of the insert menus has to pass both.
+    #[test]
+    fn every_template_is_drawn_by_the_preview() {
+        for diagram in MermaidDiagramKind::ALL {
+            let template = diagram.template();
+            assert!(
+                markdown::is_supported_diagram_type(template),
+                "the preview does not draw the {} template",
+                diagram.label()
+            );
+            let svg = mermaid_render::render_to_svg(
+                template,
+                &crate::markdown_export::print_mermaid_theme(),
+            )
+            .unwrap_or_else(|error| {
+                panic!("the {} template should render: {error}", diagram.label())
+            });
+            assert!(
+                !svg.contains("Syntax error in text"),
+                "the {} template rendered an error diagram",
+                diagram.label()
+            );
+        }
+    }
+
+    #[test]
+    fn a_keyword_finds_its_diagram() {
+        for (query, expected) in [
+            ("xychart", MermaidDiagramKind::XyChart),
+            ("XYCHART-BETA", MermaidDiagramKind::XyChart),
+            ("quadrant", MermaidDiagramKind::QuadrantChart),
+            ("journey", MermaidDiagramKind::Journey),
+            ("ジャーニー", MermaidDiagramKind::Journey),
+            ("象限", MermaidDiagramKind::QuadrantChart),
+            ("gantt", MermaidDiagramKind::Gantt),
+        ] {
+            let found = matching_diagrams(query);
+            assert!(found.contains(&expected), "`{query}` found {found:?}");
+        }
+        assert_eq!(matching_diagrams("").len(), MermaidDiagramKind::ALL.len());
     }
 }

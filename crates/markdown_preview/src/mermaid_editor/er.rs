@@ -12,7 +12,7 @@ use editor::Editor;
 use gpui::{AnyElement, App, Context, Entity, Window};
 use mermaid_render::er_model::{
     ErAttribute, ErAttributeKey, ErCardinality, ErDirection, ErDocument, ErEntity, ErRelationship,
-    is_valid_attribute_word, is_valid_entity_name,
+    is_valid_attribute_word, is_valid_class_name, is_valid_entity_name,
 };
 use ui::{
     Checkbox, ContextMenu, DropdownMenu, DropdownStyle, IconButtonShape, IconPosition, ToggleState,
@@ -20,6 +20,9 @@ use ui::{
 };
 use util::ResultExt as _;
 
+use super::class_menu::{
+    ToggleClass, class_candidates, declared_class_names, render_class_input, render_class_menu,
+};
 use super::{
     Form, ID_FIELD_WIDTH, LABEL_FIELD_WIDTH, MermaidEditor, add_button, field_frame, neighbour,
     row_controls, section_title,
@@ -29,6 +32,9 @@ pub(super) struct ErForm {
     pub(super) document: ErDocument,
     pub(super) entities: Vec<EntityRow>,
     pub(super) relationships: Vec<RelationshipRow>,
+    /// A class name typed by hand, offered beside the `classDef` names in
+    /// every entity's class menu.
+    pub(super) class_input: Entity<Editor>,
 }
 
 pub(super) struct EntityRow {
@@ -61,8 +67,29 @@ impl ErForm {
                 }))
         });
         entities
+            .chain([self.class_input.clone()])
             .chain(self.relationships.iter().map(|row| row.label.clone()))
             .collect()
+    }
+
+    /// The class names the entity class menus offer.
+    pub(super) fn class_candidates(&self, cx: &App) -> Vec<String> {
+        let declared = declared_class_names(
+            self.document
+                .preserved_lines
+                .iter()
+                .map(|line| line.text.as_str()),
+            is_valid_class_name,
+        );
+        class_candidates(
+            declared,
+            self.document
+                .entities
+                .iter()
+                .flat_map(|entity| &entity.classes),
+            &self.class_input.read(cx).text(cx),
+            is_valid_class_name,
+        )
     }
 
     /// The diagram the form currently describes, with every relationship
@@ -284,6 +311,7 @@ impl MermaidEditor {
             document,
             entities,
             relationships,
+            class_input: self.new_field("", window, cx),
         }
     }
 
@@ -319,6 +347,7 @@ impl MermaidEditor {
             alias: None,
             attributes: Vec::new(),
             classes: Vec::new(),
+            trailing_comment: None,
         });
         form.entities.push(row);
         self.schedule_preview(cx);
@@ -410,6 +439,7 @@ impl MermaidEditor {
             name: String::new(),
             keys: Vec::new(),
             comment: None,
+            trailing_comment: None,
         });
         entity_row.attributes.push(row);
         self.schedule_preview(cx);
@@ -519,6 +549,7 @@ impl MermaidEditor {
             right_cardinality: ErCardinality::ZeroOrMore,
             identifying: true,
             label: String::new(),
+            trailing_comment: None,
         });
         form.relationships.push(row);
         self.schedule_preview(cx);
@@ -556,6 +587,31 @@ impl MermaidEditor {
         }
         form.document.relationships.swap(index, other);
         form.relationships.swap(index, other);
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    /// Adds `class` to the entity at `index`, or takes it away when the entity
+    /// already has it. The model writes the classes inline (`A:::warn`), so a
+    /// `class` statement the diagram was written with goes the same way.
+    pub(super) fn toggle_entity_class(
+        &mut self,
+        index: usize,
+        class: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(form) = self.er_mut() else {
+            return;
+        };
+        let Some(entity) = form.document.entities.get_mut(index) else {
+            return;
+        };
+        match entity.classes.iter().position(|name| name == class) {
+            Some(position) => {
+                entity.classes.remove(position);
+            }
+            None => entity.classes.push(class.to_string()),
+        }
         self.schedule_preview(cx);
         cx.notify();
     }
@@ -654,6 +710,8 @@ impl MermaidEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let last = form.entities.len().saturating_sub(1);
+        let candidates = form.class_candidates(cx);
+        let this = cx.entity().downgrade();
         let mut section = v_flex()
             .w_full()
             .gap_2()
@@ -773,6 +831,24 @@ impl MermaidEditor {
                                     .flex_1()
                                     .child(row.alias.clone()),
                             )
+                            .child({
+                                let this = this.clone();
+                                let on_toggle: ToggleClass =
+                                    std::rc::Rc::new(move |class, _window, cx| {
+                                        this.update(cx, |this, cx| {
+                                            this.toggle_entity_class(index, &class, cx)
+                                        })
+                                        .log_err();
+                                    });
+                                render_class_menu(
+                                    ("mermaid-er-entity-class", index),
+                                    &entity.classes,
+                                    &candidates,
+                                    on_toggle,
+                                    window,
+                                    cx,
+                                )
+                            })
                             .child(row_controls(
                                 "mermaid-er-entity",
                                 index,
@@ -804,6 +880,12 @@ impl MermaidEditor {
                 "mermaid-er-add-entity",
                 "エンティティを追加",
                 cx.listener(|this, _, window, cx| this.add_entity(window, cx)),
+            ))
+            .child(render_class_input(
+                &form.class_input,
+                is_valid_class_name,
+                window,
+                cx,
             ))
             .into_any_element()
     }

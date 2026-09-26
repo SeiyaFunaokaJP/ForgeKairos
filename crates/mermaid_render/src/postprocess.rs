@@ -14,6 +14,8 @@
 mod accent_colors;
 mod center_edge_labels;
 mod collect_geometry;
+#[cfg(test)]
+mod collect_geometry_class_tests;
 mod element_fixup;
 mod inject_css;
 mod strip_foreignobject;

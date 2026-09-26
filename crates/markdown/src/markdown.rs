@@ -109,6 +109,9 @@ pub struct MermaidLabelEditRequest {
     source_text: SharedString,
     quoting: crate::mermaid_source::MermaidLabelQuoting,
     refusal: Option<crate::mermaid_source::MermaidLabelRefusal>,
+    /// Labels the new one must not take, because merman would then draw the
+    /// two elements as one.
+    reserved_labels: Vec<String>,
     /// What the label says now, ready to be put in an input field.
     pub current_label: SharedString,
     /// The label's box in window coordinates, for positioning that field.
@@ -158,6 +161,9 @@ impl MermaidLabelEditRequest {
             Some(MermaidLabelRefusal::EmptyLabel) => {
                 "空のラベルはここでは編集できません。「Mermaid 図を編集」から文字を書き加えてください。"
             }
+            Some(MermaidLabelRefusal::Duplicated) => {
+                "同じ名前や ID の要素が複数あるため、ここでは編集できません。「Mermaid 図を編集」から直してください。"
+            }
             Some(MermaidLabelRefusal::NotLocated) | None => {
                 "このラベルはソースの位置を特定できませんでした。"
             }
@@ -166,20 +172,18 @@ impl MermaidLabelEditRequest {
 
     /// Why `new_label` cannot be written into the token this request replaces,
     /// for the consumer to show instead of applying the edit.
-    ///
-    /// merman drops a quotation mark from an ER relationship's label rather than
-    /// decoding the entity it has to be written as, and a bare one would end the
-    /// string, so one cannot be drawn there at all. Writing it anyway would make
-    /// it disappear without a word.
     pub fn write_refusal_message(&self, new_label: &str) -> Option<&'static str> {
-        (self.quoting == crate::mermaid_source::MermaidLabelQuoting::ErLabel
-            && new_label.contains('"'))
-        .then_some("ER 図の関係ラベルには引用符 (\") を書けません。別の記号に置き換えてください。")
+        crate::mermaid_source::chart_label_write_refusal(
+            self.quoting,
+            new_label,
+            &self.reserved_labels,
+        )
+        .or_else(|| crate::mermaid_source::write_refusal(self.quoting, new_label))
     }
 
-    /// The same request, for the one slot a label cannot hold every character
-    /// in, so a consumer's handling of [`Self::write_refusal_message`] can be
-    /// tested without building an ER diagram to double-click.
+    /// The same request for an ER relationship's label, whose token is
+    /// always written quoted, so a consumer's encoding can be tested without
+    /// building an ER diagram to double-click.
     #[cfg(any(test, feature = "test-support"))]
     pub fn as_er_relationship_for_test(mut self) -> Self {
         self.quoting = crate::mermaid_source::MermaidLabelQuoting::ErLabel;
@@ -205,6 +209,7 @@ impl MermaidLabelEditRequest {
                 .into(),
             quoting: crate::mermaid_source::MermaidLabelQuoting::Delimited,
             refusal,
+            reserved_labels: Vec::new(),
             current_label: current_label.into(),
             bounds,
         }

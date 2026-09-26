@@ -400,17 +400,67 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.read_only(cx) || !self.is_in_markdown_language(cx) {
+        // Inside a fenced code block the language at the cursor is the block's
+        // own, so asking only about the cursor would do nothing there without a
+        // word. The buffer is asked as well, and the block is stepped over below.
+        let is_markdown_buffer = self.is_markdown_buffer(cx);
+        if self.read_only(cx) || !(is_markdown_buffer || self.is_in_markdown_language(cx)) {
             return;
         }
 
         let snapshot = self.buffer.read(cx).snapshot(cx);
         let template = action.diagram.template();
+        // A fence cannot open inside another fence: the new diagram would close
+        // the block it was dropped into and take the rest of it with it. A
+        // selection in a code block sends the diagram past the block's closing
+        // line instead, as `new_mermaid_fence_target` does.
+        let (blocks, unclosed_start) = if is_markdown_buffer {
+            let lines = buffer_lines(&snapshot);
+            (fenced_code_blocks(&lines), unclosed_fence_start(&lines))
+        } else {
+            (Vec::new(), None)
+        };
 
         let mut edits = Vec::new();
         let mut cursors = Vec::new();
+        let mut moved_past = Vec::new();
+        let mut moved_before_unclosed = false;
         let max_row = snapshot.max_point().row;
         for selection in self.selections.all::<Point>(&self.display_snapshot(cx)) {
+            let enclosing = blocks.iter().find(|block| {
+                block.rows().contains(&selection.start.row)
+                    || block.rows().contains(&selection.end.row)
+            });
+            let selection = match enclosing {
+                Some(block) => {
+                    // Several cursors in one block would otherwise stack one
+                    // diagram per cursor after it.
+                    if moved_past.contains(&block.body_end) {
+                        continue;
+                    }
+                    moved_past.push(block.body_end);
+                    let after_block = Point::new(
+                        block.body_end,
+                        snapshot.line_len(MultiBufferRow(block.body_end)),
+                    );
+                    after_block..after_block
+                }
+                // A block that is never closed runs to the end of the document,
+                // so there is no line after it, and a diagram written inside it
+                // would close it and turn the rest of the document from code
+                // into Markdown. The diagram goes in front of its opening fence.
+                None => match unclosed_start.filter(|start| selection.end.row >= *start) {
+                    Some(start) => {
+                        if moved_before_unclosed {
+                            continue;
+                        }
+                        moved_before_unclosed = true;
+                        let before_block = Point::new(start, 0);
+                        before_block..before_block
+                    }
+                    None => selection.start..selection.end,
+                },
+            };
             let mut text = String::new();
             // A fence that touches the line above or below it is not a block of
             // its own to a CommonMark renderer, and reads as one paragraph in
@@ -763,7 +813,7 @@ impl Editor {
 
 impl MermaidDiagramKind {
     /// Every kind, in the order the pickers and the context menu list them.
-    pub const ALL: [MermaidDiagramKind; 10] = [
+    pub const ALL: [MermaidDiagramKind; 13] = [
         MermaidDiagramKind::Flowchart,
         MermaidDiagramKind::Sequence,
         MermaidDiagramKind::Class,
@@ -774,6 +824,9 @@ impl MermaidDiagramKind {
         MermaidDiagramKind::GitGraph,
         MermaidDiagramKind::Mindmap,
         MermaidDiagramKind::Timeline,
+        MermaidDiagramKind::Journey,
+        MermaidDiagramKind::QuadrantChart,
+        MermaidDiagramKind::XyChart,
     ];
 
     pub fn label(self) -> &'static str {
@@ -788,6 +841,9 @@ impl MermaidDiagramKind {
             Self::GitGraph => "Git グラフ",
             Self::Mindmap => "マインドマップ",
             Self::Timeline => "タイムライン",
+            Self::Journey => "ユーザージャーニー",
+            Self::QuadrantChart => "4 象限チャート",
+            Self::XyChart => "XY チャート (棒・折れ線)",
         }
     }
 
@@ -889,6 +945,40 @@ impl MermaidDiagramKind {
     2024 : 企画
     2025 : 開発 : 公開
     2026 : 運用"#
+            }
+            Self::Journey => {
+                r#"journey
+    %% 作業 : 満足度 (1〜5) : 関わる人
+    title 購入までの流れ
+    section 探す
+      商品を検索する: 4: 利用者
+      比較する: 3: 利用者
+    section 買う
+      カートに入れる: 5: 利用者
+      支払う: 2: 利用者, 店舗"#
+            }
+            Self::QuadrantChart => {
+                r#"quadrantChart
+    %% 点は 名前: [横, 縦] で、どちらも 0〜1
+    title 施策の優先度
+    x-axis 労力が小さい --> 労力が大きい
+    y-axis 効果が小さい --> 効果が大きい
+    quadrant-1 計画して進める
+    quadrant-2 すぐやる
+    quadrant-3 後回し
+    quadrant-4 見直す
+    施策A: [0.3, 0.8]
+    施策B: [0.7, 0.6]
+    施策C: [0.2, 0.3]"#
+            }
+            Self::XyChart => {
+                r#"xychart-beta
+    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える
+    title 月別の売上
+    x-axis ["1月", "2月", "3月", "4月"]
+    y-axis "売上 (万円)" 0 --> 100
+    bar [30, 45, 60, 80]
+    line [30, 45, 60, 80]"#
             }
         }
     }
@@ -5170,6 +5260,27 @@ fn fenced_code_blocks(lines: &[String]) -> Vec<FencedCodeBlock> {
     }
 
     blocks
+}
+
+/// The row of the opening fence of a fenced code block that is never closed,
+/// which runs to the end of the document.
+fn unclosed_fence_start(lines: &[String]) -> Option<u32> {
+    let mut open: Option<(u32, char, usize)> = None;
+    for (index, line) in lines.iter().enumerate() {
+        match open {
+            Some((_, marker, length)) => {
+                if is_closing_fence(line, marker, length) {
+                    open = None;
+                }
+            }
+            None => {
+                if let Some((marker, length, _, _)) = parse_opening_fence(line) {
+                    open = Some((index as u32, marker, length));
+                }
+            }
+        }
+    }
+    open.map(|(row, _, _)| row)
 }
 
 /// The fenced code block that `row` falls in, counting the fence lines

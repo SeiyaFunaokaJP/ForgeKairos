@@ -19,10 +19,23 @@
 //!   appears in one has nowhere to put a label.
 //! * state: a transition's label after `:`, and a state's description
 //!   (`s1 : text` or `state "text" as s1`).
+//! * class: a class's `["…"]` display name and a relation's label after `:`
+//!   (see [`class`]).
+//! * sequence: the text of a message or a note, and a participant's display
+//!   name after `as` (see [`sequence`]).
+//! * pie, gantt and an ER entity's attributes: see [`chart_labels`].
+
+mod chart_labels;
+mod class;
+mod sequence;
 
 use std::ops::Range;
 
 use mermaid_render::mermaid_model::{MermaidDiagramKind, detect_kind};
+
+pub(crate) use chart_labels::{
+    find_item_label, reserved_labels, write_refusal as chart_label_write_refusal,
+};
 
 /// How a replacement label has to be written for the place it is going into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +67,32 @@ pub(crate) enum MermaidLabelQuoting {
     StateBare,
     /// The description inside the quotes of `state "…" as s1`.
     StateQuoted,
+    /// A pie chart slice's label, always written in double quotes with `\`
+    /// escapes, which is how merman reads it.
+    PieLabel,
+    /// A pie chart's title, which runs to the end of its line.
+    PieTitle,
+    /// A gantt task's name, before the `:`.
+    GanttTask,
+    /// A gantt section's name, which runs to the end of its line.
+    GanttSection,
+    /// A gantt chart's title, which runs to the end of its line.
+    GanttTitle,
+    /// An ER attribute's name, written bare after its type.
+    ErAttributeName,
+    /// A class's display name inside the `[…]` of `class A["…"]`, quotes
+    /// included, which is always written quoted.
+    ClassLabel,
+    /// A class relation's label, which follows the `:` and runs to the end of
+    /// the line unquoted.
+    ClassRelationLabel,
+    /// The text of a sequence diagram's message or note, or a participant's
+    /// display name, which runs unquoted to the end of the statement.
+    SequenceText,
+    /// A description for a state that is written with none. The span covers
+    /// the indentation and the id at the start of the first statement that
+    /// opens with the state, and a `s1 : …` line is written in front of it.
+    StateInsert,
 }
 
 /// Why a label the user double-clicked cannot be written back to the source.
@@ -77,6 +116,10 @@ pub(crate) enum MermaidLabelRefusal {
     /// — compare two empty strings and pass however far the buffer has moved
     /// on, dropping the new label at whatever now sits at that offset.
     EmptyLabel,
+    /// Other statements carry the same key — a pie slice's label, a gantt
+    /// section's name, a gantt task's id — and merman draws or drops them
+    /// together, so rewriting one would change what the others draw.
+    Duplicated,
 }
 
 /// The token a label edit replaces, or the reason there is none.
@@ -99,9 +142,11 @@ pub(crate) fn find_node_label(fence_body: &str, node_id: &str) -> MermaidLabelLo
     match detect_kind(fence_body) {
         Some(MermaidDiagramKind::Er) => find_er_entity_label(fence_body, node_id),
         Some(MermaidDiagramKind::State) => find_state_description(fence_body, node_id),
+        Some(MermaidDiagramKind::Class) => class::find_class_label(fence_body, node_id),
+        Some(MermaidDiagramKind::Sequence) => sequence::find_participant_label(fence_body, node_id),
         // Every other kind either is a flowchart or never reaches this far,
         // since the geometry that raised the edit is only collected for the
-        // three kinds this module reads.
+        // kinds this module reads.
         _ => find_flowchart_node_label(fence_body, node_id),
     }
 }
@@ -123,6 +168,11 @@ pub(crate) fn find_edge_label(
         // reading its statements as a flowchart's would find a token that
         // belongs to something else.
         Some(MermaidDiagramKind::State) => Err(MermaidLabelRefusal::NotLocated),
+        Some(MermaidDiagramKind::Class) => {
+            class::find_relation_label(fence_body, from, to, occurrence)
+        }
+        // Messages are numbered too, and are looked up as transitions.
+        Some(MermaidDiagramKind::Sequence) => Err(MermaidLabelRefusal::NotLocated),
         _ => find_flowchart_edge_label(fence_body, from, to, occurrence),
     }
 }
@@ -133,6 +183,7 @@ pub(crate) fn find_edge_label(
 pub(crate) fn find_transition_label(fence_body: &str, index: usize) -> MermaidLabelLookup {
     match detect_kind(fence_body) {
         Some(MermaidDiagramKind::State) => find_state_transition_label(fence_body, index),
+        Some(MermaidDiagramKind::Sequence) => sequence::find_item_label(fence_body, index),
         _ => Err(MermaidLabelRefusal::NotLocated),
     }
 }
@@ -280,10 +331,8 @@ pub(crate) fn encode_label(label: &str, quoting: MermaidLabelQuoting, replaced: 
                 _ => format!("\"{escaped}\""),
             }
         }
-        // merman drops a `#quot;` from an ER relationship label rather than
-        // decoding it, so a quotation mark cannot be drawn there at all; it is
-        // still written as the entity, because leaving it bare would end the
-        // string and break the diagram.
+        // A bare quotation mark would end the string and break the diagram;
+        // merman decodes the entity and draws the mark.
         MermaidLabelQuoting::ErLabel => format!(
             "\"{}\"",
             escape_once(&flattened, |character| (character == '"')
@@ -307,12 +356,83 @@ pub(crate) fn encode_label(label: &str, quoting: MermaidLabelQuoting, replaced: 
             ';' => Some("#59;"),
             _ => None,
         }),
-        MermaidLabelQuoting::StateQuoted => format!(
+        MermaidLabelQuoting::StateQuoted | MermaidLabelQuoting::ClassLabel => format!(
             "\"{}\"",
             escape_once(&flattened, |character| (character == '"')
                 .then_some("#quot;"))
         ),
+        MermaidLabelQuoting::PieLabel
+        | MermaidLabelQuoting::PieTitle
+        | MermaidLabelQuoting::GanttTask
+        | MermaidLabelQuoting::GanttSection
+        | MermaidLabelQuoting::GanttTitle
+        | MermaidLabelQuoting::ErAttributeName => chart_labels::encode(&flattened, quoting),
+        // The label is read to the end of the line as it stands; only the
+        // surrounding whitespace, which merman trims, is not kept.
+        MermaidLabelQuoting::ClassRelationLabel => flattened.trim().to_string(),
+        MermaidLabelQuoting::SequenceText => encode_sequence_text(flattened.trim()),
+        MermaidLabelQuoting::StateInsert => {
+            let id = replaced.trim_start();
+            let indent = replaced
+                .get(..replaced.len() - id.len())
+                .unwrap_or_default();
+            let description = escape_once(&flattened, |character| match character {
+                ':' => Some("#58;"),
+                ';' => Some("#59;"),
+                _ => None,
+            });
+            // The box already shows the id, so confirming the field as it
+            // opened, or emptied, asks for nothing to change, and a line of
+            // its own would be written for no visible difference.
+            if description.trim().is_empty() || flattened == id {
+                replaced.to_string()
+            } else {
+                format!("{indent}{id} : {description}\n{replaced}")
+            }
+        }
     }
+}
+
+/// Why `new_label` cannot be written into a slot of `quoting`'s kind, for the
+/// slots of class and sequence diagrams.
+pub(crate) fn write_refusal(quoting: MermaidLabelQuoting, new_label: &str) -> Option<&'static str> {
+    match quoting {
+        // merman would draw it, but the structured editor refuses to open a
+        // relation label holding one, so writing it would lock the diagram out
+        // of that editor.
+        MermaidLabelQuoting::ClassRelationLabel if new_label.contains("%%") => {
+            Some("クラス図の関係ラベルには %% を書けません。別の記号に置き換えてください。")
+        }
+        MermaidLabelQuoting::SequenceText
+            if sequence::wrap_directive_length(new_label.trim()).is_some() =>
+        {
+            Some(
+                "シーケンス図では先頭の wrap: / nowrap: が折り返しの指定として読まれるため、この文字では始められません。",
+            )
+        }
+        MermaidLabelQuoting::SequenceText if new_label.trim().is_empty() => {
+            Some("シーケンス図の文字は空にできません。「Mermaid 図を編集」から編集してください。")
+        }
+        _ => None,
+    }
+}
+
+/// Writes the text of a sequence diagram's statement so that merman reads all
+/// of it: a `;` would end the statement, and a `#` or a `%%` would comment out
+/// the rest of the line.
+fn encode_sequence_text(text: &str) -> String {
+    let mut encoded = String::with_capacity(text.len());
+    let mut characters = text.chars().peekable();
+    while let Some(character) = characters.next() {
+        match character {
+            ';' => encoded.push_str("#59;"),
+            '#' => encoded.push_str("#35;"),
+            // Only the first of a pair has to go, so a lone `%` stays readable.
+            '%' if characters.peek() == Some(&'%') => encoded.push_str("#37;"),
+            _ => encoded.push(character),
+        }
+    }
+    encoded
 }
 
 /// Replaces characters with the entity that stands for them, in one pass.
@@ -344,7 +464,7 @@ fn decode_label(raw: &str) -> String {
     if !unquoted.contains('#') {
         return unquoted.to_string();
     }
-    const ENTITIES: [(&str, char); 9] = [
+    const ENTITIES: [(&str, char); 11] = [
         ("#quot;", '"'),
         ("#34;", '"'),
         ("#124;", '|'),
@@ -354,6 +474,8 @@ fn decode_label(raw: &str) -> String {
         ("#colon;", ':'),
         ("#59;", ';'),
         ("#semi;", ';'),
+        ("#35;", '#'),
+        ("#37;", '%'),
     ];
     let mut decoded = String::with_capacity(unquoted.len());
     let mut rest = unquoted;
@@ -1169,6 +1291,10 @@ struct StateScan {
     descriptions: Vec<(String, MermaidLabelSpan)>,
     /// Every state id the source names.
     mentioned: Vec<String>,
+    /// For each state, the first statement that opens with its id: the range
+    /// from the start of the line to the end of the id, which is where a
+    /// description can be written in front of it.
+    leading: Vec<(String, Range<usize>)>,
     /// Set by a statement whose transitions this reader cannot number the way
     /// the renderer does: a chain (`a --> b --> c`) writes two of them, and a
     /// composite state written on one line hides however many are inside it.
@@ -1182,15 +1308,32 @@ fn scan_state(fence_body: &str) -> StateScan {
         transitions: Vec::new(),
         descriptions: Vec::new(),
         mentioned: Vec::new(),
+        leading: Vec::new(),
         unreadable: false,
     };
     let mut line_start = 0;
     let mut in_note = false;
+    let mut in_description_block = false;
     for line in fence_body.split_inclusive('\n') {
         let content = strip_state_comment(line);
         let trimmed = content.trim();
+        let line_begin = line_start;
         let offset = line_start + (content.len() - content.trim_start().len());
         line_start += line.len();
+        // An `accDescr { … }` block is prose, and a line of it that happens
+        // to open with a state's id is no place to write a description in
+        // front of.
+        if in_description_block {
+            if trimmed.contains('}') {
+                in_description_block = false;
+            }
+            continue;
+        }
+        if starts_with_word(trimmed, "accDescr") && trimmed.contains('{') && !trimmed.contains('}')
+        {
+            in_description_block = true;
+            continue;
+        }
         if in_note {
             // A note's text is drawn in a box of its own, which is not a state.
             // merman reads an arrow written inside one as a transition of its
@@ -1215,6 +1358,19 @@ fn scan_state(fence_body: &str) -> StateScan {
             scan.transitions.push(None);
             in_note = description_colon(trimmed).is_none();
             continue;
+        }
+        let first_word_end = trimmed
+            .find(|character: char| {
+                character.is_whitespace() || matches!(character, ':' | '-' | ';' | '{')
+            })
+            .unwrap_or(trimmed.len());
+        let first_word = &trimmed[..first_word_end];
+        if !first_word.is_empty()
+            && first_word != "[*]"
+            && !scan.leading.iter().any(|(id, _)| id == first_word)
+        {
+            scan.leading
+                .push((first_word.to_string(), line_begin..offset + first_word_end));
         }
         let colon = description_colon(trimmed);
         let head = &trimmed[..colon.unwrap_or(trimmed.len())];
@@ -1330,11 +1486,24 @@ fn find_state_description(fence_body: &str, state_id: &str) -> MermaidLabelLooku
         .filter(|(id, _)| id == state_id)
         .map(|(_, span)| span);
     let Some(span) = found.next() else {
-        return Err(if scan.mentioned.iter().any(|id| id == state_id) {
-            MermaidLabelRefusal::NoLabelToken
-        } else {
-            MermaidLabelRefusal::NotLocated
-        });
+        if !scan.mentioned.iter().any(|id| id == state_id) {
+            return Err(MermaidLabelRefusal::NotLocated);
+        }
+        // A state written with no description is drawn with its id. Giving it
+        // one takes a line of its own, written in front of the first
+        // statement that opens with the state, so that it lands in the same
+        // composite state as that statement.
+        let Some((_, range)) = scan.leading.iter().find(|(id, _)| id == state_id) else {
+            return Err(MermaidLabelRefusal::NoLabelToken);
+        };
+        return checked(
+            fence_body,
+            MermaidLabelSpan {
+                range: range.clone(),
+                label: state_id.to_string(),
+                quoting: MermaidLabelQuoting::StateInsert,
+            },
+        );
     };
     // Mermaid draws every description a state is given, so with more than one
     // there is no single token that is the label in front of the user.
@@ -2000,6 +2169,26 @@ mod tests {
         );
     }
 
+    /// A quotation mark in an ER relationship label is written as `#quot;`,
+    /// and merman draws it as the character.
+    #[test]
+    fn a_quotation_mark_in_an_er_relationship_label_is_drawn() {
+        let source = "erDiagram\n  a ||--o{ b : old\n";
+        let span = find_edge_label(source, "a", "b", 0).expect("the relationship should be found");
+        let edited = apply(source, &span, "\u{8a00}\u{3046} \"\u{306f}\u{3044}\"");
+        assert_eq!(
+            edited,
+            "erDiagram\n  a ||--o{ b : \"\u{8a00}\u{3046} #quot;\u{306f}\u{3044}#quot;\"\n"
+        );
+        let svg = mermaid_render::render_to_svg(&edited, &mermaid_render::MermaidTheme::default())
+            .unwrap_or_else(|error| panic!("{edited:?} should render: {error:#}"));
+        // The renderer puts each word in a `<tspan>` of its own.
+        assert!(
+            svg.contains("&quot;\u{306f}\u{3044}&quot;</tspan>"),
+            "the quotation marks have to be drawn"
+        );
+    }
+
     /// An ER entity is drawn with its name unless it is given an alias, and
     /// every relationship refers to it by that name, so the name is never
     /// rewritten. merman refuses an alias written into a relationship
@@ -2251,6 +2440,75 @@ mod tests {
         assert_eq!(
             apply(source, &span, "x"),
             source.replace("s1:::warn : \u{5f85}\u{6a5f}", "s1:::warn : x")
+        );
+    }
+
+    /// A state drawn with its id gets a description line of its own, written
+    /// in front of the first statement that opens with the state, at that
+    /// statement's indentation and so inside the same composite state.
+    #[test]
+    fn a_state_without_a_description_is_given_one_on_a_new_line() {
+        let source = concat!(
+            "stateDiagram-v2\n",
+            "  [*] --> s1\n",
+            "  state P {\n",
+            "    s1:::warn --> s2 : go\n",
+            "  }\n",
+            "  classDef warn fill:#fdd\n",
+        );
+        let span = find_node_label(source, "s1").expect("s1 should be offered a description");
+        assert_eq!(span.quoting, MermaidLabelQuoting::StateInsert);
+        assert_eq!(span.label, "s1", "the field opens on what the box shows");
+        assert_eq!(&source[span.range.clone()], "    s1");
+
+        let edited = apply(source, &span, "\u{5f85}\u{6a5f}: 1");
+        assert_eq!(
+            edited,
+            concat!(
+                "stateDiagram-v2\n",
+                "  [*] --> s1\n",
+                "  state P {\n",
+                "    s1 : \u{5f85}\u{6a5f}#58; 1\n",
+                "    s1:::warn --> s2 : go\n",
+                "  }\n",
+                "  classDef warn fill:#fdd\n",
+            )
+        );
+        assert_eq!(
+            geometry_of(&edited)
+                .nodes
+                .iter()
+                .find(|node| node.node_id == "s1")
+                .map(|node| node.label.clone()),
+            Some("\u{5f85}\u{6a5f}: 1".to_string())
+        );
+        // Confirming the field as it opened, or emptied, writes nothing.
+        assert_eq!(apply(source, &span, "s1"), source);
+        assert_eq!(apply(source, &span, ""), source);
+
+        // Once written, the description is the label, found in the usual way.
+        assert_eq!(
+            find_node_label(&edited, "s1").map(|span| span.quoting),
+            Ok(MermaidLabelQuoting::StateBare)
+        );
+
+        // A state that no statement opens with has nowhere to put one.
+        assert_eq!(
+            find_node_label(source, "s2"),
+            Err(MermaidLabelRefusal::NoLabelToken)
+        );
+        // A line of an `accDescr` block is prose, not a statement.
+        let described =
+            "stateDiagram-v2\n  accDescr {\n    s9 is mentioned here\n  }\n  [*] --> s9\n";
+        assert_eq!(
+            find_node_label(described, "s9"),
+            Err(MermaidLabelRefusal::NoLabelToken)
+        );
+        // A note's text is not a statement either.
+        let noted = "stateDiagram-v2\n  [*] --> s3\n  note right of s3\n    s3 again\n  end note\n";
+        assert_eq!(
+            find_node_label(noted, "s3"),
+            Err(MermaidLabelRefusal::NoLabelToken)
         );
     }
 

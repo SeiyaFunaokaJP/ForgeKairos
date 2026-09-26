@@ -27,8 +27,14 @@
 //!   statement stood, because that position is what decides when its column
 //!   starts. It is the one participant that is not re-declared at the top.
 //!
+//! - A participant config object (`participant A@{ "type": "boundary" }`) is
+//!   carried as the text between its braces, because `merman` keeps only the
+//!   `type` it reads out of it.
+//! - An id spelled with the `#…;` shorthand keeps that spelling. It is written
+//!   back verbatim, so it is never decoded the way a text is.
+//!
 //! Sources the parser refuses rather than rewrite, because writing them back
-//! would drop something: participant config objects (`A@{ … }`), the
+//! would drop something: config objects that span several lines, the
 //! central-connection spellings (`A ->>() B`) and end-of-line comments.
 
 use std::collections::HashMap;
@@ -212,6 +218,10 @@ pub struct SequenceParticipant {
     /// Index into [`SequenceDocument::boxes`] of the `box` this participant is
     /// declared in.
     pub box_index: Option<usize>,
+    /// The text between the braces of a `participant A@{ … }` config object,
+    /// as the source spelled it. Mermaid only accepts the object on the
+    /// `participant` keyword and without an `as` description.
+    pub preserved_settings: Option<String>,
 }
 
 /// A `box` that groups neighbouring participants.
@@ -560,6 +570,17 @@ impl SequenceDocument {
                 return Some(format!("参加者 `{id}` が二重に `create` されています。"));
             }
         }
+        // `merman` keeps one position per destroyed column, so the second
+        // statement would be all that is left once the fence is reopened.
+        let mut destroyed: Vec<&str> = Vec::new();
+        for item in &self.items {
+            if let SequenceItem::Destroy(id) = item {
+                if destroyed.contains(&id.as_str()) {
+                    return Some(format!("参加者 `{id}` が二重に `destroy` されています。"));
+                }
+                destroyed.push(id.as_str());
+            }
+        }
 
         for (index, participant) in self.participants.iter().enumerate() {
             if !is_writable_participant_id(&participant.id) {
@@ -579,6 +600,26 @@ impl SequenceDocument {
                     "参加者 `{}` が二重に宣言されています。",
                     participant.id
                 ));
+            }
+            if let Some(settings) = &participant.preserved_settings {
+                if settings.contains(['}', '\n', '\r']) {
+                    return Some(format!(
+                        "参加者 `{}` の設定オブジェクトは 1 行で、`}}` を含まない形でなければなりません。",
+                        participant.id
+                    ));
+                }
+                if participant.kind != SequenceParticipantKind::Participant {
+                    return Some(format!(
+                        "設定オブジェクト (`@{{ … }}`) を持つ参加者 `{}` は箱 (participant) でなければなりません。",
+                        participant.id
+                    ));
+                }
+                if participant.alias.is_some() {
+                    return Some(format!(
+                        "設定オブジェクト (`@{{ … }}`) を持つ参加者 `{}` には別名 (as) を付けられません。",
+                        participant.id
+                    ));
+                }
             }
         }
         // A `create`d participant is declared where its statement stands, so
@@ -769,6 +810,220 @@ impl SequenceDocument {
         }
         None
     }
+
+    /// The column order after moving the participant at `index` one step, as
+    /// the old index of each new position, or `None` when that step would
+    /// leave a diagram [`Self::structure_error`] refuses.
+    ///
+    /// A member of a `box` only moves among the other members, because the
+    /// box is one run of declarations and leaving it is what the group menu
+    /// is for. A column in no box steps over a whole box at once rather than
+    /// into the middle of it. A `create`d column is placed by its statement,
+    /// so it does not move and nothing moves past it.
+    pub fn participant_move_order(&self, index: usize, forward: bool) -> Option<Vec<usize>> {
+        let participant = self.participants.get(index)?;
+        let other = if forward {
+            index.checked_add(1)?
+        } else {
+            index.checked_sub(1)?
+        };
+        let neighbour = self.participants.get(other)?;
+        if self.is_created(&participant.id) || self.is_created(&neighbour.id) {
+            return None;
+        }
+
+        let mut order = (0..self.participants.len()).collect::<Vec<_>>();
+        match (participant.box_index, neighbour.box_index) {
+            (Some(own), Some(theirs)) if own == theirs => {
+                order.swap(index, other);
+            }
+            (Some(_), _) => return None,
+            (None, None) => order.swap(index, other),
+            (None, Some(group)) => {
+                let in_group = |position: usize| {
+                    self.participants.get(position).is_some_and(|participant| {
+                        participant.box_index == Some(group) && !self.is_created(&participant.id)
+                    })
+                };
+                let mut far = other;
+                if forward {
+                    while in_group(far + 1) {
+                        far += 1;
+                    }
+                } else {
+                    while far > 0 && in_group(far - 1) {
+                        far -= 1;
+                    }
+                }
+                let moved = order.remove(index);
+                // Taking the row out first shifts every later index down by
+                // one, which is why a row moving forward lands on `far` itself.
+                order.insert(far, moved);
+            }
+        }
+        Some(order)
+    }
+
+    /// The column order and the `box` order after moving the box at
+    /// `box_index` one step through [`Self::boxes`], or `None` when there is
+    /// nothing it can trade places with.
+    ///
+    /// Two boxes that hold columns trade their whole runs of declarations,
+    /// so the list of boxes stays in the order the boxes are drawn. The
+    /// columns in no box stay where they are. A box with no member is drawn
+    /// after every other box, so it only trades places with another empty one.
+    pub fn box_move_order(
+        &self,
+        box_index: usize,
+        forward: bool,
+    ) -> Option<(Vec<usize>, Vec<usize>)> {
+        self.boxes.get(box_index)?;
+        let other = if forward {
+            box_index.checked_add(1)?
+        } else {
+            box_index.checked_sub(1)?
+        };
+        self.boxes.get(other)?;
+
+        let mut box_order = (0..self.boxes.len()).collect::<Vec<_>>();
+        box_order.swap(box_index, other);
+
+        let runs = self.participant_runs();
+        let own = runs.iter().position(|(group, _)| *group == Some(box_index));
+        let theirs = runs.iter().position(|(group, _)| *group == Some(other));
+        let is_empty = |group: usize| {
+            !self
+                .participants
+                .iter()
+                .any(|participant| participant.box_index == Some(group))
+        };
+        let (own, theirs) = match (own, theirs) {
+            (Some(own), Some(theirs)) => (own, theirs),
+            (None, None) if is_empty(box_index) && is_empty(other) => {
+                return Some(((0..self.participants.len()).collect(), box_order));
+            }
+            _ => return None,
+        };
+
+        let mut runs = runs;
+        runs.swap(own, theirs);
+        let order = runs
+            .into_iter()
+            .flat_map(|(_, members)| members)
+            .collect::<Vec<_>>();
+        if order.len() != self.participants.len() {
+            return None;
+        }
+        Some((order, box_order))
+    }
+
+    /// The participants cut into runs: each `box`'s members together, and
+    /// every other column on its own. A box that is not one run — which
+    /// [`Self::structure_error`] refuses — shows up as several runs.
+    fn participant_runs(&self) -> Vec<(Option<usize>, Vec<usize>)> {
+        let mut runs: Vec<(Option<usize>, Vec<usize>)> = Vec::new();
+        for (index, participant) in self.participants.iter().enumerate() {
+            match (participant.box_index, runs.last_mut()) {
+                (Some(group), Some((Some(current), members))) if *current == group => {
+                    members.push(index);
+                }
+                (group, _) => runs.push((group, vec![index])),
+            }
+        }
+        runs
+    }
+
+    /// The order [`emit_sequence`] writes the boxes in, as the old index of
+    /// each new position: the boxes that hold columns in column order, then
+    /// the empty ones. Keeping [`Self::boxes`] in this order is what makes the
+    /// editor's list of boxes the order the reopened fence will have.
+    pub fn canonical_box_order(&self) -> Vec<usize> {
+        let mut order: Vec<usize> = Vec::with_capacity(self.boxes.len());
+        for participant in &self.participants {
+            if let Some(group) = participant.box_index
+                && group < self.boxes.len()
+                && !order.contains(&group)
+            {
+                order.push(group);
+            }
+        }
+        for group in 0..self.boxes.len() {
+            if !order.contains(&group) {
+                order.push(group);
+            }
+        }
+        order
+    }
+
+    /// The column order that puts every `create`d column after the declared
+    /// ones, in the order of their statements, and keeps everybody else where
+    /// they were.
+    pub fn created_last_order(&self) -> Vec<usize> {
+        let created = self.created_ids();
+        let mut order = self
+            .participants
+            .iter()
+            .enumerate()
+            .filter(|(_, participant)| !created.contains(&participant.id.as_str()))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        for id in created {
+            if let Some(index) = self.participant_index(id)
+                && !order.contains(&index)
+            {
+                order.push(index);
+            }
+        }
+        order
+    }
+
+    /// Puts the participants in `order` (the old index of each new position).
+    /// Returns whether `order` was a permutation and so was applied.
+    pub fn reorder_participants(&mut self, order: &[usize]) -> bool {
+        apply_order(&mut self.participants, order)
+    }
+
+    /// Puts the boxes in `order` and points every participant at its box's
+    /// new position. Returns whether `order` was a permutation and so was
+    /// applied.
+    pub fn reorder_boxes(&mut self, order: &[usize]) -> bool {
+        if !apply_order(&mut self.boxes, order) {
+            return false;
+        }
+        for participant in &mut self.participants {
+            participant.box_index = participant
+                .box_index
+                .and_then(|old| order.iter().position(|index| *index == old));
+        }
+        true
+    }
+}
+
+/// Rearranges `items` so that position `n` holds what was at `order[n]`, when
+/// `order` is a permutation of the positions; leaves `items` alone otherwise.
+/// The editor keeps a row of fields beside each model entry, and moving both
+/// with the same `order` is what keeps them paired.
+pub fn apply_order<T>(items: &mut Vec<T>, order: &[usize]) -> bool {
+    if order.len() != items.len() {
+        return false;
+    }
+    let mut seen = vec![false; items.len()];
+    for index in order {
+        match seen.get_mut(*index) {
+            Some(flag) if !*flag => *flag = true,
+            _ => return false,
+        }
+    }
+    let mut slots = std::mem::take(items)
+        .into_iter()
+        .map(Some)
+        .collect::<Vec<_>>();
+    for index in order {
+        if let Some(item) = slots.get_mut(*index).and_then(Option::take) {
+            items.push(item);
+        }
+    }
+    true
 }
 
 /// Whether `source` is a sequence diagram, i.e. whether the structured editor
@@ -784,6 +1039,7 @@ pub fn parse_sequence(source: &str) -> Result<SequenceDocument> {
     if let Some(problem) = unsupported_construct(&scan.statements) {
         bail!("{problem}");
     }
+    let settings = declared_settings(&scan.statements)?;
     if scan.statements.is_empty() {
         return Ok(SequenceDocument {
             title: None,
@@ -803,7 +1059,7 @@ pub fn parse_sequence(source: &str) -> Result<SequenceDocument> {
         bail!("この図はシーケンス図ではありません。");
     };
 
-    let document = document_from_model(model, scan.preserved)?;
+    let document = document_from_model(model, scan.preserved, &settings)?;
     // Keeps [`SequenceDocument::structure_error`]'s promise: a document the
     // editor cannot write back never reaches it in the first place.
     if let Some(problem) = document.structure_error() {
@@ -815,6 +1071,7 @@ pub fn parse_sequence(source: &str) -> Result<SequenceDocument> {
 fn document_from_model(
     model: SequenceDiagramRenderModel,
     preserved: Vec<PreservedLine>,
+    settings: &HashMap<String, Option<String>>,
 ) -> Result<SequenceDocument> {
     let mut box_of_participant: HashMap<&str, usize> = HashMap::new();
     for (index, group) in model.boxes.iter().enumerate() {
@@ -824,37 +1081,39 @@ fn document_from_model(
     }
 
     let mut participants = Vec::with_capacity(model.actor_order.len());
-    for id in &model.actor_order {
+    for model_id in &model.actor_order {
         let actor = model
             .actors
-            .get(id)
-            .ok_or_else(|| anyhow!("参加者 `{id}` の情報が見つかりませんでした。"))?;
-        let kind = match actor.actor_type.as_str() {
-            "participant" => SequenceParticipantKind::Participant,
-            "actor" => SequenceParticipantKind::Actor,
-            other => bail!(
+            .get(model_id)
+            .ok_or_else(|| anyhow!("参加者 `{model_id}` の情報が見つかりませんでした。"))?;
+        let id = source_id(model_id);
+        // `merman`'s placeholder characters can also be typed as themselves,
+        // and those would come back as a `#…;` shorthand that is not in the
+        // source. Only an id the shorthand spells exactly is kept.
+        if encode_entity_shorthands(&id) != *model_id {
+            bail!(
+                "参加者の id `{model_id}` に Mermaid の内部文字が含まれているため、構造化編集に対応していません。テキストのまま編集してください。"
+            );
+        }
+        let preserved_settings = settings.get(&id).cloned().flatten();
+        // The config object's `type` is what `merman` reports as the kind,
+        // and Mermaid only accepts the object after `participant`, so the
+        // keyword is `participant` whatever the object says it draws.
+        let kind = match (actor.actor_type.as_str(), &preserved_settings) {
+            (_, Some(_)) | ("participant", None) => SequenceParticipantKind::Participant,
+            ("actor", None) => SequenceParticipantKind::Actor,
+            (other, None) => bail!(
                 "参加者の種類 `{other}` は構造化編集に対応していません。テキストのまま編集してください。"
             ),
         };
-        // Every other string out of the model is entity-decoded before it
-        // reaches the editor, but an id is also written back verbatim and the
-        // id token has no escape of its own: `participant a#quot;b` would have
-        // to be re-encoded to survive, and `#` is not a character an id may
-        // hold. A diagram that spells an id with an entity is therefore left to
-        // the text editor instead of being shown with `merman`'s placeholder
-        // characters in it.
-        if decode_text(id) != *id {
-            bail!(
-                "参加者の id がエンティティ (`#…;`) で書かれているため、構造化編集に対応していません。テキストのまま編集してください。"
-            );
-        }
         let description = decode_text(&actor.description);
         participants.push(SequenceParticipant {
-            alias: (description != *id).then_some(description),
+            alias: (description != decode_text(model_id)).then_some(description),
             kind,
             wrap: actor.wrap,
-            box_index: box_of_participant.get(id.as_str()).copied(),
-            id: id.clone(),
+            box_index: box_of_participant.get(model_id.as_str()).copied(),
+            preserved_settings,
+            id,
         });
     }
 
@@ -887,12 +1146,12 @@ fn lifecycle_items(model: &SequenceDiagramRenderModel) -> Vec<(usize, SequenceIt
     let mut lifecycle = model
         .created_actors
         .iter()
-        .map(|(id, position)| (*position, SequenceItem::Create(id.clone())))
+        .map(|(id, position)| (*position, SequenceItem::Create(source_id(id))))
         .chain(
             model
                 .destroyed_actors
                 .iter()
-                .map(|(id, position)| (*position, SequenceItem::Destroy(id.clone()))),
+                .map(|(id, position)| (*position, SequenceItem::Destroy(source_id(id)))),
         )
         .collect::<Vec<_>>();
     lifecycle.sort_by_key(|(position, _)| *position);
@@ -972,8 +1231,8 @@ fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceIt
             }
 
             items.push(SequenceItem::Message(SequenceMessage {
-                from,
-                to,
+                from: source_id(&from),
+                to: source_id(&to),
                 arrow,
                 activate: message.activate,
                 deactivate,
@@ -1019,8 +1278,8 @@ fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceIt
                 let to = message.to.clone().unwrap_or_else(|| from.clone());
                 items.push(SequenceItem::Note(SequenceNote {
                     placement,
-                    from,
-                    to,
+                    from: source_id(&from),
+                    to: source_id(&to),
                     text: decode_text(message.message_text()),
                     wrap: message.wrap,
                 }));
@@ -1030,14 +1289,14 @@ fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceIt
                     .from
                     .clone()
                     .ok_or_else(|| anyhow!("対象のない activate が含まれています。"))?;
-                items.push(SequenceItem::Activate(id));
+                items.push(SequenceItem::Activate(source_id(&id)));
             }
             LINETYPE_ACTIVE_END => {
                 let id = message
                     .from
                     .clone()
                     .ok_or_else(|| anyhow!("対象のない deactivate が含まれています。"))?;
-                items.push(SequenceItem::Deactivate(id));
+                items.push(SequenceItem::Deactivate(source_id(&id)));
             }
             LINETYPE_AUTONUMBER => {
                 let autonumber = match &message.message {
@@ -1257,6 +1516,15 @@ fn emit_participants(document: &SequenceDocument, explicit_wrap: bool, out: &mut
 }
 
 fn participant_declaration(participant: &SequenceParticipant, explicit_wrap: bool) -> String {
+    // Mermaid has no spelling for a config object together with `actor` or
+    // `as`; `structure_error` reports both before the editor writes.
+    if let Some(settings) = &participant.preserved_settings {
+        return format!(
+            "{} {}@{{{settings}}}",
+            SequenceParticipantKind::Participant.keyword(),
+            participant.id
+        );
+    }
     let keyword = participant.kind.keyword();
     match &participant.alias {
         Some(alias) => format!(
@@ -1281,7 +1549,9 @@ fn box_header(group: &SequenceGroupBox, explicit_wrap: bool) -> String {
                 escape_text(name)
             )
         })
-        .unwrap_or_default();
+        // A box with no name still carries its wrap setting, which a bare
+        // prefix keeps: Mermaid reads `box wrap:` as a nameless wrapping box.
+        .unwrap_or_else(|| wrap_prefix(group.wrap, explicit_wrap).to_string());
     match &group.fill {
         Some(fill) if name.is_empty() => format!("box {fill}"),
         Some(fill) => format!("box {fill} {name}"),
@@ -1396,10 +1666,14 @@ fn wrap_prefix(wrap: bool, explicit: bool) -> &'static str {
 /// This is the editor's rule for what a user may type, and is stricter than
 /// [`is_writable_participant_id`]: it also refuses the characters that do
 /// survive but only with an escape or a separating space.
+///
+/// The `#…;` shorthand is the one exception to the ban on `#`: Mermaid turns it
+/// into a placeholder before it reads the id, and the editor keeps the id in
+/// that spelling, so it comes back as typed.
 pub fn is_valid_participant_id(id: &str) -> bool {
     is_writable_participant_id(id)
         && !id.ends_with('-')
-        && !id.contains(['>', '@', '(', ')', '#', '%', '"'])
+        && !mask_entity_shorthands(id).contains(['>', '@', '(', ')', '#', '%', '"'])
 }
 
 /// Whether `id` can be written back as itself at all.
@@ -1410,7 +1684,14 @@ pub fn is_valid_participant_id(id: &str) -> bool {
 fn is_writable_participant_id(id: &str) -> bool {
     // A leading digit is read as a number; a leading `-` after an arrow is the
     // deactivation marker; a leading `#` or `%%` opens a comment; a trailing
-    // `()` in front of an arrow is the central connection marker.
+    // `()` in front of an arrow is the central connection marker. The `;` that
+    // closes a `#…;` shorthand is gone before the lexer looks for statement
+    // ends, so only the rest of the id is held to the lexer's rules.
+    if id.starts_with('#') {
+        return false;
+    }
+    let masked = mask_entity_shorthands(id);
+    let id = masked.as_str();
     if id.is_empty()
         || id.starts_with(|character: char| character.is_ascii_digit())
         || id.starts_with(['-', '#', '%', '('])
@@ -1436,6 +1717,68 @@ fn is_writable_participant_id(id: &str) -> bool {
         }
     }
     true
+}
+
+/// `id` with every `#…;` shorthand replaced by one ordinary character, which
+/// is how Mermaid's lexer sees it: the shorthand becomes a placeholder before
+/// the lexer runs.
+fn mask_entity_shorthands(id: &str) -> String {
+    let mut masked = String::with_capacity(id.len());
+    let mut rest = id;
+    while let Some(hash) = rest.find('#') {
+        masked.push_str(rest.get(..hash).unwrap_or_default());
+        let after = rest.get(hash + 1..).unwrap_or_default();
+        if is_entity_shorthand(rest, hash) {
+            let word_end = after.find(';').unwrap_or(after.len());
+            masked.push('_');
+            rest = after.get(word_end + 1..).unwrap_or_default();
+        } else {
+            masked.push('#');
+            rest = after;
+        }
+    }
+    masked.push_str(rest);
+    masked
+}
+
+/// `merman` hands ids back with each `#…;` shorthand already turned into its
+/// placeholder characters. An id is written back verbatim, so it is kept in
+/// the spelling the source used rather than decoded like a text.
+fn source_id(id: &str) -> String {
+    if !id.contains(['\u{FB02}', '\u{B6}']) {
+        return id.to_string();
+    }
+    id.replace("\u{FB02}\u{B0}\u{B0}", "#")
+        .replace("\u{FB02}\u{B0}", "#")
+        .replace("\u{B6}\u{DF}", ";")
+}
+
+/// `id` with each `#…;` shorthand turned into `merman`'s placeholder, the way
+/// its preprocessor does it: the inverse of [`source_id`].
+fn encode_entity_shorthands(id: &str) -> String {
+    let mut encoded = String::with_capacity(id.len());
+    let mut rest = id;
+    while let Some(hash) = rest.find('#') {
+        encoded.push_str(rest.get(..hash).unwrap_or_default());
+        let after = rest.get(hash + 1..).unwrap_or_default();
+        if is_entity_shorthand(rest, hash) {
+            let word_end = after.find(';').unwrap_or(after.len());
+            let word = after.get(..word_end).unwrap_or_default();
+            if word.bytes().all(|byte| byte.is_ascii_digit()) {
+                encoded.push_str("\u{FB02}\u{B0}\u{B0}");
+            } else {
+                encoded.push_str("\u{FB02}\u{B0}");
+            }
+            encoded.push_str(word);
+            encoded.push_str("\u{B6}\u{DF}");
+            rest = after.get(word_end + 1..).unwrap_or_default();
+        } else {
+            encoded.push('#');
+            rest = after;
+        }
+    }
+    encoded.push_str(rest);
+    encoded
 }
 
 /// The sequence lexer turns `#…;` into a placeholder before reading the text,
@@ -1813,7 +2156,10 @@ fn unsupported_construct(statements: &[String]) -> Option<String> {
     let mut destroyed: Vec<&str> = Vec::new();
     // Mermaid's lexer ends a statement at `;` as well as at a line break, so a
     // line holding two of them has to be read as two statements here too.
-    for statement in statements.iter().flat_map(|statement| statement.split(';')) {
+    for statement in statements
+        .iter()
+        .flat_map(|statement| split_statements(statement))
+    {
         let mut words = statement.split_whitespace();
         if !words
             .next()
@@ -1839,13 +2185,87 @@ fn unsupported_construct(statements: &[String]) -> Option<String> {
                 "文の末尾のコメント ({comment}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
             ));
         }
-        if statement.contains("@{") {
-            return Some(format!(
-                "参加者の設定オブジェクト (`@{{ … }}`) を使った図は構造化編集に対応していません ({statement})。テキストのまま編集してください。"
-            ));
-        }
     }
     None
+}
+
+/// `line` cut at every `;` that ends a statement. The `;` closing a `#…;`
+/// shorthand does not: Mermaid replaces the shorthand before it lexes.
+fn split_statements(line: &str) -> Vec<&str> {
+    let mut statements = Vec::new();
+    let mut start = 0;
+    let mut entity_end = None;
+    for (offset, character) in line.char_indices() {
+        match character {
+            '#' if is_entity_shorthand(line, offset) => {
+                entity_end = line
+                    .get(offset..)
+                    .and_then(|rest| rest.find(';'))
+                    .map(|end| offset + end);
+            }
+            ';' if entity_end == Some(offset) => entity_end = None,
+            ';' => {
+                statements.push(line.get(start..offset).unwrap_or_default());
+                start = offset + 1;
+            }
+            _ => {}
+        }
+    }
+    statements.push(line.get(start..).unwrap_or_default());
+    statements
+}
+
+/// The rest of `statement` after `keyword` and the whitespace that has to
+/// follow it, matching the keyword the way Mermaid's lexer does: without
+/// regard to case.
+fn strip_keyword<'a>(statement: &'a str, keyword: &str) -> Option<&'a str> {
+    let head = statement.get(..keyword.len())?;
+    let rest = statement.get(keyword.len()..)?;
+    (head.eq_ignore_ascii_case(keyword) && rest.starts_with(char::is_whitespace))
+        .then(|| rest.trim_start())
+}
+
+/// The config object each participant's last declaration carried, keyed by
+/// the id as the source spells it, or `None` for a declaration without one.
+///
+/// `merman` reads only the `type` out of the object and keeps nothing of its
+/// spelling, so the text between the braces is taken from the source and
+/// written back as it was. An object that spans lines cannot be carried that
+/// way and is refused instead.
+fn declared_settings(statements: &[String]) -> Result<HashMap<String, Option<String>>> {
+    let mut settings = HashMap::new();
+    for statement in statements
+        .iter()
+        .flat_map(|statement| split_statements(statement))
+    {
+        let statement = statement.trim();
+        let statement = strip_keyword(statement, "create").unwrap_or(statement);
+        let Some(declaration) =
+            strip_keyword(statement, "participant").or_else(|| strip_keyword(statement, "actor"))
+        else {
+            continue;
+        };
+        let id_end = declaration
+            .find(char::is_whitespace)
+            .unwrap_or(declaration.len());
+        let token = declaration.get(..id_end).unwrap_or_default();
+        let Some(config_start) = token.find("@{") else {
+            settings.insert(token.to_string(), None);
+            continue;
+        };
+        let id = declaration.get(..config_start).unwrap_or_default();
+        let body = declaration.get(config_start + 2..).unwrap_or_default();
+        let Some(body_end) = body.find('}') else {
+            bail!(
+                "参加者 `{id}` の設定オブジェクト (`@{{ … }}`) が複数行にまたがっているため、構造化編集に対応していません。テキストのまま編集してください。"
+            );
+        };
+        settings.insert(
+            id.to_string(),
+            Some(body.get(..body_end).unwrap_or_default().to_string()),
+        );
+    }
+    Ok(settings)
 }
 
 /// Where a comment starts inside a statement, if it has one.
@@ -2210,6 +2630,7 @@ mod tests {
                 kind: SequenceParticipantKind::Participant,
                 wrap: false,
                 box_index: Some(0),
+                preserved_settings: None,
             });
             document.boxes.push(SequenceGroupBox {
                 name: Some(text.to_string()),
@@ -2516,7 +2937,8 @@ mod tests {
         for source in [
             "sequenceDiagram\n  A->>B: x %% 行末のメモ",
             "sequenceDiagram\n  A->>B: x # 行末のメモ",
-            "sequenceDiagram\n  participant A@{ \"type\": \"actor\" }\n  A->>B: x",
+            // A config object over several lines has no single line to keep.
+            "sequenceDiagram\n  participant A@{\n    \"type\": \"actor\"\n  }\n  A->>B: x",
             // `create` declares its column where the statement stands, so the
             // top of the diagram can no longer declare `A` after it.
             "sequenceDiagram\n  create participant C\n  A->>C: x",
@@ -2584,6 +3006,7 @@ mod tests {
                     kind: SequenceParticipantKind::Participant,
                     wrap: false,
                     box_index: None,
+                    preserved_settings: None,
                 });
             }
             document.items.push(SequenceItem::Message(SequenceMessage {
@@ -2649,6 +3072,7 @@ mod tests {
                 kind: SequenceParticipantKind::Participant,
                 wrap: false,
                 box_index: None,
+                preserved_settings: None,
             });
         }
         assert_eq!(document.unused_participant_id("P"), "P2");
@@ -2714,6 +3138,7 @@ mod tests {
             kind: SequenceParticipantKind::Participant,
             wrap: false,
             box_index: None,
+            preserved_settings: None,
         });
         document
             .items
@@ -2744,6 +3169,7 @@ mod tests {
                 kind,
                 wrap: false,
                 box_index: None,
+                preserved_settings: None,
             });
         }
         document.items.push(SequenceItem::Message(SequenceMessage {
@@ -2819,6 +3245,7 @@ mod tests {
                 kind: SequenceParticipantKind::Participant,
                 wrap: false,
                 box_index,
+                preserved_settings: None,
             });
         }
         document.boxes.push(SequenceGroupBox {
@@ -2901,6 +3328,7 @@ mod tests {
                 kind: SequenceParticipantKind::Participant,
                 wrap: false,
                 box_index: None,
+                preserved_settings: None,
             });
             assert!(
                 document.structure_error().is_some(),
@@ -2917,6 +3345,7 @@ mod tests {
                 kind: SequenceParticipantKind::Participant,
                 wrap: false,
                 box_index: None,
+                preserved_settings: None,
             });
         }
         assert!(
@@ -2933,6 +3362,7 @@ mod tests {
             kind: SequenceParticipantKind::Participant,
             wrap: false,
             box_index: Some(7),
+            preserved_settings: None,
         });
         assert!(document.structure_error().is_some());
         assert!(
@@ -2982,6 +3412,7 @@ mod tests {
             kind: SequenceParticipantKind::Participant,
             wrap: false,
             box_index,
+            preserved_settings: None,
         }
     }
 
@@ -3377,5 +3808,563 @@ mod tests {
                 "{emitted}"
             );
         }
+    }
+
+    fn ids(document: &SequenceDocument) -> Vec<&str> {
+        document
+            .participants
+            .iter()
+            .map(|participant| participant.id.as_str())
+            .collect()
+    }
+
+    /// `participant A@{ … }` is Mermaid 11's way of choosing a shape. `merman`
+    /// keeps only the `type`, so the object's own text has to come back from
+    /// the source, byte for byte.
+    #[test]
+    fn a_config_object_is_kept_as_written() {
+        let source = "sequenceDiagram\n    participant A@{ \"type\": \"boundary\" }\n    participant B@{type: database}\n    participant C\n    A->>B: 問い合わせ\n    B-->>C: 結果";
+        let document = parse_sequence(source).expect("a config object should open");
+        assert_eq!(
+            document
+                .participants
+                .iter()
+                .map(|participant| participant.preserved_settings.as_deref())
+                .collect::<Vec<_>>(),
+            vec![
+                Some(" \"type\": \"boundary\" "),
+                Some("type: database"),
+                None
+            ]
+        );
+        assert!(
+            document
+                .participants
+                .iter()
+                .all(|participant| participant.alias.is_none()
+                    && participant.kind == SequenceParticipantKind::Participant),
+            "{:?}",
+            document.participants
+        );
+        let emitted = assert_stable(source);
+        assert_eq!(emitted, source, "an unedited diagram should not move");
+        assert_renders(&emitted);
+    }
+
+    /// The object belongs to the column, so renaming the column carries it
+    /// along — and so does a `create` statement that declares it.
+    #[test]
+    fn a_config_object_follows_its_column() {
+        let source = "sequenceDiagram\n    participant A@{ \"type\": \"queue\" }\n    participant B\n    A->>B: x\n    create participant C@{ \"type\": \"database\" }\n    B->>C: 作成";
+        let mut document = parse_sequence(source).expect("source should parse");
+        assert_eq!(
+            document
+                .participants
+                .get(2)
+                .and_then(|participant| participant.preserved_settings.as_deref()),
+            Some(" \"type\": \"database\" ")
+        );
+        assert_eq!(emit_sequence(&document), source);
+
+        if let Some(participant) = document.participants.first_mut() {
+            participant.id = "Q".into();
+        }
+        if let Some(SequenceItem::Message(message)) = document.items.first_mut() {
+            message.from = "Q".into();
+        }
+        assert_eq!(document.structure_error(), None);
+        let emitted = emit_sequence(&document);
+        assert!(
+            emitted.contains("participant Q@{ \"type\": \"queue\" }\n"),
+            "{emitted}"
+        );
+        assert!(
+            emitted.contains("create participant C@{ \"type\": \"database\" }\n"),
+            "{emitted}"
+        );
+        assert_eq!(
+            emit_sequence(&parse_sequence(&emitted).expect("reopens")),
+            emitted
+        );
+        assert_renders(&emitted);
+    }
+
+    /// The `;` closing a `#…;` shorthand does not end the statement, so the
+    /// object after such an id still belongs to it, and a second `destroy` of
+    /// that id is still seen as one.
+    #[test]
+    fn a_config_object_after_an_id_with_an_entity_is_kept() {
+        let source = "sequenceDiagram\n    participant A#59;B@{ \"type\": \"database\" }\n    participant C\n    C->>A#59;B: 問い合わせ";
+        let document = parse_sequence(source).expect("the object should open");
+        assert_eq!(
+            document
+                .participants
+                .first()
+                .and_then(|participant| participant.preserved_settings.as_deref()),
+            Some(" \"type\": \"database\" ")
+        );
+        let emitted = assert_stable(source);
+        assert_eq!(emitted, source);
+        assert_renders(&emitted);
+
+        let error = parse_sequence(
+            "sequenceDiagram\n    participant A\n    A->>X#59;Y: x\n    destroy X#59;Y; A-xX#59;Y: y\n    destroy X#59;Y\n    A-xX#59;Y: z",
+        )
+        .err()
+        .expect("a second destroy should be refused");
+        assert!(format!("{error}").contains("2 回"), "{error}");
+    }
+
+    /// Mermaid has no spelling for an object together with `actor` or `as`, and
+    /// an object that spans lines is not one the line scanner can carry.
+    #[test]
+    fn config_objects_that_cannot_be_written_are_refused() {
+        let error = parse_sequence(
+            "sequenceDiagram\n    participant A@{\n      \"type\": \"database\"\n    }\n    A->>A: x",
+        )
+        .err()
+        .expect("a config object over several lines should be refused");
+        assert!(
+            format!("{error}").contains("複数行"),
+            "unexpected message: {error}"
+        );
+
+        let base = SequenceDocument {
+            title: None,
+            participants: vec![SequenceParticipant {
+                preserved_settings: Some(" \"type\": \"boundary\" ".into()),
+                ..participant("A", None)
+            }],
+            boxes: Vec::new(),
+            items: vec![message("A", "A", "x")],
+            preserved_lines: Vec::new(),
+        };
+        assert_eq!(base.structure_error(), None);
+
+        let mut document = base.clone();
+        if let Some(participant) = document.participants.first_mut() {
+            participant.alias = Some("別名".into());
+        }
+        assert_eq!(
+            document.structure_error().as_deref(),
+            Some("設定オブジェクト (`@{ … }`) を持つ参加者 `A` には別名 (as) を付けられません。")
+        );
+
+        let mut document = base.clone();
+        if let Some(participant) = document.participants.first_mut() {
+            participant.kind = SequenceParticipantKind::Actor;
+        }
+        assert!(
+            document
+                .structure_error()
+                .is_some_and(|message| message.contains("participant")),
+            "{:?}",
+            document.structure_error()
+        );
+
+        let mut document = base;
+        if let Some(participant) = document.participants.first_mut() {
+            participant.preserved_settings = Some("type: a } b".into());
+        }
+        assert!(document.structure_error().is_some());
+    }
+
+    /// An id spelled with the `#…;` shorthand is written back verbatim, so it
+    /// is kept in that spelling rather than decoded, and the diagram opens.
+    #[test]
+    fn an_id_with_an_entity_keeps_its_spelling() {
+        for source in [
+            "sequenceDiagram\n    participant A#59;B\n    participant C\n    A#59;B->>C: x\n    Note over A#59;B,C: メモ",
+            "sequenceDiagram\n    participant x#quot;y as 表示名\n    participant C\n    x#quot;y->>+C: x\n    C-->>-x#quot;y: y\n    activate x#quot;y\n    deactivate x#quot;y",
+            "sequenceDiagram\n    participant A\n    A->>A: x\n    create participant B#35;1\n    A->>B#35;1: 作成\n    destroy B#35;1\n    A-xB#35;1: 破棄",
+        ] {
+            let document = parse_sequence(source)
+                .unwrap_or_else(|error| panic!("`{source}` should open: {error}"));
+            assert!(
+                document
+                    .participants
+                    .iter()
+                    .all(|participant| participant.id.is_ascii()),
+                "an id should not carry merman's placeholder characters: {:?}",
+                document.participants
+            );
+            let emitted = assert_stable(source);
+            assert_eq!(emitted, source, "an unedited diagram should not move");
+            assert_renders(&emitted);
+        }
+
+        let document = parse_sequence(
+            "sequenceDiagram\n    participant A#59;B\n    participant C\n    A#59;B->>C: x",
+        )
+        .expect("source should parse");
+        assert_eq!(ids(&document), vec!["A#59;B", "C"]);
+        assert_eq!(
+            document
+                .participants
+                .first()
+                .and_then(|participant| participant.alias.clone()),
+            None,
+            "the id's own description is not an alias"
+        );
+        assert!(is_valid_participant_id("A#59;B"));
+        assert!(is_valid_participant_id("x#quot;y"));
+        assert!(
+            !is_valid_participant_id("#59;B"),
+            "a leading `#` opens a comment"
+        );
+        assert!(
+            !is_valid_participant_id("A#B"),
+            "a bare `#` is still refused"
+        );
+        assert!(
+            !is_valid_participant_id("A;B"),
+            "a bare `;` still ends the statement"
+        );
+    }
+
+    /// `merman`'s placeholder characters typed as themselves would come back
+    /// as a `#…;` shorthand, turning `A\u{FB02}\u{B0}x` into `A#x` — a column
+    /// named `A` followed by a comment. A complete placeholder typed out is
+    /// the shorthand's own spelling to the renderer, so it may come back as one.
+    #[test]
+    fn an_id_holding_placeholder_characters_is_refused() {
+        for source in [
+            "sequenceDiagram\n    participant A\u{FB02}\u{B0}x\n    participant C\n    C->>C: x",
+            "sequenceDiagram\n    A\u{B6}\u{DF}B->>C: x",
+        ] {
+            assert!(
+                parse_sequence(source).is_err(),
+                "`{source}` should be refused"
+            );
+        }
+        assert_eq!(
+            encode_entity_shorthands("A#59;B#quot;C#x"),
+            "A\u{FB02}\u{B0}\u{B0}59\u{B6}\u{DF}B\u{FB02}\u{B0}quot\u{B6}\u{DF}C#x"
+        );
+    }
+
+    /// The wrap setting of a `box` is the `wrap:` prefix of its name, which a
+    /// box with no name still has to be able to carry.
+    #[test]
+    fn a_box_keeps_its_wrap_setting() {
+        for (group, expected) in [
+            (
+                SequenceGroupBox {
+                    name: Some("業務".into()),
+                    fill: None,
+                    wrap: true,
+                },
+                "box wrap:業務",
+            ),
+            (
+                SequenceGroupBox {
+                    name: Some("業務".into()),
+                    fill: Some("lightblue".into()),
+                    wrap: true,
+                },
+                "box lightblue wrap:業務",
+            ),
+            (
+                SequenceGroupBox {
+                    name: None,
+                    fill: None,
+                    wrap: true,
+                },
+                "box wrap:",
+            ),
+            (
+                SequenceGroupBox {
+                    name: None,
+                    fill: Some("lavender".into()),
+                    wrap: true,
+                },
+                "box lavender wrap:",
+            ),
+        ] {
+            let document = SequenceDocument {
+                title: None,
+                participants: vec![participant("A", Some(0)), participant("B", None)],
+                boxes: vec![group.clone()],
+                items: vec![message("A", "B", "x")],
+                preserved_lines: Vec::new(),
+            };
+            let emitted = emit_sequence(&document);
+            assert!(
+                emitted.contains(&format!("\n    {expected}\n")),
+                "expected `{expected}`:\n{emitted}"
+            );
+            let reopened = parse_sequence(&emitted)
+                .unwrap_or_else(|error| panic!("`{emitted}` should parse: {error}"));
+            assert_eq!(reopened.boxes, vec![group], "{emitted}");
+            assert_eq!(emit_sequence(&reopened), emitted);
+            assert_renders(&emitted);
+        }
+    }
+
+    /// The editor could build a second `destroy` of the same column, which
+    /// would come back from the fence with only one of the two.
+    #[test]
+    fn a_second_destroy_of_a_column_is_reported() {
+        let document = SequenceDocument {
+            title: None,
+            participants: vec![participant("A", None), participant("B", None)],
+            boxes: Vec::new(),
+            items: vec![
+                SequenceItem::Destroy("B".into()),
+                message("A", "B", "x"),
+                SequenceItem::Destroy("B".into()),
+                message("A", "B", "y"),
+            ],
+            preserved_lines: Vec::new(),
+        };
+        assert_eq!(
+            document.structure_error().as_deref(),
+            Some("参加者 `B` が二重に `destroy` されています。")
+        );
+    }
+
+    fn boxed_document() -> SequenceDocument {
+        // Columns: [A B](0) C [D](1) E, then the created F; box 2 is empty.
+        SequenceDocument {
+            title: None,
+            participants: vec![
+                participant("A", Some(0)),
+                participant("B", Some(0)),
+                participant("C", None),
+                participant("D", Some(1)),
+                participant("E", None),
+                participant("F", None),
+            ],
+            boxes: vec![
+                SequenceGroupBox {
+                    name: Some("一".into()),
+                    fill: None,
+                    wrap: false,
+                },
+                SequenceGroupBox {
+                    name: Some("二".into()),
+                    fill: None,
+                    wrap: false,
+                },
+                SequenceGroupBox {
+                    name: Some("空".into()),
+                    fill: None,
+                    wrap: false,
+                },
+            ],
+            items: vec![
+                message("A", "E", "x"),
+                SequenceItem::Create("F".into()),
+                message("A", "F", "y"),
+            ],
+            preserved_lines: Vec::new(),
+        }
+    }
+
+    fn moved(document: &SequenceDocument, order: &[usize]) -> SequenceDocument {
+        let mut document = document.clone();
+        assert!(document.reorder_participants(order), "{order:?}");
+        document
+    }
+
+    /// A column steps only where the result can still be written back: inside
+    /// its own box, or — for a column in no box — over a whole box at once.
+    #[test]
+    fn a_participant_moves_only_where_the_diagram_stays_writable() {
+        let document = boxed_document();
+        assert_eq!(document.structure_error(), None);
+
+        // Inside a box.
+        let order = document
+            .participant_move_order(0, true)
+            .expect("A can trade places with B");
+        assert_eq!(
+            ids(&moved(&document, &order)),
+            vec!["B", "A", "C", "D", "E", "F"]
+        );
+
+        // Out of the edge of a box is the group menu's job.
+        assert_eq!(document.participant_move_order(1, true), None);
+        assert_eq!(document.participant_move_order(0, false), None);
+        assert_eq!(document.participant_move_order(3, false), None);
+
+        // A column in no box steps over a whole box.
+        let order = document
+            .participant_move_order(2, false)
+            .expect("C can step over the first box");
+        let after = moved(&document, &order);
+        assert_eq!(ids(&after), vec!["C", "A", "B", "D", "E", "F"]);
+        assert_eq!(after.structure_error(), None);
+        let order = document
+            .participant_move_order(2, true)
+            .expect("C can step over the second box");
+        let after = moved(&document, &order);
+        assert_eq!(ids(&after), vec!["A", "B", "D", "C", "E", "F"]);
+        assert_eq!(after.structure_error(), None);
+
+        // A created column is placed by its statement.
+        assert_eq!(document.participant_move_order(4, true), None);
+        assert_eq!(document.participant_move_order(5, false), None);
+        assert_eq!(document.participant_move_order(9, false), None);
+
+        // Every step the editor offers leaves a writable diagram.
+        for index in 0..document.participants.len() {
+            for forward in [false, true] {
+                if let Some(order) = document.participant_move_order(index, forward) {
+                    assert_eq!(
+                        moved(&document, &order).structure_error(),
+                        None,
+                        "moving {index} forward={forward}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Two boxes trade their whole runs of columns; an empty box is drawn
+    /// after every other one, so it only trades with another empty box.
+    #[test]
+    fn a_box_moves_with_its_columns() {
+        let document = boxed_document();
+        assert_eq!(document.canonical_box_order(), vec![0, 1, 2]);
+
+        let (participant_order, box_order) = document
+            .box_move_order(1, false)
+            .expect("the second box can move up");
+        let mut after = moved(&document, &participant_order);
+        assert!(after.reorder_boxes(&box_order));
+        assert_eq!(ids(&after), vec!["D", "C", "A", "B", "E", "F"]);
+        assert_eq!(
+            after
+                .boxes
+                .iter()
+                .map(|group| group.name.as_deref().unwrap_or_default())
+                .collect::<Vec<_>>(),
+            vec!["二", "一", "空"]
+        );
+        assert_eq!(
+            after
+                .participants
+                .iter()
+                .map(|participant| participant.box_index)
+                .collect::<Vec<_>>(),
+            vec![Some(0), None, Some(1), Some(1), None, None]
+        );
+        assert_eq!(after.structure_error(), None);
+        assert_eq!(after.canonical_box_order(), vec![0, 1, 2]);
+
+        // The fence reopens with the boxes in the order the list shows.
+        let emitted = emit_sequence(&after);
+        let reopened = parse_sequence(&emitted).expect("the moved boxes should reopen");
+        assert_eq!(reopened.boxes, after.boxes, "{emitted}");
+        assert_eq!(ids(&reopened), ids(&after), "{emitted}");
+        assert_renders(&emitted);
+
+        assert_eq!(document.box_move_order(0, false), None);
+        assert_eq!(
+            document.box_move_order(1, true),
+            None,
+            "the next box is empty"
+        );
+        assert_eq!(document.box_move_order(2, false), None);
+        assert_eq!(document.box_move_order(2, true), None);
+    }
+
+    /// A box that gets its first member in front of an older box is drawn
+    /// first, so the list has to follow.
+    #[test]
+    fn the_canonical_box_order_follows_the_columns() {
+        let mut document = boxed_document();
+        document.participants = vec![
+            participant("E", Some(2)),
+            participant("A", Some(0)),
+            participant("B", Some(0)),
+            participant("C", None),
+            participant("D", None),
+            participant("F", None),
+        ];
+        assert_eq!(document.structure_error(), None);
+        assert_eq!(document.canonical_box_order(), vec![2, 0, 1]);
+        assert!(document.reorder_boxes(&[2, 0, 1]));
+        assert_eq!(
+            document
+                .boxes
+                .iter()
+                .map(|group| group.name.as_deref().unwrap_or_default())
+                .collect::<Vec<_>>(),
+            vec!["空", "一", "二"]
+        );
+        assert_eq!(
+            document
+                .participants
+                .iter()
+                .map(|participant| participant.box_index)
+                .collect::<Vec<_>>(),
+            vec![Some(0), Some(1), Some(1), None, None, None]
+        );
+        assert_eq!(document.canonical_box_order(), vec![0, 1, 2]);
+
+        // What the fence reopens with is the list as it now stands.
+        let emitted = emit_sequence(&document);
+        let reopened = parse_sequence(&emitted).expect("the fence should reopen");
+        assert_eq!(reopened.boxes, document.boxes, "{emitted}");
+    }
+
+    #[test]
+    fn created_columns_go_last_in_statement_order() {
+        let document = SequenceDocument {
+            title: None,
+            participants: vec![
+                participant("A", None),
+                participant("D", None),
+                participant("B", None),
+                participant("C", None),
+            ],
+            boxes: Vec::new(),
+            items: vec![
+                SequenceItem::Create("C".into()),
+                message("A", "C", "x"),
+                SequenceItem::Create("D".into()),
+                message("A", "D", "y"),
+            ],
+            preserved_lines: Vec::new(),
+        };
+        assert!(document.structure_error().is_some());
+        let order = document.created_last_order();
+        let after = moved(&document, &order);
+        assert_eq!(ids(&after), vec!["A", "B", "C", "D"]);
+        assert_eq!(after.structure_error(), None);
+    }
+
+    #[test]
+    fn apply_order_refuses_anything_but_a_permutation() {
+        let mut items = vec!['a', 'b', 'c'];
+        assert!(!apply_order(&mut items, &[0, 1]));
+        assert!(!apply_order(&mut items, &[0, 0, 1]));
+        assert!(!apply_order(&mut items, &[0, 1, 3]));
+        assert_eq!(items, vec!['a', 'b', 'c']);
+        assert!(apply_order(&mut items, &[2, 0, 1]));
+        assert_eq!(items, vec!['c', 'a', 'b']);
+    }
+
+    /// Every statement a sequence diagram can hold, in one diagram: none of
+    /// them may be missing from what the editor writes back. Comparing the
+    /// written text line by line is what catches a statement both parses lose.
+    #[test]
+    fn no_statement_is_dropped_on_the_way_back() {
+        let source = "%%{init: {\"theme\": \"forest\"}}%%\nsequenceDiagram\n    %% 先頭のメモ\n    title: 棚卸し\n    accTitle: 図の名前\n    accDescr: 図の説明\n    box lightblue wrap:業務\n        participant A as 利用者\n        actor B\n    end\n    box 空\n    end\n    participant C@{ \"type\": \"control\" }\n    participant X#59;Y\n    links A: {\"詳細\": \"https://example.com\"}\n    link B: 窓口 @ https://example.com/b\n    properties A: {\"class\": \"internal\"}\n    details A: {\"x\": \"y\"}\n    autonumber 10 10\n    A->>+B: 依頼\n    B-->>-A: 応答\n    A-)X#59;Y: 非同期\n    autonumber off\n    rect rgb(200, 220, 255)\n        loop 毎回\n            A->>C: 問い合わせ\n        end\n    end\n    critical 接続\n        A->>C: 接続\n    option 失敗\n        A-xC: 切断\n    end\n    break 中断\n        A->>B: 理由\n    end\n    par 並行\n        A->>B: 1\n    and 別\n        A->>C: 2\n    end\n    par_over 重ね\n        A->>B: 3\n    end\n    alt 成功\n        A->>B: OK\n    else 失敗\n        A->>B: NG\n    end\n    opt 任意\n        Note left of A: 左\n        Note right of B: 右\n        Note over A,B: 両方\n    end\n    activate C\n    deactivate C\n    create participant D as 新規\n    A->>D: 作成\n    destroy D\n    A-xD: 破棄\n    %% 末尾のメモ";
+        let document = parse_sequence(source).expect("the inventory should open");
+        let emitted = emit_sequence(&document);
+        let written = emitted.lines().map(str::trim).collect::<Vec<_>>();
+        for line in source.lines().map(str::trim) {
+            assert!(written.contains(&line), "`{line}` was dropped:\n{emitted}");
+        }
+        assert_eq!(
+            written.len(),
+            source.lines().count(),
+            "no statement may appear or vanish:\n{emitted}"
+        );
+        assert_stable(source);
+        assert_renders(&emitted);
     }
 }

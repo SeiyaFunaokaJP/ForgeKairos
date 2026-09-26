@@ -11,7 +11,9 @@
 //!   confirming the editor twice does not keep rewriting the fence.
 //! - Everything `merman`'s model does not carry — comments, `%%{init}%%`
 //!   directives, `accTitle` / `accDescr`, `classDef` and `style` — survives
-//!   verbatim in [`ErDocument::preserved_lines`].
+//!   verbatim in [`ErDocument::preserved_lines`]. A `%%` comment at the end
+//!   of a statement is carried by the entity, attribute or relationship it was
+//!   written after, and is written back after it.
 //!
 //! Deliberate re-spellings, none of which change what Mermaid draws:
 //!
@@ -201,6 +203,9 @@ pub struct ErAttribute {
     pub name: String,
     pub keys: Vec<ErAttributeKey>,
     pub comment: Option<String>,
+    /// A `%%` comment written after the attribute, kept with the row it
+    /// explains.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,6 +216,8 @@ pub struct ErEntity {
     pub attributes: Vec<ErAttribute>,
     /// The classes assigned with `:::` or with a `class` statement.
     pub classes: Vec<String>,
+    /// A `%%` comment written after the entity's declaration.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -222,6 +229,8 @@ pub struct ErRelationship {
     /// `--` rather than `..`: the right entity cannot exist on its own.
     pub identifying: bool,
     pub label: String,
+    /// A `%%` comment written after the relationship.
+    pub trailing_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -299,6 +308,17 @@ impl ErDocument {
                     return Some(format!("`{class}` はクラス名として使えません。"));
                 }
             }
+            let comments = std::iter::once(&entity.trailing_comment).chain(
+                entity
+                    .attributes
+                    .iter()
+                    .map(|attribute| &attribute.trailing_comment),
+            );
+            for comment in comments.flatten() {
+                if !is_valid_trailing_comment(comment) {
+                    return Some(format!("`{comment}` は行末のコメントとして書けません。"));
+                }
+            }
         }
 
         for relationship in &self.relationships {
@@ -316,6 +336,11 @@ impl ErDocument {
                     relationship.right_cardinality.label()
                 ));
             }
+            if let Some(comment) = &relationship.trailing_comment
+                && !is_valid_trailing_comment(comment)
+            {
+                return Some(format!("`{comment}` は行末のコメントとして書けません。"));
+            }
         }
         None
     }
@@ -331,9 +356,7 @@ pub fn is_er_source(source: &str) -> bool {
 /// editable document.
 pub fn parse_er(source: &str) -> Result<ErDocument> {
     let scan = scan_source(source)?;
-    if let Some(problem) = unsupported_construct(&scan.statements) {
-        bail!("{problem}");
-    }
+    let comments = trailing_comments(&scan.statements)?;
     if scan.statements.is_empty() {
         // `erDiagram` on its own is not a diagram `merman` accepts, so the
         // empty fence never reaches the parser.
@@ -354,7 +377,8 @@ pub fn parse_er(source: &str) -> Result<ErDocument> {
         bail!("この図は ER 図ではありません。");
     };
 
-    let document = document_from_model(&model, scan.has_direction, scan.preserved)?;
+    let mut document = document_from_model(&model, scan.has_direction, scan.preserved)?;
+    attach_trailing_comments(&mut document, comments)?;
     // Keeps [`ErDocument::structure_error`]'s promise: a document the editor
     // cannot write back never reaches it in the first place.
     if let Some(problem) = document.structure_error() {
@@ -404,6 +428,7 @@ fn document_from_model(
                 name: decode_text(&attribute.name),
                 keys,
                 comment: (!attribute.comment.is_empty()).then(|| decode_text(&attribute.comment)),
+                trailing_comment: None,
             });
         }
         entities.push(ErEntity {
@@ -411,6 +436,7 @@ fn document_from_model(
             alias: (!entity.alias.is_empty()).then(|| decode_text(&entity.alias)),
             attributes,
             classes: entity_classes(&entity.css_classes),
+            trailing_comment: None,
         });
     }
 
@@ -442,6 +468,7 @@ fn document_from_model(
             right_cardinality,
             identifying,
             label: decode_text(&relationship.role_a),
+            trailing_comment: None,
         });
     }
 
@@ -490,23 +517,41 @@ pub fn emit_er(document: &ErDocument) -> String {
     for entity in &document.entities {
         let head = entity_declaration(entity);
         if entity.attributes.is_empty() {
-            let _ = writeln!(out, "{INDENT}{head}");
+            let _ = writeln!(
+                out,
+                "{INDENT}{}",
+                with_comment(head, &entity.trailing_comment)
+            );
             continue;
         }
-        let _ = writeln!(out, "{INDENT}{head} {{");
+        let _ = writeln!(
+            out,
+            "{INDENT}{}",
+            with_comment(format!("{head} {{"), &entity.trailing_comment)
+        );
         for attribute in &entity.attributes {
             let _ = writeln!(
                 out,
                 "{}{}",
                 INDENT.repeat(2),
-                attribute_declaration(attribute)
+                with_comment(
+                    attribute_declaration(attribute),
+                    &attribute.trailing_comment
+                )
             );
         }
         let _ = writeln!(out, "{INDENT}}}");
     }
 
     for relationship in &document.relationships {
-        let _ = writeln!(out, "{INDENT}{}", relationship_statement(relationship));
+        let _ = writeln!(
+            out,
+            "{INDENT}{}",
+            with_comment(
+                relationship_statement(relationship),
+                &relationship.trailing_comment
+            )
+        );
     }
 
     for line in preserved_at(document, PreservedPosition::Bottom) {
@@ -526,6 +571,13 @@ fn preserved_at(document: &ErDocument, position: PreservedPosition) -> impl Iter
         .iter()
         .filter(move |line| line.position == position)
         .map(|line| line.text.as_str())
+}
+
+fn with_comment(statement: String, comment: &Option<String>) -> String {
+    match comment {
+        Some(comment) => format!("{statement} {comment}"),
+        None => statement,
+    }
 }
 
 fn entity_declaration(entity: &ErEntity) -> String {
@@ -990,7 +1042,8 @@ fn scan_source(source: &str) -> Result<SourceScan> {
             }
         }
 
-        block_depth = block_depth.saturating_add_signed(brace_delta(trimmed));
+        // A brace written in a comment opens nothing.
+        block_depth = block_depth.saturating_add_signed(brace_delta(split_comment(trimmed).0));
         statements.push(trimmed.to_string());
         position = PreservedPosition::Bottom;
     }
@@ -1029,43 +1082,395 @@ fn join_lines(lines: &[&str]) -> String {
         .join("\n")
 }
 
-/// Why `statements` cannot be edited as a form, if there is a reason.
-///
-/// A statement the model carries only in part is worse than one it refuses:
-/// the editor would write the diagram back without the part it dropped.
-fn unsupported_construct(statements: &[String]) -> Option<String> {
-    for statement in statements {
-        if !outside_quotes(statement).contains("%%") {
+/// Where a `%%` comment starts in `statement`. The same characters inside a
+/// quoted string are the user's words, which Mermaid's lexer reads as part of
+/// the string.
+fn comment_offset(statement: &str) -> Option<usize> {
+    let mut quoted = false;
+    for (offset, character) in statement.char_indices() {
+        if character == '"' {
+            quoted = !quoted;
             continue;
         }
-        // The scanner keeps a whole-line comment as a preserved line, unless it
-        // sits inside an attribute block, where it belongs to the statement.
-        if statement.trim_start().starts_with("%%") {
-            return Some(format!(
-                "属性ブロックの中のコメントは構造化編集で失われます ({statement})。コメントをブロックの外に移すか、テキストのまま編集してください。"
-            ));
+        if !quoted && statement.get(offset..offset + 2) == Some("%%") {
+            return Some(offset);
         }
-        return Some(format!(
-            "文の末尾のコメントは構造化編集で失われます ({statement})。コメントを独立した行に移すか、テキストのまま編集してください。"
-        ));
     }
     None
 }
 
-/// `statement` with every quoted string blanked out, so that a `%%` the user
-/// wrote in a label is not mistaken for a comment.
-fn outside_quotes(statement: &str) -> String {
-    let mut out = String::with_capacity(statement.len());
-    let mut quoted = false;
-    for character in statement.chars() {
-        if character == '"' {
-            quoted = !quoted;
-            out.push(' ');
+/// `statement` without its trailing comment, and the comment from its `%%` on.
+fn split_comment(statement: &str) -> (&str, Option<&str>) {
+    match comment_offset(statement) {
+        Some(offset) => (
+            statement.get(..offset).unwrap_or_default().trim_end(),
+            Some(statement.get(offset..).unwrap_or_default().trim_end()),
+        ),
+        None => (statement, None),
+    }
+}
+
+/// Whether `comment` can be written at the end of a statement: a `%%` comment
+/// that stays on its line.
+pub fn is_valid_trailing_comment(comment: &str) -> bool {
+    comment.starts_with("%%") && !comment.contains(['\n', '\r'])
+}
+
+/// The model item a trailing comment belongs to.
+#[derive(Debug)]
+enum CommentSite {
+    Entity(String),
+    Attribute { entity: String, index: usize },
+    Relationship(usize),
+}
+
+/// A trailing comment, the item it is meant for, and the statement it was
+/// written after.
+#[derive(Debug)]
+struct TrailingComment {
+    site: CommentSite,
+    comment: String,
+    statement: String,
+}
+
+/// The trailing comments of a diagram, and the counts the lines they were read
+/// from imply, which have to match the model's before the comments can be
+/// handed to its items.
+#[derive(Debug, Default)]
+struct TrailingComments {
+    comments: Vec<TrailingComment>,
+    relationship_lines: usize,
+    attribute_lines: Vec<(String, usize)>,
+}
+
+/// What a statement outside an attribute block is.
+enum TopLevelStatement {
+    /// An entity declaration that opens an attribute block on this line.
+    BlockHead(String),
+    Entity(String),
+    Relationship,
+    /// `direction` and `class`, which the model carries but has no row for a
+    /// comment to travel with.
+    Other,
+}
+
+/// Reads the trailing comments off `statements`, the lines the scanner handed
+/// to the parser, and works out which item each one belongs to.
+///
+/// The model re-spells every statement, so a comment only survives by riding
+/// on the item it was written after. A comment with no item to ride on is
+/// refused rather than moved somewhere it would no longer explain.
+fn trailing_comments(statements: &[String]) -> Result<TrailingComments> {
+    let mut found = TrailingComments::default();
+    let mut depth = 0usize;
+    let mut block_entity = String::new();
+    for statement in statements {
+        let (body, comment) = split_comment(statement);
+        if depth > 0 {
+            if body.starts_with('}') {
+                depth -= 1;
+                if comment.is_some() {
+                    bail!(
+                        "属性ブロックを閉じる行の末尾のコメント ({statement}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
+                    );
+                }
+                continue;
+            }
+            if body.is_empty() {
+                bail!(
+                    "属性ブロックの中のコメントは構造化編集で失われます ({statement})。コメントをブロックの外に移すか、テキストのまま編集してください。"
+                );
+            }
+            // `int id }` closes the block after its attribute, and the lines
+            // below it are statements again.
+            if contains_outside_quotes(body, '}') {
+                depth -= 1;
+                if comment.is_some() {
+                    bail!(
+                        "属性ブロックを閉じる行の末尾のコメント ({statement}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
+                    );
+                }
+            }
+            let index = match found
+                .attribute_lines
+                .iter_mut()
+                .find(|(entity, _)| *entity == block_entity)
+            {
+                Some((_, count)) => {
+                    *count += 1;
+                    *count - 1
+                }
+                None => {
+                    found.attribute_lines.push((block_entity.clone(), 1));
+                    0
+                }
+            };
+            if let Some(comment) = comment {
+                found.comments.push(TrailingComment {
+                    site: CommentSite::Attribute {
+                        entity: block_entity.clone(),
+                        index,
+                    },
+                    comment: comment.to_string(),
+                    statement: body.to_string(),
+                });
+            }
             continue;
         }
-        out.push(if quoted { ' ' } else { character });
+
+        if body.is_empty() {
+            // Only the rest of the `erDiagram` line gets here, since a comment
+            // on a line of its own is kept verbatim by the scanner.
+            bail!(
+                "`erDiagram` の行の末尾のコメント ({statement}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
+            );
+        }
+        let site = match classify_statement(body) {
+            TopLevelStatement::BlockHead(name) => {
+                depth += 1;
+                block_entity = name.clone();
+                CommentSite::Entity(name)
+            }
+            TopLevelStatement::Entity(name) => CommentSite::Entity(name),
+            TopLevelStatement::Relationship => {
+                found.relationship_lines += 1;
+                CommentSite::Relationship(found.relationship_lines - 1)
+            }
+            TopLevelStatement::Other => {
+                if comment.is_some() {
+                    bail!(
+                        "文の末尾のコメントは構造化編集で失われます ({statement})。コメントを独立した行に移すか、テキストのまま編集してください。"
+                    );
+                }
+                continue;
+            }
+        };
+        if let Some(comment) = comment {
+            found.comments.push(TrailingComment {
+                site,
+                comment: comment.to_string(),
+                statement: body.to_string(),
+            });
+        }
     }
-    out
+    Ok(found)
+}
+
+fn contains_outside_quotes(text: &str, wanted: char) -> bool {
+    let mut quoted = false;
+    for character in text.chars() {
+        if character == '"' {
+            quoted = !quoted;
+        } else if character == wanted && !quoted {
+            return true;
+        }
+    }
+    false
+}
+
+fn classify_statement(body: &str) -> TopLevelStatement {
+    if is_direction_statement(body) {
+        return TopLevelStatement::Other;
+    }
+    if body
+        .get(.."class".len())
+        .is_some_and(|head| head.eq_ignore_ascii_case("class"))
+        && body
+            .get("class".len()..)
+            .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+    {
+        return TopLevelStatement::Other;
+    }
+    let Some((name, rest)) = read_entity_name(body) else {
+        return TopLevelStatement::Relationship;
+    };
+    let mut rest = rest.trim_start();
+    // An alias can only be written on a declaration of its own.
+    if let Some(alias) = rest.strip_prefix('[') {
+        let alias = alias.trim_start();
+        let after_quote = match alias.strip_prefix('"') {
+            Some(quoted) => quoted.find('"').and_then(|end| quoted.get(end + 1..)),
+            None => Some(alias),
+        };
+        let Some(close) = after_quote.and_then(|text| text.find(']').map(|end| (text, end))) else {
+            return TopLevelStatement::Relationship;
+        };
+        rest = close.0.get(close.1 + 1..).unwrap_or_default().trim_start();
+    }
+    if let Some(classes) = rest.strip_prefix(":::") {
+        let mut remainder = classes.trim_start();
+        loop {
+            let end = remainder
+                .find(|character: char| character.is_whitespace() || character == ',')
+                .unwrap_or(remainder.len());
+            remainder = remainder.get(end..).unwrap_or_default().trim_start();
+            match remainder.strip_prefix(',') {
+                Some(next) => remainder = next.trim_start(),
+                None => break,
+            }
+        }
+        rest = remainder;
+    }
+    if rest.is_empty() {
+        return TopLevelStatement::Entity(name);
+    }
+    if rest == "{" {
+        return TopLevelStatement::BlockHead(name);
+    }
+    if rest.starts_with('{') {
+        return TopLevelStatement::Entity(name);
+    }
+    TopLevelStatement::Relationship
+}
+
+/// The entity name a statement opens with, decoded the way the model decodes
+/// it, and the rest of the statement.
+fn read_entity_name(body: &str) -> Option<(String, &str)> {
+    if let Some(quoted) = body.strip_prefix('"') {
+        let end = quoted.find('"')?;
+        return Some((decode_text(quoted.get(..end)?), quoted.get(end + 1..)?));
+    }
+    let end = body
+        .find(|character: char| {
+            character.is_whitespace() || matches!(character, '[' | '{' | '}' | ':' | '|' | '"')
+        })
+        .unwrap_or(body.len());
+    if end == 0 {
+        return None;
+    }
+    Some((decode_text(body.get(..end)?), body.get(end..)?))
+}
+
+/// Hands each trailing comment to the item it was written after.
+///
+/// The lines are matched to the model by counting, so the counts have to
+/// agree first, and the line a comment ends has to hold that item and nothing
+/// else: Mermaid needs no line break between statements, and a line holding
+/// two would otherwise shift the counts after it and put a comment on another
+/// row.
+fn attach_trailing_comments(document: &mut ErDocument, found: TrailingComments) -> Result<()> {
+    let engine = Engine::new();
+    for TrailingComment {
+        site,
+        comment,
+        statement,
+    } in found.comments
+    {
+        if !statement_holds_only(&engine, &statement, &site, document) {
+            bail!(
+                "行末のコメント ({comment}) の行に文が 2 つ以上あるか、どの項目のものか決められませんでした。文を 1 行ずつに分けるか、テキストのまま編集してください。"
+            );
+        }
+        let slot = match site {
+            CommentSite::Entity(name) => document
+                .entities
+                .iter_mut()
+                .find(|entity| entity.name == name)
+                .map(|entity| &mut entity.trailing_comment),
+            CommentSite::Attribute { entity, index } => {
+                let lines = found
+                    .attribute_lines
+                    .iter()
+                    .find(|(name, _)| *name == entity)
+                    .map_or(0, |(_, count)| *count);
+                document
+                    .entities
+                    .iter_mut()
+                    .find(|candidate| candidate.name == entity)
+                    .filter(|candidate| candidate.attributes.len() == lines)
+                    .and_then(|candidate| candidate.attributes.get_mut(index))
+                    .map(|attribute| &mut attribute.trailing_comment)
+            }
+            CommentSite::Relationship(index) => (document.relationships.len()
+                == found.relationship_lines)
+                .then(|| document.relationships.get_mut(index))
+                .flatten()
+                .map(|relationship| &mut relationship.trailing_comment),
+        };
+        let Some(slot) = slot else {
+            bail!(
+                "行末のコメント ({comment}) がどの項目のものか決められませんでした。コメントを独立した行に移すか、テキストのまま編集してください。"
+            );
+        };
+        if slot.is_some() {
+            bail!(
+                "同じ項目に行末のコメントが 2 つあります ({comment})。1 つにまとめるか、テキストのまま編集してください。"
+            );
+        }
+        *slot = Some(comment);
+    }
+    Ok(())
+}
+
+/// Whether `statement`, read on its own, is the one item `site` names in
+/// `document` and nothing more.
+fn statement_holds_only(
+    engine: &Engine,
+    statement: &str,
+    site: &CommentSite,
+    document: &ErDocument,
+) -> bool {
+    let read = |source: String| -> Option<ErDocument> {
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .ok()??;
+        let RenderSemanticModel::Er(model) = parsed.model else {
+            return None;
+        };
+        document_from_model(&model, false, Vec::new()).ok()
+    };
+    match site {
+        CommentSite::Entity(name) => {
+            let source = if statement.ends_with('{') {
+                format!("{HEADER}\n{statement}\n}}")
+            } else {
+                format!("{HEADER}\n{statement}")
+            };
+            read(source).is_some_and(|alone| {
+                alone.relationships.is_empty()
+                    && alone.entities.len() == 1
+                    && alone.entities.iter().all(|entity| entity.name == *name)
+            })
+        }
+        CommentSite::Attribute { entity, index } => {
+            let Some(expected) = document
+                .entities
+                .iter()
+                .find(|candidate| candidate.name == *entity)
+                .and_then(|candidate| candidate.attributes.get(*index))
+            else {
+                return false;
+            };
+            let expected = ErAttribute {
+                trailing_comment: None,
+                ..expected.clone()
+            };
+            read(format!("{HEADER}\nX {{\n{statement}\n}}")).is_some_and(|alone| {
+                alone.relationships.is_empty()
+                    && alone
+                        .entities
+                        .iter()
+                        .map(|entity| entity.attributes.as_slice())
+                        .eq([std::slice::from_ref(&expected)])
+            })
+        }
+        CommentSite::Relationship(index) => {
+            let Some(expected) = document.relationships.get(*index) else {
+                return false;
+            };
+            let expected = ErRelationship {
+                trailing_comment: None,
+                ..expected.clone()
+            };
+            read(format!("{HEADER}\n{statement}")).is_some_and(|alone| {
+                alone.relationships == [expected]
+                    && alone
+                        .entities
+                        .iter()
+                        .all(|entity| entity.attributes.is_empty() && entity.alias.is_none())
+            })
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1185,6 +1590,7 @@ mod tests {
                         right_cardinality: right,
                         identifying,
                         label: "x".into(),
+                        trailing_comment: None,
                     };
                     let source = format!(
                         "erDiagram\n{INDENT}{}",
@@ -1217,24 +1623,28 @@ mod tests {
                     name: "id".into(),
                     keys: vec![ErAttributeKey::Primary],
                     comment: None,
+                    trailing_comment: None,
                 },
                 ErAttribute {
                     type_name: "string".into(),
                     name: "name".into(),
                     keys: Vec::new(),
                     comment: None,
+                    trailing_comment: None,
                 },
                 ErAttribute {
                     type_name: "string".into(),
                     name: "mail".into(),
                     keys: vec![ErAttributeKey::Unique],
                     comment: Some("連絡先".into()),
+                    trailing_comment: None,
                 },
                 ErAttribute {
                     type_name: "int".into(),
                     name: "owner".into(),
                     keys: vec![ErAttributeKey::Foreign, ErAttributeKey::Unique],
                     comment: Some("所有者".into()),
+                    trailing_comment: None,
                 },
             ]
         );
@@ -1272,6 +1682,7 @@ mod tests {
                 right_cardinality: ErCardinality::ZeroOrMore,
                 identifying: true,
                 label: name.to_string(),
+                trailing_comment: None,
             };
             let source = format!(
                 "erDiagram\n{INDENT}{}",
@@ -1308,8 +1719,10 @@ mod tests {
                     name: "id".into(),
                     keys: vec![ErAttributeKey::Primary],
                     comment: Some(comment.to_string()),
+                    trailing_comment: None,
                 }],
                 classes: Vec::new(),
+                trailing_comment: None,
             });
             let emitted = emit_er(&document);
             let parsed = parse_er(&emitted)
@@ -1573,21 +1986,224 @@ mod tests {
         assert!(is_er_source("---\ntitle: x\n---\nerDiagram"));
     }
 
+    /// A comment written after a statement rides on the item the statement
+    /// became, so it is written back after that item wherever the emitter
+    /// puts it. The whole emitted text is compared, since a comment dropped
+    /// from both sides of a round trip would pass a comparison of documents.
     #[test]
-    fn an_end_of_line_comment_is_refused() {
-        let error = parse_er("erDiagram\n  A ||--|| B : x %% 行末のメモ")
-            .err()
-            .expect("an end of line comment should be refused");
-        assert!(
-            format!("{error}").contains("テキストのまま編集してください"),
-            "{error}"
+    fn an_end_of_line_comment_rides_on_its_item() {
+        let source = "erDiagram
+  A ||--o{ B : has %% 行末のメモ
+  B %% 宣言のメモ
+  A[\"別名\"]:::warn { %% ブロックのメモ
+    int id PK %% 主キーのメモ
+    string name
+    string mail \"連絡先 %% ではない\" %% 属性のメモ
+  }
+  C ||--|| A : \"100%% 完了\"
+  classDef warn fill:#f96";
+        let document = parse_er(source).expect("source should parse");
+        assert_eq!(
+            document
+                .relationships
+                .iter()
+                .map(|relationship| relationship.trailing_comment.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("%% 行末のメモ"), None]
+        );
+        let entity = |name: &str| {
+            document
+                .entities
+                .iter()
+                .find(|entity| entity.name == name)
+                .unwrap_or_else(|| panic!("{name} should be an entity"))
+        };
+        assert_eq!(
+            entity("B").trailing_comment.as_deref(),
+            Some("%% 宣言のメモ")
+        );
+        assert_eq!(
+            entity("A").trailing_comment.as_deref(),
+            Some("%% ブロックのメモ")
+        );
+        assert_eq!(
+            entity("A")
+                .attributes
+                .iter()
+                .map(|attribute| attribute.trailing_comment.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("%% 主キーのメモ"), None, Some("%% 属性のメモ")]
+        );
+        assert_eq!(
+            entity("A")
+                .attributes
+                .get(2)
+                .and_then(|attribute| attribute.comment.as_deref()),
+            Some("連絡先 %% ではない"),
+            "a comment marker inside the attribute's quoted comment is text"
         );
 
-        // The same characters inside a label are the user's words.
-        assert!(
-            parse_er("erDiagram\n  A ||--|| B : \"100%% 完了\"").is_ok(),
-            "a label may contain the comment marker"
+        let emitted = assert_stable(source);
+        assert_eq!(
+            emitted,
+            "erDiagram
+    A[別名]:::warn { %% ブロックのメモ
+        int id PK %% 主キーのメモ
+        string name
+        string mail \"連絡先 #37;#37; ではない\" %% 属性のメモ
+    }
+    B %% 宣言のメモ
+    C
+    A ||--o{ B : has %% 行末のメモ
+    C ||--|| A : \"100#37;#37; 完了\"
+  classDef warn fill:#f96"
         );
+        assert_renders(&emitted);
+    }
+
+    /// Moving a row keeps its comment with it, and a new row has none.
+    #[test]
+    fn a_comment_stays_with_its_row_when_the_rows_move() {
+        let source = "erDiagram\n  A ||--|| B : x1 %% 一つ目\n  A ||--|| C : x2";
+        let mut document = parse_er(source).expect("source should parse");
+        document.relationships.swap(0, 1);
+        let emitted = emit_er(&document);
+        assert!(
+            emitted.ends_with("    A ||--|| C : x2\n    A ||--|| B : x1 %% 一つ目"),
+            "{emitted}"
+        );
+    }
+
+    #[test]
+    fn a_comment_with_no_item_to_ride_on_is_refused() {
+        for source in [
+            "erDiagram %% 図のメモ\n  A ||--|| B : x",
+            "erDiagram\n  A {\n    int id\n  } %% 閉じのメモ",
+            "erDiagram\n  A {\n    %% ブロック内のメモ\n    int id\n  }",
+            "erDiagram\n  direction LR %% 向きのメモ\n  A ||--|| B : x",
+            "erDiagram\n  A ||--|| B : x\n  class A warn %% クラスのメモ",
+            "erDiagram\n  A %% 一つ目\n  A %% 二つ目",
+        ] {
+            let error = parse_er(source)
+                .err()
+                .unwrap_or_else(|| panic!("`{source}` should be refused"));
+            assert!(
+                format!("{error}").contains("テキストのまま編集してください"),
+                "{source}: {error}"
+            );
+        }
+    }
+
+    /// Mermaid needs no line break between statements, so a line can hold
+    /// two, which shifts the counting the comments are matched by. A comment
+    /// on such a line, or on a line after it, must not land on another row.
+    #[test]
+    fn a_comment_on_a_line_of_several_statements_is_refused() {
+        for source in [
+            // After the relationship, not after the entity the line opens with.
+            "erDiagram\n  A { int id } A ||--|| B : x %% m",
+            // Two relationships on a line, and two entities on the commented
+            // one: the counts agree, but the comment is not E's.
+            "erDiagram\n  A ||--|| B : x C ||--|| D : y\n  E ||--|| F : z\n  G[\"g\"] H %% m",
+            // The same comment after two attributes on one line.
+            "erDiagram\n  A {\n    int a string b %% m\n  }",
+        ] {
+            assert_renders(source);
+            let error = parse_er(source)
+                .err()
+                .unwrap_or_else(|| panic!("`{source}` should be refused"));
+            assert!(
+                format!("{error}").contains("テキストのまま編集してください"),
+                "{source}: {error}"
+            );
+        }
+    }
+
+    /// A `}` after the last attribute closes the block on that line, so the
+    /// line below is a relationship again and keeps its own comment.
+    #[test]
+    fn a_block_closed_after_an_attribute_ends_the_attribute_lines() {
+        let source = "erDiagram\n  A {\n    int a string b\n    int c }\n  C ||--|| D : x %% m";
+        assert_renders(source);
+        let emitted = assert_stable(source);
+        assert_eq!(
+            emitted,
+            "erDiagram\n    A {\n        int a\n        string b\n        int c\n    }\n    C\n    D\n    C ||--|| D : x %% m"
+        );
+    }
+
+    /// A re-declared entity, an alias and a quoted name keep each comment on
+    /// the row it was written after.
+    #[test]
+    fn a_comment_stays_on_its_row_across_declarations() {
+        let source = "erDiagram
+  A[\"x\"] %% 別名のメモ
+  \"A B\" ||--|| A : y %% 関係のメモ
+  A {
+    int a %% 一つ目
+  }
+  A {
+    int b %% 二つ目
+  }";
+        let emitted = assert_stable(source);
+        assert_eq!(
+            emitted,
+            "erDiagram
+    A[x] { %% 別名のメモ
+        int a %% 一つ目
+        int b %% 二つ目
+    }
+    \"A B\"
+    \"A B\" ||--|| A : y %% 関係のメモ"
+        );
+        assert_renders(&emitted);
+    }
+
+    /// A brace inside a comment opens no attribute block, so the statements
+    /// under it are still read as statements and kept.
+    #[test]
+    fn a_brace_in_a_comment_opens_no_block() {
+        let emitted =
+            assert_stable("erDiagram\n  A ||--|| B : x %% {\n  style A fill:#f96\n  %% 後のメモ");
+        assert!(emitted.contains("A ||--|| B : x %% {"), "{emitted}");
+        assert!(emitted.contains("style A fill:#f96"), "{emitted}");
+        assert!(emitted.contains("%% 後のメモ"), "{emitted}");
+    }
+
+    /// `#34;` in a relationship label reads as a quotation mark, is written
+    /// back as `#quot;`, which reads the same, and both spellings are drawn
+    /// with the quotation mark.
+    #[test]
+    fn a_numbered_quote_entity_in_a_label_round_trips() {
+        for source in [
+            "erDiagram\n  A ||--|| B : \"a #34;引用#34; b\"",
+            "erDiagram\n  A ||--|| B : a#34;b",
+        ] {
+            let document =
+                parse_er(source).unwrap_or_else(|error| panic!("`{source}` should parse: {error}"));
+            let label = document
+                .relationships
+                .first()
+                .map(|relationship| relationship.label.clone())
+                .expect("one relationship");
+            assert!(label.contains('"'), "`{source}` read as {label:?}");
+            let emitted = assert_stable(source);
+            assert!(emitted.contains("#quot;"), "{emitted}");
+            // The renderer puts each word in a `<tspan>` of its own.
+            let quoted_word = label
+                .split_whitespace()
+                .find(|word| word.contains('"'))
+                .map(|word| word.replace('"', "&quot;"))
+                .expect("a word holds the quote");
+            for drawn in [source, emitted.as_str()] {
+                let svg = render_to_svg(drawn, &MermaidTheme::default())
+                    .unwrap_or_else(|error| panic!("`{drawn}` should render: {error}"));
+                assert!(
+                    svg.contains(&format!("{quoted_word}</tspan>")),
+                    "`{drawn}` should draw {label:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -1652,6 +2268,7 @@ mod tests {
                 alias: None,
                 attributes: Vec::new(),
                 classes: Vec::new(),
+                trailing_comment: None,
             });
         }
         assert_eq!(document.unused_entity_name("E"), "E2");
@@ -1668,6 +2285,7 @@ mod tests {
             right_cardinality: ErCardinality::ExactlyOne,
             identifying: true,
             label: "x".into(),
+            trailing_comment: None,
         });
         assert!(
             document
@@ -1683,6 +2301,7 @@ mod tests {
                 alias: None,
                 attributes: Vec::new(),
                 classes: Vec::new(),
+                trailing_comment: None,
             });
         }
         assert!(
@@ -1699,8 +2318,10 @@ mod tests {
                 name: String::new(),
                 keys: Vec::new(),
                 comment: None,
+                trailing_comment: None,
             }],
             classes: Vec::new(),
+            trailing_comment: None,
         });
         assert!(
             document.structure_error().is_some(),
@@ -1722,14 +2343,17 @@ mod tests {
                 name: "id".into(),
                 keys: vec![ErAttributeKey::Primary],
                 comment: Some("採番 # 付き".into()),
+                trailing_comment: None,
             }],
             classes: vec!["warn".into()],
+            trailing_comment: None,
         });
         document.entities.push(ErEntity {
             name: "注文".into(),
             alias: None,
             attributes: Vec::new(),
             classes: Vec::new(),
+            trailing_comment: None,
         });
         document.relationships.push(ErRelationship {
             left: "顧客".into(),
@@ -1738,6 +2362,7 @@ mod tests {
             right_cardinality: ErCardinality::ZeroOrMore,
             identifying: false,
             label: "発注する; 何度でも".into(),
+            trailing_comment: None,
         });
         assert_eq!(document.structure_error(), None);
 
@@ -1808,8 +2433,10 @@ mod tests {
                     name: name.into(),
                     keys: Vec::new(),
                     comment: None,
+                    trailing_comment: None,
                 }],
                 classes: Vec::new(),
+                trailing_comment: None,
             });
             let emitted = emit_er(&document);
             if document.structure_error().is_some() {
@@ -1835,8 +2462,10 @@ mod tests {
                     name: "id".into(),
                     keys: Vec::new(),
                     comment: None,
+                    trailing_comment: None,
                 }],
                 classes: Vec::new(),
+                trailing_comment: None,
             });
             assert!(
                 document.structure_error().is_some(),
@@ -1852,6 +2481,7 @@ mod tests {
                 alias: None,
                 attributes: Vec::new(),
                 classes: vec![class.to_string()],
+                trailing_comment: None,
             });
             assert!(
                 document.structure_error().is_some(),
@@ -1913,6 +2543,7 @@ mod tests {
                     alias: alias.map(str::to_string),
                     attributes: Vec::new(),
                     classes: Vec::new(),
+                    trailing_comment: None,
                 });
             }
             document.relationships.push(ErRelationship {
@@ -1922,6 +2553,7 @@ mod tests {
                 right_cardinality: ErCardinality::ZeroOrMore,
                 identifying: true,
                 label: label.to_string(),
+                trailing_comment: None,
             });
             assert_eq!(document.structure_error(), None);
             let emitted = emit_er(&document);

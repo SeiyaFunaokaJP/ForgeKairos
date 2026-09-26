@@ -67,12 +67,15 @@ pub mod class_model;
 pub mod er_model;
 pub mod flowchart_model;
 pub mod gantt_model;
+pub mod gitgraph_model;
 pub mod mermaid_model;
+pub mod mindmap_model;
 pub mod pie_model;
 mod postprocess;
 mod render;
 pub mod sequence_model;
 pub mod state_model;
+pub mod timeline_model;
 
 use anyhow::Result;
 use gpui::{Hsla, Rgba};
@@ -187,27 +190,65 @@ pub use postprocess::util::text_color_for_background;
 /// All rectangles are `[x, y, width, height]` in the SVG's `viewBox`
 /// coordinate system, with every enclosing `transform` already folded in, so a
 /// consumer only has to map from displayed pixels into `viewBox` units to
-/// hit-test the diagram. Flowcharts, ER diagrams and state diagrams are mapped;
-/// every other diagram kind yields an empty geometry.
+/// hit-test the diagram. Flowcharts, ER, state, class and sequence diagrams,
+/// pie charts and gantt charts are mapped; every other diagram kind yields an
+/// empty geometry.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DiagramGeometry {
     /// The SVG's `viewBox`: `[min-x, min-y, width, height]`.
     pub view_box: [f32; 4],
     pub nodes: Vec<NodeGeometry>,
     pub edges: Vec<EdgeGeometry>,
+    /// Labels that belong to neither a node nor an edge.
+    pub labels: Vec<LabelGeometry>,
 }
 
 impl DiagramGeometry {
     pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty() && self.edges.is_empty()
+        self.nodes.is_empty() && self.edges.is_empty() && self.labels.is_empty()
     }
+}
+
+/// A label drawn on its own rather than as a node's or an edge's.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelGeometry {
+    pub item: LabelItem,
+    /// The label as rendered, with each line on its own line.
+    pub label: String,
+    /// The label's box, in `viewBox` coordinates. Where merman only gives the
+    /// point a text is anchored at, the width is estimated from the text.
+    pub rect: [f32; 4],
+}
+
+/// What a [`LabelGeometry`] is the label of, in terms the source can be
+/// searched with.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LabelItem {
+    /// A pie chart's or a gantt chart's title.
+    Title,
+    /// The `index`-th slice of a pie chart's legend. merman keeps only the
+    /// first of several slices with the same label, so this counts distinct
+    /// labels in source order.
+    PieSlice { index: usize },
+    /// A gantt chart's section, by the name it is drawn with (each line of a
+    /// `<br>`-split name on its own line). merman draws every section of the
+    /// same name as one.
+    GanttSection { name: String },
+    /// A gantt chart's task, by its id: the one the source gives it, or the
+    /// `task{n}` merman numbers the others with.
+    GanttTask { task_id: String },
+    /// The `index`-th attribute of an ER entity, counting every attribute
+    /// block the entity is given in source order.
+    ErAttribute { entity: String, index: usize },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeGeometry {
     /// The node's id as written in the mermaid source (a flowchart node id, an
-    /// ER entity name or a state id), with the prefix and the `-{n}` suffix
-    /// that merman adds in the SVG stripped off.
+    /// ER entity name, a state id, a class name or a sequence participant id),
+    /// with the prefix and the `-{n}` suffix that merman adds in the SVG
+    /// stripped off. A sequence diagram draws each participant twice, so two
+    /// nodes share its id there.
     pub node_id: String,
     /// The label as rendered, with each line of a multi-line label on its own
     /// line. Empty when the node has no label of its own, and when the one it
@@ -220,11 +261,13 @@ pub struct NodeGeometry {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EdgeGeometry {
     /// merman's own edge id: `L_{from}_{to}_{n}` for a flowchart,
-    /// `id_{from}_{to}_{n}` for an ER relationship, `edge{n}` for a state
-    /// transition.
+    /// `id_{from}_{to}_{n}` for an ER relationship or a class relation,
+    /// `edge{n}` for a state transition, `i{n}` for a sequence diagram's
+    /// message or note.
     pub edge_id: String,
     /// The id of the node the edge leaves, empty for the kinds whose SVG does
-    /// not name it (state diagrams, which number their transitions instead).
+    /// not name it (state diagrams, which number their transitions instead,
+    /// and sequence diagrams, whose messages and notes are numbered too).
     pub from: String,
     /// The id of the node the edge enters, empty under the same condition as
     /// [`Self::from`].
@@ -706,11 +749,10 @@ mod geometry_tests {
     fn other_diagram_kinds_have_no_geometry() {
         let mut rendered = 0;
         for source in [
-            "sequenceDiagram\n  Alice->>Bob: Hi",
-            "classDiagram\n  Animal <|-- Duck",
-            "gantt\n  title A\n  section S\n  Task :a1, 2014-01-01, 30d",
-            "pie title Pets\n  \"Dogs\" : 386",
             "mindmap\n  root\n    child",
+            "journey\n  title A\n  section S\n    Task: 5: Me",
+            "timeline\n  title A\n  2024 : event",
+            "gitGraph\n  commit\n  branch dev\n  commit",
         ] {
             // A diagram kind merman cannot render at all is not this test's
             // concern, but enough of them have to actually render for the

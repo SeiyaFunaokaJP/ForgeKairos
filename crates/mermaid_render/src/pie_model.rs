@@ -248,6 +248,14 @@ fn parse_slice(statement: &str) -> Result<PieSlice> {
         })
         .collect::<String>();
     let remainder = rest.get(value.len()..).unwrap_or_default().trim();
+    // `merman` reads the digits in front of the exponent and ignores the rest
+    // of the line, so `1e3` is drawn as a slice of 1. Opening it with the
+    // spelling kept would show the editor a thousand where the picture has one.
+    if is_exponent(remainder) {
+        bail!(
+            "指数表記の値 ({value}{remainder}) は Mermaid が `{value}` と読むため、図と一致しません ({statement})。`1000` のように桁を書き下してから開いてください。"
+        );
+    }
     if !remainder.is_empty() {
         bail!(
             "数値のあとの `{remainder}` は円グラフに書けません ({statement})。テキストのまま編集してください。"
@@ -259,6 +267,14 @@ fn parse_slice(statement: &str) -> Result<PieSlice> {
         );
     }
     Ok(PieSlice { label, value })
+}
+
+fn is_exponent(text: &str) -> bool {
+    let Some(exponent) = text.strip_prefix(['e', 'E']) else {
+        return false;
+    };
+    let digits = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+    !digits.is_empty() && digits.chars().all(|character| character.is_ascii_digit())
 }
 
 /// Reads a quoted string the way `merman` does, including its `\` escapes, and
@@ -590,6 +606,37 @@ mod tests {
                 "the reason for `{source}` should name the comment: {message}"
             );
         }
+    }
+
+    /// `merman` draws `1e3` as a slice of 1, so opening it would put a value
+    /// in the form that the picture does not show. The refusal has to say why,
+    /// and the reason has to still hold: if `merman` ever reads the exponent,
+    /// the first assertion fails and the value can be opened after all.
+    #[test]
+    fn an_exponent_is_refused_because_mermaid_reads_only_its_digits() {
+        let svg = render_to_svg(
+            "pie showData\n  \"a\" : 1e3\n  \"b\" : 1",
+            &MermaidTheme::default(),
+        )
+        .expect("merman should draw the chart");
+        assert!(svg.contains("a [1]"), "{svg}");
+        assert!(!svg.contains("a [1000]"), "{svg}");
+
+        for source in [
+            "pie\n  \"a\" : 1e3",
+            "pie\n  \"a\" : 1.5E+2",
+            "pie\n  \"a\" : 2e-1",
+        ] {
+            let error = parse_pie(source)
+                .err()
+                .unwrap_or_else(|| panic!("`{source}` should be refused"));
+            assert!(format!("{error}").contains("指数表記"), "{error}");
+        }
+        // A word after the number is still refused for what it is.
+        let error = parse_pie("pie\n  \"a\" : 1 each")
+            .err()
+            .expect("a trailing word should be refused");
+        assert!(!format!("{error}").contains("指数表記"), "{error}");
     }
 
     #[test]

@@ -22,9 +22,12 @@
 //!
 //! What the parser rewrites, all of it stable from the first emit: indentation,
 //! the position of `direction` (which moves up to just under the diagram
-//! keyword), and the whitespace inside a relation statement.
+//! keyword), the whitespace inside a relation statement and before a comment
+//! at the end of one, and a `namespace N { class A }` written on one line,
+//! which comes back spread over three.
 
 use std::fmt::Write as _;
+use std::ops::Range;
 
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
@@ -54,13 +57,20 @@ const MAX_NESTING_DEPTH: usize = 16;
 /// to follow a rename into it.
 const PRESERVED_STATEMENT_KEYWORDS: [&str; 3] = ["classDef", "accTitle", "accDescr"];
 
-/// The words that open a statement which addresses classes in a spelling the
-/// model cannot follow a rename or a deletion into. Opening the diagram would
-/// mean either dropping the statement or leaving it pointing at a class that no
-/// longer exists, which Mermaid would draw as an extra, empty box — so the
-/// diagram is refused instead, with the reason shown to the user.
-const UNSUPPORTED_STATEMENT_KEYWORDS: [&str; 6] =
-    ["style", "cssClass", "click", "link", "callback", "href"];
+/// The words that open a statement which addresses classes by name, and that
+/// is held verbatim as a [`ClassItem::Preserved`] all the same.
+///
+/// None of them declares the class it names — Mermaid applies them to a class
+/// that already exists and ignores them otherwise — so the words that name a
+/// class are all an editor has to follow: [`rename_statement_targets`] carries
+/// a rename into them and [`retain_statement_targets`] takes a deleted class
+/// out of them.
+const TARGETED_STATEMENT_KEYWORDS: [&str; 5] = ["style", "cssClass", "click", "link", "callback"];
+
+/// The words that open no statement of a class diagram at all. `href` is only
+/// ever the second word of a `click` statement, so a line that starts with it
+/// is one Mermaid cannot read.
+const UNSUPPORTED_STATEMENT_KEYWORDS: [&str; 1] = ["href"];
 
 /// The relation operators the editor's menu offers, with the words it shows for
 /// them. An operator the list does not hold still survives, because
@@ -129,8 +139,13 @@ pub struct ClassDecl {
     /// The lines stay verbatim because Mermaid reads a member line as a whole —
     /// visibility, name, parameters, return type and `~T~` generics are pulled
     /// apart only when the picture is drawn — and a model that took them apart
-    /// would have to put them back in a spelling of its own choosing.
+    /// would have to put them back in a spelling of its own choosing. A blank
+    /// line is an empty entry: Mermaid skips it, but the user put it there to
+    /// group the members, and dropping it would rewrite a block nobody edited.
     pub members: Option<Vec<String>>,
+    /// The `%% …` written at the end of the statement's line, after the `{`
+    /// when it opens a block. See [`ClassRelation::comment`].
+    pub comment: Option<String>,
 }
 
 /// One relation statement: `A "1" <|-- "many" B : ラベル`.
@@ -143,7 +158,17 @@ pub struct ClassRelation {
     pub arrow: String,
     pub right_cardinality: Option<String>,
     pub right: ClassRef,
+    /// Everything after the `:`, up to the end of the line. A `%%` in it is
+    /// part of the label: Mermaid reads a label to the end of its line without
+    /// looking for a comment.
     pub label: Option<String>,
+    /// The `%% …` written at the end of the line, verbatim from the `%%` on.
+    ///
+    /// Mermaid drops it, so it is carried rather than edited, and written back
+    /// after the statement. A statement that has a label cannot hold one there
+    /// — it would become part of the label — so the emitter moves it to a line
+    /// of its own above the statement instead.
+    pub comment: Option<String>,
 }
 
 /// One `note "…"` or `note for A "…"` statement.
@@ -152,6 +177,8 @@ pub struct ClassNote {
     /// `None` for a floating note that is attached to no class.
     pub target: Option<String>,
     pub text: String,
+    /// See [`ClassRelation::comment`].
+    pub comment: Option<String>,
 }
 
 /// One `namespace N { … }` block.
@@ -162,6 +189,8 @@ pub struct ClassNamespace {
     /// Mermaid only takes class declarations, notes and further namespaces
     /// inside a namespace, so a relation written in one makes the parse fail.
     pub items: Vec<ClassItem>,
+    /// The `%% …` written after the `{`. See [`ClassRelation::comment`].
+    pub comment: Option<String>,
 }
 
 /// One statement.
@@ -181,14 +210,18 @@ pub enum ClassItem {
     Annotation {
         reference: ClassRef,
         annotation: String,
+        /// See [`ClassRelation::comment`].
+        comment: Option<String>,
     },
     Relation(ClassRelation),
     Note(ClassNote),
     Namespace(ClassNamespace),
     /// A line the model does not carry — a blank line, a `%%` comment, a
-    /// `classDef` or an accessibility statement. Written back verbatim, in
+    /// `classDef`, an accessibility statement, or a `style` / `cssClass` /
+    /// `click` / `link` / `callback` statement. Written back verbatim, in
     /// place, because a comment that moved out of the namespace it explains
-    /// would be as bad as a comment that vanished.
+    /// would be as bad as a comment that vanished. The last five name classes;
+    /// [`statement_targets`] says where.
     Preserved(String),
 }
 
@@ -380,19 +413,19 @@ impl ClassParser<'_> {
                 items.push(ClassItem::Preserved(self.preserved(start)));
                 continue;
             }
-            // Mermaid's lexer eats a comment wherever it finds one, so a
-            // statement with one at its end would come back without it.
-            if outside_quotes(trimmed).contains("%%") {
-                bail!(
-                    "文の末尾のコメントは構造化編集で失われます ({trimmed})。コメントを独立した行に移すか、テキストのまま編集してください。"
-                );
-            }
 
             if let Some(direction) = self.take_direction(trimmed, in_namespace)? {
                 self.direction = Some(direction);
                 continue;
             }
+            // These are held verbatim, a comment at the end included: Mermaid
+            // reads the rest of a `classDef` or `style` line as its value, and
+            // a line that comes back byte for byte cannot lose anything.
             if let Some(item) = self.take_preserved_statement(trimmed, start, in_namespace)? {
+                items.push(item);
+                continue;
+            }
+            if let Some(item) = self.take_targeted_statement(trimmed, start, in_namespace)? {
                 items.push(item);
                 continue;
             }
@@ -403,31 +436,58 @@ impl ClassParser<'_> {
                     );
                 }
             }
-            if let Some(rest) = word_tail(trimmed, "namespace") {
-                items.push(self.parse_namespace(rest, trimmed, depth)?);
-                continue;
-            }
-            if let Some(rest) = word_tail(trimmed, "class") {
-                items.push(ClassItem::Class(self.parse_class_statement(rest, trimmed)?));
-                continue;
-            }
-            if let Some(rest) = word_tail(trimmed, "note") {
-                items.push(ClassItem::Note(parse_note(rest, trimmed)?));
-                continue;
-            }
 
-            if in_namespace {
-                bail!(
-                    "`namespace` の中に書けるのはクラス宣言・ノート・入れ子の `namespace` だけです ({trimmed})。"
-                );
-            }
-            items.push(parse_plain_statement(trimmed)?);
+            let (statement, comment) = split_trailing_comment(trimmed);
+            items.push(self.parse_statement(statement, comment, trimmed, depth, in_namespace)?);
         }
 
         if in_namespace {
             bail!("`namespace` の `{{` に対応する `}}` がありません。");
         }
         Ok(items)
+    }
+
+    /// One statement the model carries, with the comment that was written at
+    /// the end of its line split off already. `line` is the whole line, for
+    /// the messages.
+    fn parse_statement(
+        &mut self,
+        statement: &str,
+        comment: Option<String>,
+        line: &str,
+        depth: usize,
+        in_namespace: bool,
+    ) -> Result<ClassItem> {
+        if let Some(rest) = word_tail(statement, "namespace") {
+            return self.parse_namespace(rest, line, comment, depth);
+        }
+        if let Some(rest) = word_tail(statement, "class") {
+            let mut declaration = self.parse_class_statement(rest, line)?;
+            declaration.comment = comment;
+            return Ok(ClassItem::Class(declaration));
+        }
+        if let Some(rest) = word_tail(statement, "note") {
+            let mut note = parse_note(rest, line)?;
+            note.comment = comment;
+            return Ok(ClassItem::Note(note));
+        }
+
+        if in_namespace {
+            bail!(
+                "`namespace` の中に書けるのはクラス宣言・ノート・入れ子の `namespace` だけです ({line})。"
+            );
+        }
+        let mut item = parse_plain_statement(statement)?;
+        match &mut item {
+            ClassItem::Relation(relation) => relation.comment = comment,
+            ClassItem::Annotation {
+                comment: carried, ..
+            } => *carried = comment,
+            // A member statement ends in a label, which runs to the end of the
+            // line, so no comment was split off one.
+            _ => {}
+        }
+        Ok(item)
     }
 
     /// The lines from `start` up to the cursor, verbatim.
@@ -508,7 +568,40 @@ impl ClassParser<'_> {
         Ok(Some(ClassItem::Preserved(self.preserved(start))))
     }
 
-    fn parse_namespace(&mut self, rest: &str, statement: &str, depth: usize) -> Result<ClassItem> {
+    /// A `style`, `cssClass`, `click`, `link` or `callback` statement, held
+    /// verbatim, if `statement` is one.
+    fn take_targeted_statement(
+        &self,
+        statement: &str,
+        start: usize,
+        in_namespace: bool,
+    ) -> Result<Option<ClassItem>> {
+        let Some(keyword) = TARGETED_STATEMENT_KEYWORDS
+            .into_iter()
+            .find(|keyword| word_tail(statement, keyword).is_some())
+        else {
+            return Ok(None);
+        };
+        if in_namespace {
+            bail!("`{keyword}` は `namespace` の中には書けません ({statement})。");
+        }
+        // A class the editor cannot find in the line is one it cannot carry a
+        // rename into, and the statement would quietly stop applying to it.
+        if statement_targets(statement).is_none() {
+            bail!(
+                "`{keyword}` の対象のクラス名が読めません ({statement})。`` ` `` で囲んだ名前は構造化エディターに対応していません。テキストのまま編集してください。"
+            );
+        }
+        Ok(Some(ClassItem::Preserved(self.preserved(start))))
+    }
+
+    fn parse_namespace(
+        &mut self,
+        rest: &str,
+        statement: &str,
+        comment: Option<String>,
+        depth: usize,
+    ) -> Result<ClassItem> {
         let (name, rest) = take_name(rest, statement)?;
         if !is_valid_class_name(&name) {
             bail!("`{name}` は `namespace` の名前に使えません ({statement})。");
@@ -518,15 +611,16 @@ impl ClassParser<'_> {
         let Some(after_brace) = rest.strip_prefix('{') else {
             bail!("`namespace {name} {{` の形で書いてください ({statement})。");
         };
-        if !after_brace.trim().is_empty() {
-            bail!(
-                "`{{` のあとは改行してください ({statement})。1 行で書いた `namespace` は構造化編集に対応していません。"
-            );
-        }
+        let after_brace = after_brace.trim();
+        let items = match after_brace.is_empty() {
+            true => self.parse_scope(depth + 1, true)?,
+            false => parse_one_line_namespace(after_brace, statement, depth)?,
+        };
         Ok(ClassItem::Namespace(ClassNamespace {
             name,
             label,
-            items: self.parse_scope(depth + 1, true)?,
+            items,
+            comment,
         }))
     }
 
@@ -558,6 +652,7 @@ impl ClassParser<'_> {
             label,
             css_class,
             members,
+            comment: None,
         })
     }
 
@@ -579,14 +674,82 @@ impl ClassParser<'_> {
                 return Ok(members);
             }
             refuse_trailing_brace(trimmed)?;
-            // Mermaid drops a blank line inside the block, so keeping one would
-            // add a line to the fence that the picture never had.
-            if trimmed.is_empty() {
-                continue;
-            }
             members.push(trimmed.to_string());
         }
     }
+}
+
+/// The statements of a `namespace N { … }` written on one line: what `rest`
+/// holds after the `{`.
+///
+/// Mermaid's grammar takes a namespace body with no line break in it, but only
+/// one statement fits there, since the statements of a body are separated by
+/// line breaks. That is exactly what reading the body as its own two lines —
+/// the statement, then the `}` — accepts, so the scope parser does the work and
+/// every rule it has for a namespace applies here too.
+fn parse_one_line_namespace(rest: &str, statement: &str, depth: usize) -> Result<Vec<ClassItem>> {
+    let Some(inner) = rest.strip_suffix('}') else {
+        bail!(
+            "1 行で書いた `namespace` は同じ行の `}}` で閉じてください ({statement})。複数行に分けるか、テキストのまま編集してください。"
+        );
+    };
+    let inner = inner.trim();
+    let lines = match inner.is_empty() {
+        true => vec!["}"],
+        false => vec![inner, "}"],
+    };
+    let mut parser = ClassParser {
+        lines: &lines,
+        index: 0,
+        direction: None,
+    };
+    let items = parser.parse_scope(depth + 1, true)?;
+    // A `class A {` in there would have opened a block that took the closing
+    // brace as its own, and the scope would have failed for want of another.
+    if parser.index != lines.len() {
+        bail!("1 行で書いた `namespace` が読めません ({statement})。");
+    }
+    Ok(items)
+}
+
+/// Splits the comment at the end of `statement` off, if it has one.
+///
+/// Mermaid's lexer looks for a comment wherever a token could start, so a `%%`
+/// after whitespace, a closing quote or a bracket opens one that runs to the
+/// end of the line. It does not look inside a token: a `%%` right after a name
+/// is part of that name, and a `:` opens a label or a member that runs to the
+/// end of the line, `%%` and all. Quoted strings are skipped for the same
+/// reason.
+fn split_trailing_comment(statement: &str) -> (&str, Option<String>) {
+    let mut quoted = false;
+    let mut previous: Option<char> = None;
+    let mut characters = statement.char_indices().peekable();
+    while let Some((offset, character)) = characters.next() {
+        if character == '"' {
+            quoted = !quoted;
+        } else if !quoted {
+            let rest = statement.get(offset..).unwrap_or_default();
+            if character == ':' {
+                if !rest.starts_with(":::") {
+                    break;
+                }
+                characters.next();
+                characters.next();
+                previous = Some(':');
+                continue;
+            }
+            if rest.starts_with("%%")
+                && previous.is_none_or(|previous| {
+                    previous.is_whitespace() || matches!(previous, '"' | '[' | ']' | '{' | '}')
+                })
+            {
+                let head = statement.get(..offset).unwrap_or_default().trim_end();
+                return (head, Some(rest.trim_end().to_string()));
+            }
+        }
+        previous = Some(character);
+    }
+    (statement, None)
 }
 
 /// A relation, a member statement or an annotation statement.
@@ -609,6 +772,7 @@ fn parse_plain_statement(statement: &str) -> Result<ClassItem> {
         return Ok(ClassItem::Annotation {
             reference,
             annotation: annotation.to_string(),
+            comment: None,
         });
     }
 
@@ -654,6 +818,7 @@ fn parse_plain_statement(statement: &str) -> Result<ClassItem> {
         right_cardinality,
         right,
         label,
+        comment: None,
     }))
 }
 
@@ -684,6 +849,7 @@ fn parse_note(rest: &str, statement: &str) -> Result<ClassNote> {
     Ok(ClassNote {
         target,
         text: text.to_string(),
+        comment: None,
     })
 }
 
@@ -878,22 +1044,6 @@ fn split_relation_marker(text: &str) -> &str {
     text
 }
 
-/// `statement` with every quoted string blanked out, so that a `%%` the user
-/// wrote in a label is not mistaken for a comment.
-fn outside_quotes(statement: &str) -> String {
-    let mut out = String::with_capacity(statement.len());
-    let mut quoted = false;
-    for character in statement.chars() {
-        if character == '"' {
-            quoted = !quoted;
-            out.push(' ');
-            continue;
-        }
-        out.push(if quoted { ' ' } else { character });
-    }
-    out
-}
-
 /// Writes `document` back as Mermaid source, without a trailing newline.
 pub fn emit_class(document: &ClassDocument) -> String {
     let mut out = String::new();
@@ -959,29 +1109,53 @@ fn emit_items(items: &[ClassItem], depth: usize, out: &mut String) {
             ClassItem::Annotation {
                 reference,
                 annotation,
+                comment,
             } => {
-                let _ = writeln!(out, "{indent}<<{annotation}>> {}", reference.text());
+                let statement = format!("{indent}<<{annotation}>> {}", reference.text());
+                write_line(out, &statement, comment);
             }
             ClassItem::Relation(relation) => {
-                let _ = writeln!(out, "{indent}{}", relation_statement(relation));
+                let statement = format!("{indent}{}", relation_statement(relation));
+                match (&relation.label, &relation.comment) {
+                    // Written after a label, the comment would become part of
+                    // it, so it goes on a line of its own just above.
+                    (Some(_), Some(comment)) => {
+                        let _ = writeln!(out, "{indent}{comment}");
+                        write_line(out, &statement, &None);
+                    }
+                    _ => write_line(out, &statement, &relation.comment),
+                }
             }
-            ClassItem::Note(note) => match &note.target {
-                Some(target) => {
-                    let _ = writeln!(out, "{indent}note for {target} \"{}\"", note.text);
-                }
-                None => {
-                    let _ = writeln!(out, "{indent}note \"{}\"", note.text);
-                }
-            },
+            ClassItem::Note(note) => {
+                let statement = match &note.target {
+                    Some(target) => format!("{indent}note for {target} \"{}\"", note.text),
+                    None => format!("{indent}note \"{}\"", note.text),
+                };
+                write_line(out, &statement, &note.comment);
+            }
             ClassItem::Namespace(namespace) => {
                 let label = match &namespace.label {
                     Some(label) => format!("[\"{label}\"]"),
                     None => String::new(),
                 };
-                let _ = writeln!(out, "{indent}namespace {}{label} {{", namespace.name);
+                let head = format!("{indent}namespace {}{label} {{", namespace.name);
+                write_line(out, &head, &namespace.comment);
                 emit_items(&namespace.items, depth + 1, out);
                 let _ = writeln!(out, "{indent}}}");
             }
+        }
+    }
+}
+
+/// Writes `statement` as one line, with the comment that was written at the
+/// end of it.
+fn write_line(out: &mut String, statement: &str, comment: &Option<String>) {
+    match comment {
+        Some(comment) => {
+            let _ = writeln!(out, "{statement} {comment}");
+        }
+        None => {
+            let _ = writeln!(out, "{statement}");
         }
     }
 }
@@ -997,12 +1171,17 @@ fn emit_class_decl(declaration: &ClassDecl, indent: &str, out: &mut String) {
     };
     let head = format!("{indent}class {}{label}{css}", declaration.reference.text());
     let Some(members) = &declaration.members else {
-        let _ = writeln!(out, "{head}");
+        write_line(out, &head, &declaration.comment);
         return;
     };
-    let _ = writeln!(out, "{head} {{");
+    write_line(out, &format!("{head} {{"), &declaration.comment);
     for member in members {
-        let _ = writeln!(out, "{indent}{INDENT}{member}");
+        match member.is_empty() {
+            true => out.push('\n'),
+            false => {
+                let _ = writeln!(out, "{indent}{INDENT}{member}");
+            }
+        }
     }
     let _ = writeln!(out, "{indent}}}");
 }
@@ -1122,21 +1301,17 @@ pub fn is_valid_annotation(annotation: &str) -> bool {
 
 /// Whether `text` can be written after the `:` of a relation statement.
 ///
-/// The label runs to the end of its line and comes back trimmed, and Mermaid's
-/// lexer would eat a `%%` and everything after it.
+/// The label runs to the end of its line and comes back trimmed. A `%%` in it
+/// is part of the label: Mermaid's lexer reads a label to the end of the line
+/// without looking for a comment, and so does this parser.
 pub fn is_valid_relation_label(text: &str) -> bool {
-    !text.contains('\n')
-        && !text.contains('\r')
-        && text.trim() == text
-        && !outside_quotes(text).contains("%%")
+    !text.contains('\n') && !text.contains('\r') && text.trim() == text
 }
 
 /// Whether `text` can be written as the member of an `A : メンバー` statement.
 ///
 /// The same as a relation label, except that a line which is nothing but `}`
-/// would read as the end of a block. A `%%` is out because this parser refuses
-/// to reopen a statement that holds one, so writing it would leave a fence the
-/// editor could no longer open.
+/// would read as the end of a block.
 pub fn is_valid_member_text(text: &str) -> bool {
     is_valid_relation_label(text) && text != "}"
 }
@@ -1146,20 +1321,131 @@ pub fn is_valid_member_text(text: &str) -> bool {
 /// A block keeps its lines verbatim and Mermaid reads each one whole, so a `%%`
 /// inside one belongs to the member rather than opening a comment — which is
 /// why a comment written inside a block has to stay valid here, or a diagram
-/// that holds one could be opened and never written back. Only a line that is
-/// nothing but `}` would close the block early, and a blank one would be
-/// dropped the next time the fence was read.
+/// that holds one could be opened and never written back. An empty line is a
+/// blank line in the block, which Mermaid skips. A line that starts with `}`
+/// would close the block there.
 pub fn is_valid_block_member_text(text: &str) -> bool {
-    !text.is_empty()
-        && !text.contains('\n')
-        && !text.contains('\r')
-        && text.trim() == text
-        && text != "}"
+    !text.contains('\n') && !text.contains('\r') && text.trim() == text && !text.starts_with('}')
 }
 
 /// Whether `arrow` is a relation operator Mermaid reads as one.
 pub fn is_valid_relation_arrow(arrow: &str) -> bool {
     split_arrow(arrow).is_some_and(|(taken, rest)| taken.len() == arrow.len() && rest.is_empty())
+}
+
+/// Where in `line` a kept `style`, `cssClass`, `click`, `link` or `callback`
+/// statement names the classes it addresses, as byte ranges of the line.
+///
+/// `None` when the line is not one of those statements, or names its class in
+/// a spelling this cannot follow (a name in backquotes). A range covers the
+/// class name and not the `~T~` Mermaid lets a statement write after it, since
+/// Mermaid looks the class up by the name alone.
+pub fn statement_targets(line: &str) -> Option<Vec<Range<usize>>> {
+    let trimmed = line.trim_start();
+    let keyword = TARGETED_STATEMENT_KEYWORDS
+        .into_iter()
+        .find(|keyword| word_tail(trimmed, keyword).is_some())?;
+    let rest = word_tail(trimmed, keyword)?;
+    // `rest` is a tail of `line`, so its offset in `line` is what is left over.
+    let rest_start = line.len() - rest.len();
+
+    if keyword != "cssClass" {
+        if rest.starts_with('`') {
+            return None;
+        }
+        let length = target_name_length(rest.get(..name_length(rest))?);
+        return (length > 0).then(|| vec![rest_start..rest_start + length]);
+    }
+
+    // `cssClass "A,B" warn`: Mermaid splits the quoted text at the commas and
+    // trims each entry.
+    let content = rest.strip_prefix('"')?;
+    let content_length = content.find('"')?;
+    let content_start = rest_start + 1;
+    let mut targets = Vec::new();
+    let mut entry_start = content_start;
+    for entry in content.get(..content_length)?.split(',') {
+        let leading = entry.len() - entry.trim_start().len();
+        let length = target_name_length(entry.trim());
+        if length > 0 {
+            let start = entry_start + leading;
+            targets.push(start..start + length);
+        }
+        entry_start += entry.len() + 1;
+    }
+    Some(targets)
+}
+
+/// How much of a statement's target is the class name, which is all of it but
+/// a `~T~` after it.
+fn target_name_length(target: &str) -> usize {
+    target.find('~').unwrap_or(target.len())
+}
+
+/// `line` with every class it addresses renamed through `renamed`, which says
+/// the new name of a class that has one.
+///
+/// A line that addresses no class, or none that was renamed, comes back as it
+/// was.
+pub fn rename_statement_targets(line: &str, renamed: impl Fn(&str) -> Option<String>) -> String {
+    let mut out = line.to_string();
+    let Some(targets) = statement_targets(line) else {
+        return out;
+    };
+    // From the end, so that a replacement does not move the ranges before it.
+    for range in targets.into_iter().rev() {
+        let Some(new_name) = line.get(range.clone()).and_then(&renamed) else {
+            continue;
+        };
+        out.replace_range(range, &new_name);
+    }
+    out
+}
+
+/// `line` without the classes `keep` turns down, or `None` when that leaves it
+/// addressing nothing.
+///
+/// A `style`, `click`, `link` or `callback` statement names one class, so it
+/// either stays whole or goes. A `cssClass` statement names a list of them, and
+/// only the entries turned down are taken out of the list; the line goes when
+/// none are left. A line that addresses no class comes back as it was.
+pub fn retain_statement_targets(line: &str, keep: impl Fn(&str) -> bool) -> Option<String> {
+    let Some(targets) = statement_targets(line) else {
+        return Some(line.to_string());
+    };
+    let names = targets
+        .iter()
+        .filter_map(|range| line.get(range.clone()))
+        .collect::<Vec<_>>();
+    if names.iter().all(|name| keep(name)) {
+        return Some(line.to_string());
+    }
+    if !names.iter().any(|name| keep(name)) {
+        return None;
+    }
+
+    // Only a `cssClass` list gets here: it has a name to keep and one to drop.
+    let open = line.find('"')?;
+    let close = open + 1 + line.get(open + 1..)?.find('"')?;
+    let content = line.get(open + 1..close)?;
+    let kept = content
+        .split(',')
+        .filter(|entry| {
+            let entry = entry.trim();
+            let name = entry.get(..target_name_length(entry)).unwrap_or_default();
+            name.is_empty() || keep(name)
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    // The entry taken out may have been the first, and the space that followed
+    // its comma would then open the list.
+    let kept = match content.starts_with(char::is_whitespace) {
+        true => kept,
+        false => kept.trim_start().to_string(),
+    };
+    let mut out = line.to_string();
+    out.replace_range(open + 1..close, &kept);
+    Some(out)
 }
 
 #[cfg(test)]
@@ -1324,6 +1610,7 @@ mod tests {
                 label: None,
                 css_class: None,
                 members: None,
+                comment: None,
             })]
         );
         assert_eq!(
@@ -1601,13 +1888,10 @@ mod tests {
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
         for source in [
-            // A statement that addresses classes in a spelling a rename cannot
-            // follow.
-            "classDiagram\n  class A\n  style A fill:#f96",
-            "classDiagram\n  class A\n  class B\n  cssClass \"A,B\" warn",
-            "classDiagram\n  class A\n  click A href \"https://example.com\"",
-            "classDiagram\n  class A\n  link A \"https://example.com\"",
-            "classDiagram\n  class A\n  callback A \"fn\"",
+            // A statement that addresses a class in a spelling a rename cannot
+            // follow, or where Mermaid does not take it.
+            "classDiagram\n  class A\n  style `A` fill:#f96",
+            "classDiagram\n  namespace N {\n    class A\n    style A fill:#f96\n  }",
             // `:::` is carried on a `class` statement and nowhere else, because
             // that is the only place Mermaid's grammar takes one.
             "classDiagram\n  class A\n  A:::warn",
@@ -1617,14 +1901,19 @@ mod tests {
             "classDiagram\n  class A:::`warn`",
             "classDiagram\n  class A:::warn[\"表示名\"]",
             // Comments and braces Mermaid reads differently from a person.
-            "classDiagram\n  class A %% 行末のメモ",
             "classDiagram\n  class A {\n    +x()\n  } %% 行末のメモ",
             "classDiagram\n  namespace N {\n    class A\n  } %% 行末のメモ",
-            "classDiagram\n  A : +foo() %% 行末のメモ",
-            "classDiagram\n  A --> B : ラベル %% 行末のメモ",
+            // A `%%` right after a name is part of the name to Mermaid, and a
+            // comment in the middle takes the rest of the statement with it.
+            "classDiagram\n  class A%%メモ",
+            "classDiagram\n  A --> B%%メモ",
+            "classDiagram\n  A %% メモ --> B",
+            // Mermaid reads a member line to its end, the `}` included.
             "classDiagram\n  class A { +x() }",
             "classDiagram\n  class A {\n    +x()",
-            "classDiagram\n  namespace N { class A }",
+            // A one line namespace holds one statement and closes on its line.
+            "classDiagram\n  namespace N { class A\n  }",
+            "classDiagram\n  namespace N { class A {\n    +x()\n  }\n  }",
             "classDiagram\n  namespace N {\n    class A",
             "classDiagram\n  }\n  class A",
             // Statements Mermaid does not take where they were written.
@@ -1750,12 +2039,13 @@ mod tests {
         );
         assert!(is_valid_block_member_text("%% 説明"));
         assert!(is_valid_block_member_text("+x() %% 説明"));
-        assert!(!is_valid_block_member_text(""));
+        assert!(is_valid_block_member_text(""));
         assert!(!is_valid_block_member_text("}"));
         assert!(!is_valid_block_member_text(" 前後 "));
-        // The statement spelling is another matter: this parser refuses to
-        // reopen `A : +x() %% 説明`, so the editor must not write one.
-        assert!(!is_valid_member_text("+x() %% 説明"));
+        // Mermaid reads a member statement to the end of its line, so the
+        // `%%` is part of the member there too.
+        assert!(is_valid_member_text("+x() %% 説明"));
+        assert!(!is_valid_block_member_text("} 後"));
         assert_renders(&assert_stable(source));
     }
 
@@ -1870,12 +2160,12 @@ mod tests {
         assert!(is_valid_member_text("<<interface>>"));
         assert!(!is_valid_member_text("}"));
         assert!(!is_valid_member_text(" 前後 "));
-        assert!(!is_valid_member_text("+foo() %% メモ"));
+        assert!(is_valid_member_text("+foo() %% メモ"));
         assert!(is_valid_member_text("+foo(\"%% \") int"));
 
         assert!(is_valid_relation_label("持つ"));
         assert!(is_valid_relation_label("}"));
-        assert!(!is_valid_relation_label("持つ %% メモ"));
+        assert!(is_valid_relation_label("持つ %% メモ"));
         assert!(!is_valid_relation_label(" 前後 "));
     }
 
@@ -1991,10 +2281,12 @@ mod tests {
                     label: Some("引用 \" つき".into()),
                     css_class: None,
                     members: None,
+                    comment: None,
                 }),
                 ClassItem::Note(ClassNote {
                     target: Some("A".into()),
                     text: "引用 \" つき".into(),
+                    comment: None,
                 }),
             ],
             preserved_lines: Vec::new(),
@@ -2012,5 +2304,251 @@ mod tests {
                 "the validator has to catch what the emitter cannot escape"
             );
         }
+    }
+
+    /// A comment at the end of a statement is dropped by Mermaid, so the model
+    /// carries it on the statement and writes it back on the same line — not
+    /// just somewhere in the fence, which a check of `contains` would accept.
+    #[test]
+    fn a_comment_at_the_end_of_a_statement_stays_on_its_line() {
+        let source = "classDiagram
+    class A %% A の説明
+    class B { %% B の説明
+        +x()
+    }
+    A --> B %% 関係の説明
+    <<interface>> A %% 注釈の説明
+    note for A \"メモ %% 本文\" %% ノートの説明
+    namespace N[\"名前\"] { %% 名前空間の説明
+        class C[\"表示\"]%%直後
+    }";
+        let document = parse_class(source).expect("source should parse");
+        let Some(ClassItem::Relation(relation)) = document.items.get(2) else {
+            panic!("the third statement is the relation: {document:?}");
+        };
+        assert_eq!(relation.comment.as_deref(), Some("%% 関係の説明"));
+        assert_eq!(relation.label, None);
+        let Some(ClassItem::Note(note)) = document.items.get(4) else {
+            panic!("the fifth statement is the note: {document:?}");
+        };
+        assert_eq!(note.text, "メモ %% 本文", "a `%%` in quotes is text");
+        assert_eq!(note.comment.as_deref(), Some("%% ノートの説明"));
+
+        let emitted = assert_stable(source);
+        assert_eq!(
+            emitted,
+            source.replace("[\"表示\"]%%直後", "[\"表示\"] %%直後"),
+            "every comment should come back at the end of its own line"
+        );
+        assert_renders(&emitted);
+    }
+
+    /// A label and a member statement run to the end of the line in Mermaid's
+    /// lexer, so a `%%` there is text the picture shows, not a comment.
+    #[test]
+    fn a_percent_pair_in_a_label_or_a_member_statement_is_text() {
+        let source = "classDiagram\n    A --> B : 持つ %% 注\n    A : +x() %% 注";
+        let document = parse_class(source).expect("source should parse");
+        assert!(
+            matches!(
+                document.items.first(),
+                Some(ClassItem::Relation(relation))
+                    if relation.label.as_deref() == Some("持つ %% 注") && relation.comment.is_none()
+            ),
+            "{document:?}"
+        );
+        assert!(
+            matches!(
+                document.items.get(1),
+                Some(ClassItem::Member { text, .. }) if text == "+x() %% 注"
+            ),
+            "{document:?}"
+        );
+        let emitted = assert_stable(source);
+        assert_eq!(emitted, source);
+        assert_renders(&emitted);
+    }
+
+    /// Written after a label, a comment would become part of the label, so a
+    /// relation that gains one moves its comment to the line above instead of
+    /// either dropping it or changing what the picture says.
+    #[test]
+    fn a_comment_moves_above_a_relation_that_gains_a_label() {
+        let mut document =
+            parse_class("classDiagram\n    A --> B %% 説明").expect("source should parse");
+        let Some(ClassItem::Relation(relation)) = document.items.first_mut() else {
+            panic!("{document:?}");
+        };
+        relation.label = Some("持つ".to_string());
+        let emitted = emit_class(&document);
+        assert_eq!(emitted, "classDiagram\n    %% 説明\n    A --> B : 持つ");
+        assert_eq!(assert_stable(&emitted), emitted);
+        let reparsed = parse_class(&emitted).expect("the emitted source should parse");
+        assert!(
+            matches!(
+                reparsed.items.get(1),
+                Some(ClassItem::Relation(relation)) if relation.label.as_deref() == Some("持つ")
+            ),
+            "the label must not have taken the comment in: {reparsed:?}"
+        );
+    }
+
+    /// Mermaid skips a blank line inside a member block, but the user put it
+    /// there, so it comes back where it was.
+    #[test]
+    fn a_blank_line_inside_a_member_block_is_kept() {
+        let source =
+            "classDiagram\n    class A {\n        +x()\n\n        +y()\n\n    }\n    class B";
+        let document = parse_class(source).expect("source should parse");
+        let Some(ClassItem::Class(declaration)) = document.items.first() else {
+            panic!("{document:?}");
+        };
+        assert_eq!(
+            declaration.members,
+            Some(vec![
+                "+x()".to_string(),
+                String::new(),
+                "+y()".to_string(),
+                String::new()
+            ])
+        );
+        let emitted = assert_stable(source);
+        assert_eq!(emitted, source);
+        assert_renders(&emitted);
+        // Whitespace on a blank line is the one thing the first emit settles.
+        assert_eq!(
+            assert_stable("classDiagram\n    class A {\n        +x()\n    \t\n    }"),
+            "classDiagram\n    class A {\n        +x()\n\n    }"
+        );
+    }
+
+    /// Mermaid's grammar takes a namespace whose one statement is on the line
+    /// of its braces. It is written back over several lines, which Mermaid
+    /// reads as the same namespace.
+    #[test]
+    fn a_namespace_on_one_line_opens_and_comes_back_on_several() {
+        for (source, expected) in [
+            (
+                "classDiagram\n  namespace N { class A }\n  A --> B",
+                "classDiagram\n    namespace N {\n        class A\n    }\n    A --> B",
+            ),
+            (
+                "classDiagram\n  namespace N {}",
+                "classDiagram\n    namespace N {\n    }",
+            ),
+            (
+                "classDiagram\n  namespace N[\"名前\"] { note \"メモ\" } %% 説明",
+                "classDiagram\n    namespace N[\"名前\"] { %% 説明\n        note \"メモ\"\n    }",
+            ),
+            (
+                "classDiagram\n  classDef warn fill:#f96\n  namespace 外 { namespace 内 { class A[\"あ\"]:::warn } }",
+                "classDiagram\n  classDef warn fill:#f96\n    namespace 外 {\n        namespace 内 {\n            class A[\"あ\"]:::warn\n        }\n    }",
+            ),
+        ] {
+            let emitted = assert_stable(source);
+            assert_eq!(emitted, expected, "for {source}");
+            assert_renders(source);
+            assert_renders(&emitted);
+        }
+    }
+
+    /// A member block on one line is not one Mermaid reads: its lexer takes a
+    /// member to the end of the line, the closing brace included. The fence is
+    /// refused by `merman` itself, before the model looks at it.
+    #[test]
+    fn a_member_block_on_one_line_is_refused_by_mermaid_itself() {
+        let source = "classDiagram\n  class A { +int x }";
+        let error = parse_class(source)
+            .err()
+            .expect("a one line member block should be refused");
+        assert!(format!("{error}").contains("Mermaid の構文"), "{error}");
+    }
+
+    /// The statements that address a class by name are kept verbatim, and the
+    /// editor finds the names in them to carry a rename or a deletion into.
+    #[test]
+    fn statements_that_address_a_class_are_kept_and_their_targets_found() {
+        let source = "classDiagram
+    class A
+    class B~T~
+    style A fill:#f96,stroke:#333 %% 色
+    cssClass \"A, B~T~,A\" warn
+    click A href \"https://example.com\" \"説明\" _blank
+    click B call handler(\"x\")
+    link A \"https://example.com\"
+    callback B \"handler\"
+    classDef warn fill:#f96";
+        let document = parse_class(source).expect("source should parse");
+        let preserved = document
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                ClassItem::Preserved(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(preserved.len(), 7, "{document:?}");
+        assert_eq!(assert_stable(source), source);
+        assert_renders(source);
+
+        let targets = |line: &str| {
+            statement_targets(line)
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|range| line.get(range).map(str::to_string))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(targets("    style A fill:#f96"), vec!["A"]);
+        assert_eq!(targets("cssClass \"A, B~T~,A\" warn"), vec!["A", "B", "A"]);
+        assert_eq!(targets("click 動物 call f()"), vec!["動物"]);
+        assert_eq!(targets("link A~T~ \"u\""), vec!["A"]);
+        assert_eq!(statement_targets("classDef A fill:#f96"), None);
+        assert_eq!(statement_targets("style `A` fill:#f96"), None);
+        assert_eq!(statement_targets("styles A"), None);
+
+        let renamed = |name: &str| (name == "A").then(|| "動物".to_string());
+        assert_eq!(
+            rename_statement_targets("    style A fill:#f96 %% A", renamed),
+            "    style 動物 fill:#f96 %% A"
+        );
+        assert_eq!(
+            rename_statement_targets("    cssClass \"A, B~T~,A\" warn", renamed),
+            "    cssClass \"動物, B~T~,動物\" warn"
+        );
+        assert_eq!(
+            rename_statement_targets("    link AB \"A\"", renamed),
+            "    link AB \"A\"",
+            "only a whole name is renamed"
+        );
+        assert_eq!(
+            rename_statement_targets("    classDef A fill:#f96", renamed),
+            "    classDef A fill:#f96"
+        );
+
+        let without_a = |name: &str| name != "A";
+        assert_eq!(
+            retain_statement_targets("    style A fill:#f96", without_a),
+            None
+        );
+        assert_eq!(
+            retain_statement_targets("    style B fill:#f96", without_a).as_deref(),
+            Some("    style B fill:#f96")
+        );
+        assert_eq!(
+            retain_statement_targets("    cssClass \"A, B~T~,A\" warn", without_a).as_deref(),
+            Some("    cssClass \"B~T~\" warn")
+        );
+        assert_eq!(
+            retain_statement_targets("    cssClass \" A,B \" warn", without_a).as_deref(),
+            Some("    cssClass \"B \" warn")
+        );
+        assert_eq!(
+            retain_statement_targets("    cssClass \"A,A\" warn", without_a),
+            None
+        );
+        assert_eq!(
+            retain_statement_targets("    classDef A fill:#f96", without_a).as_deref(),
+            Some("    classDef A fill:#f96")
+        );
     }
 }

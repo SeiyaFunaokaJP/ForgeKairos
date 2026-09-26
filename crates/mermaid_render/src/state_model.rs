@@ -326,7 +326,7 @@ pub fn parse_state(source: &str) -> Result<StateDocument> {
     }
 
     let mut parser = StateParser {
-        lines: &lines,
+        lines: lines.iter().map(|line| line.to_string()).collect(),
         index: header_index + 1,
     };
     let body = parser.parse_scope(0)?;
@@ -338,19 +338,66 @@ pub fn parse_state(source: &str) -> Result<StateDocument> {
     })
 }
 
-struct StateParser<'a> {
-    lines: &'a [&'a str],
+/// A composite state written on one line (`state S { a --> b }`) spread over
+/// a line per statement, the way the emitter writes it. Mermaid needs no line
+/// break inside a block, so the two spellings draw the same diagram, and the
+/// parser only has to know one.
+///
+/// The parser asks for this only for a line it reads as a `state` statement:
+/// the same characters in a note's text or an `accDescr` block are prose and
+/// must come back as they were written. A block nested on the same line is
+/// spread when the parser reaches its own line, and a line holding more than
+/// one statement after its `{` is refused there.
+fn spread_one_line_block(line: &str) -> Option<Vec<String>> {
+    let indent = line
+        .get(..line.len() - line.trim_start().len())
+        .unwrap_or_default();
+    let (head, inner) = split_one_line_block(line.trim())?;
+    let mut spread = vec![format!("{indent}{head} {{")];
+    match inner.strip_suffix('}') {
+        Some(body) => {
+            let body = body.trim();
+            if !body.is_empty() {
+                spread.push(format!("{indent}{INDENT}{body}"));
+            }
+            spread.push(format!("{indent}}}"));
+        }
+        // The block goes on over the lines below, which the parser reads as
+        // they are.
+        None => spread.push(format!("{indent}{INDENT}{inner}")),
+    }
+    Some(spread)
+}
+
+/// The `state …` part and what follows the `{` of a `state` statement that
+/// opens a block and goes on writing on the same line.
+fn split_one_line_block(statement: &str) -> Option<(&str, &str)> {
+    let rest = statement_keyword(statement, "state")?;
+    let search_from = match rest.strip_prefix('"') {
+        Some(quoted) => statement.len() - quoted.len() + quoted.find('"')? + 1,
+        None => statement.len() - rest.len(),
+    };
+    let brace = search_from + statement.get(search_from..)?.find('{')?;
+    let inner = statement.get(brace + 1..)?.trim();
+    if inner.is_empty() {
+        return None;
+    }
+    Some((statement.get(..brace)?.trim_end(), inner))
+}
+
+struct StateParser {
+    lines: Vec<String>,
     index: usize,
 }
 
-impl StateParser<'_> {
+impl StateParser {
     fn parse_scope(&mut self, depth: usize) -> Result<StateScope> {
         if depth > MAX_NESTING_DEPTH {
             bail!("複合状態の入れ子が深すぎます。テキストのまま編集してください。");
         }
         let mut scope = StateScope::default();
 
-        while let Some(line) = self.lines.get(self.index).copied() {
+        while let Some(line) = self.lines.get(self.index).cloned() {
             let trimmed = line.trim();
             let start = self.index;
             self.index += 1;
@@ -415,6 +462,11 @@ impl StateParser<'_> {
                 continue;
             }
             if let Some(rest) = statement_keyword(trimmed, "state") {
+                if let Some(spread) = spread_one_line_block(&line) {
+                    self.lines.splice(start..self.index, spread);
+                    self.index = start;
+                    continue;
+                }
                 let item = self.parse_state_statement(rest, trimmed, start, depth)?;
                 scope.items.push(item);
                 continue;
@@ -432,7 +484,7 @@ impl StateParser<'_> {
             if statement.is_empty() {
                 continue;
             }
-            scope.items.push(parse_plain_statement(statement, line)?);
+            scope.items.push(parse_plain_statement(statement, &line)?);
         }
 
         if depth > 0 {
@@ -443,7 +495,14 @@ impl StateParser<'_> {
 
     /// The lines from `start` up to the cursor, verbatim.
     fn preserved(&self, start: usize) -> String {
-        join_lines(self.lines.get(start..self.index).unwrap_or_default())
+        let lines = self
+            .lines
+            .get(start..self.index)
+            .unwrap_or_default()
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        join_lines(&lines)
     }
 
     /// Whether `statement` is one of the statements the model does not carry.
@@ -514,7 +573,7 @@ impl StateParser<'_> {
             text_lines.push(tail.to_string());
         }
         loop {
-            let Some(line) = self.lines.get(self.index).copied() else {
+            let Some(line) = self.lines.get(self.index).cloned() else {
                 bail!("`note` に対応する `end note` がありません ({statement})。");
             };
             self.index += 1;
@@ -1585,11 +1644,12 @@ mod tests {
             "stateDiagram-v2\n  direction TB\n  direction LR\n  A --> B",
             "stateDiagram-v2\n  direction TB 余分\n  A --> B",
             "stateDiagram-v2 LR\n  A --> B",
-            "stateDiagram-v2\n  state P { A --> B }",
             "stateDiagram-v2\n  state P {\n    A --> B",
             "stateDiagram-v2\n  }\n  A --> B",
             "stateDiagram-v2\n  A --> B --> C",
             "stateDiagram-v2\n  my-state --> B",
+            // Two statements after the `{` of a one-line block.
+            "stateDiagram-v2\n  state P { A --> B C --> D }",
         ] {
             let error = parse_state(source)
                 .err()
@@ -1599,6 +1659,78 @@ mod tests {
                 message.chars().any(|character| character > '\u{7f}'),
                 "the message should be Japanese for `{source}`: {message}"
             );
+        }
+    }
+
+    /// A chain is not something Mermaid draws: its grammar takes one arrow
+    /// per statement. So the editor has nothing to split it into, and the
+    /// refusal above stays for as long as `merman` says so.
+    #[test]
+    fn a_chain_of_transitions_is_not_a_diagram_mermaid_draws() {
+        assert!(
+            render_to_svg("stateDiagram-v2\n  A --> B --> C", &MermaidTheme::default()).is_err()
+        );
+    }
+
+    /// A composite state written on one line opens spread over a line per
+    /// statement, which is how the editor writes it back. The whole text is
+    /// compared, so a statement lost on the way would show.
+    #[test]
+    fn a_composite_state_on_one_line_opens_spread_out() {
+        for (source, expected) in [
+            (
+                "stateDiagram-v2\n  state P { A --> B }\n  [*] --> P",
+                "stateDiagram-v2\n    state P {\n        A --> B\n    }\n    [*] --> P",
+            ),
+            (
+                "stateDiagram-v2\n  state \"外側 { 波かっこ }\" as P { A --> B }",
+                "stateDiagram-v2\n    state \"外側 { 波かっこ }\" as P {\n        A --> B\n    }",
+            ),
+            (
+                "stateDiagram-v2\n  state P { state Q { a --> b } }",
+                "stateDiagram-v2\n    state P {\n        state Q {\n            a --> b\n        }\n    }",
+            ),
+            (
+                "stateDiagram-v2\n  state P { A --> B\n    B --> C\n  }",
+                "stateDiagram-v2\n    state P {\n        A --> B\n        B --> C\n    }",
+            ),
+            (
+                "stateDiagram-v2\n  state P {}\n  [*] --> P",
+                "stateDiagram-v2\n    state P {\n    }\n    [*] --> P",
+            ),
+        ] {
+            assert_renders(source);
+            let emitted = assert_stable(source);
+            assert_eq!(emitted, expected, "for {source}");
+            assert_renders(&emitted);
+        }
+    }
+
+    /// Only a line the parser reads as a `state` statement is spread out. The
+    /// same characters in a note's text or an `accDescr` block are prose and
+    /// have to come back byte for byte.
+    #[test]
+    fn a_one_line_block_in_prose_is_left_as_written() {
+        for source in [
+            "stateDiagram-v2
+    s1 --> s2
+    note right of s1
+        state X { y }
+        2 行目
+    end note",
+            "stateDiagram-v2
+  accDescr {
+    state X { y
+  }
+    s1 --> s2",
+            "stateDiagram-v2
+    s1 : {x}
+    s1 --> s2
+    note right of s1 : a { b",
+        ] {
+            assert_renders(source);
+            let emitted = assert_stable(source);
+            assert_eq!(emitted, source);
         }
     }
 

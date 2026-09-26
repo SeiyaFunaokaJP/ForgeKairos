@@ -17,17 +17,16 @@ use mermaid_render::sequence_model::{
     BOX_FILL_PRESETS, SequenceArrow, SequenceAutonumber, SequenceBlock, SequenceBlockKind,
     SequenceBranch, SequenceBranchKind, SequenceDocument, SequenceGroupBox, SequenceItem,
     SequenceMessage, SequenceNote, SequenceNotePlacement, SequenceParticipant,
-    SequenceParticipantKind, box_fill_label, is_valid_participant_id,
+    SequenceParticipantKind, apply_order, box_fill_label, is_valid_participant_id,
 };
 use ui::{
-    Checkbox, ContextMenu, DropdownMenu, DropdownStyle, IconButtonShape, IconPosition, ToggleState,
-    Tooltip, prelude::*,
+    Checkbox, ContextMenu, DropdownMenu, DropdownStyle, IconPosition, ToggleState, prelude::*,
 };
 use util::ResultExt as _;
 
 use super::{
     Form, ID_FIELD_WIDTH, LABEL_FIELD_WIDTH, MermaidEditor, NUMBER_FIELD_WIDTH, add_button,
-    field_frame, neighbour, row_controls, section_title,
+    field_frame, neighbour, row_controls, row_controls_labelled, section_title,
 };
 
 pub(super) struct SequenceForm {
@@ -66,7 +65,16 @@ impl SequenceForm {
             .chain(
                 self.participants
                     .iter()
-                    .flat_map(|row| [row.id.clone(), row.alias.clone()]),
+                    .zip(&self.document.participants)
+                    .flat_map(|(row, participant)| {
+                        // A column with a config object has no description
+                        // Mermaid could write, so its field is not drawn.
+                        if participant.preserved_settings.is_some() {
+                            vec![row.id.clone()]
+                        } else {
+                            vec![row.id.clone(), row.alias.clone()]
+                        }
+                    }),
             )
             .chain(self.items.iter().flat_map(|row| match row {
                 ItemRow::Text(field) => vec![field.clone()],
@@ -245,6 +253,101 @@ pub(super) fn branch_kinds() -> Vec<SequenceBranchKind> {
     kinds
 }
 
+/// Who a new `destroy` row names. Mermaid requires the message right after a
+/// `destroy` to involve the column it ends, and that message is usually the
+/// last one written, so its receiver — or failing that its sender — is the
+/// likely target. A column already destroyed is skipped, because a second
+/// `destroy` of it is refused.
+pub(super) fn default_destroy_target(document: &SequenceDocument) -> Option<String> {
+    let destroyed = document
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            SequenceItem::Destroy(id) => Some(id.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let last_message = document.items.iter().rev().find_map(|item| match item {
+        SequenceItem::Message(message) => Some(message),
+        _ => None,
+    });
+    let candidates = last_message
+        .into_iter()
+        .flat_map(|message| [message.to.as_str(), message.from.as_str()])
+        .chain(
+            document
+                .participants
+                .iter()
+                .map(|participant| participant.id.as_str()),
+        );
+    let mut fallback = None;
+    for id in candidates {
+        if document.participant_index(id).is_none() {
+            continue;
+        }
+        fallback.get_or_insert(id);
+        if !destroyed.contains(&id) {
+            return Some(id.to_string());
+        }
+    }
+    fallback.map(str::to_string)
+}
+
+/// The columns the `create` row at `item_index` can name: its own, and every
+/// column that no other `create` declares and that is in no `box` — a created
+/// column is declared by its statement, and a box can only hold columns
+/// declared at the top.
+pub(super) fn create_target_choices(document: &SequenceDocument, item_index: usize) -> Vec<String> {
+    let current = match document.items.get(item_index) {
+        Some(SequenceItem::Create(id)) => Some(id.as_str()),
+        _ => None,
+    };
+    let created_elsewhere = document
+        .items
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != item_index)
+        .filter_map(|(_, item)| match item {
+            SequenceItem::Create(id) => Some(id.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    document
+        .participants
+        .iter()
+        .filter(|participant| {
+            Some(participant.id.as_str()) == current
+                || (participant.box_index.is_none()
+                    && !created_elsewhere.contains(&participant.id.as_str()))
+        })
+        .map(|participant| participant.id.clone())
+        .collect()
+}
+
+impl SequenceForm {
+    /// Moves the participants and their rows together into `order`.
+    fn reorder_participants(&mut self, order: &[usize]) -> bool {
+        if self.participants.len() != self.document.participants.len() {
+            return false;
+        }
+        self.document.reorder_participants(order) && apply_order(&mut self.participants, order)
+    }
+
+    /// Keeps the list of boxes in the order the fence will draw them, so that
+    /// the list the user sees is the one the reopened fence has.
+    fn normalize_box_order(&mut self) {
+        let order = self.document.canonical_box_order();
+        if order.iter().enumerate().all(|(index, old)| index == *old)
+            || self.boxes.len() != self.document.boxes.len()
+        {
+            return;
+        }
+        if self.document.reorder_boxes(&order) {
+            apply_order(&mut self.boxes, &order);
+        }
+    }
+}
+
 impl MermaidEditor {
     pub(super) fn new_sequence_form(
         &mut self,
@@ -372,6 +475,7 @@ impl MermaidEditor {
                 kind: SequenceParticipantKind::Participant,
                 wrap: false,
                 box_index: None,
+                preserved_settings: None,
             },
         );
         form.participants.insert(at, row);
@@ -404,22 +508,99 @@ impl MermaidEditor {
                 form.items.remove(index);
             }
         }
+        form.normalize_box_order();
         self.schedule_preview(cx);
         cx.notify();
     }
 
+    /// Moves a column one step, or over a whole `box` for a column in none;
+    /// see [`SequenceDocument::participant_move_order`] for the steps it
+    /// refuses.
     pub(super) fn move_participant(&mut self, index: usize, forward: bool, cx: &mut Context<Self>) {
+        let Some(form) = self.sequence() else {
+            return;
+        };
+        let Some(order) = form
+            .current_document(cx)
+            .participant_move_order(index, forward)
+        else {
+            return;
+        };
         let Some(form) = self.sequence_mut() else {
             return;
         };
-        let Some(other) = neighbour(index, forward, form.participants.len()) else {
-            return;
-        };
-        if other >= form.document.participants.len() || index >= form.document.participants.len() {
+        if !form.reorder_participants(&order) {
             return;
         }
-        form.document.participants.swap(index, other);
-        form.participants.swap(index, other);
+        form.normalize_box_order();
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    /// Moves a `box` one step through the list, taking its columns with it.
+    pub(super) fn move_sequence_box(
+        &mut self,
+        index: usize,
+        forward: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(form) = self.sequence_mut() else {
+            return;
+        };
+        let Some((participant_order, box_order)) = form.document.box_move_order(index, forward)
+        else {
+            return;
+        };
+        if form.boxes.len() != form.document.boxes.len()
+            || !form.reorder_participants(&participant_order)
+        {
+            return;
+        }
+        if form.document.reorder_boxes(&box_order) {
+            apply_order(&mut form.boxes, &box_order);
+        }
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    pub(super) fn set_sequence_box_wrap(
+        &mut self,
+        index: usize,
+        wrap: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(form) = self.sequence_mut() else {
+            return;
+        };
+        let Some(group) = form.document.boxes.get_mut(index) else {
+            return;
+        };
+        group.wrap = wrap;
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    /// Points the `create` row at `index` at the column `id`, moving the
+    /// columns so that every created one still comes last, in the order of
+    /// the statements — which is the only order the fence can hold.
+    pub(super) fn set_create_target(&mut self, index: usize, id: String, cx: &mut Context<Self>) {
+        let Some(form) = self.sequence() else {
+            return;
+        };
+        let mut document = form.current_document(cx);
+        let Some(SequenceItem::Create(target)) = document.items.get_mut(index) else {
+            return;
+        };
+        *target = id.clone();
+        let order = document.created_last_order();
+        let Some(form) = self.sequence_mut() else {
+            return;
+        };
+        let Some(SequenceItem::Create(target)) = form.document.items.get_mut(index) else {
+            return;
+        };
+        *target = id;
+        form.reorder_participants(&order);
         self.schedule_preview(cx);
         cx.notify();
     }
@@ -556,6 +737,7 @@ impl MermaidEditor {
                 form.participants.insert(target, row);
             }
         }
+        form.normalize_box_order();
         self.schedule_preview(cx);
         cx.notify();
     }
@@ -609,7 +791,9 @@ impl MermaidEditor {
                         wrap: false,
                     }),
                     AddKind::Activate => SequenceItem::Activate(first),
-                    AddKind::Destroy => SequenceItem::Destroy(first),
+                    AddKind::Destroy => {
+                        SequenceItem::Destroy(default_destroy_target(&document).unwrap_or(first))
+                    }
                     _ => SequenceItem::Deactivate(first),
                 }
             }
@@ -666,6 +850,7 @@ impl MermaidEditor {
             kind: SequenceParticipantKind::Participant,
             wrap: false,
             box_index: None,
+            preserved_settings: None,
         });
         form.participants.push(row);
         form.document.items.push(item);
@@ -789,17 +974,32 @@ impl MermaidEditor {
                     )
                     .child(self.render_box_fill(index, group.fill.as_deref(), window, cx))
                     .child(
-                        IconButton::new(
-                            SharedString::from(format!("mermaid-sequence-box-remove-{index}")),
-                            IconName::Trash,
-                        )
-                        .shape(IconButtonShape::Square)
-                        .icon_size(IconSize::XSmall)
-                        .tooltip(Tooltip::text("削除 (中の参加者は残ります)"))
-                        .on_click(cx.listener(
-                            move |this, _, _window, cx| this.remove_sequence_box(index, cx),
-                        )),
-                    ),
+                        Checkbox::new(("mermaid-sequence-box-wrap", index), group.wrap.into())
+                            .label("折り返し")
+                            .label_size(LabelSize::Small)
+                            .on_click(cx.listener(
+                                move |this, state: &ToggleState, _window, cx| {
+                                    let wrap = *state == ToggleState::Selected;
+                                    this.set_sequence_box_wrap(index, wrap, cx);
+                                },
+                            )),
+                    )
+                    .child(row_controls_labelled(
+                        "mermaid-sequence-box",
+                        index,
+                        form.document.box_move_order(index, false).is_none(),
+                        form.document.box_move_order(index, true).is_none(),
+                        "削除 (中の参加者は残ります)",
+                        cx.listener(move |this, _, _window, cx| {
+                            this.move_sequence_box(index, false, cx)
+                        }),
+                        cx.listener(move |this, _, _window, cx| {
+                            this.move_sequence_box(index, true, cx)
+                        }),
+                        cx.listener(move |this, _, _window, cx| {
+                            this.remove_sequence_box(index, cx)
+                        }),
+                    )),
             );
         }
         section
@@ -941,7 +1141,9 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let last = form.participants.len().saturating_sub(1);
+        // The moves are worked out on what the rows say now, which is what
+        // `move_participant` looks at too.
+        let current = form.current_document(cx);
         let mut section = v_flex()
             .w_full()
             .gap_1()
@@ -955,7 +1157,11 @@ impl MermaidEditor {
             };
             // A `create`d column is declared by its statement in the list
             // below, and a declaration inside a `box` would be a second one.
+            // Its description is edited on that row too, beside the statement
+            // that writes it.
             let created = form.document.is_created(&participant.id);
+            let settings = participant.preserved_settings.clone();
+            let has_settings = settings.is_some();
             section = section.child(
                 h_flex()
                     .w_full()
@@ -970,12 +1176,35 @@ impl MermaidEditor {
                         )
                         .child(row.id.clone()),
                     )
-                    .child(
-                        field_frame(&row.alias, LABEL_FIELD_WIDTH, true, window, cx)
-                            .flex_1()
-                            .child(row.alias.clone()),
-                    )
-                    .child(self.render_participant_kind(index, participant.kind, window, cx))
+                    .when(!created && !has_settings, |this| {
+                        this.child(
+                            field_frame(&row.alias, LABEL_FIELD_WIDTH, true, window, cx)
+                                .flex_1()
+                                .child(row.alias.clone()),
+                        )
+                    })
+                    // Mermaid only takes a config object after `participant`
+                    // and with no `as`, so the object stands in for both the
+                    // description and the kind menu.
+                    .when_some(settings, |this, settings| {
+                        this.child(
+                            div().flex_1().min_w_0().child(
+                                Label::new(format!("設定 @{{{settings}}}"))
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted)
+                                    .truncate(),
+                            ),
+                        )
+                    })
+                    .when(created && !has_settings, |this| this.child(div().flex_1()))
+                    .when(!has_settings, |this| {
+                        this.child(self.render_participant_kind(
+                            index,
+                            participant.kind,
+                            window,
+                            cx,
+                        ))
+                    })
                     .when(created, |this| {
                         this.child(
                             Label::new("create で作成")
@@ -995,8 +1224,8 @@ impl MermaidEditor {
                     .child(row_controls(
                         "mermaid-sequence-participant",
                         index,
-                        index == 0,
-                        index >= last,
+                        current.participant_move_order(index, false).is_none(),
+                        current.participant_move_order(index, true).is_none(),
                         cx.listener(move |this, _, _window, cx| {
                             this.move_participant(index, false, cx)
                         }),
@@ -1162,15 +1391,41 @@ impl MermaidEditor {
                             .color(Color::Muted),
                     )
                     .child(self.render_lifeline_target(index, id, ids, window, cx)),
-                (SequenceItem::Create(id), _) => h_flex()
-                    .w_full()
-                    .gap_1()
-                    .child(
-                        Label::new("参加者の作成")
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
-                    )
-                    .child(self.render_lifeline_target(index, id, ids, window, cx)),
+                (SequenceItem::Create(id), _) => {
+                    let alias = form
+                        .document
+                        .participant_index(id)
+                        .or_else(|| ids.iter().position(|current| current == id))
+                        .and_then(|column| {
+                            let participant = form.document.participants.get(column)?;
+                            let row = form.participants.get(column)?;
+                            participant
+                                .preserved_settings
+                                .is_none()
+                                .then(|| row.alias.clone())
+                        });
+                    h_flex()
+                        .w_full()
+                        .gap_1()
+                        .child(
+                            Label::new("参加者の作成")
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
+                        .child(self.render_create_target(index, id, window, cx))
+                        .when_some(alias, |this, alias| {
+                            this.child(
+                                Label::new("表示名 (as)")
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .child(
+                                field_frame(&alias, LABEL_FIELD_WIDTH, true, window, cx)
+                                    .flex_1()
+                                    .child(alias.clone()),
+                            )
+                        })
+                }
                 (SequenceItem::Destroy(id), _) => h_flex()
                     .w_full()
                     .gap_1()
@@ -1384,6 +1639,51 @@ impl MermaidEditor {
                 _ => {}
             },
         )
+    }
+
+    /// The column a `create` row declares. Choosing another one moves the
+    /// columns so that the created ones stay last; see
+    /// [`MermaidEditor::set_create_target`].
+    pub(super) fn render_create_target(
+        &self,
+        index: usize,
+        current: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let Some(form) = self.sequence() else {
+            return div().into_any_element();
+        };
+        let choices = create_target_choices(&form.current_document(cx), index);
+        let this = cx.entity().downgrade();
+        let selected = current.to_string();
+        let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
+            for id in choices.clone() {
+                let this = this.clone();
+                let is_selected = id == selected;
+                menu = menu.toggleable_entry(
+                    id.clone(),
+                    is_selected,
+                    IconPosition::Start,
+                    None,
+                    move |_window, cx| {
+                        let id = id.clone();
+                        this.update(cx, |this, cx| this.set_create_target(index, id, cx))
+                            .log_err();
+                    },
+                );
+            }
+            menu
+        });
+
+        DropdownMenu::new(
+            SharedString::from(format!("mermaid-sequence-create-{index}")),
+            SharedString::from(current.to_string()),
+            menu,
+        )
+        .style(DropdownStyle::Outlined)
+        .trigger_size(ButtonSize::Compact)
+        .into_any_element()
     }
 
     /// A dropdown of the declared participants that writes the chosen id onto

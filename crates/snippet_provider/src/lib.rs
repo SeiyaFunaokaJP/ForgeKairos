@@ -381,6 +381,9 @@ mod tests {
                     "mermaid-gitgraph",
                     "mermaid-mindmap",
                     "mermaid-timeline",
+                    "mermaid-journey",
+                    "mermaid-quadrant",
+                    "mermaid-xychart",
                 ] {
                     assert!(
                         prefixes.contains(&prefix),

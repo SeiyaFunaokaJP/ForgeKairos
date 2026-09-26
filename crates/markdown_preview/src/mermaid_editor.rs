@@ -17,11 +17,15 @@
 //! `Buffer::edit` so that undo takes the diagram back in one step (ADR-F51).
 
 mod class;
+mod class_menu;
 mod er;
 mod gantt;
+mod gitgraph;
+mod mindmap;
 mod pie;
 mod sequence;
 mod state;
+mod timeline;
 
 use std::ops::Range;
 use std::sync::Arc;
@@ -36,9 +40,10 @@ use gpui::{
     TextStyleRefinement, WeakEntity, Window, img, px, size,
 };
 use mermaid_render::flowchart_model::{
-    ArrowKind, CLICK_CLASS, EDGE_STYLE_PRESETS, FlowDirection, FlowchartDocument, FlowchartEdge,
-    FlowchartNode, FlowchartSubgraph, NodeShape, StrokeKind, declared_class_names,
-    is_valid_class_name, is_valid_node_id, shape_data_target,
+    ArrowKind, CLICK_CLASS, EDGE_STYLE_PRESETS, FlowDirection, FlowchartClassDef,
+    FlowchartDocument, FlowchartEdge, FlowchartNode, FlowchartSubgraph, NodeShape, StrokeKind,
+    declared_class_names, is_valid_class_name, is_valid_node_id, is_valid_style_text,
+    preserved_link_style_positions, shape_data_target,
 };
 use mermaid_render::mermaid_model::{MermaidDiagramKind, MermaidDocument, parse_document};
 use settings::Settings as _;
@@ -116,6 +121,9 @@ pub fn open(
     // An empty fence has no kind yet; the modal opens on the picker instead.
     let document = if target.source.trim().is_empty() {
         None
+    } else if mermaid_render::mermaid_model::detect_kind(&target.source).is_none() {
+        workspace.show_error(anyhow::anyhow!(unsupported_kind_message()), cx);
+        return;
     } else {
         match parse_document(&target.source) {
             Ok(document) => Some(document),
@@ -138,6 +146,20 @@ pub fn open(
     });
 }
 
+/// What opening a diagram the structured editor has no form for says. The
+/// kinds it does have a form for are listed, so that the user can tell a kind
+/// the editor never opens from one it refused over a detail.
+fn unsupported_kind_message() -> String {
+    let kinds = MermaidDiagramKind::ALL
+        .iter()
+        .map(|kind| kind.label())
+        .collect::<Vec<_>>()
+        .join("、");
+    format!(
+        "この図は構造化エディターに対応していません。テキストのまま編集してください。(構造化編集できる図: {kinds})"
+    )
+}
+
 /// The single line editors that back one node row.
 struct NodeRow {
     id: Entity<Editor>,
@@ -147,6 +169,23 @@ struct NodeRow {
 struct SubgraphRow {
     id: Entity<Editor>,
     title: Entity<Editor>,
+}
+
+/// The fields of one edge row besides its label: the id the source gives the
+/// link and what its `linkStyle` statement says.
+struct EdgeFields {
+    id: Entity<Editor>,
+    style: Entity<Editor>,
+}
+
+/// One `classDef` statement.
+struct ClassDefRow {
+    name: Entity<Editor>,
+    style: Entity<Editor>,
+    /// The name the definition had when the diagram was opened, or `None` for
+    /// one added since. Renaming a definition renames the class wherever it is
+    /// assigned, so this is what those assignments are matched against.
+    original_name: Option<String>,
 }
 
 /// What the diagram addressed when the editor opened it.
@@ -179,7 +218,37 @@ struct FlowchartForm {
     /// How many edges the diagram had when it was opened. A `linkStyle` number
     /// beyond it is one this form cannot account for, and is left alone.
     original_edge_count: usize,
+    /// Held beside `edge_labels`, index for index.
+    edge_fields: Vec<EdgeFields>,
+    /// For each edge position the diagram had when it was opened, whether a
+    /// `linkStyle` statement kept verbatim — one naming several edges, say —
+    /// already styles it. Writing another one would apply alongside it.
+    fixed_link_styles: Vec<bool>,
+    class_defs: Vec<ClassDefRow>,
 }
+
+impl FlowchartForm {
+    fn link_style_is_fixed(&self, edge: usize) -> bool {
+        self.edge_origins
+            .get(edge)
+            .copied()
+            .flatten()
+            .is_some_and(|origin| self.fixed_link_styles.get(origin) == Some(&true))
+    }
+
+    /// The name a definition row currently gives its class. `default` is not a
+    /// class anything is assigned to but the style every node starts from, so
+    /// that one keeps its name.
+    fn class_def_name(row: &ClassDefRow, cx: &App) -> String {
+        match &row.original_name {
+            Some(name) if name == DEFAULT_CLASS => name.clone(),
+            _ => row.name.read(cx).text(cx).trim().to_string(),
+        }
+    }
+}
+
+/// The `classDef` name that styles every node rather than naming a class.
+const DEFAULT_CLASS: &str = "default";
 
 /// The half of the form that depends on which diagram is being edited.
 enum Form {
@@ -192,6 +261,9 @@ enum Form {
     Er(er::ErForm),
     Class(class::ClassForm),
     Gantt(gantt::GanttForm),
+    Mindmap(mindmap::MindmapForm),
+    Timeline(timeline::TimelineForm),
+    GitGraph(gitgraph::GitGraphForm),
 }
 
 /// The drawing of the source the form currently describes.
@@ -267,6 +339,15 @@ impl MermaidEditor {
             MermaidDocument::Gantt(document) => {
                 Form::Gantt(self.new_gantt_form(document, window, cx))
             }
+            MermaidDocument::Mindmap(document) => {
+                Form::Mindmap(self.new_mindmap_form(document, window, cx))
+            }
+            MermaidDocument::Timeline(document) => {
+                Form::Timeline(self.new_timeline_form(document, window, cx))
+            }
+            MermaidDocument::GitGraph(document) => {
+                Form::GitGraph(self.new_gitgraph_form(document, window, cx))
+            }
         };
         self.message = None;
         self.schedule_preview(cx);
@@ -288,9 +369,24 @@ impl MermaidEditor {
             });
         }
         let mut edge_labels = Vec::with_capacity(document.edges.len());
+        let mut edge_fields = Vec::with_capacity(document.edges.len());
         for edge in &document.edges {
             let label = edge.label.clone().unwrap_or_default();
             edge_labels.push(self.new_field(&label, window, cx));
+            let (id, style) = (
+                edge.user_id.clone().unwrap_or_default(),
+                edge.link_style.clone().unwrap_or_default(),
+            );
+            edge_fields.push(self.new_edge_fields(&id, &style, window, cx));
+        }
+        let mut class_defs = Vec::with_capacity(document.class_defs.len());
+        for definition in &document.class_defs {
+            let (name, style) = (definition.name.clone(), definition.style.clone());
+            class_defs.push(ClassDefRow {
+                name: self.new_field(&name, window, cx),
+                style: self.new_class_style_field(&style, window, cx),
+                original_name: Some(name),
+            });
         }
         let mut subgraphs = Vec::with_capacity(document.subgraphs.len());
         for group in &document.subgraphs {
@@ -315,7 +411,11 @@ impl MermaidEditor {
                 .collect(),
         };
         let original_edge_count = document.edges.len();
+        let styled_elsewhere = preserved_link_style_positions(&document);
         FlowchartForm {
+            fixed_link_styles: (0..original_edge_count)
+                .map(|position| styled_elsewhere.contains(&position))
+                .collect(),
             document,
             nodes,
             edge_labels,
@@ -324,6 +424,38 @@ impl MermaidEditor {
             original,
             edge_origins: (0..original_edge_count).map(Some).collect(),
             original_edge_count,
+            edge_fields,
+            class_defs,
+        }
+    }
+
+    fn new_class_style_field(
+        &mut self,
+        style: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<Editor> {
+        let field = self.new_field(style, window, cx);
+        field.update(cx, |field, cx| {
+            field.set_placeholder_text("例: fill:#f96,stroke:#333", window, cx);
+        });
+        field
+    }
+
+    fn new_edge_fields(
+        &mut self,
+        id: &str,
+        style: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> EdgeFields {
+        let style = self.new_field(style, window, cx);
+        style.update(cx, |style, cx| {
+            style.set_placeholder_text("例: stroke:#f00,stroke-width:2px", window, cx);
+        });
+        EdgeFields {
+            id: self.new_field(id, window, cx),
+            style,
         }
     }
 
@@ -405,6 +537,9 @@ impl MermaidEditor {
             Form::Er(form) => Some(MermaidDocument::Er(form.current_document(cx))),
             Form::Class(form) => Some(MermaidDocument::Class(form.current_document(cx))),
             Form::Gantt(form) => Some(MermaidDocument::Gantt(form.current_document(cx))),
+            Form::Mindmap(form) => Some(MermaidDocument::Mindmap(form.current_document(cx))),
+            Form::Timeline(form) => Some(MermaidDocument::Timeline(form.current_document(cx))),
+            Form::GitGraph(form) => Some(MermaidDocument::GitGraph(form.current_document(cx))),
         }
     }
 
@@ -430,6 +565,41 @@ impl MermaidEditor {
             let label = field.read(cx).text(cx);
             edge.label = (!label.is_empty()).then_some(label);
         }
+        let mut edge_renames: Vec<(String, String)> = Vec::new();
+        let mut kept_edge_ids: Vec<String> = Vec::new();
+        for (index, (edge, fields)) in document.edges.iter_mut().zip(&form.edge_fields).enumerate()
+        {
+            let id = fields.id.read(cx).text(cx).trim().to_string();
+            let id = (!id.is_empty()).then_some(id);
+            if let (Some(old), Some(new)) = (&edge.user_id, &id) {
+                kept_edge_ids.push(old.clone());
+                if old != new {
+                    edge_renames.push((old.clone(), new.clone()));
+                }
+            }
+            edge.user_id = id;
+            if !form.link_style_is_fixed(index) {
+                let style = fields.style.read(cx).text(cx).trim().to_string();
+                edge.link_style = (!style.is_empty()).then_some(style);
+            }
+        }
+        let mut class_renames: Vec<(String, String)> = Vec::new();
+        document.class_defs = form
+            .class_defs
+            .iter()
+            .map(|row| {
+                let name = FlowchartForm::class_def_name(row, cx);
+                if let Some(original) = &row.original_name
+                    && *original != name
+                {
+                    class_renames.push((original.clone(), name.clone()));
+                }
+                FlowchartClassDef {
+                    name,
+                    style: row.style.read(cx).text(cx).trim().to_string(),
+                }
+            })
+            .collect();
         for (group, row) in document.subgraphs.iter_mut().zip(&form.subgraphs) {
             let id = row.id.read(cx).text(cx).trim().to_string();
             if id != group.id {
@@ -459,7 +629,31 @@ impl MermaidEditor {
                 }
             }
         }
+        for edge in &mut document.edges {
+            if let Some(id) = edge.subgraph.as_ref().and_then(renamed) {
+                edge.subgraph = Some(id);
+            }
+        }
+        let classes = document
+            .nodes
+            .iter_mut()
+            .map(|node| &mut node.classes)
+            .chain(
+                document
+                    .subgraphs
+                    .iter_mut()
+                    .map(|group| &mut group.classes),
+            );
+        for classes in classes {
+            rename_classes(classes, &class_renames);
+        }
         renumber_link_styles(&mut document, &form.edge_origins, form.original_edge_count);
+        rename_edge_metadata(
+            &mut document,
+            &edge_renames,
+            &kept_edge_ids,
+            &form.original.edge_ids,
+        );
         retarget_preserved_lines(&mut document, &renames, &form.original);
         document
     }
@@ -471,13 +665,13 @@ impl MermaidEditor {
         let Some(form) = self.flowchart() else {
             return Vec::new();
         };
-        let mut names = declared_class_names(&form.document);
-        let assigned = form
-            .document
+        let document = Self::current_flowchart(form, cx);
+        let mut names = declared_class_names(&document);
+        let assigned = document
             .nodes
             .iter()
             .map(|node| &node.classes)
-            .chain(form.document.subgraphs.iter().map(|group| &group.classes));
+            .chain(document.subgraphs.iter().map(|group| &group.classes));
         for name in assigned.flatten() {
             if name != CLICK_CLASS && !names.iter().any(|known| known == name) {
                 names.push(name.clone());
@@ -497,6 +691,20 @@ impl MermaidEditor {
         class: &str,
         cx: &mut Context<Self>,
     ) {
+        // The menus offer the names the definition rows hold now, while the
+        // assignments still use the names the diagram was opened with until the
+        // rename is applied on the way out.
+        let class = self
+            .flowchart()
+            .and_then(|form| {
+                form.class_defs.iter().find_map(|row| {
+                    (FlowchartForm::class_def_name(row, cx) == class)
+                        .then(|| row.original_name.clone())
+                        .flatten()
+                })
+            })
+            .unwrap_or_else(|| class.to_string());
+        let class = class.as_str();
         let Some(form) = self.flowchart_mut() else {
             return;
         };
@@ -536,6 +744,9 @@ impl MermaidEditor {
             MermaidDocument::Er(document) => er::problem(document),
             MermaidDocument::Class(document) => class::problem(document),
             MermaidDocument::Gantt(document) => gantt::problem(document),
+            MermaidDocument::Mindmap(document) => mindmap::problem(document),
+            MermaidDocument::Timeline(document) => timeline::problem(document),
+            MermaidDocument::GitGraph(document) => gitgraph::problem(document),
         };
         field_problem.or_else(|| document.structure_error().map(SharedString::from))
     }
@@ -566,6 +777,109 @@ impl MermaidEditor {
                 return Some(format!("ID「{id}」が重複しています。").into());
             }
             seen.push(id);
+        }
+        Self::flowchart_edge_problem(document)
+            .or_else(|| Self::flowchart_class_def_problem(document))
+    }
+
+    /// The first thing wrong with an edge's id or its `linkStyle`.
+    fn flowchart_edge_problem(document: &FlowchartDocument) -> Option<SharedString> {
+        let styled_elsewhere = preserved_link_style_positions(document);
+        let mut seen: Vec<&str> = Vec::new();
+        for (index, edge) in document.edges.iter().enumerate() {
+            let position = index + 1;
+            if let Some(id) = edge.user_id.as_deref() {
+                if !is_valid_node_id(id) {
+                    return Some(
+                        format!(
+                            "{position} 番目のつながりの ID「{id}」は使えません (半角英数字と _ のみ、Mermaid の予約語は不可)。"
+                        )
+                        .into(),
+                    );
+                }
+                if seen.contains(&id) {
+                    return Some(format!("つながりの ID「{id}」が重複しています。").into());
+                }
+                // `id@{ … }` goes to the edge whenever an edge has that id, so
+                // a node of the same name would lose its shape to it.
+                if document.node_index(id).is_some()
+                    || document.subgraphs.iter().any(|group| group.id == id)
+                {
+                    return Some(
+                        format!("つながりの ID「{id}」がノードまたはグループの ID と同じです。")
+                            .into(),
+                    );
+                }
+                seen.push(id);
+            }
+            let Some(style) = edge.link_style.as_deref() else {
+                continue;
+            };
+            if !is_valid_style_text(style) || style.starts_with(',') {
+                return Some(
+                    format!(
+                        "{position} 番目のつながりの線のスタイルに使えない文字があります (; や %% 、閉じていない引用符、末尾の {{、先頭のカンマ)。"
+                    )
+                    .into(),
+                );
+            }
+            if styled_elsewhere.contains(&index) {
+                return Some(
+                    format!(
+                        "{position} 番目のつながりは、テキストのまま残した linkStyle 行でスタイルが指定されています。"
+                    )
+                    .into(),
+                );
+            }
+            // The statement is written before the kept `e1@{ … }` lines, which
+            // can set the curve as well and would have the last word.
+            let has_metadata = edge.user_id.as_deref().is_some_and(|id| {
+                document
+                    .preserved_lines
+                    .iter()
+                    .any(|line| shape_data_target(&line.text) == Some(id))
+            });
+            if has_metadata && style.contains("interpolate") {
+                return Some(
+                    format!(
+                        "{position} 番目のつながりは {}@{{ … }} の行があるため、線のスタイルに interpolate (曲線) を書けません。",
+                        edge.user_id.as_deref().unwrap_or_default()
+                    )
+                    .into(),
+                );
+            }
+        }
+        None
+    }
+
+    /// The first thing wrong with a `classDef` row.
+    fn flowchart_class_def_problem(document: &FlowchartDocument) -> Option<SharedString> {
+        let mut seen: Vec<&str> = Vec::new();
+        for definition in &document.class_defs {
+            let name = definition.name.as_str();
+            if name.is_empty() {
+                return Some("名前が空のクラス定義があります。".into());
+            }
+            if !is_valid_class_name(name) {
+                return Some(
+                    format!(
+                        "クラス定義の名前「{name}」は使えません (空白や , ; : # % などの記号は不可)。"
+                    )
+                    .into(),
+                );
+            }
+            if seen.contains(&name) {
+                return Some(format!("クラス定義「{name}」が重複しています。").into());
+            }
+            seen.push(name);
+            if !is_valid_style_text(&definition.style) {
+                return Some(
+                    format!(
+                        "クラス定義「{name}」のスタイルに使えない文字があります (; や %% 、閉じていない引用符、末尾の {{)。"
+                    )
+                    .into(),
+                );
+            }
         }
         None
     }
@@ -691,6 +1005,9 @@ impl MermaidEditor {
             if index < form.edge_origins.len() {
                 form.edge_origins.remove(index);
             }
+            if index < form.edge_fields.len() {
+                form.edge_fields.remove(index);
+            }
         }
         for group in &mut form.document.subgraphs {
             group.node_ids.retain(|node_id| *node_id != removed);
@@ -728,6 +1045,7 @@ impl MermaidEditor {
             .map(|node| node.id.clone())
             .unwrap_or_else(|| first.clone());
         let field = self.new_field("", window, cx);
+        let fields = self.new_edge_fields("", "", window, cx);
         let Some(form) = self.flowchart_mut() else {
             return;
         };
@@ -740,9 +1058,12 @@ impl MermaidEditor {
             arrow: ArrowKind::Arrow,
             stroke: StrokeKind::Normal,
             length: 1,
+            link_style: None,
+            subgraph: None,
         });
         form.edge_labels.push(field);
         form.edge_origins.push(None);
+        form.edge_fields.push(fields);
         self.schedule_preview(cx);
         cx.notify();
     }
@@ -761,6 +1082,9 @@ impl MermaidEditor {
         if index < form.edge_origins.len() {
             form.edge_origins.remove(index);
         }
+        if index < form.edge_fields.len() {
+            form.edge_fields.remove(index);
+        }
         self.schedule_preview(cx);
         cx.notify();
     }
@@ -778,6 +1102,9 @@ impl MermaidEditor {
         }
         if other < form.edge_origins.len() && index < form.edge_origins.len() {
             form.edge_origins.swap(index, other);
+        }
+        if other < form.edge_fields.len() && index < form.edge_fields.len() {
+            form.edge_fields.swap(index, other);
         }
         self.schedule_preview(cx);
         cx.notify();
@@ -815,8 +1142,18 @@ impl MermaidEditor {
         if index >= form.subgraphs.len() {
             return;
         }
-        form.document.subgraphs.remove(index);
+        let removed = form.document.subgraphs.remove(index).id;
         form.subgraphs.remove(index);
+        // A nested group is a member of its parent under its own id, and left
+        // there it would come back as a node of that name.
+        for group in &mut form.document.subgraphs {
+            group.node_ids.retain(|node_id| *node_id != removed);
+        }
+        for edge in &mut form.document.edges {
+            if edge.subgraph.as_ref() == Some(&removed) {
+                edge.subgraph = None;
+            }
+        }
         // Nesting is held as an index into the list that just shifted.
         for group in &mut form.document.subgraphs {
             group.parent = match group.parent {
@@ -844,6 +1181,57 @@ impl MermaidEditor {
             return;
         };
         group.direction = direction;
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    fn add_class_def(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(form) = self.flowchart() else {
+            return;
+        };
+        let taken = declared_class_names(&Self::current_flowchart(form, cx));
+        let mut name = "class".to_string();
+        let mut suffix = 1;
+        while taken.contains(&name) {
+            name = format!("class{suffix}");
+            suffix += 1;
+        }
+        let row = ClassDefRow {
+            name: self.new_field(&name, window, cx),
+            style: self.new_class_style_field("", window, cx),
+            original_name: None,
+        };
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        form.class_defs.push(row);
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    /// Drops the definition only. The nodes that carry the class keep it: a
+    /// class without a definition is still valid Mermaid, and an `init`
+    /// directive's `themeCSS` may be what styles it.
+    fn remove_class_def(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        if index >= form.class_defs.len() {
+            return;
+        }
+        form.class_defs.remove(index);
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    fn move_class_def(&mut self, index: usize, forward: bool, cx: &mut Context<Self>) {
+        let Some(form) = self.flowchart_mut() else {
+            return;
+        };
+        let Some(other) = neighbour(index, forward, form.class_defs.len()) else {
+            return;
+        };
+        form.class_defs.swap(index, other);
         self.schedule_preview(cx);
         cx.notify();
     }
@@ -918,14 +1306,36 @@ impl MermaidEditor {
                     .nodes
                     .iter()
                     .flat_map(|row| [row.id.clone(), row.label.clone()]);
+                let edges = form
+                    .edge_labels
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(index, label)| {
+                        let mut fields = vec![label.clone()];
+                        if let Some(extra) = form.edge_fields.get(index) {
+                            fields.push(extra.id.clone());
+                            if !form.link_style_is_fixed(index) {
+                                fields.push(extra.style.clone());
+                            }
+                        }
+                        fields
+                    });
                 let subgraphs = form
                     .subgraphs
                     .iter()
                     .flat_map(|row| [row.id.clone(), row.title.clone()]);
+                let class_defs = form.class_defs.iter().flat_map(|row| {
+                    let fixed_name = row.original_name.as_deref() == Some(DEFAULT_CLASS);
+                    (!fixed_name)
+                        .then(|| row.name.clone())
+                        .into_iter()
+                        .chain([row.style.clone()])
+                });
                 nodes
                     .chain([form.class_input.clone()])
-                    .chain(form.edge_labels.iter().cloned())
+                    .chain(edges)
                     .chain(subgraphs)
+                    .chain(class_defs)
                     .collect()
             }
             Form::Pie(form) => form.fields(),
@@ -934,6 +1344,9 @@ impl MermaidEditor {
             Form::Er(form) => form.fields(),
             Form::Class(form) => form.fields(),
             Form::Gantt(form) => form.fields(),
+            Form::Mindmap(form) => form.fields(),
+            Form::Timeline(form) => form.fields(),
+            Form::GitGraph(form) => form.fields(),
         }
     }
 
@@ -1045,12 +1458,13 @@ impl MermaidEditor {
         };
         let last = form.nodes.len().saturating_sub(1);
         let candidates = self.class_candidates(cx);
+        let current = Self::current_flowchart(form, cx);
         let mut section = v_flex().w_full().gap_1().child(section_title("ノード"));
         for index in 0..form.nodes.len() {
             let Some(row) = form.nodes.get(index) else {
                 continue;
             };
-            let Some(node) = form.document.nodes.get(index) else {
+            let Some(node) = current.nodes.get(index) else {
                 continue;
             };
             let id_is_valid = is_valid_node_id(row.id.read(cx).text(cx).trim());
@@ -1248,7 +1662,7 @@ impl MermaidEditor {
                         .child(field.clone()),
                 );
             }
-            section = section.child(row.child(row_controls(
+            let row = row.child(row_controls(
                 "mermaid-edge",
                 index,
                 index == 0,
@@ -1256,7 +1670,14 @@ impl MermaidEditor {
                 cx.listener(move |this, _, _window, cx| this.move_edge(index, false, cx)),
                 cx.listener(move |this, _, _window, cx| this.move_edge(index, true, cx)),
                 cx.listener(move |this, _, _window, cx| this.remove_edge(index, cx)),
-            )));
+            ));
+            section = section.child(
+                v_flex()
+                    .w_full()
+                    .gap_1()
+                    .child(row)
+                    .children(self.render_edge_details(index, window, cx)),
+            );
         }
         section
             .child(
@@ -1265,6 +1686,133 @@ impl MermaidEditor {
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, _, window, cx| this.add_edge(window, cx))),
             )
+            .into_any_element()
+    }
+
+    /// The line under an edge row: the id the source gives the link, which an
+    /// `e1@{ … }` statement addresses, and the style of its `linkStyle`
+    /// statement.
+    fn render_edge_details(
+        &self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let form = self.flowchart()?;
+        let fields = form.edge_fields.get(index)?;
+        let id = fields.id.read(cx).text(cx);
+        let id_is_valid = id.trim().is_empty() || is_valid_node_id(id.trim());
+        let style = if form.link_style_is_fixed(index) {
+            // A statement naming several edges, or several naming this one,
+            // stays as the user wrote it, and a second one would apply beside
+            // it.
+            Label::new("テキストの linkStyle 行で指定済み")
+                .size(LabelSize::Small)
+                .color(Color::Muted)
+                .into_any_element()
+        } else {
+            let text = fields.style.read(cx).text(cx);
+            let text = text.trim();
+            let style_is_valid =
+                text.is_empty() || (is_valid_style_text(text) && !text.starts_with(','));
+            field_frame(&fields.style, LABEL_FIELD_WIDTH, style_is_valid, window, cx)
+                .flex_1()
+                .child(fields.style.clone())
+                .into_any_element()
+        };
+        Some(
+            h_flex()
+                .w_full()
+                .gap_1()
+                .pl_4()
+                .child(section_title("ID"))
+                .child(
+                    field_frame(&fields.id, ID_FIELD_WIDTH, id_is_valid, window, cx)
+                        .child(fields.id.clone()),
+                )
+                .child(section_title("線のスタイル"))
+                .child(style)
+                .into_any_element(),
+        )
+    }
+
+    /// The `classDef` statements, one row each. When the source has one the
+    /// form cannot hold, all of them stay as written and the section says so.
+    fn render_class_defs(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(form) = self.flowchart() else {
+            return div().into_any_element();
+        };
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title("クラス定義 (classDef)"));
+        let locked = form.class_defs.is_empty()
+            && form
+                .document
+                .preserved_lines
+                .iter()
+                .any(|line| line.text.trim_start().starts_with("classDef"));
+        if locked {
+            return section
+                .child(section_title(
+                    "1 行に複数の名前がある・同じ名前が重複しているなどの classDef 行があるため、ここでは編集できません (テキストのまま残ります)。",
+                ))
+                .into_any_element();
+        }
+        let last = form.class_defs.len().saturating_sub(1);
+        for (index, row) in form.class_defs.iter().enumerate() {
+            let name = FlowchartForm::class_def_name(row, cx);
+            let name_is_fixed = row.original_name.as_deref() == Some(DEFAULT_CLASS);
+            let name_element = if name_is_fixed {
+                div()
+                    .w(ID_FIELD_WIDTH)
+                    .flex_none()
+                    .child(
+                        Label::new(DEFAULT_CLASS)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .into_any_element()
+            } else {
+                let name_is_valid = is_valid_class_name(&name);
+                field_frame(&row.name, ID_FIELD_WIDTH, name_is_valid, window, cx)
+                    .child(row.name.clone())
+                    .into_any_element()
+            };
+            let style = row.style.read(cx).text(cx);
+            let style_is_valid = is_valid_style_text(style.trim());
+            section = section.child(
+                h_flex()
+                    .w_full()
+                    .gap_1()
+                    .child(name_element)
+                    .child(
+                        field_frame(&row.style, LABEL_FIELD_WIDTH, style_is_valid, window, cx)
+                            .flex_1()
+                            .child(row.style.clone()),
+                    )
+                    .child(row_controls_labelled(
+                        "mermaid-class-def",
+                        index,
+                        index == 0,
+                        index >= last,
+                        "定義を削除 (付けたクラスは残ります)",
+                        cx.listener(move |this, _, _window, cx| {
+                            this.move_class_def(index, false, cx)
+                        }),
+                        cx.listener(move |this, _, _window, cx| {
+                            this.move_class_def(index, true, cx)
+                        }),
+                        cx.listener(move |this, _, _window, cx| this.remove_class_def(index, cx)),
+                    )),
+            );
+        }
+        section
+            .child(add_button(
+                "mermaid-add-class-def",
+                "クラス定義を追加",
+                cx.listener(|this, _, window, cx| this.add_class_def(window, cx)),
+            ))
             .into_any_element()
     }
 
@@ -1370,6 +1918,7 @@ impl MermaidEditor {
         };
         let node_ids = self.node_ids(cx);
         let candidates = self.class_candidates(cx);
+        let current = Self::current_flowchart(form, cx);
         let mut section = v_flex().w_full().gap_1().child(section_title("グループ"));
         for index in 0..form.subgraphs.len() {
             let Some(row) = form.subgraphs.get(index) else {
@@ -1378,6 +1927,11 @@ impl MermaidEditor {
             let Some(group) = form.document.subgraphs.get(index) else {
                 continue;
             };
+            let classes = current
+                .subgraphs
+                .get(index)
+                .map(|group| group.classes.clone())
+                .unwrap_or_default();
             let mut members = h_flex().w_full().flex_wrap().gap_x_2();
             for node_id in &node_ids {
                 let checked = group.node_ids.contains(node_id);
@@ -1423,7 +1977,7 @@ impl MermaidEditor {
                             .child(self.render_class_menu(
                                 ClassTarget::Subgraph,
                                 index,
-                                &group.classes,
+                                &classes,
                                 &candidates,
                                 window,
                                 cx,
@@ -1503,6 +2057,7 @@ impl MermaidEditor {
                 self.render_nodes(window, cx),
                 self.render_edges(window, cx),
                 self.render_subgraphs(window, cx),
+                self.render_class_defs(window, cx),
             ],
             Form::Pie(_) => self.render_pie(window, cx),
             Form::State(_) => self.render_state(window, cx),
@@ -1510,6 +2065,9 @@ impl MermaidEditor {
             Form::Er(_) => self.render_er(window, cx),
             Form::Class(_) => self.render_class(window, cx),
             Form::Gantt(_) => self.render_gantt(window, cx),
+            Form::Mindmap(_) => self.render_mindmap(window, cx),
+            Form::Timeline(_) => self.render_timeline(window, cx),
+            Form::GitGraph(_) => self.render_gitgraph(window, cx),
         }
     }
 
@@ -1520,9 +2078,11 @@ impl MermaidEditor {
             Form::State(_) => self.render_state_toolbar(window, cx),
             Form::Er(_) => self.render_er_toolbar(window, cx),
             Form::Class(_) => self.render_class_toolbar(window, cx),
+            Form::GitGraph(_) => self.render_gitgraph_toolbar(window, cx),
             Form::Choosing | Form::Pie(_) | Form::Sequence(_) | Form::Gantt(_) => {
                 div().into_any_element()
             }
+            Form::Mindmap(_) | Form::Timeline(_) => div().into_any_element(),
         }
     }
 
@@ -1889,6 +2449,58 @@ fn retarget_preserved_lines(
         }
         !(original.ids.contains(&target) || original.edge_ids.contains(&target))
     });
+}
+
+/// Renames the classes in `classes` that a definition row renamed, dropping
+/// the duplicate a rename onto a name the list already held would leave.
+fn rename_classes(classes: &mut Vec<String>, renames: &[(String, String)]) {
+    if renames.is_empty() {
+        return;
+    }
+    let mut renamed: Vec<String> = Vec::with_capacity(classes.len());
+    for class in classes.drain(..) {
+        let class = renames
+            .iter()
+            .find(|(old, _)| *old == class)
+            .map(|(_, new)| new.clone())
+            .unwrap_or(class);
+        if !renamed.contains(&class) {
+            renamed.push(class);
+        }
+    }
+    *classes = renamed;
+}
+
+/// Points the kept `e1@{ … }` statements at the edge ids they were renamed to.
+///
+/// The statements of the edges that lost their id — deleted, or with the id
+/// field cleared — go first, by the ids the diagram was opened with: once
+/// another edge has been renamed onto such an id, the leftover statement would
+/// read as that edge's.
+fn rename_edge_metadata(
+    document: &mut FlowchartDocument,
+    renames: &[(String, String)],
+    kept_ids: &[String],
+    original_ids: &[String],
+) {
+    document.preserved_lines.retain(|line| {
+        shape_data_target(&line.text).is_none_or(|target| {
+            !original_ids.iter().any(|id| id == target) || kept_ids.iter().any(|id| id == target)
+        })
+    });
+    for line in &mut document.preserved_lines {
+        let Some(target) = shape_data_target(&line.text).map(str::to_string) else {
+            continue;
+        };
+        let Some((_, new)) = renames.iter().find(|(old, _)| *old == target) else {
+            continue;
+        };
+        let indent = line.text.len() - line.text.trim_start().len();
+        let span = indent..indent + target.len();
+        if line.text.get(span.clone()) == Some(target.as_str()) {
+            line.text.replace_range(span, new);
+        }
+    }
 }
 
 /// Where in `line` a kept statement writes the element it addresses.

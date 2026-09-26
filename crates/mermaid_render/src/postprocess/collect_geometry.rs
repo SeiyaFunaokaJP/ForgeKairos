@@ -19,6 +19,13 @@
 //!   diagram's transitions in the order they were written. A composite state
 //!   nests a whole `<g class="root">` — its own sections, under one more
 //!   translate — inside the enclosing `<g class="nodes">`.
+//! * class: `<g class="node …" id="{diagram_id}-classId-{class id}-{n}">`
+//!   around a `label-container`, whose name sits in a `label-group` beside the
+//!   annotation, member and method groups, and
+//!   `<path data-id="id_{from}_{to}_{n}">` per relation, with its label spelled
+//!   like a flowchart's. A note is a node too, under an id of its own shape,
+//!   and is not mapped.
+//! * sequence: laid out in a shape of its own, read by [`sequence`].
 //!
 //! State and ER labels are drawn through `<foreignObject>`, which merman's
 //! resvg-safe pipeline replaces with a `<text>` (and, for an edge label, a
@@ -33,9 +40,14 @@
 //! the corrected ones, and before the passes that only rewrite styles and
 //! classes, which never move anything.
 //!
+//! Pie charts, gantt charts and ER attribute cells are read by
+//! [`chart_labels`] and reported as labels rather than nodes.
+//!
 //! Every other diagram kind comes back empty rather than guessed at, since
 //! neither the node ids nor the source syntax of the other kinds line up with
 //! what the editing UI needs.
+
+mod chart_labels;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -44,6 +56,8 @@ use anyhow::Result;
 use quick_xml::events::{BytesStart, Event};
 
 use crate::{DiagramGeometry, EdgeGeometry, NodeGeometry};
+
+mod sequence;
 
 /// An axis-aligned bounding box accumulated from the points of one or more
 /// shapes.
@@ -83,6 +97,15 @@ impl BoundingBox {
             min_y: self.min_y + dy,
             max_x: self.max_x + dx,
             max_y: self.max_y + dy,
+        }
+    }
+
+    fn padded(self, padding: f64) -> Self {
+        Self {
+            min_x: self.min_x - padding,
+            min_y: self.min_y - padding,
+            max_x: self.max_x + padding,
+            max_y: self.max_y + padding,
         }
     }
 
@@ -128,6 +151,10 @@ enum DiagramKind {
     Flowchart,
     Er,
     State,
+    Pie,
+    Gantt,
+    Class,
+    Sequence,
 }
 
 /// The section of the diagram currently being walked. merman groups a
@@ -153,6 +180,9 @@ struct PendingNode {
     /// The depth of the innermost open element that carries the
     /// `label-container` class, if any; shapes below it make up the node's box.
     container_depth: Option<usize>,
+    /// The depth of an open group whose text is not the node's label (a
+    /// class's annotation, members and methods), if any.
+    muted_depth: Option<usize>,
 }
 
 struct PendingEdgeLabel {
@@ -170,6 +200,8 @@ struct PendingEdgeLabel {
 enum FallbackRole {
     Node,
     Edge,
+    /// An ER attribute's name cell.
+    AttributeName,
 }
 
 /// A label merman drew outside the element it belongs to, to be matched back
@@ -180,6 +212,7 @@ struct PendingFallback {
     text: String,
     anchor: Option<(f64, f64)>,
     bounds: Option<BoundingBox>,
+    font_size: Option<f64>,
 }
 
 struct CollectGeometry<I> {
@@ -203,6 +236,8 @@ struct CollectGeometry<I> {
     edge_ids: Vec<String>,
     edge_labels: Vec<EdgeLabel>,
     fallbacks: Vec<PendingFallback>,
+    chart: chart_labels::ChartLabels,
+    sequence: sequence::SequenceGeometry,
     finished: bool,
 }
 
@@ -525,6 +560,9 @@ impl<I> CollectGeometry<I> {
             DiagramKind::Flowchart => "-flowchart-",
             DiagramKind::Er => "-entity-",
             DiagramKind::State => return strip_index(element_id.strip_prefix("state-")?),
+            DiagramKind::Pie | DiagramKind::Gantt => return None,
+            DiagramKind::Class => "-classId-",
+            DiagramKind::Sequence => return None,
         };
         let prefixed = format!("{}{infix}", self.svg_id);
         let rest = element_id.strip_prefix(prefixed.as_str()).or_else(|| {
@@ -552,6 +590,14 @@ impl<I> CollectGeometry<I> {
             }
             return;
         };
+        if matches!(kind, DiagramKind::Pie | DiagramKind::Gantt) {
+            self.on_chart_element(element, depth, empty, frame, kind);
+            return;
+        }
+        if kind == DiagramKind::Sequence {
+            self.sequence.on_start(element, depth, empty, frame);
+            return;
+        }
 
         // The fallback labels sit outside the diagram's sections, and carry the
         // classes of the element they were lifted out of, so they have to be
@@ -569,6 +615,7 @@ impl<I> CollectGeometry<I> {
                     text: String::new(),
                     anchor: None,
                     bounds: None,
+                    font_size: None,
                 });
             }
             return;
@@ -621,6 +668,14 @@ impl<I> CollectGeometry<I> {
             DiagramKind::Er
         } else if role.starts_with("stateDiagram") || has_class_token("statediagram") {
             DiagramKind::State
+        } else if role == "pie" {
+            DiagramKind::Pie
+        } else if role == "gantt" {
+            DiagramKind::Gantt
+        } else if role == "class" || has_class_token("classDiagram") {
+            DiagramKind::Class
+        } else if role == "sequence" {
+            DiagramKind::Sequence
         } else {
             return;
         };
@@ -658,6 +713,10 @@ impl<I> CollectGeometry<I> {
         if kind == DiagramKind::State && transition_index(&id).is_none() {
             return None;
         }
+        // A class diagram draws the line to a note as an edge as well.
+        if kind == DiagramKind::Class && !id.starts_with("id_") {
+            return None;
+        }
         Some(id)
     }
 
@@ -672,12 +731,18 @@ impl<I> CollectGeometry<I> {
             attribute_f64(element, "x").map(|x| x + frame.dx),
             attribute_f64(element, "y").map(|y| y + frame.dy),
         );
+        let font_size = is_text
+            .then(|| chart_labels::font_size_of(element))
+            .flatten();
         let Some(fallback) = self.fallback.as_mut() else {
             return;
         };
         if is_text {
             if let (Some(x), Some(y)) = anchor {
                 fallback.anchor = Some((x, y));
+            }
+            if font_size.is_some() {
+                fallback.font_size = font_size;
             }
         } else if let Some(bounds) = bounds {
             extend_optional(&mut fallback.bounds, bounds.translated(frame.dx, frame.dy));
@@ -715,7 +780,12 @@ impl<I> CollectGeometry<I> {
                 rows: Vec::new(),
                 bounds: None,
                 container_depth: None,
+                muted_depth: None,
             });
+            return;
+        }
+
+        if kind == DiagramKind::Er && self.on_er_row_element(element, depth, empty, frame) {
             return;
         }
 
@@ -729,10 +799,18 @@ impl<I> CollectGeometry<I> {
         let bounds = (frame.usable && (is_container || self.has_open_container()))
             .then(|| shape_bounds(element))
             .flatten();
+        let mutes = kind == DiagramKind::Class
+            && !empty
+            && (has_class(element, "annotation-group")
+                || has_class(element, "members-group")
+                || has_class(element, "methods-group"));
         let Some(node) = self.node.as_mut() else {
             return;
         };
-        if is_row {
+        if mutes && node.muted_depth.is_none() {
+            node.muted_depth = Some(depth);
+        }
+        if is_row && node.muted_depth.is_none() {
             node.rows.push(String::new());
         }
         if is_container || node.container_depth.is_some() {
@@ -792,10 +870,21 @@ impl<I> CollectGeometry<I> {
     }
 
     fn on_end(&mut self, depth: usize) {
+        if self.kind == Some(DiagramKind::Sequence) {
+            self.sequence.on_end(depth);
+            return;
+        }
+        self.on_chart_end(depth);
+        self.on_er_row_end(depth);
         if let Some(node) = self.node.as_mut()
             && node.container_depth == Some(depth)
         {
             node.container_depth = None;
+        }
+        if let Some(node) = self.node.as_mut()
+            && node.muted_depth == Some(depth)
+        {
+            node.muted_depth = None;
         }
         if self
             .node
@@ -803,7 +892,9 @@ impl<I> CollectGeometry<I> {
             .is_some_and(|node| node.start_depth == depth)
             && let Some(node) = self.node.take()
         {
+            let mut mapped = None;
             if let Some(bounds) = node.bounds.filter(BoundingBox::is_usable) {
+                mapped = Some(node.node_id.clone());
                 self.nodes.push(NodeGeometry {
                     node_id: node.node_id,
                     label: join_rows(node.rows).unwrap_or_default(),
@@ -811,6 +902,7 @@ impl<I> CollectGeometry<I> {
                 });
                 self.node_suffixes.push(node.element_suffix);
             }
+            self.on_er_entity_end(mapped);
         }
         if self
             .edge_label
@@ -844,6 +936,21 @@ impl<I> CollectGeometry<I> {
     }
 
     fn on_text(&mut self, text: &str) {
+        if self.kind == Some(DiagramKind::Sequence) {
+            self.sequence.on_text(text);
+            return;
+        }
+        if self.chart.has_open_text() {
+            self.on_chart_text(text);
+            return;
+        }
+        if self
+            .node
+            .as_ref()
+            .is_some_and(|node| node.muted_depth.is_some())
+        {
+            return;
+        }
         if let Some(fallback) = self.fallback.as_mut() {
             fallback.text.push_str(text);
             return;
@@ -861,9 +968,20 @@ impl<I> CollectGeometry<I> {
 
     fn finish(&mut self) {
         let kind = self.kind;
+        if kind == Some(DiagramKind::Sequence) {
+            let (nodes, edges) = std::mem::take(&mut self.sequence).finish();
+            *self.sink.borrow_mut() = DiagramGeometry {
+                view_box: self.view_box,
+                nodes,
+                edges,
+                labels: Vec::new(),
+            };
+            return;
+        }
         let mut nodes = std::mem::take(&mut self.nodes);
         let mut edge_labels = std::mem::take(&mut self.edge_labels);
-        self.apply_fallback_labels(&mut nodes, &mut edge_labels);
+        let attribute_names = self.apply_fallback_labels(&mut nodes, &mut edge_labels);
+        let labels = self.finish_chart_labels(attribute_names);
         let node_ids: Vec<&str> = nodes.iter().map(|node| node.node_id.as_str()).collect();
         let mut seen_pairs: Vec<((String, String), usize)> = Vec::new();
         let edges = self
@@ -879,6 +997,15 @@ impl<I> CollectGeometry<I> {
                     }
                     Some(DiagramKind::Er) => {
                         let (from, to) = split_er_edge_id(edge_id, &self.node_suffixes, &node_ids)?;
+                        (from, to, None)
+                    }
+                    // A class relation names its ends by their ids, like a
+                    // flowchart edge, after an `id_` of its own.
+                    Some(DiagramKind::Class) => {
+                        let (from, to) = split_edge_id(
+                            edge_id.strip_prefix("id_").unwrap_or(edge_id),
+                            &node_ids,
+                        );
                         (from, to, None)
                     }
                     _ => {
@@ -921,6 +1048,7 @@ impl<I> CollectGeometry<I> {
             view_box: self.view_box,
             nodes,
             edges,
+            labels,
         };
     }
 
@@ -932,10 +1060,22 @@ impl<I> CollectGeometry<I> {
     /// or by more than one, is dropped: the label is only ever shown, so a
     /// missing one costs a prefilled field while a wrong one would put another
     /// element's text in front of the user.
-    fn apply_fallback_labels(&mut self, nodes: &mut [NodeGeometry], edge_labels: &mut [EdgeLabel]) {
+    ///
+    /// An ER attribute's name is handed back instead, to be claimed by the
+    /// attribute row it sits in.
+    fn apply_fallback_labels(
+        &mut self,
+        nodes: &mut [NodeGeometry],
+        edge_labels: &mut [EdgeLabel],
+    ) -> Vec<PendingFallback> {
         const ANCHOR_TOLERANCE: f64 = 0.01;
 
+        let mut attribute_names = Vec::new();
         for fallback in std::mem::take(&mut self.fallbacks) {
+            if fallback.role == FallbackRole::AttributeName {
+                attribute_names.push(fallback);
+                continue;
+            }
             let (Some((x, y)), text) = (fallback.anchor, fallback.text.trim()) else {
                 continue;
             };
@@ -976,8 +1116,10 @@ impl<I> CollectGeometry<I> {
                             .map(BoundingBox::to_rect);
                     }
                 }
+                FallbackRole::AttributeName => {}
             }
         }
+        attribute_names
     }
 }
 
@@ -1007,10 +1149,17 @@ fn transition_index(edge_id: &str) -> Option<usize> {
 /// Which kind of label a `merman-foreignobject-fallback` group replaced, from
 /// the classes of the element it was lifted out of.
 ///
-/// An ER entity's attribute cells and a cluster's title are labels too, but
-/// neither belongs to a box this pass reports, so they are left unclaimed.
+/// An ER entity's attribute name is claimed by its attribute row. Its other
+/// cells and a cluster's title are labels too, but none belongs to a box this
+/// pass reports, so they are left unclaimed.
 fn fallback_role(element: &BytesStart<'_>) -> Option<FallbackRole> {
     let class = attribute(element, "class")?;
+    if class
+        .split_ascii_whitespace()
+        .any(|token| token == "attribute-name")
+    {
+        return Some(FallbackRole::AttributeName);
+    }
     let mut tokens = class.split_ascii_whitespace();
     let mut is_node = false;
     let mut is_edge = false;
@@ -1019,7 +1168,7 @@ fn fallback_role(element: &BytesStart<'_>) -> Option<FallbackRole> {
             "edgeLabel" => is_edge = true,
             "nodeLabel" => is_node = true,
             "cluster-label" | "attribute-type" | "attribute-name" | "attribute-keys"
-            | "attribute-comment" => return None,
+            | "attribute-comment" | "edgeTerminals" => return None,
             _ => {}
         }
     }
@@ -1149,7 +1298,12 @@ impl<I> CollectGeometry<I> {
                 self.frames.pop();
             }
             Event::Text(text) => {
-                if self.node.is_some() || self.edge_label.is_some() || self.fallback.is_some() {
+                if self.node.is_some()
+                    || self.edge_label.is_some()
+                    || self.fallback.is_some()
+                    || self.chart.has_open_text()
+                    || self.kind == Some(DiagramKind::Sequence)
+                {
                     let decoded = match text.decode() {
                         Ok(decoded) => decoded,
                         Err(_) => String::from_utf8_lossy(text.as_ref()).into_owned().into(),
@@ -1159,6 +1313,27 @@ impl<I> CollectGeometry<I> {
                     match quick_xml::escape::unescape(&decoded) {
                         Ok(unescaped) => self.on_text(&unescaped),
                         Err(_) => self.on_text(&decoded),
+                    }
+                }
+            }
+            // The reader hands `&amp;` and the like over as events of their
+            // own. Dropping them would leave every label with a `&`, `<` or
+            // `"` in it matching nothing in the source.
+            Event::GeneralRef(reference) => {
+                if self.node.is_some()
+                    || self.edge_label.is_some()
+                    || self.fallback.is_some()
+                    || self.chart.has_open_text()
+                    || self.kind == Some(DiagramKind::Sequence)
+                {
+                    let resolved = match reference.resolve_char_ref() {
+                        Ok(Some(character)) => Some(character.to_string()),
+                        Ok(None) | Err(_) => reference.decode().ok().and_then(|name| {
+                            quick_xml::escape::resolve_predefined_entity(&name).map(str::to_string)
+                        }),
+                    };
+                    if let Some(text) = resolved {
+                        self.on_text(&text);
                     }
                 }
             }
@@ -1189,6 +1364,8 @@ pub(super) fn process<'a>(
         edge_ids: Vec::new(),
         edge_labels: Vec::new(),
         fallbacks: Vec::new(),
+        chart: chart_labels::ChartLabels::default(),
+        sequence: sequence::SequenceGeometry::default(),
         finished: false,
     }
 }

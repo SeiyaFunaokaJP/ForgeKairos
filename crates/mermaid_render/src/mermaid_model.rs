@@ -27,9 +27,12 @@ use crate::flowchart_model::{
     parse_flowchart,
 };
 use crate::gantt_model::{GanttDocument, emit_gantt, is_gantt_source, parse_gantt};
+use crate::gitgraph_model::{GitGraphDocument, emit_gitgraph, is_gitgraph_source, parse_gitgraph};
+use crate::mindmap_model::{MindmapDocument, emit_mindmap, is_mindmap_source, parse_mindmap};
 use crate::pie_model::{PieDocument, emit_pie, is_pie_source, parse_pie};
 use crate::sequence_model::{SequenceDocument, emit_sequence, is_sequence_source, parse_sequence};
 use crate::state_model::{StateDocument, emit_state, is_state_source, parse_state};
+use crate::timeline_model::{TimelineDocument, emit_timeline, is_timeline_source, parse_timeline};
 
 /// The indentation the emitters write statements with. Mermaid ignores it; it
 /// is here so that a fence the editor wrote looks like one a person wrote.
@@ -45,11 +48,14 @@ pub enum MermaidDiagramKind {
     Er,
     Class,
     Gantt,
+    Mindmap,
+    Timeline,
+    GitGraph,
 }
 
 impl MermaidDiagramKind {
     /// Every kind, in the order the editor's menus list them.
-    pub const ALL: [MermaidDiagramKind; 7] = [
+    pub const ALL: [MermaidDiagramKind; 10] = [
         MermaidDiagramKind::Flowchart,
         MermaidDiagramKind::Pie,
         MermaidDiagramKind::State,
@@ -57,6 +63,9 @@ impl MermaidDiagramKind {
         MermaidDiagramKind::Er,
         MermaidDiagramKind::Class,
         MermaidDiagramKind::Gantt,
+        MermaidDiagramKind::Mindmap,
+        MermaidDiagramKind::Timeline,
+        MermaidDiagramKind::GitGraph,
     ];
 
     pub fn label(self) -> &'static str {
@@ -68,6 +77,9 @@ impl MermaidDiagramKind {
             Self::Er => "ER 図",
             Self::Class => "クラス図",
             Self::Gantt => "ガントチャート",
+            Self::Mindmap => "マインドマップ",
+            Self::Timeline => "タイムライン",
+            Self::GitGraph => "Git グラフ",
         }
     }
 }
@@ -82,6 +94,9 @@ pub enum MermaidDocument {
     Er(ErDocument),
     Class(ClassDocument),
     Gantt(GanttDocument),
+    Mindmap(MindmapDocument),
+    Timeline(TimelineDocument),
+    GitGraph(GitGraphDocument),
 }
 
 impl MermaidDocument {
@@ -96,6 +111,9 @@ impl MermaidDocument {
             MermaidDiagramKind::Er => Self::Er(ErDocument::empty()),
             MermaidDiagramKind::Class => Self::Class(ClassDocument::empty()),
             MermaidDiagramKind::Gantt => Self::Gantt(GanttDocument::empty()),
+            MermaidDiagramKind::Mindmap => Self::Mindmap(MindmapDocument::empty()),
+            MermaidDiagramKind::Timeline => Self::Timeline(TimelineDocument::empty()),
+            MermaidDiagramKind::GitGraph => Self::GitGraph(GitGraphDocument::empty()),
         }
     }
 
@@ -108,6 +126,9 @@ impl MermaidDocument {
             Self::Er(_) => MermaidDiagramKind::Er,
             Self::Class(_) => MermaidDiagramKind::Class,
             Self::Gantt(_) => MermaidDiagramKind::Gantt,
+            Self::Mindmap(_) => MermaidDiagramKind::Mindmap,
+            Self::Timeline(_) => MermaidDiagramKind::Timeline,
+            Self::GitGraph(_) => MermaidDiagramKind::GitGraph,
         }
     }
 
@@ -121,6 +142,9 @@ impl MermaidDocument {
             Self::Er(document) => emit_er(document),
             Self::Class(document) => emit_class(document),
             Self::Gantt(document) => emit_gantt(document),
+            Self::Mindmap(document) => emit_mindmap(document),
+            Self::Timeline(document) => emit_timeline(document),
+            Self::GitGraph(document) => emit_gitgraph(document),
         }
     }
 
@@ -137,6 +161,9 @@ impl MermaidDocument {
             Self::Sequence(document) => document.structure_error(),
             Self::Er(document) => document.structure_error(),
             Self::Gantt(document) => document.structure_error(),
+            Self::Mindmap(document) => document.structure_error(),
+            Self::Timeline(document) => document.structure_error(),
+            Self::GitGraph(document) => document.structure_error(),
             Self::Flowchart(_) | Self::Pie(_) | Self::State(_) | Self::Class(_) => None,
         }
     }
@@ -169,6 +196,15 @@ pub fn detect_kind(source: &str) -> Option<MermaidDiagramKind> {
     if is_gantt_source(source) {
         return Some(MermaidDiagramKind::Gantt);
     }
+    if is_mindmap_source(source) {
+        return Some(MermaidDiagramKind::Mindmap);
+    }
+    if is_timeline_source(source) {
+        return Some(MermaidDiagramKind::Timeline);
+    }
+    if is_gitgraph_source(source) {
+        return Some(MermaidDiagramKind::GitGraph);
+    }
     None
 }
 
@@ -185,6 +221,9 @@ pub fn parse_document(source: &str) -> Result<MermaidDocument> {
         Some(MermaidDiagramKind::Er) => parse_er(source).map(MermaidDocument::Er),
         Some(MermaidDiagramKind::Class) => parse_class(source).map(MermaidDocument::Class),
         Some(MermaidDiagramKind::Gantt) => parse_gantt(source).map(MermaidDocument::Gantt),
+        Some(MermaidDiagramKind::Mindmap) => parse_mindmap(source).map(MermaidDocument::Mindmap),
+        Some(MermaidDiagramKind::Timeline) => parse_timeline(source).map(MermaidDocument::Timeline),
+        Some(MermaidDiagramKind::GitGraph) => parse_gitgraph(source).map(MermaidDocument::GitGraph),
         None => {
             bail!("この図は構造化エディターに対応していません。テキストのまま編集してください。")
         }
@@ -388,7 +427,12 @@ mod tests {
             ),
             ("", None),
             ("%% メモだけ", None),
-            ("mindmap\n  root", None),
+            ("mindmap\n  root((中心))", Some(MermaidDiagramKind::Mindmap)),
+            (
+                "timeline\n    2024 : 企画",
+                Some(MermaidDiagramKind::Timeline),
+            ),
+            ("journey\n  title x", None),
         ] {
             assert_eq!(detect_kind(source), expected, "for {source}");
         }
@@ -404,6 +448,8 @@ mod tests {
             "erDiagram\n    CUSTOMER {\n        string name\n    }\n    CUSTOMER ||--o{ ORDER : places",
             "classDiagram\n    class 動物 {\n        +鳴く() void\n    }\n    動物 <|-- 犬",
             "gantt\n    dateFormat YYYY-MM-DD\n    section 設計\n    要件定義 :req, 2026-01-06, 5d",
+            "mindmap\n  root((中心))\n    枝[四角]\n    ::icon(fa fa-book)",
+            "timeline\n    title 沿革\n    section 前半\n    2024 : 企画 : 設計",
         ] {
             let document = parse_document(source)
                 .unwrap_or_else(|error| panic!("`{source}` should parse: {error}"));
@@ -439,7 +485,7 @@ mod tests {
 
     #[test]
     fn a_kind_with_no_model_at_all_is_refused() {
-        for source in ["mindmap\n  root", "journey\n  title x"] {
+        for source in ["quadrantChart\n  title x", "journey\n  title x"] {
             let error = parse_document(source)
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));

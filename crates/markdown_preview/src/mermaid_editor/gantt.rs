@@ -20,20 +20,23 @@ use mermaid_render::gantt_model::{
     is_valid_gantt_date, is_valid_gantt_format, is_valid_gantt_id, is_valid_gantt_label,
     is_valid_gantt_section_name, is_valid_gantt_task_id, is_valid_gantt_title,
 };
-use ui::{
-    Checkbox, ContextMenu, DropdownMenu, DropdownStyle, IconPosition, ToggleState, prelude::*,
-};
+use ui::{ContextMenu, DropdownMenu, DropdownStyle, IconPosition, Tooltip, prelude::*};
 use util::ResultExt as _;
 
 use super::{
     Form, ID_FIELD_WIDTH, LABEL_FIELD_WIDTH, MermaidEditor, add_button, field_frame, neighbour,
-    row_controls, row_controls_labelled, section_title,
+    row_controls_labelled, section_title,
 };
 
 /// The label a task is added with, so that a new row is visible in the drawing
 /// before anything has been typed into it.
 const NEW_TASK_LABEL: &str = "新しいタスク";
 const NEW_SECTION_NAME: &str = "新しいセクション";
+
+const TASK_REMOVE_TOOLTIP: &str = "タスクを削除 (このタスクを after / until で参照しているタスクは、同じ日時の日付に置き換わります)";
+const TAG_TOOLTIP: &str = "タスクの描き方: 完了 = done / 進行中 = active / 重要 = crit / マイルストーン = milestone / 縦線 = vert";
+const START_TOOLTIP: &str = "開始の書き方: 日付 / after = 別のタスクが終わったら / 前のタスクに続く = 直前のタスクの終わりから";
+const END_TOOLTIP: &str = "終了の書き方: 日付か長さ (5d = 5 日、2h = 2 時間、1w = 1 週間) / until = 別のタスクが始まるまで";
 
 pub(super) struct GanttForm {
     pub(super) document: GanttDocument,
@@ -173,29 +176,7 @@ impl GanttForm {
             }
         }
 
-        if !renames.is_empty() {
-            for task in document
-                .sections
-                .iter_mut()
-                .flat_map(|section| &mut section.tasks)
-            {
-                let references = match (&mut task.start, &mut task.end) {
-                    (GanttStart::After(start), GanttEnd::Until(end)) => {
-                        vec![start, end]
-                    }
-                    (GanttStart::After(start), _) => vec![start],
-                    (_, GanttEnd::Until(end)) => vec![end],
-                    _ => Vec::new(),
-                };
-                for list in references {
-                    for id in list.iter_mut() {
-                        if let Some((_, new)) = renames.iter().find(|(old, _)| old == id) {
-                            *id = new.clone();
-                        }
-                    }
-                }
-            }
-        }
+        document.rename_references(&renames);
         document
     }
 }
@@ -219,6 +200,19 @@ pub(super) fn problem(_document: &GanttDocument) -> Option<SharedString> {
 fn field_value(field: &Entity<Editor>, cx: &App) -> Option<String> {
     let text = field.read(cx).text(cx).trim().to_string();
     (!text.is_empty()).then_some(text)
+}
+
+/// What a task's tag menu says: the tags it carries, or the menu's name when
+/// it carries none.
+fn tag_menu_label(tags: &[GanttTag]) -> SharedString {
+    if tags.is_empty() {
+        return "タグ".into();
+    }
+    tags.iter()
+        .map(|tag| tag.label())
+        .collect::<Vec<_>>()
+        .join("・")
+        .into()
 }
 
 fn split_ids(text: &str) -> Vec<String> {
@@ -420,6 +414,7 @@ impl MermaidEditor {
         form.document.sections.push(GanttSection {
             name: Some(NEW_SECTION_NAME.to_string()),
             tasks: Vec::new(),
+            preserved_after: Vec::new(),
         });
         form.sections.push(SectionRow {
             name,
@@ -439,8 +434,16 @@ impl MermaidEditor {
         let Some(form) = self.gantt_mut() else {
             return;
         };
-        if index >= form.sections.len() || form.document.remove_section(index).is_none() {
+        if index >= form.sections.len() {
             return;
+        }
+        match form.document.remove_section(index) {
+            Ok(Some(_)) => {}
+            Ok(None) => return,
+            Err(error) => {
+                self.refuse_gantt_change(error, cx);
+                return;
+            }
         }
         form.sections.remove(index);
         // The tasks that pointed into the section have been rewritten onto what
@@ -519,6 +522,7 @@ impl MermaidEditor {
             form.document.sections.push(GanttSection {
                 name: None,
                 tasks: Vec::new(),
+                preserved_after: Vec::new(),
             });
             form.sections.push(SectionRow {
                 name,
@@ -537,6 +541,7 @@ impl MermaidEditor {
             id: None,
             start,
             end: GanttEnd::Fixed(DEFAULT_TASK_LENGTH.to_string()),
+            preserved_after: Vec::new(),
         });
         rows.tasks.push(TaskRow {
             label,
@@ -562,8 +567,16 @@ impl MermaidEditor {
         let Some(rows) = form.sections.get_mut(section) else {
             return;
         };
-        if index >= rows.tasks.len() || form.document.remove_task(section, index).is_none() {
+        if index >= rows.tasks.len() {
             return;
+        }
+        match form.document.remove_task(section, index) {
+            Ok(Some(_)) => {}
+            Ok(None) => return,
+            Err(error) => {
+                self.refuse_gantt_change(error, cx);
+                return;
+            }
         }
         // Taken after the model call, so that a document the rows do not match
         // leaves both of them alone.
@@ -575,6 +588,13 @@ impl MermaidEditor {
         // it back the next time the form is read.
         self.refresh_gantt_reference_fields(window, cx);
         self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    /// Shows why a deletion was refused. The preview is left alone, because
+    /// nothing changed and redrawing it would clear the reason straight away.
+    fn refuse_gantt_change(&mut self, error: anyhow::Error, cx: &mut Context<Self>) {
+        self.message = Some(format!("{error}").into());
         cx.notify();
     }
 
@@ -934,6 +954,9 @@ impl MermaidEditor {
         .into_any_element()
     }
 
+    /// One task in two rows: what it is (name, id, tags) above, when it runs
+    /// (start and end) below. The tags are a menu rather than five checkboxes,
+    /// which would take a third row of their own.
     #[allow(clippy::too_many_arguments)]
     fn render_gantt_task(
         &self,
@@ -946,24 +969,6 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut tags = h_flex().flex_none().flex_wrap().gap_x_2();
-        for tag in GanttTag::ALL {
-            tags = tags.child(
-                Checkbox::new(
-                    SharedString::from(format!(
-                        "mermaid-gantt-tag-{section}-{index}-{}",
-                        tag.keyword()
-                    )),
-                    task.tags.contains(&tag).into(),
-                )
-                .label(tag.label())
-                .label_size(LabelSize::Small)
-                .on_click(cx.listener(move |this, _: &ToggleState, window, cx| {
-                    this.toggle_gantt_tag(section, index, tag, window, cx);
-                })),
-            );
-        }
-
         let start_field = (task.start != GanttStart::Implicit).then(|| {
             field_frame(
                 &row.start,
@@ -1007,11 +1012,13 @@ impl MermaidEditor {
                         )
                         .child(row.id.clone()),
                     )
-                    .child(row_controls(
+                    .child(self.render_gantt_tag_menu(section, index, task, window, cx))
+                    .child(row_controls_labelled(
                         &format!("mermaid-gantt-task-{section}"),
                         index,
                         index == 0 && section == 0,
                         index + 1 >= length && section + 1 >= self.gantt_section_count(),
+                        TASK_REMOVE_TOOLTIP,
                         cx.listener(move |this, _, window, cx| {
                             this.move_gantt_task(section, index, false, window, cx)
                         }),
@@ -1043,8 +1050,47 @@ impl MermaidEditor {
                         .child(row.end.clone()),
                     ),
             )
-            .child(tags)
             .into_any_element()
+    }
+
+    fn render_gantt_tag_menu(
+        &self,
+        section: usize,
+        index: usize,
+        task: &GanttTask,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let this = cx.entity().downgrade();
+        let assigned = task.tags.clone();
+        let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
+            for tag in GanttTag::ALL {
+                let this = this.clone();
+                menu = menu.toggleable_entry(
+                    tag.label(),
+                    assigned.contains(&tag),
+                    IconPosition::Start,
+                    None,
+                    move |window, cx| {
+                        this.update(cx, |this, cx| {
+                            this.toggle_gantt_tag(section, index, tag, window, cx);
+                        })
+                        .log_err();
+                    },
+                );
+            }
+            menu
+        });
+
+        DropdownMenu::new(
+            SharedString::from(format!("mermaid-gantt-tags-{section}-{index}")),
+            tag_menu_label(&task.tags),
+            menu,
+        )
+        .style(DropdownStyle::Outlined)
+        .trigger_size(ButtonSize::Compact)
+        .trigger_tooltip(Tooltip::text(TAG_TOOLTIP))
+        .into_any_element()
     }
 
     fn gantt_section_count(&self) -> usize {
@@ -1087,6 +1133,7 @@ impl MermaidEditor {
         )
         .style(DropdownStyle::Outlined)
         .trigger_size(ButtonSize::Compact)
+        .trigger_tooltip(Tooltip::text(START_TOOLTIP))
         .into_any_element()
     }
 
@@ -1126,9 +1173,14 @@ impl MermaidEditor {
         )
         .style(DropdownStyle::Outlined)
         .trigger_size(ButtonSize::Compact)
+        .trigger_tooltip(Tooltip::text(END_TOOLTIP))
         .into_any_element()
     }
 }
+
+#[cfg(test)]
+#[path = "gantt_tests.rs"]
+mod gantt_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1213,7 +1265,10 @@ mod tests {
         let mut chart = document(
             "gantt\n    dateFormat YYYY-MM-DD\n    section 前半\n    A :a, 2026-01-01, 3d\n    B :b, after a, 2026-02-01\n    section 後半\n    C :c, after b, 5d",
         );
-        chart.remove_task(0, 1).expect("the task should be removed");
+        chart
+            .remove_task(0, 1)
+            .expect("the deletion should be allowed")
+            .expect("the task should be removed");
         assert_eq!(
             emit_gantt(&chart),
             "gantt\n    dateFormat YYYY-MM-DD\n    section 前半\n    A :a, 2026-01-01, 3d\n    section 後半\n    C :c, 2026-02-01, 5d"
@@ -1532,10 +1587,12 @@ mod tests {
         let band = GanttSection {
             name: None,
             tasks: Vec::new(),
+            preserved_after: Vec::new(),
         };
         let named = |name: &str| GanttSection {
             name: Some(name.to_string()),
             tasks: Vec::new(),
+            preserved_after: Vec::new(),
         };
 
         let pinned = vec![band, named("後半"), named("最後")];

@@ -20,10 +20,14 @@ use mermaid_render::flowchart_model::FlowDirection;
 use mermaid_render::state_model::{
     CompositeState, NotePlacement, StateDocument, StateEntry, StateItem, StateKind, StateNote,
     StateScope, StateTransition, TERMINAL_STATE, is_valid_note_text, is_valid_state_id,
+    is_valid_style_class,
 };
 use ui::{ContextMenu, DropdownMenu, DropdownStyle, IconPosition, prelude::*};
 use util::ResultExt as _;
 
+use super::class_menu::{
+    ToggleClass, class_candidates, declared_class_names, render_class_input, render_class_menu,
+};
 use super::{
     Form, ID_FIELD_WIDTH, LABEL_FIELD_WIDTH, MermaidEditor, add_button, field_frame, neighbour,
     row_controls_labelled, section_title,
@@ -38,6 +42,9 @@ pub(super) struct StateForm {
     /// One row per state id the diagram names, in the order it first appears.
     pub(super) ids: Vec<IdRow>,
     pub(super) body: ScopeRows,
+    /// A class name typed by hand, offered beside the `classDef` names in
+    /// every state's class menu.
+    pub(super) class_input: Entity<Editor>,
 }
 
 /// The id of one state and the field it is edited in. `name` is what the
@@ -79,8 +86,26 @@ impl StateForm {
             .iter()
             .map(|row| row.field.clone())
             .collect::<Vec<_>>();
+        fields.push(self.class_input.clone());
         collect_fields(&self.body, &mut fields);
         fields
+    }
+
+    /// The class names the state class menus offer.
+    pub(super) fn class_candidates(&self, cx: &App) -> Vec<String> {
+        let mut lines = Vec::new();
+        collect_preserved(&self.document.body, &mut lines);
+        let declared = declared_class_names(lines, is_valid_style_class);
+        let mut assigned = Vec::new();
+        for id in self.document.state_ids() {
+            state_classes(&self.document.body, &id, &mut assigned);
+        }
+        class_candidates(
+            declared,
+            &assigned,
+            &self.class_input.read(cx).text(cx),
+            is_valid_style_class,
+        )
     }
 
     /// The diagram the form currently describes: the structure held in
@@ -295,6 +320,128 @@ fn preserved_without(line: &str, id: &str) -> Option<(Range<usize>, String)> {
     Some((span, kept.trim().to_string()))
 }
 
+fn collect_preserved<'a>(scope: &'a StateScope, lines: &mut Vec<&'a str>) {
+    for item in &scope.items {
+        match item {
+            StateItem::Preserved(text) => lines.push(text),
+            StateItem::Composite(composite) => collect_preserved(&composite.body, lines),
+            _ => {}
+        }
+    }
+}
+
+/// The states and the class of a `class <ids> <class>` statement, or `None`
+/// when `line` is not one.
+fn class_statement(line: &str) -> Option<(Vec<&str>, &str)> {
+    if line.split_whitespace().next()? != "class" {
+        return None;
+    }
+    let span = preserved_target_span(line)?;
+    let ids = line
+        .get(span.clone())?
+        .split(',')
+        .map(str::trim)
+        .collect::<Vec<_>>();
+    let class = line
+        .get(span.end..)?
+        .split_whitespace()
+        .next()?
+        .trim_end_matches(';');
+    (!class.is_empty()).then_some((ids, class))
+}
+
+/// Every class `id` has, in the order the fence gives them: the `:::` on a
+/// statement that names it, and the `class` statements whose list names it.
+pub(super) fn state_classes(scope: &StateScope, id: &str, classes: &mut Vec<String>) {
+    fn push(classes: &mut Vec<String>, class: &str) {
+        if !classes.iter().any(|known| known == class) {
+            classes.push(class.to_string());
+        }
+    }
+    for item in &scope.items {
+        match item {
+            StateItem::State(entry) if entry.id == id => {
+                if let Some(class) = &entry.style_class {
+                    push(classes, class);
+                }
+            }
+            StateItem::Transition(transition) => {
+                for (end, class) in [
+                    (&transition.from, &transition.from_style_class),
+                    (&transition.to, &transition.to_style_class),
+                ] {
+                    if end == id
+                        && let Some(class) = class
+                    {
+                        push(classes, class);
+                    }
+                }
+            }
+            StateItem::Composite(composite) => state_classes(&composite.body, id, classes),
+            StateItem::Preserved(text) => {
+                if let Some((ids, class)) = class_statement(text)
+                    && ids.contains(&id)
+                {
+                    push(classes, class);
+                }
+            }
+            StateItem::State(_) | StateItem::Note(_) | StateItem::Divider => {}
+        }
+    }
+}
+
+/// Takes `class` away from `id` wherever the fence gives it: the `:::` goes
+/// from every statement that names the state, and the state goes from the list
+/// of every `class` statement for it — the statement with it, once the list
+/// is empty, together with its row.
+fn remove_state_class(scope: &mut StateScope, rows: &mut ScopeRows, id: &str, class: &str) {
+    for index in (0..scope.items.len()).rev() {
+        let Some(item) = scope.items.get_mut(index) else {
+            continue;
+        };
+        let mut drop_item = false;
+        match item {
+            StateItem::State(entry) => {
+                if entry.id == id && entry.style_class.as_deref() == Some(class) {
+                    entry.style_class = None;
+                }
+            }
+            StateItem::Transition(transition) => {
+                if transition.from == id && transition.from_style_class.as_deref() == Some(class) {
+                    transition.from_style_class = None;
+                }
+                if transition.to == id && transition.to_style_class.as_deref() == Some(class) {
+                    transition.to_style_class = None;
+                }
+            }
+            StateItem::Composite(composite) => match rows.items.get_mut(index) {
+                Some(ItemRow::Composite { body, .. }) => {
+                    remove_state_class(&mut composite.body, body, id, class)
+                }
+                _ => remove_state_class(&mut composite.body, &mut ScopeRows::default(), id, class),
+            },
+            StateItem::Preserved(text) => {
+                let names_it = class_statement(text)
+                    .is_some_and(|(ids, named)| named == class && ids.contains(&id));
+                if names_it {
+                    match preserved_without(text, id) {
+                        Some((_, kept)) if kept.is_empty() => drop_item = true,
+                        Some((span, kept)) => text.replace_range(span, &kept),
+                        None => {}
+                    }
+                }
+            }
+            StateItem::Note(_) | StateItem::Divider => {}
+        }
+        if drop_item {
+            scope.items.remove(index);
+            if index < rows.items.len() {
+                rows.items.remove(index);
+            }
+        }
+    }
+}
+
 /// The first thing wrong with what the user typed, in the words shown above the
 /// form.
 pub(super) fn problem(document: &StateDocument) -> Option<SharedString> {
@@ -424,6 +571,7 @@ impl MermaidEditor {
             document,
             ids,
             body,
+            class_input: self.new_field("", window, cx),
         }
     }
 
@@ -491,7 +639,7 @@ impl MermaidEditor {
         }
     }
 
-    fn state_mut(&mut self) -> Option<&mut StateForm> {
+    pub(super) fn state_mut(&mut self) -> Option<&mut StateForm> {
         match &mut self.form {
             Form::State(form) => Some(form),
             _ => None,
@@ -579,6 +727,36 @@ impl MermaidEditor {
             window,
             cx,
         );
+    }
+
+    /// Adds `class` to the state `id`, or takes it away when the state already
+    /// has it. A class the fence gives with `:::` keeps that spelling until it
+    /// is taken away; a new one is written as a `class` statement at the end
+    /// of the diagram, which reaches a state inside a composite state too.
+    pub(super) fn toggle_state_class(
+        &mut self,
+        id: &str,
+        class: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        {
+            let Some(form) = self.state_mut() else {
+                return;
+            };
+            let mut assigned = Vec::new();
+            state_classes(&form.document.body, id, &mut assigned);
+            if assigned.iter().any(|name| name == class) {
+                remove_state_class(&mut form.document.body, &mut form.body, id, class);
+            } else {
+                form.document
+                    .body
+                    .items
+                    .push(StateItem::Preserved(format!("    class {id} {class}")));
+                form.body.items.push(ItemRow::Fixed);
+            }
+        }
+        self.settle_state(window, cx);
     }
 
     fn add_transition(&mut self, path: Vec<usize>, window: &mut Window, cx: &mut Context<Self>) {
@@ -847,16 +1025,49 @@ impl MermaidEditor {
             .map(|row| row.field.read(cx).text(cx).trim().to_string())
             .collect::<Vec<_>>();
 
+        let candidates = form.class_candidates(cx);
+        let this = cx.entity().downgrade();
         let mut id_list = v_flex()
             .w_full()
             .gap_1()
             .child(section_title("状態の ID (変えると参照も追随します)"));
-        for row in &form.ids {
+        for (index, row) in form.ids.iter().enumerate() {
             let valid = is_valid_state_id(row.field.read(cx).text(cx).trim());
+            let mut assigned = Vec::new();
+            state_classes(&form.document.body, &row.name, &mut assigned);
+            let on_toggle: ToggleClass = {
+                let this = this.clone();
+                let id = row.name.clone();
+                std::rc::Rc::new(move |class, window, cx| {
+                    this.update(cx, |this, cx| {
+                        this.toggle_state_class(&id, &class, window, cx)
+                    })
+                    .log_err();
+                })
+            };
             id_list = id_list.child(
-                field_frame(&row.field, ID_FIELD_WIDTH, valid, window, cx).child(row.field.clone()),
+                h_flex()
+                    .gap_1()
+                    .child(
+                        field_frame(&row.field, ID_FIELD_WIDTH, valid, window, cx)
+                            .child(row.field.clone()),
+                    )
+                    .child(render_class_menu(
+                        ("mermaid-state-class", index),
+                        &assigned,
+                        &candidates,
+                        on_toggle,
+                        window,
+                        cx,
+                    )),
             );
         }
+        id_list = id_list.child(render_class_input(
+            &form.class_input,
+            is_valid_style_class,
+            window,
+            cx,
+        ));
 
         vec![
             id_list.into_any_element(),

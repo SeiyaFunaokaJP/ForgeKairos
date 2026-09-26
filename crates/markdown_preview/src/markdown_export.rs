@@ -123,7 +123,7 @@ struct TableState {
 /// deliberately short: `merman` truncates the `style` attribute it writes onto
 /// text elements, and a long stack loses its tail mid-entity, which makes the
 /// SVG fail to parse.
-fn print_mermaid_theme() -> mermaid_render::MermaidTheme {
+pub(crate) fn print_mermaid_theme() -> mermaid_render::MermaidTheme {
     let git_branch_colors = [
         gpui::rgb(0x0969da).into(),
         gpui::rgb(0x1a7f37).into(),

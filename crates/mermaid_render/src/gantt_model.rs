@@ -16,12 +16,15 @@
 //!   the way [`crate::pie_model`] keeps a slice value. Which of the two a field
 //!   holds cannot be told without applying the chart's own `dateFormat`, and
 //!   re-spelling either of them would rewrite a fence the user only looked at.
-//! - The header statements this form does not show — `excludes`, `includes`,
+//! - The statements this form does not show — `excludes`, `includes`,
 //!   `todayMarker`, `tickInterval`, `weekday`, `weekend`, `topAxis`,
-//!   `inclusiveEndDates` and the accessibility statements — are held verbatim
-//!   as [`PreservedLine`]s. Everything else that is not a task, a section, a
-//!   title or a date format makes [`parse_gantt`] fail with a reason in
-//!   Japanese rather than being dropped.
+//!   `inclusiveEndDates`, `click`, comments and the accessibility statements —
+//!   are held verbatim. The ones written before the first section or task are
+//!   [`PreservedLine`]s; every later one belongs to the section header or the
+//!   task right above it, moves with it, and falls back onto whatever came
+//!   before it when that element is deleted. Everything else that is not a
+//!   task, a section, a title or a date format makes [`parse_gantt`] fail with
+//!   a reason in Japanese rather than being dropped.
 //!
 //! The one place where the fence is read differently from the rest of Mermaid
 //! is the task line: its fields are told apart by *counting* them, not by what
@@ -43,9 +46,9 @@ use merman::{Engine, ParseOptions};
 use crate::flowchart_model::{PreservedLine, PreservedPosition};
 use crate::mermaid_model::{INDENT, first_statement_line, join_lines, keyword_tail, scan_preamble};
 
-/// The length a new task is given, and the one a task falls back to when the
-/// task its end was pinned to with `until` is deleted and Mermaid has no way to
-/// spell what it resolved to.
+mod gantt_dates;
+
+/// The length a new task is given.
 pub const DEFAULT_TASK_LENGTH: &str = "1d";
 
 /// A tag that changes how a task is drawn. Tags come before a task's other
@@ -130,6 +133,9 @@ pub struct GanttTask {
     pub id: Option<String>,
     pub start: GanttStart,
     pub end: GanttEnd,
+    /// The lines this form does not show that were written right below the
+    /// task, verbatim and in order. They travel with the task when it moves.
+    pub preserved_after: Vec<String>,
 }
 
 impl GanttTask {
@@ -158,6 +164,10 @@ pub struct GanttSection {
     /// nameless: a later one would run into the section above it.
     pub name: Option<String>,
     pub tasks: Vec<GanttTask>,
+    /// The lines written between the `section` line and the first task in it.
+    /// Always empty for the nameless band, whose leading lines are the chart's
+    /// own [`PreservedPosition::Top`] lines.
+    pub preserved_after: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,93 +214,408 @@ impl GanttDocument {
             .collect::<Vec<_>>()
     }
 
-    /// Removes one task, keeping the tasks that pointed at it pointing at
-    /// something that still exists.
+    /// Removes one task, keeping every task that pointed at it where it was.
     ///
-    /// `after X` means "start when X ends" and `until X` "end when X starts",
-    /// so when X goes the nearest thing left is whatever X itself resolved to.
-    /// The reference is followed one step rather than dropped, because Mermaid
-    /// reads a dangling id as "today" without saying so.
-    pub fn remove_task(&mut self, section: usize, task: usize) -> Option<GanttTask> {
-        let tasks = &mut self.sections.get_mut(section)?.tasks;
-        if task >= tasks.len() {
-            return None;
-        }
-        let removed = tasks.remove(task);
-        self.dissolve_references(std::slice::from_ref(&removed));
-        Some(removed)
+    /// `after X` means "start when X ends" and `until X` "end when X starts".
+    /// When X goes, a reference to it is replaced by the moment it resolved
+    /// to: the rest of the list when that still resolves to the same moment,
+    /// otherwise that moment spelled with the chart's `dateFormat`. A dangling
+    /// id would be read as "today" without a word, and the length of X cannot
+    /// be carried over by pointing at what X itself pointed at.
+    ///
+    /// The chart is resolved by `merman` before and after, and when a task
+    /// that pointed at X would move, nothing is removed and the reason comes
+    /// back as the error. `Ok(None)` when there is no such task.
+    ///
+    /// The lines written below the task stay where they were, below whatever
+    /// came before it.
+    pub fn remove_task(&mut self, section: usize, task: usize) -> Result<Option<GanttTask>> {
+        let Some(position) = self.flat_index(section, task) else {
+            return Ok(None);
+        };
+        let mut edited = self.clone();
+        let Some(mut removed) = edited
+            .sections
+            .get_mut(section)
+            .map(|section| section.tasks.remove(task))
+        else {
+            return Ok(None);
+        };
+        let lines = std::mem::take(&mut removed.preserved_after);
+        edited.keep_lines_before(section, task, lines);
+        edited.follow_removed_references(
+            self,
+            &[position],
+            &format!("タスク `{}`", removed.label),
+        )?;
+        *self = edited;
+        Ok(Some(removed))
     }
 
     /// Removes one section together with the tasks in it, the same way.
-    pub fn remove_section(&mut self, section: usize) -> Option<GanttSection> {
+    pub fn remove_section(&mut self, section: usize) -> Result<Option<GanttSection>> {
         if section >= self.sections.len() {
-            return None;
+            return Ok(None);
         }
-        let removed = self.sections.remove(section);
-        self.dissolve_references(&removed.tasks);
-        Some(removed)
+        let first = self
+            .sections
+            .iter()
+            .take(section)
+            .map(|section| section.tasks.len())
+            .sum::<usize>();
+        let mut edited = self.clone();
+        let mut removed = edited.sections.remove(section);
+        let positions = (first..first + removed.tasks.len()).collect::<Vec<_>>();
+        let mut lines = std::mem::take(&mut removed.preserved_after);
+        for task in &mut removed.tasks {
+            lines.append(&mut task.preserved_after);
+        }
+        edited.keep_lines_at_end_of(section, lines);
+        let what = match &removed.name {
+            Some(name) => format!("セクション `{name}`"),
+            None => "先頭のセクション".to_string(),
+        };
+        edited.follow_removed_references(self, &positions, &what)?;
+        *self = edited;
+        Ok(Some(removed))
     }
 
-    /// Rewrites every `after` / `until` that names one of `removed` onto what
-    /// that task resolved to.
-    ///
-    /// The tasks being removed can point at each other, so the pass is repeated
-    /// until nothing changes; the bound is the number of removed tasks, which
-    /// stops a cycle among them from looping forever. Anything still dangling
-    /// afterwards is reported by [`GanttDocument::structure_error`].
-    fn dissolve_references(&mut self, removed: &[GanttTask]) {
-        for _ in 0..removed.len().max(1) {
-            let mut changed = false;
-            for task in removed {
-                changed |= self.dissolve_one(task);
+    /// The position of a task among all of them, in fence order.
+    fn flat_index(&self, section: usize, task: usize) -> Option<usize> {
+        let before = self
+            .sections
+            .get(..section)?
+            .iter()
+            .map(|section| section.tasks.len())
+            .sum::<usize>();
+        (task < self.sections.get(section)?.tasks.len()).then_some(before + task)
+    }
+
+    /// Hands `lines` to the element that now sits right above task `task` of
+    /// `section`, so that they are written exactly where they were.
+    fn keep_lines_before(&mut self, section: usize, task: usize, lines: Vec<String>) {
+        if lines.is_empty() {
+            return;
+        }
+        if let Some(target) = self.sections.get_mut(section) {
+            if let Some(previous) = task
+                .checked_sub(1)
+                .and_then(|previous| target.tasks.get_mut(previous))
+            {
+                previous.preserved_after.extend(lines);
+                return;
             }
-            if !changed {
+            if task == 0 && target.name.is_some() {
+                target.preserved_after.extend(lines);
                 return;
             }
         }
+        self.keep_lines_at_end_of(section, lines);
     }
 
-    fn dissolve_one(&mut self, removed: &GanttTask) -> bool {
-        let Some(id) = removed.id.as_deref() else {
-            return false;
-        };
-        // Worked out before anything is rewritten, so that every task pointing
-        // at `removed` resolves against it as it was.
-        let start_substitute = match &removed.end {
-            GanttEnd::Fixed(text) if !is_gantt_duration(text) => GanttStart::Date(text.clone()),
-            _ => removed.start.clone(),
-        };
-        let end_substitute = match &removed.start {
-            GanttStart::Date(date) => GanttEnd::Fixed(date.clone()),
-            // Mermaid has no way to spell "until <relative>", so a task whose
-            // end was pinned to one that itself started relative to another
-            // gets a length of its own instead of an end it cannot be written
-            // with.
-            _ => GanttEnd::Fixed(DEFAULT_TASK_LENGTH.to_string()),
-        };
+    /// Keeps a line the form does not show below the element read last.
+    fn keep_below_last(&mut self, text: String) {
+        self.keep_lines_at_end_of(self.sections.len(), vec![text]);
+    }
 
-        let mut changed = false;
-        for task in self.tasks_mut() {
-            if let GanttStart::After(ids) = &mut task.start
-                && ids.iter().any(|other| other == id)
-            {
-                ids.retain(|other| other != id);
-                changed = true;
-                if ids.is_empty() {
-                    task.start = start_substitute.clone();
-                }
+    /// Hands `lines` to the last element of the sections before `section`, or
+    /// to the top of the chart when there is none.
+    fn keep_lines_at_end_of(&mut self, section: usize, lines: Vec<String>) {
+        if lines.is_empty() {
+            return;
+        }
+        for index in (0..section.min(self.sections.len())).rev() {
+            let Some(candidate) = self.sections.get_mut(index) else {
+                continue;
+            };
+            if let Some(last) = candidate.tasks.last_mut() {
+                last.preserved_after.extend(lines);
+                return;
             }
-            if let GanttEnd::Until(ids) = &mut task.end
-                && ids.iter().any(|other| other == id)
-            {
-                ids.retain(|other| other != id);
-                changed = true;
-                if ids.is_empty() {
-                    task.end = end_substitute.clone();
-                }
+            if candidate.name.is_some() {
+                candidate.preserved_after.extend(lines);
+                return;
             }
         }
-        changed
+        self.preserved_lines
+            .extend(lines.into_iter().map(|text| PreservedLine {
+                position: PreservedPosition::Top,
+                text,
+            }));
+    }
+
+    /// Rewrites every `after` / `until` in `self` that names one of the tasks
+    /// at `removed` in `before` onto the moment it resolved to there, and
+    /// checks with `merman` that none of those tasks moved.
+    fn follow_removed_references(
+        &mut self,
+        before: &GanttDocument,
+        removed: &[usize],
+        what: &str,
+    ) -> Result<()> {
+        let before_tasks = before.tasks().collect::<Vec<_>>();
+        let still_there = self
+            .task_ids()
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let removed_ids = removed
+            .iter()
+            .filter_map(|position| before_tasks.get(*position))
+            .filter_map(|task| task.id.clone())
+            .filter(|id| !still_there.contains(id))
+            .collect::<Vec<_>>();
+        let names_removed = |ids: &[String]| ids.iter().any(|id| removed_ids.contains(id));
+        let affected = self.tasks().any(|task| {
+            matches!(&task.start, GanttStart::After(ids) if names_removed(ids))
+                || matches!(&task.end, GanttEnd::Until(ids) if names_removed(ids))
+        });
+        if !affected {
+            return Ok(());
+        }
+
+        let times = gantt_dates::task_times(&emit_gantt(before)).map_err(|error| {
+            anyhow!(
+                "{what} を参照しているタスクの日付を計算できないため、削除できません。今の内容では図を描けません ({error})。先に赤枠の欄を直してください。"
+            )
+        })?;
+        if times.len() != before_tasks.len() {
+            bail!("{what} を参照しているタスクの日付を計算できないため、削除できません。");
+        }
+        let kept = (0..before_tasks.len())
+            .filter(|position| !removed.contains(position))
+            .collect::<Vec<_>>();
+        let position_before = |position: usize| kept.get(position).copied();
+        // Mermaid keeps one entry per id and lets the last task spelled with it
+        // win, and so does this lookup.
+        let time_of = |id: &str| {
+            before_tasks
+                .iter()
+                .zip(&times)
+                .rev()
+                .find(|(task, _)| task.id.as_deref() == Some(id))
+                .map(|(_, time)| *time)
+        };
+        let date_format = before.date_format.as_deref();
+        let inclusive = before.has_preserved_statement("inclusiveEndDates");
+
+        let mut failure = None;
+        // The rest of an `after` list is tried first, because it keeps the
+        // relation the user wrote; a date is the fallback, and the one that is
+        // always tried when the first attempt moved something.
+        for keep_relative in [true, false] {
+            let mut candidate = self.clone();
+            let mut pins: Vec<Pin> = Vec::new();
+            let mut used_relative = false;
+            let mut unwritable = None;
+            for (position, task) in candidate.tasks_mut().enumerate() {
+                let Some(&gantt_dates::TaskTime { start, end, .. }) =
+                    kept.get(position).and_then(|index| times.get(*index))
+                else {
+                    continue;
+                };
+                if let GanttStart::After(ids) = &task.start
+                    && names_removed(ids)
+                {
+                    let rest = ids
+                        .iter()
+                        .filter(|id| !removed_ids.contains(id))
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    let resolves = rest
+                        .iter()
+                        .filter_map(|id| time_of(id))
+                        .map(|time| time.end)
+                        .max();
+                    if keep_relative && resolves == Some(start) {
+                        task.start = GanttStart::After(rest);
+                        used_relative = true;
+                    } else {
+                        match gantt_dates::start_text(date_format, start) {
+                            Ok(text) => task.start = GanttStart::Date(text),
+                            Err(error) => {
+                                unwritable = Some(format!(
+                                    "{what} を削除すると、タスク `{}` の開始を日付で書く必要があり、それができないため削除できません ({error})。",
+                                    task.label
+                                ));
+                                break;
+                            }
+                        }
+                    }
+                    pins.push(Pin {
+                        position,
+                        is_start: true,
+                        before: position_before(position),
+                        label: task.label.clone(),
+                    });
+                }
+                if let GanttEnd::Until(ids) = &task.end
+                    && names_removed(ids)
+                {
+                    let rest = ids
+                        .iter()
+                        .filter(|id| !removed_ids.contains(id))
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    let resolves = rest
+                        .iter()
+                        .filter_map(|id| time_of(id))
+                        .map(|time| time.start)
+                        .min();
+                    if keep_relative && resolves == Some(end) {
+                        task.end = GanttEnd::Until(rest);
+                        used_relative = true;
+                    } else {
+                        match gantt_dates::end_text(date_format, inclusive, end, start) {
+                            Ok(text) => task.end = GanttEnd::Fixed(text),
+                            Err(error) => {
+                                unwritable = Some(format!(
+                                    "{what} を削除すると、タスク `{}` の終了を日付で書く必要があり、それができないため削除できません ({error})。",
+                                    task.label
+                                ));
+                                break;
+                            }
+                        }
+                    }
+                    pins.push(Pin {
+                        position,
+                        is_start: false,
+                        before: position_before(position),
+                        label: task.label.clone(),
+                    });
+                }
+            }
+
+            if let Some(reason) = unwritable {
+                failure = Some(reason);
+            } else {
+                // The whole of a rewritten task is compared, not only the field
+                // that was rewritten: an end spelled as a date is read without
+                // the `excludes` that pushed the same end out of an `until`, and
+                // the bar is then drawn to a different day.
+                let moved = match gantt_dates::task_times(&emit_gantt(&candidate)) {
+                    Ok(after) => pins.iter().find(|pin| {
+                        let expected = pin.before.and_then(|index| times.get(index));
+                        after.get(pin.position) != expected || expected.is_none()
+                    }),
+                    Err(_) => pins.first(),
+                };
+                let Some(pin) = moved else {
+                    *self = candidate;
+                    return Ok(());
+                };
+                let field = if pin.is_start { "開始" } else { "終了" };
+                failure = Some(format!(
+                    "{what} を削除すると、それを参照しているタスク `{}` の{field}が変わってしまうため、削除できません。先に `{}` の `after` / `until` を日付に書き換えてください。",
+                    pin.label, pin.label
+                ));
+            }
+            if !used_relative {
+                break;
+            }
+        }
+        Err(anyhow!(
+            "{}",
+            failure.unwrap_or_else(|| format!("{what} を削除できません。"))
+        ))
+    }
+
+    /// Whether one of the verbatim lines of the body is the statement
+    /// `keyword`.
+    fn has_preserved_statement(&self, keyword: &str) -> bool {
+        self.preserved_texts()
+            .any(|text| starts_with_gantt_keyword(text.trim_start(), keyword))
+    }
+
+    /// Every verbatim line of the body, wherever it is kept.
+    fn preserved_texts(&self) -> impl Iterator<Item = &str> {
+        self.preserved_lines
+            .iter()
+            .filter(|line| line.position != PreservedPosition::Preamble)
+            .map(|line| line.text.as_str())
+            .chain(self.sections.iter().flat_map(|section| {
+                section.preserved_after.iter().map(String::as_str).chain(
+                    section
+                        .tasks
+                        .iter()
+                        .flat_map(|task| task.preserved_after.iter().map(String::as_str)),
+                )
+            }))
+    }
+
+    /// Points every `after`, `until` and `click` that names an id in the left
+    /// half of `renames` at the right half instead, in one pass, so that two
+    /// ids trading places do not collapse into one.
+    pub fn rename_references(&mut self, renames: &[(String, String)]) {
+        if renames.is_empty() {
+            return;
+        }
+        let rename = |id: &mut String| {
+            if let Some((_, new)) = renames.iter().find(|(old, _)| old == id) {
+                *id = new.clone();
+            }
+        };
+        for task in self.tasks_mut() {
+            if let GanttStart::After(ids) = &mut task.start {
+                ids.iter_mut().for_each(rename);
+            }
+            if let GanttEnd::Until(ids) = &mut task.end {
+                ids.iter_mut().for_each(rename);
+            }
+        }
+        let rewrite = |text: &mut String| {
+            if let Some(rewritten) = rename_click_ids(text, renames) {
+                *text = rewritten;
+            }
+        };
+        for line in &mut self.preserved_lines {
+            if line.position != PreservedPosition::Preamble {
+                rewrite(&mut line.text);
+            }
+        }
+        for section in &mut self.sections {
+            section.preserved_after.iter_mut().for_each(rewrite);
+            for task in &mut section.tasks {
+                task.preserved_after.iter_mut().for_each(rewrite);
+            }
+        }
+    }
+
+    /// The body in the order Mermaid reads it, from the first line after the
+    /// header statements to the last one.
+    fn body(&self) -> Vec<BodyItem<'_>> {
+        let mut items = self
+            .preserved_lines
+            .iter()
+            .filter(|line| line.position == PreservedPosition::Top)
+            .map(|line| BodyItem::Line(line.text.as_str()))
+            .collect::<Vec<_>>();
+        for section in &self.sections {
+            if let Some(name) = &section.name {
+                items.push(BodyItem::Section(name));
+            }
+            items.extend(
+                section
+                    .preserved_after
+                    .iter()
+                    .map(|line| BodyItem::Line(line.as_str())),
+            );
+            for task in &section.tasks {
+                items.push(BodyItem::Task(task));
+                items.extend(
+                    task.preserved_after
+                        .iter()
+                        .map(|line| BodyItem::Line(line.as_str())),
+                );
+            }
+        }
+        items.extend(
+            self.preserved_lines
+                .iter()
+                .filter(|line| line.position == PreservedPosition::Bottom)
+                .map(|line| BodyItem::Line(line.text.as_str())),
+        );
+        items
     }
 
     /// Why the chart cannot be written back as a diagram Mermaid accepts, in
@@ -429,6 +754,36 @@ impl GanttDocument {
                 }
             }
         }
+
+        // Mermaid attaches a `click` to the tasks it names as the line is read,
+        // so one written above its task does nothing. Moving a task below the
+        // line would silently take its link away, and moving one above it
+        // would give it one.
+        let mut defined: Vec<&str> = Vec::new();
+        for item in self.body() {
+            match item {
+                BodyItem::Task(task) => defined.extend(task.id.as_deref()),
+                BodyItem::Line(text) => {
+                    for id in click_ids(text) {
+                        // A task without an id is `task1`, `task2`, … in the
+                        // order `merman` reads it, so adding, deleting or
+                        // moving any task without an id would hand the link
+                        // to a different task without a word.
+                        if !ids.contains(&id) && is_automatic_task_id(id) {
+                            return Some(format!(
+                                "`click` の `{id}` は ID の無いタスクに自動で付く名前です。タスクを追加・削除・移動すると別のタスクを指すので、そのタスクに ID を付けて `click` をその ID に書き換えてください。"
+                            ));
+                        }
+                        if ids.contains(&id) && !defined.contains(&id) {
+                            return Some(format!(
+                                "`click` の行がタスク `{id}` より上にあります。Mermaid は `click` より後に書いたタスクにはリンクを付けないので、タスク `{id}` を `click` の行より上に移してください。"
+                            ));
+                        }
+                    }
+                }
+                BodyItem::Section(_) => {}
+            }
+        }
         None
     }
 }
@@ -485,7 +840,6 @@ fn scan_gantt(source: &str) -> Result<GanttDocument> {
     }
 
     let mut index = header_index + 1;
-    let mut position = PreservedPosition::Top;
     while let Some(line) = lines.get(index).copied() {
         let start = index;
         index += 1;
@@ -502,10 +856,7 @@ fn scan_gantt(source: &str) -> Result<GanttDocument> {
                     index += 1;
                 }
             }
-            document.preserved_lines.push(PreservedLine {
-                position,
-                text: join_lines(lines.get(start..index).unwrap_or_default()),
-            });
+            document.keep_below_last(join_lines(lines.get(start..index).unwrap_or_default()));
             continue;
         }
 
@@ -523,10 +874,7 @@ fn scan_gantt(source: &str) -> Result<GanttDocument> {
                         index += 1;
                     }
                 }
-                document.preserved_lines.push(PreservedLine {
-                    position,
-                    text: join_lines(lines.get(start..index).unwrap_or_default()),
-                });
+                document.keep_below_last(join_lines(lines.get(start..index).unwrap_or_default()));
             }
             Statement::Title(value) => {
                 let value = value.trim();
@@ -578,12 +926,12 @@ fn scan_gantt(source: &str) -> Result<GanttDocument> {
                 document.sections.push(GanttSection {
                     name: Some(name.to_string()),
                     tasks: Vec::new(),
+                    preserved_after: Vec::new(),
                 });
-                position = PreservedPosition::Bottom;
             }
-            Statement::Unsupported(keyword) => {
+            Statement::DisplayMode => {
                 bail!(
-                    "`{keyword}` の行は構造化編集に対応していません ({statement})。テキストのまま編集してください。"
+                    "`displayMode` は本文には書けません ({statement})。Mermaid ではフロントマターの `displayMode: compact` か `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%` で指定します。テキストのまま編集してください。"
                 );
             }
             Statement::Task => {
@@ -592,12 +940,12 @@ fn scan_gantt(source: &str) -> Result<GanttDocument> {
                     document.sections.push(GanttSection {
                         name: None,
                         tasks: Vec::new(),
+                        preserved_after: Vec::new(),
                     });
                 }
                 if let Some(section) = document.sections.last_mut() {
                     section.tasks.push(task);
                 }
-                position = PreservedPosition::Bottom;
             }
         }
     }
@@ -627,16 +975,16 @@ fn set_header_value(value: &str, keyword: &str) -> Result<Option<String>> {
 /// What one line of a gantt body is, decided the way `merman`'s gantt parser
 /// decides it.
 enum Statement<'a> {
-    /// Held verbatim: a header statement the form does not show, or an
-    /// accessibility statement.
+    /// Held verbatim: a header statement the form does not show, an
+    /// accessibility statement or a `click`.
     Preserved,
     Title(&'a str),
     DateFormat(&'a str),
     AxisFormat(&'a str),
     Section(&'a str),
-    /// A statement Mermaid reads but this model cannot carry; the name is what
-    /// the reason quotes.
-    Unsupported(&'static str),
+    /// `displayMode` written in the body, which Mermaid only reads from the
+    /// configuration.
+    DisplayMode,
     Task,
 }
 
@@ -669,6 +1017,9 @@ fn classify(statement: &str) -> Statement<'_> {
             .iter()
             .any(|keyword| gantt_keyword_tail(statement, keyword).is_some())
         || accessibility_kind(statement).is_some()
+        // `merman` takes any line that opens with the word, with or without
+        // whitespace after it, so a task called `clicks` is a `click` too.
+        || starts_with_gantt_keyword(statement, "click")
     {
         return Statement::Preserved;
     }
@@ -678,13 +1029,11 @@ fn classify(statement: &str) -> Statement<'_> {
     if let Some(value) = gantt_keyword_tail(statement, "section") {
         return Statement::Section(value);
     }
-    // `click` swallows its whole line, and `displayMode` is a statement
-    // `merman` does not implement at all, so neither can be held verbatim.
-    if starts_with_gantt_keyword(statement, "click") {
-        return Statement::Unsupported("click");
-    }
-    if gantt_keyword_tail(statement, "displayMode").is_some() {
-        return Statement::Unsupported("displayMode");
+    // Neither Mermaid nor `merman` has a `displayMode` statement: with a `:`
+    // the line is an ordinary task, and without one it is an error that is
+    // worth explaining.
+    if gantt_keyword_tail(statement, "displayMode").is_some() && !statement.contains(':') {
+        return Statement::DisplayMode;
     }
     Statement::Task
 }
@@ -840,6 +1189,7 @@ fn parse_task(statement: &str) -> Result<GanttTask> {
         id,
         start,
         end,
+        preserved_after: Vec::new(),
     })
 }
 
@@ -889,23 +1239,19 @@ pub fn emit_gantt(document: &GanttDocument) -> String {
         }
     }
 
-    for line in preserved_at(document, PreservedPosition::Top) {
-        out.push_str(line);
-        out.push('\n');
-    }
-
-    for section in &document.sections {
-        if let Some(name) = &section.name {
-            let _ = writeln!(out, "{INDENT}section {name}");
+    for item in document.body() {
+        match item {
+            BodyItem::Line(line) => {
+                out.push_str(line);
+                out.push('\n');
+            }
+            BodyItem::Section(name) => {
+                let _ = writeln!(out, "{INDENT}section {name}");
+            }
+            BodyItem::Task(task) => {
+                let _ = writeln!(out, "{INDENT}{}", emit_task(task));
+            }
         }
-        for task in &section.tasks {
-            let _ = writeln!(out, "{INDENT}{}", emit_task(task));
-        }
-    }
-
-    for line in preserved_at(document, PreservedPosition::Bottom) {
-        out.push_str(line);
-        out.push('\n');
     }
 
     while out.ends_with('\n') {
@@ -951,7 +1297,10 @@ fn preserved_at(
 /// The `:` is what separates the name from the fields, and a name that opens
 /// with a statement keyword is read as that statement instead — `title x : …`
 /// becomes the chart's title, and a line that opens with `click` disappears
-/// altogether.
+/// altogether. That is decided on the very line [`emit_gantt`] writes
+/// and by the rules the parser reads that line with, so `sectional review` is
+/// a task while `section 2` — and a bare `title`, which is followed by the
+/// space before the `:` — are not.
 pub fn is_valid_gantt_label(label: &str) -> bool {
     if label.is_empty() || label.trim() != label {
         return false;
@@ -962,26 +1311,83 @@ pub fn is_valid_gantt_label(label: &str) -> bool {
     if label.starts_with("%%") {
         return false;
     }
-    if PRESERVED_BARE_KEYWORDS
-        .iter()
-        .chain(["click", "accTitle", "accDescr"].iter())
-        .any(|keyword| starts_with_gantt_keyword(label, keyword))
-    {
-        return false;
+    matches!(classify(&format!("{label} :")), Statement::Task)
+}
+
+/// One line of the body as [`emit_gantt`] writes it.
+enum BodyItem<'a> {
+    Line(&'a str),
+    Section(&'a str),
+    Task(&'a GanttTask),
+}
+
+/// A task whose start or end a deletion rewrote, and where it was before.
+struct Pin {
+    position: usize,
+    is_start: bool,
+    /// The task's position in the chart before the deletion.
+    before: Option<usize>,
+    label: String,
+}
+
+/// The byte range of the id list in a `click` line, the way `merman` reads it:
+/// the first run of non-whitespace after the keyword.
+fn click_id_range(text: &str) -> Option<std::ops::Range<usize>> {
+    let statement = text.trim_start();
+    if !starts_with_gantt_keyword(statement, "click") {
+        return None;
     }
-    !PRESERVED_ARGUMENT_KEYWORDS
-        .iter()
-        .chain(
-            [
-                "dateFormat",
-                "axisFormat",
-                "title",
-                "section",
-                "displayMode",
-            ]
-            .iter(),
-        )
-        .any(|keyword| gantt_keyword_tail(label, keyword).is_some())
+    let keyword_end = text.len() - statement.len() + "click".len();
+    let rest = text.get(keyword_end..)?;
+    let start = keyword_end + (rest.len() - rest.trim_start().len());
+    let tail = text.get(start..)?;
+    let length = tail.find(char::is_whitespace).unwrap_or(tail.len());
+    (length > 0).then_some(start..start + length)
+}
+
+/// The ids a `click` line names, or nothing when `text` is not one.
+fn click_ids(text: &str) -> Vec<&str> {
+    click_id_range(text)
+        .and_then(|range| text.get(range))
+        .map(|ids| {
+            ids.split(',')
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+/// `text` with the ids of its `click` renamed, or `None` when nothing changes.
+fn rename_click_ids(text: &str, renames: &[(String, String)]) -> Option<String> {
+    let range = click_id_range(text)?;
+    let ids = text.get(range.clone())?;
+    let renamed = ids
+        .split(',')
+        .map(|id| {
+            renames
+                .iter()
+                .find(|(old, _)| old == id.trim())
+                .map_or(id, |(_, new)| new.as_str())
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    if renamed == ids {
+        return None;
+    }
+    Some(format!(
+        "{}{renamed}{}",
+        text.get(..range.start)?,
+        text.get(range.end..)?
+    ))
+}
+
+/// Whether `id` is spelled like the id `merman` gives a task written without
+/// one.
+fn is_automatic_task_id(id: &str) -> bool {
+    id.strip_prefix("task").is_some_and(|number| {
+        !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+    })
 }
 
 /// Whether `id` can be addressed by `after` / `until`.
@@ -1066,6 +1472,9 @@ pub fn is_valid_gantt_title(title: &str) -> bool {
 pub fn is_valid_gantt_format(format: &str) -> bool {
     !format.is_empty() && format.trim() == format && !format.contains(['#', ';', '\n', '\r'])
 }
+
+#[cfg(test)]
+mod gantt2_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1172,7 +1581,7 @@ mod tests {
     }
 
     #[test]
-    fn preserved_lines_keep_their_side_of_the_first_task() {
+    fn preserved_lines_keep_their_place() {
         let source = "%%{init: {\"theme\": \"dark\"}}%%\ngantt\n    title 図\n    dateFormat YYYY-MM-DD\n    %% 先頭のメモ\n    excludes weekends\n    todayMarker off\n\n    section S\n    A :a, 2026-01-01, 7d\n    %% 末尾のメモ\n    tickInterval 1week";
         let document = parse_gantt(source).expect("source should parse");
         assert_eq!(
@@ -1189,9 +1598,17 @@ mod tests {
                 (PreservedPosition::Top, "%% 先頭のメモ".to_string()),
                 (PreservedPosition::Top, "excludes weekends".to_string()),
                 (PreservedPosition::Top, "todayMarker off".to_string()),
-                (PreservedPosition::Bottom, "%% 末尾のメモ".to_string()),
-                (PreservedPosition::Bottom, "tickInterval 1week".to_string()),
             ]
+        );
+        assert_eq!(
+            document
+                .tasks()
+                .next()
+                .map(|task| task.preserved_after.clone()),
+            Some(vec![
+                "    %% 末尾のメモ".to_string(),
+                "    tickInterval 1week".to_string()
+            ])
         );
 
         let emitted = assert_stable(source);
@@ -1211,30 +1628,23 @@ mod tests {
                 .iter()
                 .map(|line| (line.position, line.text.trim().to_string()))
                 .collect::<Vec<_>>(),
-            vec![
-                (PreservedPosition::Top, "%% 先頭のメモ".to_string()),
-                (PreservedPosition::Bottom, "%% 末尾のメモ".to_string()),
-            ]
+            vec![(PreservedPosition::Top, "%% 先頭のメモ".to_string())]
         );
         assert_eq!(assert_stable(source), source);
 
-        // A line written after a `section` header belongs to the body rather
-        // than to the header block, so it is written back below the tasks
-        // instead of being lifted out of the section it was in.
+        // A line written after a `section` header belongs to that header, so
+        // it is written back between the header and the first task.
         let source = "gantt\n    section S\n    %% セクションのメモ\n    A :a, 2026-01-01, 7d";
         let document = parse_gantt(source).expect("source should parse");
+        assert!(document.preserved_lines.is_empty());
         assert_eq!(
             document
-                .preserved_lines
-                .iter()
-                .map(|line| (line.position, line.text.trim().to_string()))
-                .collect::<Vec<_>>(),
-            vec![(PreservedPosition::Bottom, "%% セクションのメモ".to_string())]
+                .sections
+                .first()
+                .map(|section| section.preserved_after.clone()),
+            Some(vec!["    %% セクションのメモ".to_string()])
         );
-        assert_eq!(
-            assert_stable(source),
-            "gantt\n    section S\n    A :a, 2026-01-01, 7d\n    %% セクションのメモ"
-        );
+        assert_eq!(assert_stable(source), source);
     }
 
     #[test]
@@ -1273,20 +1683,43 @@ mod tests {
     /// must not cut a multibyte label in half.
     #[test]
     fn a_label_is_only_a_keyword_when_mermaid_reads_it_as_one() {
-        for label in ["sectional", "titles", "日本語", "50%達成", "A#B", "A;B"] {
+        for label in [
+            "sectional",
+            "sectional review",
+            "titles",
+            "日本語",
+            "50%達成",
+            "A#B",
+            "A;B",
+            // The accessibility statements need a `:` or a `{` after the
+            // word, and `displayMode` is no statement at all.
+            "accTitle x",
+            "accDescr x",
+            "accTitles",
+            "displayMode compact",
+            "weekdays",
+            "section会議",
+        ] {
             assert!(is_valid_gantt_label(label), "{label} should be a label");
         }
         for label in [
             "title of it",
             "section two",
+            "section 会議",
+            // The name is followed by the space before the `:`, so a name that
+            // is the keyword alone is read as the statement too.
+            "title",
+            "Section",
+            "todayMarker",
             // `topAxis` and `click` need no whitespace after them, so a label
             // that merely opens with one is read as that statement.
             "topAxisish",
             "clicks the button",
             "clicking",
             "accTitle",
-            "accDescr x",
+            "accDescr {x}",
             "dateFormat x",
+            "weekday meeting",
             "%% メモ",
             "コロン : あり",
             "",
@@ -1299,12 +1732,13 @@ mod tests {
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
         for (source, expected) in [
-            // `click` swallows its whole line.
+            // A `click` above the task it names does nothing, and moving it
+            // would give the task a link.
             (
-                "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 7d\n    click a href \"https://example.com\"",
+                "gantt\n    dateFormat YYYY-MM-DD\n    click a href \"https://example.com\"\n    A :a, 2026-01-01, 7d",
                 "click",
             ),
-            // `merman` does not implement `displayMode` at all.
+            // `displayMode` is configuration, not a statement.
             (
                 "gantt\n    displayMode compact\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 7d",
                 "displayMode",
@@ -1440,14 +1874,10 @@ mod tests {
             );
         }
 
-        // And the emitter really does move one: a note written between the
-        // tasks comes back below them, and stays there on the next pass.
+        // A note written between the tasks comes back where it was.
         let source = "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-05, 7d\n    %% メモ\n    excludes 2026-01-07\n    B :b, after a, 3d";
         let emitted = assert_stable(source);
-        assert_eq!(
-            emitted,
-            "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-05, 7d\n    B :b, after a, 3d\n    %% メモ\n    excludes 2026-01-07"
-        );
+        assert_eq!(emitted, source);
         assert_eq!(drawing_of(source), drawing_of(&emitted));
     }
 
@@ -1659,6 +2089,7 @@ mod tests {
         .expect("source should parse");
         let removed = document
             .remove_task(0, 1)
+            .expect("removable")
             .expect("the second task should be removed");
         assert_eq!(removed.id.as_deref(), Some("b"));
         assert_eq!(
@@ -1667,28 +2098,37 @@ mod tests {
         );
         assert_eq!(document.structure_error(), None);
 
-        // `B` ends after a duration, which cannot be turned into a date, so the
-        // reference follows `B`'s own start instead.
+        // `B` ends after a duration, which is worked out into the date it
+        // ended on.
         let mut document = parse_gantt(
             "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 3d\n    B :b, after a, 4d\n    C :c, after b, 5d",
         )
         .expect("source should parse");
-        document.remove_task(0, 1).expect("removable");
+        document
+            .remove_task(0, 1)
+            .expect("removable")
+            .expect("there is such a task");
         assert_eq!(
             emit_gantt(&document),
-            "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 3d\n    C :c, after a, 5d"
+            "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 3d\n    C :c, 2026-01-08, 5d"
         );
         assert_eq!(document.structure_error(), None);
 
-        // One of several ids is only dropped from the list.
+        // `B` ended after `A`, so dropping it from the list would pull `C`
+        // forwards; the moment `B` ended is written down instead. The case
+        // where the rest of the list still means the same is in
+        // `gantt2_tests`.
         let mut document = parse_gantt(
             "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 3d\n    B :b, 2026-01-02, 4d\n    C :c, after a b, 5d",
         )
         .expect("source should parse");
-        document.remove_task(0, 1).expect("removable");
+        document
+            .remove_task(0, 1)
+            .expect("removable")
+            .expect("there is such a task");
         assert_eq!(
             emit_gantt(&document),
-            "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 3d\n    C :c, after a, 5d"
+            "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 3d\n    C :c, 2026-01-06, 5d"
         );
 
         // `until` follows the removed task's start.
@@ -1696,7 +2136,10 @@ mod tests {
             "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 3d\n    B :b, 2026-02-01, 4d\n    C :c, 2026-01-05, until b",
         )
         .expect("source should parse");
-        document.remove_task(0, 1).expect("removable");
+        document
+            .remove_task(0, 1)
+            .expect("removable")
+            .expect("there is such a task");
         assert_eq!(
             emit_gantt(&document),
             "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 3d\n    C :c, 2026-01-05, 2026-02-01"
@@ -1714,11 +2157,13 @@ mod tests {
         .expect("source should parse");
         let removed = document
             .remove_section(0)
+            .expect("removable")
             .expect("the first section should be removed");
         assert_eq!(removed.name.as_deref(), Some("前半"));
+        // `C` ended 3 + 4 + 5 days after the first of January.
         assert_eq!(
             emit_gantt(&document),
-            "gantt\n    dateFormat YYYY-MM-DD\n    section 後半\n    D :d, 2026-01-01, 6d"
+            "gantt\n    dateFormat YYYY-MM-DD\n    section 後半\n    D :d, 2026-01-13, 6d"
         );
         assert_eq!(document.structure_error(), None);
         assert_renders(&emit_gantt(&document));
@@ -1765,9 +2210,9 @@ mod tests {
     fn removing_an_index_that_is_not_there_changes_nothing() {
         let source = "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 3d";
         let mut document = parse_gantt(source).expect("source should parse");
-        assert_eq!(document.remove_task(0, 1), None);
-        assert_eq!(document.remove_task(9, 0), None);
-        assert_eq!(document.remove_section(9), None);
+        assert_eq!(document.remove_task(0, 1).expect("nothing to refuse"), None);
+        assert_eq!(document.remove_task(9, 0).expect("nothing to refuse"), None);
+        assert_eq!(document.remove_section(9).expect("nothing to refuse"), None);
         assert_eq!(emit_gantt(&document), source);
     }
 
@@ -1835,6 +2280,7 @@ mod tests {
         document.sections.push(GanttSection {
             name: None,
             tasks: Vec::new(),
+            preserved_after: Vec::new(),
         });
         let error = document
             .structure_error()

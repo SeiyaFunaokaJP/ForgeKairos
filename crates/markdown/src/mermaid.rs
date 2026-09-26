@@ -5,7 +5,7 @@ use gpui::{
     SMOOTH_SVG_SCALE_FACTOR, ScrollDelta, ScrollHandle, ScrollWheelEvent, Size, Stateful,
     StyledText, Task, Window, canvas, img, point, pulsating_between, quad, size,
 };
-use mermaid_render::DiagramGeometry;
+use mermaid_render::{DiagramGeometry, LabelItem};
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::ops::Range;
@@ -1074,6 +1074,20 @@ pub(crate) enum MermaidLabelTarget {
     Transition {
         index: usize,
     },
+    /// A label that belongs to neither a node nor an edge (a chart's title, a
+    /// pie slice, a gantt task or section, an ER attribute), with the text it
+    /// is drawn with, which the source scan checks its token against.
+    Label {
+        item: LabelItem,
+        label: SharedString,
+    },
+    /// One of several boxes drawn for the same node, counting from the first
+    /// in document order (a sequence diagram draws each participant at the top
+    /// and again at the bottom). The first box is a plain [`Self::Node`].
+    NodeCopy {
+        node_id: SharedString,
+        copy: usize,
+    },
 }
 
 /// Maps a point in window coordinates onto the diagram's own `viewBox`.
@@ -1148,13 +1162,49 @@ fn mermaid_label_at(geometry: &DiagramGeometry, point: Point<f32>) -> Option<Mer
             });
         }
     }
+    // An ER attribute's cell lies inside its entity's box, so the smaller
+    // target has to win.
+    if let Some(label) = geometry
+        .labels
+        .iter()
+        .find(|label| rect_contains(label.rect, point))
+    {
+        return Some(MermaidLabelTarget::Label {
+            item: label.item.clone(),
+            label: label.label.clone().into(),
+        });
+    }
+    let (index, node) = geometry
+        .nodes
+        .iter()
+        .enumerate()
+        .find(|(_, node)| rect_contains(node.rect, point))?;
+    let copy = geometry.nodes[..index]
+        .iter()
+        .filter(|earlier| earlier.node_id == node.node_id)
+        .count();
+    Some(match copy {
+        0 => MermaidLabelTarget::Node {
+            node_id: node.node_id.clone().into(),
+        },
+        copy => MermaidLabelTarget::NodeCopy {
+            node_id: node.node_id.clone().into(),
+            copy,
+        },
+    })
+}
+
+/// The `copy`-th box drawn for `node_id`, counting from zero.
+fn mermaid_node_copy<'a>(
+    geometry: &'a DiagramGeometry,
+    node_id: &str,
+    copy: usize,
+) -> Option<&'a mermaid_render::NodeGeometry> {
     geometry
         .nodes
         .iter()
-        .find(|node| rect_contains(node.rect, point))
-        .map(|node| MermaidLabelTarget::Node {
-            node_id: node.node_id.clone().into(),
-        })
+        .filter(|node| node.node_id == node_id)
+        .nth(copy)
 }
 
 fn mermaid_label_rect(geometry: &DiagramGeometry, target: &MermaidLabelTarget) -> Option<[f32; 4]> {
@@ -1182,6 +1232,14 @@ fn mermaid_label_rect(geometry: &DiagramGeometry, target: &MermaidLabelTarget) -
             .iter()
             .find(|edge| edge.statement_index == Some(*index))
             .and_then(|edge| edge.label_rect),
+        MermaidLabelTarget::Label { item, .. } => geometry
+            .labels
+            .iter()
+            .find(|label| &label.item == item)
+            .map(|label| label.rect),
+        MermaidLabelTarget::NodeCopy { node_id, copy } => {
+            mermaid_node_copy(geometry, node_id, *copy).map(|node| node.rect)
+        }
     }
 }
 
@@ -1215,6 +1273,12 @@ fn mermaid_rendered_label(geometry: &DiagramGeometry, target: &MermaidLabelTarge
             .find(|edge| edge.statement_index == Some(*index))
             .and_then(|edge| edge.label.clone())
             .unwrap_or_default(),
+        MermaidLabelTarget::Label { label, .. } => label.to_string(),
+        MermaidLabelTarget::NodeCopy { node_id, copy } => {
+            mermaid_node_copy(geometry, node_id, *copy)
+                .map(|node| node.label.clone())
+                .unwrap_or_default()
+        }
     }
 }
 
@@ -1233,6 +1297,13 @@ fn mermaid_source_span(
         } => mermaid_source::find_edge_label(fence_body, from, to, *occurrence),
         MermaidLabelTarget::Transition { index } => {
             mermaid_source::find_transition_label(fence_body, *index)
+        }
+        MermaidLabelTarget::Label { item, label } => {
+            mermaid_source::find_item_label(fence_body, item, label)
+        }
+        // Every box of a node is drawn from the same token.
+        MermaidLabelTarget::NodeCopy { node_id, .. } => {
+            mermaid_source::find_node_label(fence_body, node_id)
         }
     }
 }
@@ -1373,6 +1444,12 @@ fn render_mermaid_image(
                         .as_ref()
                         .map_or(MermaidLabelQuoting::Delimited, |span| span.quoting),
                     refusal: span.as_ref().err().copied(),
+                    reserved_labels: match &target {
+                        MermaidLabelTarget::Label { item, .. } => {
+                            mermaid_source::reserved_labels(&fence_body, item)
+                        }
+                        _ => Vec::new(),
+                    },
                     current_label: match &span {
                         Ok(span) => span.label.clone().into(),
                         Err(_) => mermaid_rendered_label(&geometry, &target).into(),
@@ -1394,6 +1471,9 @@ fn render_mermaid_image(
         .child(overlay)
         .into_any_element()
 }
+
+#[cfg(test)]
+mod chart_label_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1450,6 +1530,7 @@ mod tests {
                     label: Some("\u{306f}\u{3044}".into()),
                     label_rect: Some([90.0, 30.0, 20.0, 10.0]),
                 }],
+                labels: Vec::new(),
             }
         }
 
@@ -2891,3 +2972,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod class_sequence_tests;

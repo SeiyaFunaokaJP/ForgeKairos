@@ -4652,12 +4652,11 @@ mod tests {
         );
     }
 
-    /// merman drops a quotation mark from an ER relationship's label instead of
-    /// decoding the entity it has to be written as, so writing one would make it
-    /// disappear from the diagram without a word. The field stays open with the
-    /// text still in it, since the user has to change it to get anywhere.
+    /// merman decodes the entity a quotation mark in an ER relationship's
+    /// label is written as and draws the mark, so the label is written like
+    /// any other rather than refused.
     #[gpui::test]
-    async fn mermaid_label_edit_refuses_a_character_the_slot_cannot_hold(cx: &mut TestAppContext) {
+    async fn mermaid_label_edit_writes_a_quotation_mark_as_its_entity(cx: &mut TestAppContext) {
         let (multi_workspace, preview, editor) = open_preview_over(DIAGRAM, cx).await;
         let request = label_request(DIAGRAM, "old").as_er_relationship_for_test();
 
@@ -4672,18 +4671,7 @@ mod tests {
                         .editor
                         .update(cx, |field, cx| field.set_text("言う \"はい\"", window, cx));
                     preview.confirm_mermaid_label_edit(&menu::Confirm, window, cx);
-                    assert!(
-                        preview.mermaid_label_editor.is_some(),
-                        "the field has to stay open so the text can be corrected"
-                    );
-                    // A label the slot can hold goes through as usual.
-                    preview
-                        .mermaid_label_editor
-                        .as_ref()
-                        .expect("the field should be open")
-                        .editor
-                        .update(cx, |field, cx| field.set_text("言う はい", window, cx));
-                    preview.confirm_mermaid_label_edit(&menu::Confirm, window, cx);
+                    assert!(preview.mermaid_label_editor.is_none());
                 });
             })
             .unwrap();
@@ -4691,8 +4679,7 @@ mod tests {
 
         assert_eq!(
             editor.read_with(cx, |editor, cx| editor.buffer().read(cx).read(cx).text()),
-            DIAGRAM.replace("old", "\"言う はい\""),
-            "the refused text must not have been written, and the next one must"
+            DIAGRAM.replace("old", "\"言う #quot;はい#quot;\"")
         );
     }
 

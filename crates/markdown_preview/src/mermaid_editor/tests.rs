@@ -1574,8 +1574,8 @@ async fn a_diagram_without_a_model_does_not_open(cx: &mut TestAppContext) {
     cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_language()), cx));
     cx.set_state(indoc! {"
         ```mermaid
-        mindmap
-          rootˇ
+        quadrantChart
+          title 優先度ˇ
         ```
     "});
 
@@ -1584,7 +1584,7 @@ async fn a_diagram_without_a_model_does_not_open(cx: &mut TestAppContext) {
         .expect("the cursor is inside a mermaid fence");
     let error = parse_document(&target.source)
         .err()
-        .expect("a mind map has no editing model");
+        .expect("a quadrant chart has no editing model");
     assert!(
         format!("{error}").contains("構造化エディター"),
         "unexpected message: {error}"
@@ -2801,6 +2801,1108 @@ mod sequence_7a {
                     アリス->>アリス: 準備
                     create participant カール
                     アリス->>カール: 挨拶"},
+        );
+    }
+}
+
+/// The sequence leftovers of session mm: moving boxes, their wrap setting,
+/// the `create` and `destroy` targets, moving a column without splitting a
+/// box, config objects and ids spelled with `#…;`.
+mod sequence_seq2 {
+    use super::*;
+
+    fn form(modal: &MermaidEditor) -> &sequence::SequenceForm {
+        modal
+            .sequence()
+            .expect("the modal should hold a sequence form")
+    }
+
+    fn column(modal: &MermaidEditor, id: &str) -> usize {
+        form(modal)
+            .document
+            .participants
+            .iter()
+            .position(|participant| participant.id == id)
+            .unwrap_or_else(|| panic!("`{id}` should be a column"))
+    }
+
+    fn box_names(modal: &MermaidEditor, cx: &App) -> Vec<String> {
+        form(modal)
+            .boxes
+            .iter()
+            .map(|row| row.name.read(cx).text(cx))
+            .collect()
+    }
+
+    /// Moving a box takes its whole run of columns along, and the name typed
+    /// into its row moves with it.
+    #[gpui::test]
+    async fn a_box_moves_with_its_columns(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                sequenceDiagramˇ
+                    box 一
+                        participant A
+                        participant B
+                    end
+                    participant C
+                    box 二
+                        participant D
+                    end
+                    A->>D: x
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let name = form(modal)
+                    .boxes
+                    .get(1)
+                    .expect("the second box should have a row")
+                    .name
+                    .clone();
+                name.update(cx, |name, cx| name.set_text("二番", window, cx));
+                modal.move_sequence_box(1, false, cx);
+                assert_eq!(box_names(modal, cx), vec!["二番", "一"]);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                sequenceDiagram
+                    box 二番
+                        participant D
+                    end
+                    participant C
+                    box 一
+                        participant A
+                        participant B
+                    end
+                    A->>D: x"},
+        );
+    }
+
+    #[gpui::test]
+    async fn the_wrap_box_writes_the_prefix(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                sequenceDiagramˇ
+                    box 業務
+                        participant A
+                    end
+                    box lightblue
+                        participant B
+                    end
+                    A->>B: x
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                modal.set_sequence_box_wrap(0, true, cx);
+                modal.set_sequence_box_wrap(1, true, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                sequenceDiagram
+                    box wrap:業務
+                        participant A
+                    end
+                    box lightblue wrap:
+                        participant B
+                    end
+                    A->>B: x"},
+        );
+    }
+
+    /// A column in no box steps over a whole box instead of into it, and a
+    /// member at the edge of its box stays where it is.
+    #[gpui::test]
+    async fn a_column_never_lands_inside_a_box(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                sequenceDiagramˇ
+                    participant C
+                    box 業務
+                        participant A
+                        participant B
+                    end
+                    A->>B: x
+                    C->>A: y
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let edge = column(modal, "B");
+                modal.move_participant(edge, true, cx);
+                assert_eq!(column(modal, "B"), edge, "B is the last column already");
+                let first = column(modal, "A");
+                modal.move_participant(first, false, cx);
+                assert_eq!(
+                    column(modal, "A"),
+                    first,
+                    "leaving the box is the group menu's job"
+                );
+
+                let index = column(modal, "C");
+                modal.move_participant(index, true, cx);
+                assert_eq!(form(modal).document.structure_error(), None);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                sequenceDiagram
+                    box 業務
+                        participant A
+                        participant B
+                    end
+                    participant C
+                    A->>B: x
+                    C->>A: y"},
+        );
+    }
+
+    /// Mermaid requires the message after a `destroy` to involve the column
+    /// it ends, so a new `destroy` names the last message's receiver rather
+    /// than the first column.
+    #[gpui::test]
+    async fn a_new_destroy_names_the_last_receiver(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                sequenceDiagramˇ
+                    participant A
+                    participant B
+                    participant C
+                    A->>C: 依頼
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                modal.add_sequence_item(sequence::AddKind::Destroy, window, cx);
+                assert!(
+                    matches!(
+                        form(modal).document.items.last(),
+                        Some(SequenceItem::Destroy(id)) if id == "C"
+                    ),
+                    "{:?}",
+                    form(modal).document.items
+                );
+                modal.add_sequence_item(sequence::AddKind::Message, window, cx);
+                let last = form(modal).document.items.len() - 1;
+                modal.update_sequence_item(last, cx, |item| {
+                    if let SequenceItem::Message(message) = item {
+                        message.to = "C".to_string();
+                    }
+                });
+                // A second `destroy` goes to somebody not yet destroyed.
+                modal.add_sequence_item(sequence::AddKind::Destroy, window, cx);
+                assert!(
+                    matches!(
+                        form(modal).document.items.last(),
+                        Some(SequenceItem::Destroy(id)) if id == "A"
+                    ),
+                    "{:?}",
+                    form(modal).document.items
+                );
+                let last = form(modal).document.items.len() - 1;
+                modal.remove_sequence_item(last, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                sequenceDiagram
+                    participant A
+                    participant B
+                    participant C
+                    A->>C: 依頼
+                    destroy C
+                    A->>C:"},
+        );
+    }
+
+    /// The `create` row offers the columns it can declare, and choosing one
+    /// moves the columns so that the created ones stay last. Its description
+    /// is edited on the same row.
+    #[gpui::test]
+    async fn a_create_row_can_be_pointed_at_another_column(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                sequenceDiagramˇ
+                    box 業務
+                        participant A
+                    end
+                    participant B
+                    participant D
+                    A->>B: x
+                    create participant C
+                    A->>C: y
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let document = form(modal).current_document(cx);
+                assert_eq!(
+                    sequence::create_target_choices(&document, 1),
+                    vec!["B".to_string(), "D".to_string(), "C".to_string()],
+                    "a column in a box cannot be created"
+                );
+                modal.set_create_target(1, "D".to_string(), cx);
+                modal.update_sequence_item(2, cx, |item| {
+                    if let SequenceItem::Message(message) = item {
+                        message.to = "D".to_string();
+                    }
+                });
+                let alias = form(modal)
+                    .participants
+                    .get(column(modal, "D"))
+                    .expect("the created column should have a row")
+                    .alias
+                    .clone();
+                alias.update(cx, |alias, cx| alias.set_text("新規", window, cx));
+                assert_eq!(form(modal).current_document(cx).structure_error(), None);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                sequenceDiagram
+                    box 業務
+                        participant A
+                    end
+                    participant B
+                    participant C
+                    A->>B: x
+                    create participant D as 新規
+                    A->>D: y"},
+        );
+    }
+
+    /// A config object stays on its column when the column is renamed.
+    #[gpui::test]
+    async fn a_config_object_follows_a_rename(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                sequenceDiagramˇ
+                    participant A@{ \"type\": \"boundary\" }
+                    participant B
+                    A->>B: x
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let id = form(modal)
+                    .participants
+                    .first()
+                    .expect("A should have a row")
+                    .id
+                    .clone();
+                id.update(cx, |id, cx| id.set_text("境界", window, cx));
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                sequenceDiagram
+                    participant 境界@{ \"type\": \"boundary\" }
+                    participant B
+                    境界->>B: x"},
+        );
+    }
+
+    /// An id spelled with `#…;` opens, is shown as spelled, and an unedited
+    /// diagram is written back byte for byte.
+    #[gpui::test]
+    async fn an_id_with_an_entity_opens_and_is_left_alone(cx: &mut TestAppContext) {
+        let source = indoc! {"
+            ```mermaid
+            sequenceDiagramˇ
+                participant A#59;B
+                participant C
+                A#59;B->>C: x
+            ```
+        "};
+        let (mut cx, modal, _app_state) = open_on(source, cx).await;
+        let before = cx.update_editor(|editor, _window, cx| editor.text(cx));
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let shown = form(modal)
+                    .participants
+                    .first()
+                    .expect("the column should have a row")
+                    .id
+                    .read(cx)
+                    .text(cx);
+                assert_eq!(shown, "A#59;B");
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            cx.update_editor(|editor, _window, cx| editor.text(cx)),
+            before,
+            "an unedited diagram should be written back unchanged"
+        );
+        let message = cx.update(|_window, cx| modal.read(cx).message.clone());
+        assert_eq!(message, None, "confirming should not have been refused");
+    }
+}
+
+/// The flowchart leftovers of session mm: the edge id and `linkStyle` fields of
+/// an edge row, the `classDef` rows, and edges kept in their subgraph block.
+mod flowchart_flow2 {
+    use super::*;
+
+    fn set_text(field: &Entity<Editor>, text: &str, window: &mut Window, cx: &mut App) {
+        field.update(cx, |field, cx| field.set_text(text, window, cx));
+    }
+
+    fn edge_fields(modal: &MermaidEditor, index: usize) -> (Entity<Editor>, Entity<Editor>) {
+        let fields = flowchart(modal)
+            .edge_fields
+            .get(index)
+            .unwrap_or_else(|| panic!("edge {index} should have its fields"));
+        (fields.id.clone(), fields.style.clone())
+    }
+
+    fn class_def_fields(modal: &MermaidEditor, index: usize) -> (Entity<Editor>, Entity<Editor>) {
+        let row = flowchart(modal)
+            .class_defs
+            .get(index)
+            .unwrap_or_else(|| panic!("class definition {index} should have a row"));
+        (row.name.clone(), row.style.clone())
+    }
+
+    fn message(cx: &mut EditorTestContext, modal: &Entity<MermaidEditor>) -> Option<String> {
+        cx.update(|_window, cx| {
+            modal
+                .read(cx)
+                .message
+                .as_ref()
+                .map(|message| message.to_string())
+        })
+    }
+
+    #[gpui::test]
+    async fn renaming_an_edge_id_follows_into_its_metadata(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ e1@--> B
+                  B --> C
+                  e1@{ animate: true }
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let (first, _) = edge_fields(modal, 0);
+                let (second, _) = edge_fields(modal, 1);
+                set_text(&first, "e9", window, cx);
+                set_text(&second, "e2", window, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    C
+                    A e9@--> B
+                    B e2@--> C
+                  e9@{ animate: true }"},
+        );
+    }
+
+    /// Clearing the id and deleting the edge both leave the metadata statement
+    /// without its edge, and a statement left behind would declare a node of
+    /// that name. Renaming another edge onto the freed id must not pick it up
+    /// either.
+    #[gpui::test]
+    async fn metadata_goes_with_the_id_it_was_written_for(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ e1@--> B
+                  B e2@--> C
+                  C e3@--> D
+                  e1@{ animate: true }
+                  e2@{ animate: false }
+                  e3@{ curve: basis }
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                // `e2` goes, `e1` takes its name, and `e3` loses its id.
+                modal.remove_edge(1, cx);
+                let (first, _) = edge_fields(modal, 0);
+                let (last, _) = edge_fields(modal, 1);
+                set_text(&first, "e2", window, cx);
+                set_text(&last, "", window, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    C
+                    D
+                    A e2@--> B
+                    C --> D
+                  e2@{ animate: true }"},
+        );
+    }
+
+    #[gpui::test]
+    async fn an_edge_id_that_is_taken_is_refused(cx: &mut TestAppContext) {
+        let source = indoc! {"
+            ```mermaid
+            flowchart TD
+              Aˇ e1@--> B
+              B --> C
+            ```
+        "};
+        for (id, expected) in [
+            (
+                "B",
+                "つながりの ID「B」がノードまたはグループの ID と同じです。",
+            ),
+            ("e1", "つながりの ID「e1」が重複しています。"),
+            (
+                "e-2",
+                "2 番目のつながりの ID「e-2」は使えません (半角英数字と _ のみ、Mermaid の予約語は不可)。",
+            ),
+        ] {
+            let (mut cx, modal, _app_state) = open_on(source, cx).await;
+            let before = cx.update_editor(|editor, _window, cx| editor.text(cx));
+            cx.update(|window, cx| {
+                modal.update(cx, |modal, cx| {
+                    let (second, _) = edge_fields(modal, 1);
+                    set_text(&second, id, window, cx);
+                    modal.confirm(&menu::SecondaryConfirm, window, cx);
+                })
+            });
+            assert_eq!(
+                cx.update_editor(|editor, _window, cx| editor.text(cx)),
+                before,
+                "`{id}` must not be written back"
+            );
+            assert_eq!(message(&mut cx, &modal).as_deref(), Some(expected));
+        }
+    }
+
+    #[gpui::test]
+    async fn a_link_style_is_edited_added_and_removed_from_its_row(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  B --> C
+                  C --> D
+                  linkStyle 1 stroke:#f00;
+                  linkStyle 2 stroke:#0f0
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        let shown = cx.update(|_window, cx| {
+            modal.update(cx, |modal, cx| {
+                let (_, style) = edge_fields(modal, 1);
+                style.read(cx).text(cx)
+            })
+        });
+        assert_eq!(
+            shown, "stroke:#f00;",
+            "the field shows the statement as written"
+        );
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let (_, first) = edge_fields(modal, 0);
+                let (_, second) = edge_fields(modal, 1);
+                let (_, third) = edge_fields(modal, 2);
+                set_text(&first, "stroke:#00f,stroke-width:3px", window, cx);
+                set_text(&second, "", window, cx);
+                set_text(&third, "stroke:#0f0,stroke-dasharray:4", window, cx);
+                // The styling travels with its edge.
+                modal.move_edge(2, false, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    C
+                    D
+                    A --> B
+                    C --> D
+                    B --> C
+                    linkStyle 0 stroke:#00f,stroke-width:3px
+                    linkStyle 1 stroke:#0f0,stroke-dasharray:4"},
+        );
+    }
+
+    /// A statement naming several edges stays as it was written, and the edges
+    /// it names offer no field of their own: a second statement would apply
+    /// beside it.
+    #[gpui::test]
+    async fn an_edge_styled_by_a_shared_statement_has_no_style_field(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  B --> C
+                  C --> D
+                  linkStyle 0,2 stroke:#f00
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let form = flowchart(modal);
+                assert!(form.link_style_is_fixed(0));
+                assert!(!form.link_style_is_fixed(1));
+                assert!(form.link_style_is_fixed(2));
+                let fields = modal.fields();
+                let (_, fixed) = edge_fields(modal, 0);
+                let (_, free) = edge_fields(modal, 1);
+                assert!(
+                    !fields.contains(&fixed),
+                    "Tab must not reach a field that is not drawn"
+                );
+                assert!(fields.contains(&free));
+
+                // Typing into it anyway changes nothing.
+                set_text(&fixed, "stroke:#00f", window, cx);
+                set_text(&free, "stroke:#0f0", window, cx);
+                modal.move_edge(0, true, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        let body = fence_body(&mut cx);
+        assert!(
+            body.ends_with("    linkStyle 0 stroke:#0f0\n  linkStyle 1,2 stroke:#f00"),
+            "{body}"
+        );
+        assert!(!body.contains("#00f"), "{body}");
+    }
+
+    #[gpui::test]
+    async fn a_link_style_that_would_start_another_statement_is_refused(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                ```
+            "},
+            cx,
+        )
+        .await;
+        let before = cx.update_editor(|editor, _window, cx| editor.text(cx));
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let (_, style) = edge_fields(modal, 0);
+                set_text(&style, "stroke:#f00; A --> Z", window, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            cx.update_editor(|editor, _window, cx| editor.text(cx)),
+            before
+        );
+        assert_eq!(
+            message(&mut cx, &modal).as_deref(),
+            Some(
+                "1 番目のつながりの線のスタイルに使えない文字があります (; や %% 、閉じていない引用符、末尾の {、先頭のカンマ)。"
+            )
+        );
+    }
+
+    #[gpui::test]
+    async fn renaming_a_class_definition_renames_the_class(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ:::warn --> B
+                  C
+                  class B warn
+                  classDef warn fill:#f96
+                  classDef ok stroke:#3f3
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let (name, style) = class_def_fields(modal, 0);
+                set_text(&name, "alert", window, cx);
+                set_text(&style, "fill:#f66", window, cx);
+                // The menus offer the new name, and ticking it on a node that
+                // did not have the class assigns the definition being renamed.
+                assert!(modal.class_candidates(cx).contains(&"alert".to_string()));
+                assert!(!modal.class_candidates(cx).contains(&"warn".to_string()));
+                modal.toggle_class(ClassTarget::Node, 2, "alert", cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    C
+                    A --> B
+                    class A alert
+                    class B alert
+                    class C alert
+                    classDef alert fill:#f66
+                    classDef ok stroke:#3f3"},
+        );
+    }
+
+    /// Deleting a definition leaves the class on the nodes that carry it: a
+    /// class without a definition is still valid, and a `themeCSS` directive
+    /// may be what styles it.
+    #[gpui::test]
+    async fn class_definitions_are_added_moved_and_removed(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  class A warn
+                  classDef warn fill:#f96
+                  classDef ok stroke:#3f3
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        let removed = cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let (name, style) = class_def_fields(modal, 0);
+                modal.remove_class_def(0, cx);
+                modal.add_class_def(window, cx);
+                let (added_name, added_style) = class_def_fields(modal, 1);
+                set_text(&added_name, "強調", window, cx);
+                set_text(&added_style, "stroke-width:4px", window, cx);
+                modal.move_class_def(1, false, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+                vec![name.downgrade(), style.downgrade()]
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    A --> B
+                    class A warn
+                    classDef 強調 stroke-width:4px
+                    classDef ok stroke:#3f3"},
+        );
+        drop(modal);
+        cx.run_until_parked();
+        for field in removed {
+            field.assert_released();
+        }
+    }
+
+    #[gpui::test]
+    async fn a_class_definition_name_that_is_taken_or_unreadable_is_refused(
+        cx: &mut TestAppContext,
+    ) {
+        let source = indoc! {"
+            ```mermaid
+            flowchart TD
+              Aˇ --> B
+              classDef warn fill:#f96
+              classDef ok stroke:#3f3
+            ```
+        "};
+        for (name, expected) in [
+            ("warn", "クラス定義「warn」が重複しています。"),
+            ("", "名前が空のクラス定義があります。"),
+            (
+                "a,b",
+                "クラス定義の名前「a,b」は使えません (空白や , ; : # % などの記号は不可)。",
+            ),
+        ] {
+            let (mut cx, modal, _app_state) = open_on(source, cx).await;
+            let before = cx.update_editor(|editor, _window, cx| editor.text(cx));
+            cx.update(|window, cx| {
+                modal.update(cx, |modal, cx| {
+                    let (field, _) = class_def_fields(modal, 1);
+                    set_text(&field, name, window, cx);
+                    modal.confirm(&menu::SecondaryConfirm, window, cx);
+                })
+            });
+            assert_eq!(
+                cx.update_editor(|editor, _window, cx| editor.text(cx)),
+                before,
+                "`{name}` must not be written back"
+            );
+            assert_eq!(message(&mut cx, &modal).as_deref(), Some(expected));
+        }
+    }
+
+    /// `classDef default` styles every node rather than naming a class, so its
+    /// name is not a field at all.
+    #[gpui::test]
+    async fn the_default_class_definition_keeps_its_name(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  classDef default fill:#eee
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let (name, style) = class_def_fields(modal, 0);
+                let fields = modal.fields();
+                assert!(!fields.contains(&name));
+                assert!(fields.contains(&style));
+                set_text(&name, "other", window, cx);
+                set_text(&style, "fill:#ddd", window, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert!(
+            fence_body(&mut cx).ends_with("    classDef default fill:#ddd"),
+            "{}",
+            fence_body(&mut cx)
+        );
+    }
+
+    /// A `classDef` naming two classes cannot be a row, and moving only the
+    /// others would reorder the styles, so none of them is a row and all stay
+    /// as written.
+    #[gpui::test]
+    async fn class_definitions_the_form_cannot_hold_stay_as_written(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  classDef warn fill:#f96
+                  classDef ok,done stroke:#3f3
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                assert!(flowchart(modal).class_defs.is_empty());
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert!(
+            fence_body(&mut cx)
+                .ends_with("  classDef warn fill:#f96\n  classDef ok,done stroke:#3f3"),
+            "{}",
+            fence_body(&mut cx)
+        );
+    }
+
+    #[gpui::test]
+    async fn an_edge_stays_in_its_block_through_the_form(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  subgraph g [まとまり]
+                    Aˇ --> B
+                  end
+                  B --> C
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let Some(label) = flowchart(modal).edge_labels.first().cloned() else {
+                    panic!("the diagram should have an edge");
+                };
+                set_text(&label, "中", window, cx);
+                let Some(row) = flowchart(modal).subgraphs.first() else {
+                    panic!("the diagram should have a group");
+                };
+                let id = row.id.clone();
+                set_text(&id, "group", window, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    C
+                    subgraph group [まとまり]
+                        B
+                        A
+                        A -->|中| B
+                    end
+                    B --> C"},
+        );
+    }
+
+    /// A nested group is a member of its parent under its own id, so deleting
+    /// the group has to take that membership too; left behind, the id came
+    /// back as a node.
+    #[gpui::test]
+    async fn removing_a_nested_group_leaves_no_node_behind(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  subgraph outer [外]
+                    subgraph inner [内]
+                      Aˇ --> B
+                    end
+                    C
+                  end
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let inner = flowchart(modal)
+                    .document
+                    .subgraphs
+                    .iter()
+                    .position(|group| group.id == "inner")
+                    .expect("the inner group should have a row");
+                modal.remove_subgraph(inner, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        let body = fence_body(&mut cx);
+        let Ok(MermaidDocument::Flowchart(document)) = parse_document(&body) else {
+            panic!("the fence should reopen:\n{body}");
+        };
+        assert_eq!(
+            document
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A", "B", "C"],
+            "{body}"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_deleted_edge_releases_its_id_and_style_fields(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  B --> C
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        let removed = cx.update(|_window, cx| {
+            modal.update(cx, |modal, cx| {
+                let (id, style) = edge_fields(modal, 0);
+                modal.remove_edge(0, cx);
+                assert_eq!(flowchart(modal).edge_fields.len(), 1);
+                vec![id.downgrade(), style.downgrade()]
+            })
+        });
+        cx.run_until_parked();
+        for field in removed {
+            field.assert_released();
+        }
+    }
+
+    /// The menu shows a renamed definition under its new name while the node
+    /// still holds the old one, so unticking the new name has to take the old
+    /// one off.
+    #[gpui::test]
+    async fn unticking_a_renamed_class_removes_it(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  class A warn
+                  classDef warn fill:#f96
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let (name, _) = class_def_fields(modal, 0);
+                set_text(&name, "alert", window, cx);
+                modal.toggle_class(ClassTarget::Node, 0, "alert", cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    A --> B
+                    classDef alert fill:#f96"},
+        );
+    }
+
+    /// Deleting one edge and moving another in the same sitting: a carried
+    /// statement goes with its edge and disappears with it, and a statement kept
+    /// verbatim is renumbered from where each edge came from.
+    #[gpui::test]
+    async fn link_styles_follow_a_deletion_and_a_move_together(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  B --> C
+                  C --> D
+                  D --> E
+                  linkStyle 0,3 stroke:#f00
+                  linkStyle 1 stroke:#00f
+                  linkStyle 2 stroke:#0f0
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                modal.remove_edge(1, cx);
+                modal.move_edge(2, false, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    C
+                    D
+                    E
+                    A --> B
+                    D --> E
+                    C --> D
+                    linkStyle 2 stroke:#0f0
+                  linkStyle 0,1 stroke:#f00"},
         );
     }
 }

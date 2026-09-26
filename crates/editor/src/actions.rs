@@ -416,6 +416,9 @@ pub enum MermaidDiagramKind {
     GitGraph,
     Mindmap,
     Timeline,
+    Journey,
+    QuadrantChart,
+    XyChart,
 }
 
 /// Inserts a fenced Mermaid diagram template while in Markdown files.
