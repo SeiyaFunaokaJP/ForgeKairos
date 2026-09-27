@@ -212,8 +212,96 @@ fn hide_collab_actions_from_command_palette(cx: &mut App) {
             TypeId::of::<workspace::ShareProject>(),
             TypeId::of::<workspace::ScreenShare>(),
             TypeId::of::<workspace::CopyRoomId>(),
+            TypeId::of::<zed_actions::ShowCallStats>(),
         ]);
+        filter.hide_namespace("collab_panel");
+        filter.hide_namespace("channel_modal");
     });
+}
+
+/// ADR-F06: the default keymaps keep upstream's `collab_panel` / `channel_modal` bindings
+/// untouched so that upstream merges do not conflict there, but `collab_ui`, which owns those
+/// actions, is not built. `load_default_keymap` unwraps on an unknown action name, so the names
+/// are registered here with no handler: a bound key falls through to the next binding, as it did
+/// upstream whenever the collab panel was not open.
+mod excluded_collab_actions {
+    gpui::actions!(
+        collab_panel,
+        [
+            Toggle,
+            ToggleFocus,
+            Remove,
+            Secondary,
+            CollapseSelectedChannel,
+            ExpandSelectedChannel,
+            OpenSelectedChannelNotes,
+            ToggleSelectedChannelFavorite,
+            StartMoveChannel,
+            MoveSelected,
+            InsertSpace,
+            MoveChannelUp,
+            MoveChannelDown,
+        ]
+    );
+
+    gpui::actions!(
+        channel_modal,
+        [
+            SelectNextControl,
+            ToggleMode,
+            ToggleMemberAdmin,
+            RemoveMember
+        ]
+    );
+
+    #[cfg(test)]
+    mod tests {
+        use gpui::TestAppContext;
+
+        // Only the running platform's keymap is bundled, so read all three from the source tree.
+        const DEFAULT_KEYMAPS: [(&str, &str); 3] = [
+            (
+                "default-linux.json",
+                include_str!("../../../assets/keymaps/default-linux.json"),
+            ),
+            (
+                "default-macos.json",
+                include_str!("../../../assets/keymaps/default-macos.json"),
+            ),
+            (
+                "default-windows.json",
+                include_str!("../../../assets/keymaps/default-windows.json"),
+            ),
+        ];
+
+        #[gpui::test]
+        fn every_platform_keymap_names_only_registered_collab_actions(cx: &mut TestAppContext) {
+            let registered = cx.update(|cx| {
+                cx.all_action_names()
+                    .iter()
+                    .map(|name| name.to_string())
+                    .collect::<collections::HashSet<_>>()
+            });
+            let mut checked = 0;
+            for (path, keymap) in DEFAULT_KEYMAPS {
+                for quoted in keymap.split('"') {
+                    if quoted.starts_with("collab_panel::") || quoted.starts_with("channel_modal::")
+                    {
+                        checked += 1;
+                        assert!(
+                            registered.contains(quoted),
+                            "{path} binds `{quoted}`, which `excluded_collab_actions` does not \
+                             register; add it there or loading the default keymap panics"
+                        );
+                    }
+                }
+            }
+            assert!(
+                checked > 0,
+                "the default keymaps no longer bind any collab action"
+            );
+        }
+    }
 }
 
 pub fn init(cx: &mut App) {
@@ -6068,12 +6156,11 @@ mod tests {
                 "branches",
                 "browser_panel",
                 "buffer_search",
+                "channel_modal",
                 "cli",
                 "client",
-                // docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): `collab_ui` / `call` 除去により
-                // `channel_modal` / `collab_panel` 名前空間は消えた。`collab` は
-                // `title_bar` のユーザーメニュー系アクションが使い続けている
                 "collab",
+                "collab_panel",
                 "command_palette",
                 "console",
                 "context_server",

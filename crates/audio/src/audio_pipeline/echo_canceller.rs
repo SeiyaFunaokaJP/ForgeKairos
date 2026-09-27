@@ -1,16 +1,62 @@
-// docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): 音響エコーキャンセラー (AEC) の実体は
-// LiveKit の `libwebrtc` (WebRTC APM) 実装だけだった。本フォークは通話機能を除去したので
-// マイク入力とスピーカー出力が同時に走る経路が存在せず、AEC は不要。
-// upstream が windows-gnu / FreeBSD 向けに持っていた no-op 実装を全ターゲットの唯一の
-// 実装に格上げして `libwebrtc` 依存を切っている (これが `webrtc-sys` の prebuilt
-// static lib = MSVC 14.43 STL シンボル要求の出所だった)。
-//
-// 出力ミキサーは今もこの型を通す (`audio_pipeline.rs::open_output_stream`) ので、
-// 通話を復活させるならここを差し戻すだけでよい。
+// docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): the real canceller is LiveKit's `libwebrtc` APM,
+// whose prebuilt `webrtc-sys` library is what the fork drops from the build. Without calls the
+// microphone and the speakers never run together, so every target uses the no-op canceller
+// upstream keeps for windows-gnu and FreeBSD. `cfg(any())` switches the real one off instead of
+// deleting it, so upstream edits to it still merge.
+#[cfg(any())]
+#[cfg(not(any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")))]
+mod real_implementation {
+    use anyhow::Context;
+    use libwebrtc::native::apm;
+    use parking_lot::Mutex;
+    use std::sync::Arc;
 
-#[derive(Clone, Default)]
-pub struct EchoCanceller;
+    use crate::{CHANNEL_COUNT, SAMPLE_RATE};
 
-impl EchoCanceller {
-    pub fn process_reverse_stream(&mut self, _buf: &mut [i16]) {}
+    #[derive(Clone)]
+    pub struct EchoCanceller(Arc<Mutex<apm::AudioProcessingModule>>);
+
+    impl Default for EchoCanceller {
+        fn default() -> Self {
+            // Sound-effect playback only feeds this APM through `process_reverse_stream`
+            // for AEC reference; gain/HPF/NS would be no-ops here, so we keep the
+            // original (echo only) configuration via the legacy flag form.
+            Self(Arc::new(Mutex::new(
+                apm::AudioProcessingModule::from_flags(true, false, false, false),
+            )))
+        }
+    }
+
+    impl EchoCanceller {
+        pub fn process_reverse_stream(&mut self, buf: &mut [i16]) {
+            self.0
+                .lock()
+                .process_reverse_stream(buf, SAMPLE_RATE.get() as i32, CHANNEL_COUNT.get().into())
+                .expect("Audio input and output threads should not panic");
+        }
+
+        pub fn process_stream(&mut self, buf: &mut [i16]) -> anyhow::Result<()> {
+            self.0
+                .lock()
+                .process_stream(buf, SAMPLE_RATE.get() as i32, CHANNEL_COUNT.get() as i32)
+                .context("livekit audio processor error")
+        }
+    }
 }
+
+mod fake_implementation {
+    #[derive(Clone, Default)]
+    pub struct EchoCanceller;
+
+    impl EchoCanceller {
+        pub fn process_reverse_stream(&mut self, _buf: &mut [i16]) {}
+        pub fn process_stream(&mut self, _buf: &mut [i16]) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+}
+
+pub use fake_implementation::EchoCanceller;
+#[cfg(any())]
+#[cfg(not(any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")))]
+pub use real_implementation::EchoCanceller;

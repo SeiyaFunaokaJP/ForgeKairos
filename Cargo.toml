@@ -272,6 +272,9 @@ members = [
 
 # docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): collab / LiveKit の除去。
 # ソースは休眠参照として残すが、ワークスペースからは外して依存グラフに載せない。
+# `[workspace.dependencies]` の同名の行は upstream のまま残す (どこからも継承されない行は
+# 解決されない)。members と `[patch]` の行は消すしかないので、merge の衝突は
+# script/resolve-cargo-conflicts.ps1 が解く。
 exclude = [
     "crates/call",
     "crates/collab",
@@ -313,6 +316,7 @@ bedrock = { path = "crates/bedrock" }
 breadcrumbs = { path = "crates/breadcrumbs" }
 browser_panel = { path = "crates/browser_panel" }
 buffer_diff = { path = "crates/buffer_diff" }
+call = { path = "crates/call" }
 channel = { path = "crates/channel" }
 cli = { path = "crates/cli" }
 client = { path = "crates/client" }
@@ -321,6 +325,8 @@ cloud_api_client = { path = "crates/cloud_api_client" }
 cloud_api_types = { path = "crates/cloud_api_types" }
 cloud_llm_client = { path = "crates/cloud_llm_client" }
 codestral = { path = "crates/codestral" }
+collab = { path = "crates/collab" }
+collab_ui = { path = "crates/collab_ui" }
 collections = { path = "crates/collections", version = "0.1.0" }
 command_palette = { path = "crates/command_palette" }
 command_palette_hooks = { path = "crates/command_palette_hooks" }
@@ -416,6 +422,8 @@ language_selector = { path = "crates/language_selector" }
 language_tools = { path = "crates/language_tools" }
 languages = { path = "crates/languages" }
 line_ending_selector = { path = "crates/line_ending_selector" }
+livekit_api = { path = "crates/livekit_api" }
+livekit_client = { path = "crates/livekit_client" }
 llama_cpp = { path = "crates/llama_cpp" }
 lmstudio = { path = "crates/lmstudio" }
 lsp = { path = "crates/lsp" }
@@ -693,7 +701,9 @@ jupyter-protocol = "1.4.0"
 jupyter-websocket-client = "1.1.0"
 libc = "0.2"
 libsqlite3-sys = { version = "0.30.1", features = ["bundled"] }
+libwebrtc = "0.3.26"
 linkify = "0.10.0"
+livekit = { version = "0.7.32", features = ["tokio", "rustls-tls-native-roots"] }
 log = { version = "0.4.16", features = ["kv_unstable_serde", "serde"] }
 lru = "0.16"
 lsp-types = { git = "https://github.com/zed-industries/lsp-types", rev = "f4dfa89a21ca35cd929b70354b1583fabae325f8" }
