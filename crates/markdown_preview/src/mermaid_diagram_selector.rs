@@ -211,6 +211,10 @@ mod tests {
             ("ジャーニー", MermaidDiagramKind::Journey),
             ("象限", MermaidDiagramKind::QuadrantChart),
             ("gantt", MermaidDiagramKind::Gantt),
+            ("c4", MermaidDiagramKind::C4),
+            ("sankey", MermaidDiagramKind::Sankey),
+            ("特性要因", MermaidDiagramKind::Ishikawa),
+            ("eventmodeling", MermaidDiagramKind::EventModeling),
         ] {
             let found = matching_diagrams(query);
             assert!(found.contains(&expected), "`{query}` found {found:?}");

@@ -43,7 +43,6 @@ use std::fmt::Write as _;
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
 use merman::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessagePayload};
-use merman::{Engine, ParseOptions};
 
 use crate::flowchart_model::{PreservedLine, PreservedPosition};
 
@@ -1035,6 +1034,9 @@ pub fn is_sequence_source(source: &str) -> bool {
 /// Reads `source` — the body of a ```` ```mermaid ```` fence — into an
 /// editable document.
 pub fn parse_sequence(source: &str) -> Result<SequenceDocument> {
+    if let Some(problem) = crate::mermaid_model::preprocessing_problem_for_parsed_labels(source) {
+        bail!("{problem}");
+    }
     let scan = scan_source(source)?;
     if let Some(problem) = unsupported_construct(&scan.statements) {
         bail!("{problem}");
@@ -1050,9 +1052,7 @@ pub fn parse_sequence(source: &str) -> Result<SequenceDocument> {
         });
     }
 
-    let engine = Engine::new();
-    let parsed = engine
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+    let parsed = crate::parse_for_render_model(source)
         .map_err(|error| anyhow!("{error}"))?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
     let RenderSemanticModel::Sequence(model) = parsed.model else {
@@ -2178,6 +2178,19 @@ fn unsupported_construct(statements: &[String]) -> Option<String> {
         destroyed.push(id);
     }
 
+    // `merman` keeps only the last `title`, so the model would drop the others
+    // on the way out.
+    if statements
+        .iter()
+        .filter(|statement| is_title_statement(statement.trim_start()))
+        .count()
+        > 1
+    {
+        return Some(
+            "`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。".to_string(),
+        );
+    }
+
     for statement in statements {
         if let Some(offset) = comment_start(statement) {
             let comment = statement.get(offset..).unwrap_or_default();
@@ -2187,6 +2200,18 @@ fn unsupported_construct(statements: &[String]) -> Option<String> {
         }
     }
     None
+}
+
+/// Whether `statement` is read as the diagram's title: `title:` or `title`
+/// and whitespace, in any case, the way `merman`'s lexer reads it.
+fn is_title_statement(statement: &str) -> bool {
+    let Some(keyword) = statement.get(..5) else {
+        return false;
+    };
+    let rest = statement.get(5..).unwrap_or_default();
+    keyword.eq_ignore_ascii_case("title")
+        && (rest.starts_with(':')
+            || rest.starts_with(|character: char| character.is_ascii_whitespace()))
 }
 
 /// `line` cut at every `;` that ends a statement. The `;` closing a `#…;`
@@ -4366,5 +4391,68 @@ mod tests {
         );
         assert_stable(source);
         assert_renders(&emitted);
+    }
+
+    /// `merman` keeps the last of two titles; the first would be dropped
+    /// without a word by the first confirm.
+    #[test]
+    fn a_second_title_is_refused() {
+        for source in [
+            "sequenceDiagram
+    title A
+    title B
+    A->>B: x",
+            "sequenceDiagram
+    title: A
+    TITLE B
+    A->>B: x",
+        ] {
+            let error = parse_sequence(source)
+                .err()
+                .map(|error| error.to_string())
+                .unwrap_or_default();
+            assert!(error.contains("`title` が 2 回"), "{source}: {error:?}");
+        }
+        for source in [
+            "sequenceDiagram
+    title A
+    A->>B: x",
+            "sequenceDiagram
+    title: A
+    A->>B: titles
+    Note over A: title B",
+        ] {
+            let document = parse_sequence(source)
+                .unwrap_or_else(|error| panic!("{source} should open: {error}"));
+            assert_eq!(document.title.as_deref(), Some("A"));
+        }
+    }
+
+    #[test]
+    fn statements_merman_reads_around_a_directive_are_refused() {
+        crate::mermaid_model::preprocessing_cases::assert_directive_rules(
+            "sequenceDiagram",
+            "A->>B: hi",
+            "A %%{init: {}}%% ->>B: hi",
+        );
+    }
+
+    /// The `%` of a `%%` is written as an entity, so a message can hold a
+    /// `%%{` and still be read back as itself.
+    #[test]
+    fn a_directive_opener_in_a_message_is_written_encoded() {
+        let mut document =
+            parse_sequence("%%{init: {}}%%\nsequenceDiagram\n    A->>B: hi").expect("should open");
+        let SequenceItem::Message(message) = &mut document.items[0] else {
+            panic!("expected a message: {:?}", document.items);
+        };
+        message.text = "a %%{init: {}}%% b".to_string();
+        let whole = crate::mermaid_model::MermaidDocument::Sequence(document.clone());
+        assert_eq!(whole.structure_error(), None);
+        let emitted = emit_sequence(&document);
+        crate::render_to_svg(&emitted, &crate::MermaidTheme::default())
+            .expect("the emitted diagram should render");
+        let again = parse_sequence(&emitted).expect("the emitted diagram should reopen");
+        assert_eq!(again.items, document.items);
     }
 }

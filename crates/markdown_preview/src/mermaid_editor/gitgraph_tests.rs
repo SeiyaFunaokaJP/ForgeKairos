@@ -319,3 +319,39 @@ async fn a_rename_passing_through_a_taken_name_keeps_the_rows_apart(cx: &mut Tes
         "#},
     );
 }
+
+/// An id ending in `=` after a `<`, and a tag holding the next `>`: each is a
+/// fine field, but on one line `merman` turns the `="` into `='` and reads the
+/// tag into the id. The fence is left alone and the reason is shown.
+#[gpui::test]
+async fn fields_whose_quotes_merman_would_rewrite_are_not_written(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(TEMPLATE_FENCE, cx).await;
+    let before = cx.update_editor(|editor, _window, cx| editor.text(cx));
+
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            let GitItemRow::Commit { id, tag } = row(modal, 0) else {
+                panic!("row 0 should be a commit");
+            };
+            let (id, tag) = (id.clone(), tag.clone());
+            id.update(cx, |id, cx| id.set_text("a<b=", window, cx));
+            let Some(tag) = tag else {
+                panic!("the commit should have a tag field");
+            };
+            tag.update(cx, |tag, cx| tag.set_text("c>", window, cx));
+            modal.confirm(&menu::SecondaryConfirm, window, cx);
+        })
+    });
+
+    assert_eq!(
+        cx.update_editor(|editor, _window, cx| editor.text(cx)),
+        before
+    );
+    let message = cx.update(|_window, cx| modal.read(cx).message.clone());
+    assert!(
+        message
+            .as_deref()
+            .is_some_and(|message| message.contains("'")),
+        "the modal should say the quotes would move, got {message:?}"
+    );
+}

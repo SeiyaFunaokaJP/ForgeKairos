@@ -28,7 +28,6 @@ use std::fmt::Write as _;
 
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
-use merman::{Engine, ParseOptions};
 
 use crate::flowchart_model::{FlowDirection, PreservedLine, PreservedPosition};
 use crate::mermaid_model::{
@@ -284,10 +283,11 @@ fn header_keyword(line: &str) -> Option<StateKeyword> {
 /// Reads `source` — the body of a ```` ```mermaid ```` fence — into an editable
 /// document.
 pub fn parse_state(source: &str) -> Result<StateDocument> {
+    if let Some(problem) = crate::mermaid_model::preprocessing_problem(source) {
+        bail!("{problem}");
+    }
     if !source.trim().is_empty() {
-        let engine = Engine::new();
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
@@ -1116,17 +1116,31 @@ fn encode_quoted(text: &str) -> String {
     })
 }
 
+/// A `#…;` the model holds as written — `#amp;`, `#9829;` and the rest that
+/// [`decode_entities`] leaves alone — is copied as it is: Mermaid decodes it
+/// when it draws the label, and encoding its `;` would draw the spelling
+/// instead.
 fn encode(text: &str, entity: impl Fn(char) -> Option<&'static str>) -> String {
     let mut out = String::with_capacity(text.len());
-    let mut characters = text.chars().peekable();
-    while let Some(character) = characters.next() {
+    let mut characters = text.char_indices().peekable();
+    while let Some((offset, character)) = characters.next() {
+        if let Some(length) = text.get(offset..).and_then(entity_length) {
+            out.push_str(text.get(offset..offset + length).unwrap_or_default());
+            while characters
+                .peek()
+                .is_some_and(|(next, _)| *next < offset + length)
+            {
+                characters.next();
+            }
+            continue;
+        }
         if let Some(entity) = entity(character) {
             out.push_str(entity);
             continue;
         }
         match character {
             '\r' => {
-                if characters.peek() == Some(&'\n') {
+                if characters.peek().is_some_and(|(_, next)| *next == '\n') {
                     characters.next();
                 }
                 out.push_str("<br/>");
@@ -1203,7 +1217,7 @@ pub fn is_valid_style_class(name: &str) -> bool {
 /// itself trims them, so a text this rejects is one the picture would not show
 /// either.
 pub fn is_valid_note_text(text: &str) -> bool {
-    if text.contains('\r') {
+    if text.contains('\r') || crate::mermaid_model::opens_directive(text) {
         return false;
     }
     if !text.contains('\n') {
@@ -1886,5 +1900,77 @@ mod tests {
                 .starts_with("%%{init"),
             "the init directive must stay before the diagram keyword:\n{emitted}"
         );
+    }
+
+    #[test]
+    fn statements_merman_reads_around_a_directive_are_refused() {
+        crate::mermaid_model::preprocessing_cases::assert_directive_rules(
+            "stateDiagram-v2",
+            "A --> B",
+            "A %%{init: {}}%% --> B",
+        );
+    }
+
+    /// An SVG with the per-render `merman-<n>` ids taken out, so two
+    /// renderings of one picture compare equal.
+    fn without_render_ids(svg: &str) -> String {
+        let mut out = String::with_capacity(svg.len());
+        let mut rest = svg;
+        while let Some(position) = rest.find("merman-") {
+            let (head, tail) = rest.split_at(position + "merman-".len());
+            out.push_str(head);
+            rest = tail.trim_start_matches(|character: char| character.is_ascii_digit());
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// Entities the model does not decode are held as written; their `;` is
+    /// not a separator, so escaping it would draw `#amp;` instead of `&`.
+    #[test]
+    fn entities_in_a_label_are_written_back_as_they_were() {
+        for source in [
+            "stateDiagram-v2\n    A --> B : a #amp; b #9829; #37;",
+            "stateDiagram-v2\n    A : 説明 #lt;b#gt; と #amp;",
+            "stateDiagram-v2\n    state \"#amp; と #quot;\" as A",
+        ] {
+            let document = parse_state(source).expect("the diagram should open");
+            let emitted = emit_state(&document);
+            let drawn = crate::render_to_svg(source, &crate::MermaidTheme::default())
+                .expect("the source should render");
+            let redrawn = crate::render_to_svg(&emitted, &crate::MermaidTheme::default())
+                .expect("the emitted diagram should render");
+            assert_eq!(
+                without_render_ids(&redrawn),
+                without_render_ids(&drawn),
+                "{source}\n->\n{emitted}"
+            );
+            assert_eq!(
+                emit_state(&parse_state(&emitted).expect("the emitted diagram should reopen")),
+                emitted
+            );
+        }
+    }
+
+    #[test]
+    fn text_that_would_open_a_directive_cannot_be_written() {
+        assert!(!is_valid_note_text("a %%{init: {}}%% b"));
+        assert!(is_valid_note_text("50% と 100%%"));
+
+        let mut document =
+            parse_state("stateDiagram-v2\n    A --> B").expect("the diagram should open");
+        let StateItem::Transition(transition) = &mut document.body.items[0] else {
+            panic!("expected a transition: {:?}", document.body.items);
+        };
+        transition.label = Some("x %%{init: {}}%% y".to_string());
+        let whole = crate::mermaid_model::MermaidDocument::State(document.clone());
+        assert!(whole.structure_error().is_some());
+
+        let StateItem::Transition(transition) = &mut document.body.items[0] else {
+            panic!("expected a transition");
+        };
+        transition.label = Some("<b class=\"x\">太字</b>".to_string());
+        let whole = crate::mermaid_model::MermaidDocument::State(document);
+        assert_eq!(whole.structure_error(), None);
     }
 }

@@ -334,7 +334,11 @@ pub fn deploy_context_menu(
                             Box::new(EditMermaid),
                         )
                         .submenu("Mermaid 図を挿入", |mut menu, _window, _cx| {
-                            for diagram in MermaidDiagramKind::ALL {
+                            for (index, diagram) in MermaidDiagramKind::ALL.into_iter().enumerate()
+                            {
+                                if index == MermaidDiagramKind::EVERYDAY_COUNT {
+                                    menu = menu.separator();
+                                }
                                 menu = menu.action(
                                     diagram.label(),
                                     Box::new(InsertMermaidDiagram { diagram }),

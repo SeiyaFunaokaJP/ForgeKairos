@@ -416,19 +416,19 @@ fn items_problem(items: &[ClassItem]) -> Option<SharedString> {
             ClassItem::Class(declaration) => class_problem(declaration),
             ClassItem::Member { text, .. } => (!is_valid_member_text(text)).then(|| {
                 SharedString::from(format!(
-                    "メンバー「{text}」は使えません (前後の空白と `}}` だけの行は不可)。"
+                    "メンバー「{text}」は使えません (前後の空白、`%%{{` と `}}` だけの行は不可)。"
                 ))
             }),
             ClassItem::Annotation { annotation, .. } => {
                 (!is_valid_annotation(annotation)).then(|| {
                     SharedString::from(format!(
-                        "注釈「{annotation}」は使えません (`<`・`>`・`\"` と前後の空白は不可)。"
+                        "注釈「{annotation}」は使えません (`<`・`>`・`\"`・`%%` と前後の空白は不可)。"
                     ))
                 })
             }
             ClassItem::Relation(relation) => relation_problem(relation),
             ClassItem::Note(note) => (!is_valid_quoted_text(&note.text)).then(|| {
-                SharedString::from("ノートの本文に `\"` と改行は使えません。".to_string())
+                SharedString::from("ノートの本文に `\"`・`%%{` と改行は使えません。".to_string())
             }),
             ClassItem::Namespace(namespace) => match is_valid_class_name(&namespace.name) {
                 false => Some(match namespace.name.is_empty() {
@@ -441,7 +441,7 @@ fn items_problem(items: &[ClassItem]) -> Option<SharedString> {
                     .label
                     .as_ref()
                     .filter(|label| !is_valid_quoted_text(label))
-                    .map(|_| SharedString::from("`namespace` の表示名に `\"` は使えません。"))
+                    .map(|_| SharedString::from("`namespace` の表示名に `\"` と `%%{` は使えません。"))
                     .or_else(|| items_problem(&namespace.items)),
             },
             ClassItem::Preserved(_) => None,
@@ -462,7 +462,7 @@ fn class_problem(declaration: &ClassDecl) -> Option<SharedString> {
     if let Some(label) = &declaration.label
         && !is_valid_quoted_text(label)
     {
-        return Some("クラスの表示名に `\"` と改行は使えません。".into());
+        return Some("クラスの表示名に `\"`・`%%{` と改行は使えません。".into());
     }
     declaration
         .members
@@ -471,7 +471,7 @@ fn class_problem(declaration: &ClassDecl) -> Option<SharedString> {
         .find(|member| !is_valid_block_member_text(member))
         .map(|member| {
             SharedString::from(format!(
-                "メンバー「{member}」は使えません (`}}` で始まる行と前後の空白は不可)。"
+                "メンバー「{member}」は使えません (`}}` で始まる行、`%%{{` と前後の空白は不可)。"
             ))
         })
 }
@@ -493,14 +493,14 @@ fn relation_problem(relation: &ClassRelation) -> Option<SharedString> {
         .flatten()
     {
         if !is_valid_quoted_text(cardinality) {
-            return Some("多重度に `\"` と改行は使えません。".into());
+            return Some("多重度に `\"`・`%%{` と改行は使えません。".into());
         }
     }
     relation
         .label
         .as_ref()
         .filter(|label| !is_valid_relation_label(label))
-        .map(|_| SharedString::from("関係のラベルに改行と前後の空白は使えません。"))
+        .map(|_| SharedString::from("関係のラベルに改行・`%%{` と前後の空白は使えません。"))
 }
 
 /// The items a path addresses: each element steps into the namespace at that
@@ -2346,7 +2346,7 @@ mod tests {
         let message = cx.update(|_window, cx| modal.read(cx).message.clone());
         assert_eq!(
             message.as_deref(),
-            Some("ノートの本文に `\"` と改行は使えません。")
+            Some("ノートの本文に `\"`・`%%{` と改行は使えません。")
         );
     }
 

@@ -164,11 +164,14 @@
     "body": [
       "```mermaid",
       "journey",
+      "    %% 作業 : 満足度 (1〜5) : 関わる人",
       "    title ${1:購入までの流れ}",
       "    section ${2:探す}",
       "      ${3:商品を検索する}: ${4:4}: ${5:利用者}",
+      "      比較する: 3: 利用者",
       "    section ${6:買う}",
-      "      ${7:支払う}: ${8:2}: ${5:利用者}",
+      "      カートに入れる: 5: 利用者",
+      "      ${7:支払う}: ${8:2}: ${9:利用者, 店舗}",
       "```",
       "$0"
     ]
@@ -179,6 +182,7 @@
     "body": [
       "```mermaid",
       "quadrantChart",
+      "    %% 点は 名前: [横, 縦] で、どちらも 0〜1",
       "    title ${1:施策の優先度}",
       "    x-axis ${2:労力が小さい} --> ${3:労力が大きい}",
       "    y-axis ${4:効果が小さい} --> ${5:効果が大きい}",
@@ -187,6 +191,8 @@
       "    quadrant-3 ${8:後回し}",
       "    quadrant-4 ${9:見直す}",
       "    ${10:施策A}: [${11:0.3}, ${12:0.8}]",
+      "    施策B: [0.7, 0.6]",
+      "    施策C: [0.2, 0.3]",
       "```",
       "$0"
     ]
@@ -197,11 +203,232 @@
     "body": [
       "```mermaid",
       "xychart-beta",
+      "    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える",
       "    title ${1:月別の売上}",
-      "    x-axis [${2:\"1月\", \"2月\", \"3月\"}]",
+      "    x-axis [${2:\"1月\", \"2月\", \"3月\", \"4月\"}]",
       "    y-axis \"${3:売上 (万円)}\" ${4:0} --> ${5:100}",
-      "    bar [${6:30, 45, 60}]",
-      "    line [${7:30, 45, 60}]",
+      "    bar [${6:30, 45, 60, 80}]",
+      "    line [${7:30, 45, 60, 80}]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid レーダーチャート": {
+    "prefix": "mermaid-radar",
+    "description": "Mermaid のレーダーチャート (軸ごとの値を系列で比べる図) を挿入します。",
+    "body": [
+      "```mermaid",
+      "radar-beta",
+      "    %% axis で軸、curve で系列。値は軸の順に並べる",
+      "    title ${1:スキルの比較}",
+      "    axis design[\"設計\"], build[\"実装\"], test[\"テスト\"], ops[\"運用\"]",
+      "    curve a[\"Aさん\"]{4, 3, 5, 2}",
+      "    curve b[\"Bさん\"]{2, 5, 3, 4}",
+      "    max 5",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 要求図": {
+    "prefix": "mermaid-requirement",
+    "description": "Mermaid の要求図 (要求とそれを満たす要素の関係) を挿入します。",
+    "body": [
+      "```mermaid",
+      "requirementDiagram",
+      "    %% requirement は要求、element は満たす側。- satisfies -> で結ぶ",
+      "    requirement ${1:login} {",
+      "        id: 1",
+      "        text: \"ログインできること\"",
+      "        risk: high",
+      "        verifymethod: test",
+      "    }",
+      "    element ${2:login_page} {",
+      "        type: \"画面\"",
+      "    }",
+      "    ${2:login_page} - satisfies -> ${1:login}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid C4 図": {
+    "prefix": "mermaid-c4",
+    "description": "Mermaid の C4 図 (システムと利用者・外部システムの関係) を挿入します。",
+    "body": [
+      "```mermaid",
+      "C4Context",
+      "    %% Person は利用者、System は自システム、System_Ext は外部、Rel は関係",
+      "    title ${1:受注システムの全体像}",
+      "    Person(customer, \"顧客\", \"商品を注文する\")",
+      "    System(shop, \"受注システム\", \"注文を受け付ける\")",
+      "    System_Ext(mail, \"メール配信\", \"通知を送る\")",
+      "    Rel(customer, shop, \"注文する\")",
+      "    Rel(shop, mail, \"通知を依頼する\")",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid ブロック図": {
+    "prefix": "mermaid-block",
+    "description": "Mermaid のブロック図 (升目に並べた箱と矢印) を挿入します。",
+    "body": [
+      "```mermaid",
+      "block-beta",
+      "    %% columns で列の数を決め、space は空きマス、--> で矢印",
+      "    columns 3",
+      "    input[\"${1:入力}\"] process[\"${2:処理}\"] output[\"${3:出力}\"]",
+      "    space log[\"記録\"] space",
+      "    input --> process",
+      "    process --> output",
+      "    process --> log",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid サンキー図": {
+    "prefix": "mermaid-sankey",
+    "description": "Mermaid のサンキー図 (量の流れ) を挿入します。",
+    "body": [
+      "```mermaid",
+      "sankey-beta",
+      "    %% 1 行が 流れ元,流れ先,量",
+      "    ${1:電力},家庭,30",
+      "    ${1:電力},工場,50",
+      "    ${2:ガス},家庭,20",
+      "    ${2:ガス},工場,10",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid パケット図": {
+    "prefix": "mermaid-packet",
+    "description": "Mermaid のパケット図 (ビット単位の項目の並び) を挿入します。",
+    "body": [
+      "```mermaid",
+      "packet-beta",
+      "    %% 開始ビット-終了ビット: \"項目名\"",
+      "    title ${1:UDP ヘッダー}",
+      "    0-15: \"送信元ポート\"",
+      "    16-31: \"宛先ポート\"",
+      "    32-47: \"長さ\"",
+      "    48-63: \"チェックサム\"",
+      "    64-95: \"データ (可変長)\"",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid ベン図": {
+    "prefix": "mermaid-venn",
+    "description": "Mermaid のベン図 (集合の重なり) を挿入します。",
+    "body": [
+      "```mermaid",
+      "venn-beta",
+      "    %% set で集合、union で重なりに名前を付ける",
+      "    title ${1:担当の重なり}",
+      "    set Front[\"フロントエンド\"]",
+      "    set Back[\"バックエンド\"]",
+      "    union Front,Back[\"API\"]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid かんばん": {
+    "prefix": "mermaid-kanban",
+    "description": "Mermaid のかんばん (列ごとのカード) を挿入します。",
+    "body": [
+      "```mermaid",
+      "kanban",
+      "    %% 字下げの浅い行が列、深い行がカード",
+      "    todo[${1:未着手}]",
+      "        spec[仕様を書く]",
+      "        screen[画面を作る]",
+      "    doing[${2:作業中}]",
+      "        api[API を作る]",
+      "    done[${3:完了}]",
+      "        setup[環境を整える]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid ツリーマップ": {
+    "prefix": "mermaid-treemap",
+    "description": "Mermaid のツリーマップ (入れ子の面積で量を表す図) を挿入します。",
+    "body": [
+      "```mermaid",
+      "treemap-beta",
+      "    %% 字下げで入れ子。末端の項目に : で値を付ける",
+      "    \"${1:開発費}\"",
+      "        \"設計\": 30",
+      "        \"実装\": 50",
+      "    \"${2:運用費}\"",
+      "        \"保守\": 15",
+      "        \"監視\": 5",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid アーキテクチャ図": {
+    "prefix": "mermaid-architecture",
+    "description": "Mermaid のアーキテクチャ図 (部品とつながり) を挿入します。",
+    "body": [
+      "```mermaid",
+      "architecture-beta",
+      "    %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める",
+      "    group app(cloud)[${1:アプリ}]",
+      "    service web(server)[Web サーバー] in app",
+      "    service db(database)[データベース] in app",
+      "    service disk(disk)[ストレージ] in app",
+      "    web:R -- L:db",
+      "    web:B -- T:disk",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid ツリービュー": {
+    "prefix": "mermaid-treeview",
+    "description": "Mermaid のツリービュー (フォルダーのような階層) を挿入します。",
+    "body": [
+      "```mermaid",
+      "treeView-beta",
+      "    %% 字下げで階層を表す",
+      "    \"${1:プロジェクト}\"",
+      "        \"src\"",
+      "            \"main.rs\"",
+      "            \"lib.rs\"",
+      "        \"docs\"",
+      "            \"README.md\"",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 特性要因図": {
+    "prefix": "mermaid-ishikawa",
+    "description": "Mermaid の特性要因図 (結果と要因の魚の骨) を挿入します。",
+    "body": [
+      "```mermaid",
+      "ishikawa-beta",
+      "    %% 最初の行が結果、字下げした行が要因",
+      "    ${1:不良品が多い}",
+      "        人",
+      "            経験が浅い",
+      "        方法",
+      "            手順書が古い",
+      "        材料",
+      "            仕入れ先のばらつき",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid イベントモデリング": {
+    "prefix": "mermaid-eventmodeling",
+    "description": "Mermaid のイベントモデリング (画面・操作・出来事の流れ) を挿入します。",
+    "body": [
+      "```mermaid",
+      "eventmodeling",
+      "    %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル",
+      "    tf 01 ui ${1:かご画面}",
+      "    tf 02 cmd 商品を追加",
+      "    tf 03 evt 商品が追加された",
+      "    tf 04 rmo かごの中身 ->> 03",
       "```",
       "$0"
     ]

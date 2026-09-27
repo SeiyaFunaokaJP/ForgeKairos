@@ -32,7 +32,6 @@ use std::fmt::Write as _;
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
 use merman::diagrams::er::ErDiagramRenderModel;
-use merman::{Engine, ParseOptions};
 
 use crate::flowchart_model::{PreservedLine, PreservedPosition};
 
@@ -355,6 +354,9 @@ pub fn is_er_source(source: &str) -> bool {
 /// Reads `source` — the body of a ```` ```mermaid ```` fence — into an
 /// editable document.
 pub fn parse_er(source: &str) -> Result<ErDocument> {
+    if let Some(problem) = crate::mermaid_model::preprocessing_problem_for_parsed_labels(source) {
+        bail!("{problem}");
+    }
     let scan = scan_source(source)?;
     let comments = trailing_comments(&scan.statements)?;
     if scan.statements.is_empty() {
@@ -368,9 +370,7 @@ pub fn parse_er(source: &str) -> Result<ErDocument> {
         });
     }
 
-    let engine = Engine::new();
-    let parsed = engine
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+    let parsed = crate::parse_for_render_model(source)
         .map_err(|error| anyhow!("{error}"))?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
     let RenderSemanticModel::Er(model) = parsed.model else {
@@ -1349,14 +1349,13 @@ fn read_entity_name(body: &str) -> Option<(String, &str)> {
 /// two would otherwise shift the counts after it and put a comment on another
 /// row.
 fn attach_trailing_comments(document: &mut ErDocument, found: TrailingComments) -> Result<()> {
-    let engine = Engine::new();
     for TrailingComment {
         site,
         comment,
         statement,
     } in found.comments
     {
-        if !statement_holds_only(&engine, &statement, &site, document) {
+        if !statement_holds_only(&statement, &site, document) {
             bail!(
                 "行末のコメント ({comment}) の行に文が 2 つ以上あるか、どの項目のものか決められませんでした。文を 1 行ずつに分けるか、テキストのまま編集してください。"
             );
@@ -1404,16 +1403,9 @@ fn attach_trailing_comments(document: &mut ErDocument, found: TrailingComments) 
 
 /// Whether `statement`, read on its own, is the one item `site` names in
 /// `document` and nothing more.
-fn statement_holds_only(
-    engine: &Engine,
-    statement: &str,
-    site: &CommentSite,
-    document: &ErDocument,
-) -> bool {
+fn statement_holds_only(statement: &str, site: &CommentSite, document: &ErDocument) -> bool {
     let read = |source: String| -> Option<ErDocument> {
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-            .ok()??;
+        let parsed = crate::parse_for_render_model(&source).ok()??;
         let RenderSemanticModel::Er(model) = parsed.model else {
             return None;
         };
@@ -2563,5 +2555,28 @@ mod tests {
             assert_eq!(parsed.entities, document.entities, "{emitted}");
             assert_eq!(parsed.relationships, document.relationships, "{emitted}");
         }
+    }
+
+    #[test]
+    fn statements_merman_reads_around_a_directive_are_refused() {
+        crate::mermaid_model::preprocessing_cases::assert_directive_rules(
+            "erDiagram",
+            "A ||--o{ B : has",
+            "A %%{init: {}}%% ||--o{ B : has",
+        );
+    }
+
+    #[test]
+    fn a_directive_opener_in_a_label_is_written_encoded() {
+        let mut document = parse_er("%%{init: {}}%%\nerDiagram\n    A ||--o{ B : has")
+            .expect("the diagram should open");
+        document.relationships[0].label = "a %%{init: {}}%% b".to_string();
+        let whole = crate::mermaid_model::MermaidDocument::Er(document.clone());
+        assert_eq!(whole.structure_error(), None);
+        let emitted = emit_er(&document);
+        crate::render_to_svg(&emitted, &crate::MermaidTheme::default())
+            .expect("the emitted diagram should render");
+        let again = parse_er(&emitted).expect("the emitted diagram should reopen");
+        assert_eq!(again.relationships, document.relationships);
     }
 }

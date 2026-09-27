@@ -41,7 +41,6 @@ use std::fmt::Write as _;
 
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
-use merman::{Engine, ParseOptions};
 
 use crate::flowchart_model::{PreservedLine, PreservedPosition};
 use crate::mermaid_model::{INDENT, first_statement_line, join_lines, keyword_tail, scan_preamble};
@@ -624,7 +623,7 @@ impl GanttDocument {
         if let Some(title) = &self.title
             && !is_valid_gantt_title(title)
         {
-            return Some("タイトルに改行は使えません (空にもできません)。".to_string());
+            return Some("タイトルに改行と `%%{` は使えません (空にもできません)。".to_string());
         }
         for (format, name) in [
             (&self.date_format, "dateFormat"),
@@ -642,7 +641,9 @@ impl GanttDocument {
         for (index, section) in self.sections.iter().enumerate() {
             match &section.name {
                 Some(name) if !is_valid_gantt_section_name(name) => {
-                    return Some(format!("セクション名 `{name}` は使えません。"));
+                    return Some(format!(
+                        "セクション名 `{name}` は使えません (改行と `%%{{` は不可)。"
+                    ));
                 }
                 None if index > 0 => {
                     return Some(
@@ -672,7 +673,10 @@ impl GanttDocument {
 
         for (index, task) in self.tasks().enumerate() {
             if !is_valid_gantt_label(&task.label) {
-                return Some(format!("タスク名 `{}` は使えません。", task.label));
+                return Some(format!(
+                    "タスク名 `{}` は使えません (`:` `%%{{` と改行は不可、`%%` で始めることもできません)。",
+                    task.label
+                ));
             }
             if let Some(id) = &task.id {
                 if !is_valid_gantt_task_id(id) {
@@ -796,15 +800,16 @@ pub fn is_gantt_source(source: &str) -> bool {
 /// Reads `source` — the body of a ```` ```mermaid ```` fence — into an editable
 /// document.
 pub fn parse_gantt(source: &str) -> Result<GanttDocument> {
+    if let Some(problem) = crate::mermaid_model::preprocessing_problem(source) {
+        bail!("{problem}");
+    }
     let document = scan_gantt(source)?;
 
     // `merman` is asked last, so that a construct this module knows about is
     // reported with the reason that says what to do rather than with whatever
     // the resolver tripped over first.
     if !source.trim().is_empty() {
-        let engine = Engine::new();
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
@@ -1308,7 +1313,7 @@ pub fn is_valid_gantt_label(label: &str) -> bool {
     if label.contains([':', '\n', '\r']) {
         return false;
     }
-    if label.starts_with("%%") {
+    if label.starts_with("%%") || crate::mermaid_model::opens_directive(label) {
         return false;
     }
     matches!(classify(&format!("{label} :")), Statement::Task)
@@ -1458,13 +1463,19 @@ pub fn is_gantt_duration(text: &str) -> bool {
 /// Whether `name` can be written as a section name. The name runs to the end of
 /// its line, so only a line break and an empty name are in the way.
 pub fn is_valid_gantt_section_name(name: &str) -> bool {
-    !name.is_empty() && name.trim() == name && !name.contains(['\n', '\r'])
+    !name.is_empty()
+        && name.trim() == name
+        && !name.contains(['\n', '\r'])
+        && !crate::mermaid_model::opens_directive(name)
 }
 
 /// Whether `title` can be written as the chart's title. Mermaid drops a `title`
 /// statement with nothing after it, so an empty title has to be `None` instead.
 pub fn is_valid_gantt_title(title: &str) -> bool {
-    !title.is_empty() && title.trim() == title && !title.contains(['\n', '\r'])
+    !title.is_empty()
+        && title.trim() == title
+        && !title.contains(['\n', '\r'])
+        && !crate::mermaid_model::opens_directive(title)
 }
 
 /// Whether `format` can be written as a `dateFormat` or `axisFormat` value,
@@ -2305,5 +2316,29 @@ mod tests {
             emit_gantt(&document),
             "gantt\n    dateFormat YYYY-MM-DD\n    section S\n    A :a, 2026-01-01, 7d"
         );
+    }
+
+    #[test]
+    fn statements_merman_reads_around_a_directive_are_refused() {
+        crate::mermaid_model::preprocessing_cases::assert_directive_rules(
+            "gantt\n    dateFormat YYYY-MM-DD",
+            "task :a, 2024-01-01, 1d",
+            "task %%{init: {}}%% :a, 2024-01-01, 1d",
+        );
+    }
+
+    #[test]
+    fn text_that_would_open_a_directive_cannot_be_written() {
+        assert!(!is_valid_gantt_label("a %%{x}%% b"));
+        assert!(!is_valid_gantt_section_name("a %%{x}%% b"));
+        assert!(!is_valid_gantt_title("a %%{x}%% b"));
+        assert!(is_valid_gantt_label("50% 完了"));
+
+        let mut document = parse_gantt(
+            "gantt\n    dateFormat YYYY-MM-DD\n    section S\n    task :a, 2024-01-01, 1d",
+        )
+        .expect("the chart should open");
+        document.sections[0].name = Some("S %%{x}%%".to_string());
+        assert!(document.structure_error().is_some());
     }
 }

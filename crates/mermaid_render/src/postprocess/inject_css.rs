@@ -182,9 +182,9 @@ fn adjust_lightness(color: &mut gpui::Hsla, dark_mode: bool) {
     }
 }
 
-const ACCENT_FILL_OPACITY: f32 = 0.15;
+pub(crate) const ACCENT_FILL_OPACITY: f32 = 0.15;
 
-fn blend_over_background(
+pub(crate) fn blend_over_background(
     foreground: gpui::Hsla,
     background: gpui::Hsla,
     opacity: f32,
@@ -485,12 +485,25 @@ fn build_injected_css(theme: &MermaidTheme, svg_id: &str) -> String {
         {accent_css}
         .data-point text {{ fill: {text} !important; }}
         {chart_color_css}
+        .em-swimlane text {{ fill: {text}; }}
+        .venn-title {{ font-size: 16px !important; }}
+        .radarTitle {{ dominant-baseline: text-before-edge; }}
+        {sankey_link_css}
         "#,
         mindmap_css = mindmap_section_css(theme),
         git_branch_css = git_branch_css(theme),
         accent_css = accent_css(theme),
         chart_color_css = chart_color_css(theme),
         timeline_css = timeline_css(theme),
+        sankey_link_css = if theme.dark_mode {
+            // Sankey links are multiplied onto the background, which turns
+            // them black on a dark theme. They are also drawn after the node
+            // labels, so a plain blend would veil the light label text; screen
+            // is multiply's dark-theme counterpart and only ever lightens it.
+            ".links .link { mix-blend-mode: screen !important; }"
+        } else {
+            ""
+        },
     );
 
     scope_css(&raw_css, svg_id)

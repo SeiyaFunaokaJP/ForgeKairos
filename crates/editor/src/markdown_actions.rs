@@ -812,8 +812,13 @@ impl Editor {
 }
 
 impl MermaidDiagramKind {
+    /// How many of [`Self::ALL`] are the everyday kinds listed first. The
+    /// insert menus put a separator after them so the thirteen rarer kinds
+    /// below do not bury the familiar ones.
+    pub const EVERYDAY_COUNT: usize = 13;
+
     /// Every kind, in the order the pickers and the context menu list them.
-    pub const ALL: [MermaidDiagramKind; 13] = [
+    pub const ALL: [MermaidDiagramKind; 26] = [
         MermaidDiagramKind::Flowchart,
         MermaidDiagramKind::Sequence,
         MermaidDiagramKind::Class,
@@ -827,6 +832,19 @@ impl MermaidDiagramKind {
         MermaidDiagramKind::Journey,
         MermaidDiagramKind::QuadrantChart,
         MermaidDiagramKind::XyChart,
+        MermaidDiagramKind::Radar,
+        MermaidDiagramKind::Requirement,
+        MermaidDiagramKind::C4,
+        MermaidDiagramKind::Block,
+        MermaidDiagramKind::Sankey,
+        MermaidDiagramKind::Packet,
+        MermaidDiagramKind::Venn,
+        MermaidDiagramKind::Kanban,
+        MermaidDiagramKind::Treemap,
+        MermaidDiagramKind::Architecture,
+        MermaidDiagramKind::TreeView,
+        MermaidDiagramKind::Ishikawa,
+        MermaidDiagramKind::EventModeling,
     ];
 
     pub fn label(self) -> &'static str {
@@ -844,6 +862,19 @@ impl MermaidDiagramKind {
             Self::Journey => "ユーザージャーニー",
             Self::QuadrantChart => "4 象限チャート",
             Self::XyChart => "XY チャート (棒・折れ線)",
+            Self::Radar => "レーダーチャート",
+            Self::Requirement => "要求図",
+            Self::C4 => "C4 図",
+            Self::Block => "ブロック図",
+            Self::Sankey => "サンキー図",
+            Self::Packet => "パケット図",
+            Self::Venn => "ベン図",
+            Self::Kanban => "かんばん",
+            Self::Treemap => "ツリーマップ",
+            Self::Architecture => "アーキテクチャ図",
+            Self::TreeView => "ツリービュー",
+            Self::Ishikawa => "特性要因図",
+            Self::EventModeling => "イベントモデリング",
         }
     }
 
@@ -979,6 +1010,135 @@ impl MermaidDiagramKind {
     y-axis "売上 (万円)" 0 --> 100
     bar [30, 45, 60, 80]
     line [30, 45, 60, 80]"#
+            }
+            Self::Radar => {
+                r#"radar-beta
+    %% axis で軸、curve で系列。値は軸の順に並べる
+    title スキルの比較
+    axis design["設計"], build["実装"], test["テスト"], ops["運用"]
+    curve a["Aさん"]{4, 3, 5, 2}
+    curve b["Bさん"]{2, 5, 3, 4}
+    max 5"#
+            }
+            Self::Requirement => {
+                r#"requirementDiagram
+    %% requirement は要求、element は満たす側。- satisfies -> で結ぶ
+    requirement login {
+        id: 1
+        text: "ログインできること"
+        risk: high
+        verifymethod: test
+    }
+    element login_page {
+        type: "画面"
+    }
+    login_page - satisfies -> login"#
+            }
+            Self::C4 => {
+                r#"C4Context
+    %% Person は利用者、System は自システム、System_Ext は外部、Rel は関係
+    title 受注システムの全体像
+    Person(customer, "顧客", "商品を注文する")
+    System(shop, "受注システム", "注文を受け付ける")
+    System_Ext(mail, "メール配信", "通知を送る")
+    Rel(customer, shop, "注文する")
+    Rel(shop, mail, "通知を依頼する")"#
+            }
+            Self::Block => {
+                r#"block-beta
+    %% columns で列の数を決め、space は空きマス、--> で矢印
+    columns 3
+    input["入力"] process["処理"] output["出力"]
+    space log["記録"] space
+    input --> process
+    process --> output
+    process --> log"#
+            }
+            Self::Sankey => {
+                r#"sankey-beta
+    %% 1 行が 流れ元,流れ先,量
+    電力,家庭,30
+    電力,工場,50
+    ガス,家庭,20
+    ガス,工場,10"#
+            }
+            Self::Packet => {
+                r#"packet-beta
+    %% 開始ビット-終了ビット: "項目名"
+    title UDP ヘッダー
+    0-15: "送信元ポート"
+    16-31: "宛先ポート"
+    32-47: "長さ"
+    48-63: "チェックサム"
+    64-95: "データ (可変長)""#
+            }
+            Self::Venn => {
+                r#"venn-beta
+    %% set で集合、union で重なりに名前を付ける
+    title 担当の重なり
+    set Front["フロントエンド"]
+    set Back["バックエンド"]
+    union Front,Back["API"]"#
+            }
+            Self::Kanban => {
+                r#"kanban
+    %% 字下げの浅い行が列、深い行がカード
+    todo[未着手]
+        spec[仕様を書く]
+        screen[画面を作る]
+    doing[作業中]
+        api[API を作る]
+    done[完了]
+        setup[環境を整える]"#
+            }
+            Self::Treemap => {
+                r#"treemap-beta
+    %% 字下げで入れ子。末端の項目に : で値を付ける
+    "開発費"
+        "設計": 30
+        "実装": 50
+    "運用費"
+        "保守": 15
+        "監視": 5"#
+            }
+            Self::Architecture => {
+                r#"architecture-beta
+    %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める
+    group app(cloud)[アプリ]
+    service web(server)[Web サーバー] in app
+    service db(database)[データベース] in app
+    service disk(disk)[ストレージ] in app
+    web:R -- L:db
+    web:B -- T:disk"#
+            }
+            Self::TreeView => {
+                r#"treeView-beta
+    %% 字下げで階層を表す
+    "プロジェクト"
+        "src"
+            "main.rs"
+            "lib.rs"
+        "docs"
+            "README.md""#
+            }
+            Self::Ishikawa => {
+                r#"ishikawa-beta
+    %% 最初の行が結果、字下げした行が要因
+    不良品が多い
+        人
+            経験が浅い
+        方法
+            手順書が古い
+        材料
+            仕入れ先のばらつき"#
+            }
+            Self::EventModeling => {
+                r#"eventmodeling
+    %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル
+    tf 01 ui かご画面
+    tf 02 cmd 商品を追加
+    tf 03 evt 商品が追加された
+    tf 04 rmo かごの中身 ->> 03"#
             }
         }
     }

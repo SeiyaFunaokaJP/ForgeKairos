@@ -16,16 +16,32 @@
 //! modal reads one fence, edits a copy, and writes the whole body back with one
 //! `Buffer::edit` so that undo takes the diagram back in one step (ADR-F51).
 
+mod architecture;
+mod block;
+mod c4;
 mod class;
 mod class_menu;
 mod er;
+mod event_modeling;
 mod gantt;
 mod gitgraph;
+mod ishikawa;
+mod journey;
+mod kanban;
 mod mindmap;
+mod packet;
 mod pie;
+mod quadrant;
+mod radar;
+mod requirement;
+mod sankey;
 mod sequence;
 mod state;
 mod timeline;
+mod tree_view;
+mod treemap;
+mod venn;
+mod xychart;
 
 use std::ops::Range;
 use std::sync::Arc;
@@ -264,6 +280,22 @@ enum Form {
     Mindmap(mindmap::MindmapForm),
     Timeline(timeline::TimelineForm),
     GitGraph(gitgraph::GitGraphForm),
+    Journey(journey::JourneyForm),
+    QuadrantChart(quadrant::QuadrantForm),
+    XyChart(xychart::XyChartForm),
+    Radar(radar::RadarForm),
+    Requirement(requirement::RequirementForm),
+    C4(c4::C4Form),
+    Block(block::BlockForm),
+    Sankey(sankey::SankeyForm),
+    Packet(packet::PacketForm),
+    Venn(venn::VennForm),
+    Kanban(kanban::KanbanForm),
+    Treemap(treemap::TreemapForm),
+    Architecture(architecture::ArchitectureForm),
+    TreeView(tree_view::TreeViewForm),
+    Ishikawa(ishikawa::IshikawaForm),
+    EventModeling(event_modeling::EventModelingForm),
 }
 
 /// The drawing of the source the form currently describes.
@@ -347,6 +379,50 @@ impl MermaidEditor {
             }
             MermaidDocument::GitGraph(document) => {
                 Form::GitGraph(self.new_gitgraph_form(document, window, cx))
+            }
+            MermaidDocument::Journey(document) => {
+                Form::Journey(self.new_journey_form(document, window, cx))
+            }
+            MermaidDocument::QuadrantChart(document) => {
+                Form::QuadrantChart(self.new_quadrant_form(document, window, cx))
+            }
+            MermaidDocument::XyChart(document) => {
+                Form::XyChart(self.new_xychart_form(document, window, cx))
+            }
+            MermaidDocument::Radar(document) => {
+                Form::Radar(self.new_radar_form(document, window, cx))
+            }
+            MermaidDocument::Requirement(document) => {
+                Form::Requirement(self.new_requirement_form(document, window, cx))
+            }
+            MermaidDocument::C4(document) => Form::C4(self.new_c4_form(document, window, cx)),
+            MermaidDocument::Block(document) => {
+                Form::Block(self.new_block_form(document, window, cx))
+            }
+            MermaidDocument::Sankey(document) => {
+                Form::Sankey(self.new_sankey_form(document, window, cx))
+            }
+            MermaidDocument::Packet(document) => {
+                Form::Packet(self.new_packet_form(document, window, cx))
+            }
+            MermaidDocument::Venn(document) => Form::Venn(self.new_venn_form(document, window, cx)),
+            MermaidDocument::Kanban(document) => {
+                Form::Kanban(self.new_kanban_form(document, window, cx))
+            }
+            MermaidDocument::Treemap(document) => {
+                Form::Treemap(self.new_treemap_form(document, window, cx))
+            }
+            MermaidDocument::Architecture(document) => {
+                Form::Architecture(self.new_architecture_form(document, window, cx))
+            }
+            MermaidDocument::TreeView(document) => {
+                Form::TreeView(self.new_tree_view_form(document, window, cx))
+            }
+            MermaidDocument::Ishikawa(document) => {
+                Form::Ishikawa(self.new_ishikawa_form(document, window, cx))
+            }
+            MermaidDocument::EventModeling(document) => {
+                Form::EventModeling(self.new_event_modeling_form(document, window, cx))
             }
         };
         self.message = None;
@@ -540,6 +616,30 @@ impl MermaidEditor {
             Form::Mindmap(form) => Some(MermaidDocument::Mindmap(form.current_document(cx))),
             Form::Timeline(form) => Some(MermaidDocument::Timeline(form.current_document(cx))),
             Form::GitGraph(form) => Some(MermaidDocument::GitGraph(form.current_document(cx))),
+            Form::Journey(form) => Some(MermaidDocument::Journey(form.current_document(cx))),
+            Form::QuadrantChart(form) => {
+                Some(MermaidDocument::QuadrantChart(form.current_document(cx)))
+            }
+            Form::XyChart(form) => Some(MermaidDocument::XyChart(form.current_document(cx))),
+            Form::Radar(form) => Some(MermaidDocument::Radar(form.current_document(cx))),
+            Form::Requirement(form) => {
+                Some(MermaidDocument::Requirement(form.current_document(cx)))
+            }
+            Form::C4(form) => Some(MermaidDocument::C4(form.current_document(cx))),
+            Form::Block(form) => Some(MermaidDocument::Block(form.current_document(cx))),
+            Form::Sankey(form) => Some(MermaidDocument::Sankey(form.current_document(cx))),
+            Form::Packet(form) => Some(MermaidDocument::Packet(form.current_document(cx))),
+            Form::Venn(form) => Some(MermaidDocument::Venn(form.current_document(cx))),
+            Form::Kanban(form) => Some(MermaidDocument::Kanban(form.current_document(cx))),
+            Form::Treemap(form) => Some(MermaidDocument::Treemap(form.current_document(cx))),
+            Form::Architecture(form) => {
+                Some(MermaidDocument::Architecture(form.current_document(cx)))
+            }
+            Form::TreeView(form) => Some(MermaidDocument::TreeView(form.current_document(cx))),
+            Form::Ishikawa(form) => Some(MermaidDocument::Ishikawa(form.current_document(cx))),
+            Form::EventModeling(form) => {
+                Some(MermaidDocument::EventModeling(form.current_document(cx)))
+            }
         }
     }
 
@@ -747,6 +847,22 @@ impl MermaidEditor {
             MermaidDocument::Mindmap(document) => mindmap::problem(document),
             MermaidDocument::Timeline(document) => timeline::problem(document),
             MermaidDocument::GitGraph(document) => gitgraph::problem(document),
+            MermaidDocument::Journey(document) => journey::problem(document),
+            MermaidDocument::QuadrantChart(document) => quadrant::problem(document),
+            MermaidDocument::XyChart(document) => xychart::problem(document),
+            MermaidDocument::Radar(document) => radar::problem(document),
+            MermaidDocument::Requirement(document) => requirement::problem(document),
+            MermaidDocument::C4(document) => c4::problem(document),
+            MermaidDocument::Block(document) => block::problem(document),
+            MermaidDocument::Sankey(document) => sankey::problem(document),
+            MermaidDocument::Packet(document) => packet::problem(document),
+            MermaidDocument::Venn(document) => venn::problem(document),
+            MermaidDocument::Kanban(document) => kanban::problem(document),
+            MermaidDocument::Treemap(document) => treemap::problem(document),
+            MermaidDocument::Architecture(document) => architecture::problem(document),
+            MermaidDocument::TreeView(document) => tree_view::problem(document),
+            MermaidDocument::Ishikawa(document) => ishikawa::problem(document),
+            MermaidDocument::EventModeling(document) => event_modeling::problem(document),
         };
         field_problem.or_else(|| document.structure_error().map(SharedString::from))
     }
@@ -1347,6 +1463,22 @@ impl MermaidEditor {
             Form::Mindmap(form) => form.fields(),
             Form::Timeline(form) => form.fields(),
             Form::GitGraph(form) => form.fields(),
+            Form::Journey(form) => form.fields(),
+            Form::QuadrantChart(form) => form.fields(),
+            Form::XyChart(form) => form.fields(),
+            Form::Radar(form) => form.fields(),
+            Form::Requirement(form) => form.fields(),
+            Form::C4(form) => form.fields(),
+            Form::Block(form) => form.fields(),
+            Form::Sankey(form) => form.fields(),
+            Form::Packet(form) => form.fields(),
+            Form::Venn(form) => form.fields(),
+            Form::Kanban(form) => form.fields(),
+            Form::Treemap(form) => form.fields(),
+            Form::Architecture(form) => form.fields(),
+            Form::TreeView(form) => form.fields(),
+            Form::Ishikawa(form) => form.fields(),
+            Form::EventModeling(form) => form.fields(),
         }
     }
 
@@ -2068,6 +2200,22 @@ impl MermaidEditor {
             Form::Mindmap(_) => self.render_mindmap(window, cx),
             Form::Timeline(_) => self.render_timeline(window, cx),
             Form::GitGraph(_) => self.render_gitgraph(window, cx),
+            Form::Journey(_) => self.render_journey(window, cx),
+            Form::QuadrantChart(_) => self.render_quadrant(window, cx),
+            Form::XyChart(_) => self.render_xychart(window, cx),
+            Form::Radar(_) => self.render_radar(window, cx),
+            Form::Requirement(_) => self.render_requirement(window, cx),
+            Form::C4(_) => self.render_c4(window, cx),
+            Form::Block(_) => self.render_block(window, cx),
+            Form::Sankey(_) => self.render_sankey(window, cx),
+            Form::Packet(_) => self.render_packet(window, cx),
+            Form::Venn(_) => self.render_venn(window, cx),
+            Form::Kanban(_) => self.render_kanban(window, cx),
+            Form::Treemap(_) => self.render_treemap(window, cx),
+            Form::Architecture(_) => self.render_architecture(window, cx),
+            Form::TreeView(_) => self.render_tree_view(window, cx),
+            Form::Ishikawa(_) => self.render_ishikawa(window, cx),
+            Form::EventModeling(_) => self.render_event_modeling(window, cx),
         }
     }
 
@@ -2079,6 +2227,22 @@ impl MermaidEditor {
             Form::Er(_) => self.render_er_toolbar(window, cx),
             Form::Class(_) => self.render_class_toolbar(window, cx),
             Form::GitGraph(_) => self.render_gitgraph_toolbar(window, cx),
+            Form::Journey(_) => self.render_journey_toolbar(window, cx),
+            Form::QuadrantChart(_) => self.render_quadrant_toolbar(window, cx),
+            Form::XyChart(_) => self.render_xychart_toolbar(window, cx),
+            Form::Radar(_) => self.render_radar_toolbar(window, cx),
+            Form::Requirement(_) => self.render_requirement_toolbar(window, cx),
+            Form::C4(_) => self.render_c4_toolbar(window, cx),
+            Form::Block(_) => self.render_block_toolbar(window, cx),
+            Form::Sankey(_) => self.render_sankey_toolbar(window, cx),
+            Form::Packet(_) => self.render_packet_toolbar(window, cx),
+            Form::Venn(_) => self.render_venn_toolbar(window, cx),
+            Form::Kanban(_) => self.render_kanban_toolbar(window, cx),
+            Form::Treemap(_) => self.render_treemap_toolbar(window, cx),
+            Form::Architecture(_) => self.render_architecture_toolbar(window, cx),
+            Form::TreeView(_) => self.render_tree_view_toolbar(window, cx),
+            Form::Ishikawa(_) => self.render_ishikawa_toolbar(window, cx),
+            Form::EventModeling(_) => self.render_event_modeling_toolbar(window, cx),
             Form::Choosing | Form::Pie(_) | Form::Sequence(_) | Form::Gantt(_) => {
                 div().into_any_element()
             }

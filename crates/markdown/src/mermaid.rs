@@ -465,6 +465,7 @@ pub fn is_supported_diagram_type(source: &str) -> bool {
         "graph",
         "sequenceDiagram",
         "classDiagram",
+        "classDiagram-v2",
         "stateDiagram",
         "stateDiagram-v2",
         "erDiagram",
@@ -475,7 +476,31 @@ pub fn is_supported_diagram_type(source: &str) -> bool {
         "timeline",
         "quadrantChart",
         "xychart-beta",
+        "xychart",
         "journey",
+        "radar-beta",
+        "radar-beta:",
+        "requirementDiagram",
+        "C4Context",
+        "C4Container",
+        "C4Component",
+        "C4Dynamic",
+        "C4Deployment",
+        "block-beta",
+        "block",
+        "sankey-beta",
+        "sankey",
+        "packet-beta",
+        "packet",
+        "venn-beta",
+        "kanban",
+        "treemap-beta",
+        "treemap",
+        "architecture-beta",
+        "treeView-beta",
+        "ishikawa-beta",
+        "ishikawa",
+        "eventmodeling",
     ];
     let first_token = source
         .trim_start()
@@ -1495,6 +1520,28 @@ mod tests {
     use std::time::Duration;
     use ui::prelude::*;
 
+    #[test]
+    fn spellings_merman_accepts_are_previewed() {
+        for source in [
+            "classDiagram-v2\n",
+            "requirementDiagram\n",
+            "requirementdiagram\n",
+            "ishikawa\n",
+            "Ishikawa\n",
+            "ISHIKAWA-BETA\n",
+            "architecture-beta\n",
+            "treeView-beta\n",
+            "eventmodeling\n",
+            "venn-beta\n",
+            "C4Deployment\n",
+        ] {
+            assert!(
+                super::is_supported_diagram_type(source),
+                "{source:?} should be previewed"
+            );
+        }
+    }
+
     mod label_editing {
         use super::super::{
             MermaidLabelTarget, mermaid_label_at, mermaid_label_rect, mermaid_source_span,
@@ -2222,8 +2269,8 @@ mod tests {
     #[test]
     fn test_unsupported_diagram_types_are_skipped() {
         let markdown = concat!(
-            "```mermaid\nsankey-beta\n```\n\n",
-            "```mermaid\nblock-beta\n```\n\n",
+            "```mermaid\nzenuml\n```\n\n",
+            "```mermaid\ninfo\n```\n\n",
             "```mermaid\nflowchart TD\n    A --> B\n```",
         );
         let events =
@@ -2232,7 +2279,7 @@ mod tests {
         assert_eq!(
             diagrams.len(),
             1,
-            "Only the flowchart should be extracted; sankey and block should be skipped"
+            "Only the flowchart should be extracted; zenuml and info should be skipped"
         );
         let diagram = diagrams.values().next().unwrap();
         assert!(
@@ -2463,6 +2510,42 @@ mod tests {
         assert_eq!(
             Arc::as_ptr(state.cache.get(&contents).unwrap()),
             entry_before
+        );
+    }
+
+    #[gpui::test]
+    fn test_mermaid_render_panic_becomes_a_render_error(cx: &mut TestAppContext) {
+        ensure_theme_initialized(cx);
+
+        let markdown = cx.new(|cx| Markdown::new("".into(), None, None, cx));
+        // A C4 boundary whose arguments are still being typed makes merman
+        // panic; the preview has to show an error instead of crashing.
+        let cached = markdown.update(cx, |_, cx| {
+            CachedMermaidDiagram::new(
+                mermaid_contents(
+                    "C4Context
+System_Boundary(b) {
+}",
+                ),
+                1.0,
+                None,
+                cx,
+            )
+        });
+
+        cx.run_until_parked();
+
+        let error = cached
+            .render_image
+            .get()
+            .expect("render should have completed")
+            .as_ref()
+            .expect_err("render should have failed");
+        assert!(
+            error
+                .to_string()
+                .contains("merman panicked while rendering"),
+            "got: {error:#}"
         );
     }
 

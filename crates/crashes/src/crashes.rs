@@ -26,10 +26,37 @@ pub use minidumper::Client;
 const CRASH_HANDLER_PING_TIMEOUT: Duration = Duration::from_secs(60);
 const CRASH_HANDLER_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Threads whose name starts with this prefix run code whose panics are caught
+/// by the thread's owner (through `JoinHandle::join` or `catch_unwind`), so
+/// the panic hooks here only log them instead of terminating the process.
+pub const RECOVERABLE_PANIC_THREAD_PREFIX: &str = "recoverable-panic:";
+
+fn is_recoverable_panic_thread() -> bool {
+    std::thread::current()
+        .name()
+        .is_some_and(|name| name.starts_with(RECOVERABLE_PANIC_THREAD_PREFIX))
+}
+
+fn log_recoverable_panic(message: &str, location: Option<&Location>) {
+    let thread_name = std::thread::current()
+        .name()
+        .unwrap_or("<unnamed>")
+        .to_string();
+    let location = location.map_or_else(|| "<unknown>".to_owned(), |location| location.to_string());
+    log::warn!("recoverable thread '{thread_name}' panicked at {location}: {message}");
+}
+
 /// Force a backtrace to be printed on panic.
 pub fn force_backtrace() {
     let old_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
+        if is_recoverable_panic_thread() {
+            log_recoverable_panic(
+                &strip_user_string_from_panic(info.payload_as_str().unwrap_or("Box<Any>")),
+                info.location(),
+            );
+            return;
+        }
         unsafe { env::set_var("RUST_BACKTRACE", "1") };
         old_hook(info);
         // prevent the macOS crash dialog from popping up
@@ -504,6 +531,10 @@ fn strip_user_string_from_panic(message: &str) -> String {
 }
 
 pub fn panic_hook(crash_client: Arc<Client>, message: &str, location: Option<&Location>) {
+    if is_recoverable_panic_thread() {
+        log_recoverable_panic(&strip_user_string_from_panic(message), location);
+        return;
+    }
     let message = strip_user_string_from_panic(message);
 
     let span = location
@@ -681,6 +712,26 @@ pub fn crash_server(socket: &Path, logs_dir: PathBuf) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_threads_named_as_recoverable_skip_the_crash_report() {
+        let named = |name: &str| {
+            std::thread::Builder::new()
+                .name(name.to_string())
+                .spawn(is_recoverable_panic_thread)
+                .unwrap()
+                .join()
+                .unwrap()
+        };
+        // The Mermaid preview renders on a thread with this name.
+        assert!(named("recoverable-panic:mermaid"));
+        assert!(!named("mermaid"));
+        assert!(
+            !std::thread::spawn(is_recoverable_panic_thread)
+                .join()
+                .unwrap()
+        );
+    }
 
     #[test]
     fn abort_message_read_len_requires_page_rounded_total() {

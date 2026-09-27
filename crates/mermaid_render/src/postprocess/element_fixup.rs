@@ -31,10 +31,40 @@ struct ElementFixup<I> {
     inner: I,
     background_css: String,
     text_color_css: String,
+    line_color_css: String,
     font_family_css: String,
+    diagram_kind: DiagramKind,
     svg_seen: bool,
     skip_rect_depth: usize,
 }
+
+/// The diagram kinds whose colors are written as attributes rather than
+/// through a stylesheet, so they need rewriting element by element.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagramKind {
+    C4,
+    Sankey,
+    Treemap,
+    Other,
+}
+
+impl DiagramKind {
+    fn of_root(e: &BytesStart<'_>) -> Result<Self> {
+        let Some(role) = e.try_get_attribute("aria-roledescription")? else {
+            return Ok(Self::Other);
+        };
+        Ok(match role.value.as_ref() {
+            b"c4" => Self::C4,
+            b"sankey" => Self::Sankey,
+            b"treemap" => Self::Treemap,
+            _ => Self::Other,
+        })
+    }
+}
+
+/// C4 draws boundaries, relations and their labels in this fixed gray unless
+/// the diagram restyles them, which disappears against a dark background.
+const C4_DEFAULT_INK: &str = "#444444";
 
 fn rewrite_attr<'a>(
     e: &BytesStart<'_>,
@@ -90,6 +120,42 @@ fn is_hardcoded_text_fill(val: &str) -> bool {
         val,
         "" | "#333" | "black" | "#000" | "#000000" | "white" | "#fff" | "#ffffff"
     )
+}
+
+fn style_declarations(style: &str) -> impl Iterator<Item = &str> {
+    style
+        .split(';')
+        .map(str::trim)
+        .filter(|declaration| !declaration.is_empty())
+}
+
+fn declaration_property(declaration: &str) -> Option<&str> {
+    declaration
+        .split_once(':')
+        .map(|(property, _)| property.trim())
+}
+
+/// Replaces the first `fill` declaration only: merman writes its computed
+/// default first and appends a `classDef` color after it, which must keep
+/// winning.
+fn replace_first_fill_declaration(style: &str, fill: &str) -> Option<String> {
+    let mut replaced = false;
+    let mut rewritten = String::with_capacity(style.len() + fill.len());
+    for declaration in style_declarations(style) {
+        if !rewritten.is_empty() {
+            rewritten.push(' ');
+        }
+        let is_fill = declaration_property(declaration)
+            .is_some_and(|property| property.eq_ignore_ascii_case("fill"));
+        if is_fill && !replaced {
+            replaced = true;
+            write!(rewritten, "fill:{fill};").expect("write to String cannot fail");
+        } else {
+            rewritten.push_str(declaration);
+            rewritten.push(';');
+        }
+    }
+    replaced.then_some(rewritten)
 }
 
 fn push_font_style(style: &mut String, font_family: &str) {
@@ -204,13 +270,24 @@ impl<'a, I: Iterator<Item = Result<Event<'a>>>> ElementFixup<I> {
         let mut new_elem = BytesStart::new(tag.to_owned());
         let mut has_font_family = false;
         let mut has_style = false;
+        // Treemap labels get a fill picked for the full-strength section color,
+        // but the box behind them is drawn translucent over the background.
+        let themed_style_fill = self.diagram_kind == DiagramKind::Treemap
+            && e.try_get_attribute("class")?.is_some_and(|class| {
+                class
+                    .value
+                    .split(|byte| byte.is_ascii_whitespace())
+                    .any(|token| token.starts_with(b"treemap"))
+            });
 
         for attr in e.attributes() {
             let attr = attr?;
             match attr.key.local_name().as_ref() {
                 b"fill" if fix_fill => {
                     let val = attr.unescape_value()?;
-                    if is_hardcoded_text_fill(&val) {
+                    if is_hardcoded_text_fill(&val)
+                        || (self.diagram_kind == DiagramKind::C4 && val == C4_DEFAULT_INK)
+                    {
                         new_elem.push_attribute(("fill", self.text_color_css.as_str()));
                     } else {
                         new_elem.push_attribute(attr);
@@ -223,7 +300,11 @@ impl<'a, I: Iterator<Item = Result<Event<'a>>>> ElementFixup<I> {
                 b"style" => {
                     has_style = true;
                     let style = unescape_attribute_value(&attr)?;
-                    let style = rewrite_font_style(&style, &self.font_family_css);
+                    let themed = themed_style_fill
+                        .then(|| replace_first_fill_declaration(&style, &self.text_color_css))
+                        .flatten();
+                    let style = themed.as_deref().unwrap_or(&style);
+                    let style = rewrite_font_style(style, &self.font_family_css);
                     new_elem.push_attribute(("style", style.as_ref()));
                 }
                 _ => new_elem.push_attribute(attr),
@@ -241,10 +322,46 @@ impl<'a, I: Iterator<Item = Result<Event<'a>>>> ElementFixup<I> {
         Ok(new_elem)
     }
 
+    fn rewrite_kind_specific_shape(&self, event: Event<'a>) -> Result<Option<Event<'a>>> {
+        let (Event::Start(e) | Event::Empty(e)) = &event else {
+            return Ok(Some(event));
+        };
+        match self.diagram_kind {
+            DiagramKind::C4 => {
+                let default_stroke = e
+                    .try_get_attribute("stroke")?
+                    .is_some_and(|stroke| stroke.value.as_ref() == C4_DEFAULT_INK.as_bytes());
+                if default_stroke {
+                    let new_elem = rewrite_attr(e, b"stroke", &self.line_color_css)?;
+                    return Ok(Some(rewrap(&event, new_elem)));
+                }
+            }
+            DiagramKind::Sankey if e.name().as_ref() == b"rect" => {
+                // The generic `.node rect` theme rule would otherwise paint
+                // every sankey node the same surface color; an inline style
+                // outranks it while keeping merman's per-node color.
+                let fill = e
+                    .try_get_attribute("fill")?
+                    .map(|fill| fill.unescape_value().map(|value| value.into_owned()))
+                    .transpose()?;
+                if let Some(fill) = fill
+                    && e.try_get_attribute("style")?.is_none()
+                {
+                    let mut new_elem = e.to_owned();
+                    new_elem.push_attribute(("style", format!("fill: {fill};").as_str()));
+                    return Ok(Some(rewrap(&event, new_elem)));
+                }
+            }
+            DiagramKind::Sankey | DiagramKind::Treemap | DiagramKind::Other => {}
+        }
+        Ok(Some(event))
+    }
+
     fn process_event(&mut self, event: Event<'a>) -> Result<Option<Event<'a>>> {
         match &event {
             Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"svg" && !self.svg_seen => {
                 self.svg_seen = true;
+                self.diagram_kind = DiagramKind::of_root(e)?;
                 if let Some(new_elem) = self.rewrite_svg_style(e)? {
                     Ok(Some(rewrap(&event, new_elem)))
                 } else {
@@ -259,8 +376,12 @@ impl<'a, I: Iterator<Item = Result<Event<'a>>>> ElementFixup<I> {
                     }
                     Ok(None)
                 } else {
-                    Ok(Some(event))
+                    self.rewrite_kind_specific_shape(event)
                 }
+            }
+
+            Event::Start(e) | Event::Empty(e) if matches!(e.name().as_ref(), b"line" | b"path") => {
+                self.rewrite_kind_specific_shape(event)
             }
 
             Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"text" => {
@@ -312,7 +433,9 @@ pub(super) fn process<'a>(
         inner: events,
         background_css: crate::css_color(theme.background),
         text_color_css: crate::css_color(theme.text_color),
+        line_color_css: crate::css_color(theme.line_color),
         font_family_css: theme.font_family.clone(),
+        diagram_kind: DiagramKind::Other,
         svg_seen: false,
         skip_rect_depth: 0,
     }

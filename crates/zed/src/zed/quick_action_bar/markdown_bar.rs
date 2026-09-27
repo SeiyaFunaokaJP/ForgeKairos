@@ -577,7 +577,10 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
             "Mermaid 図を挿入",
             &focus_handle,
             |mut menu| {
-                for diagram in MermaidDiagramKind::ALL {
+                for (index, diagram) in MermaidDiagramKind::ALL.into_iter().enumerate() {
+                    if index == MermaidDiagramKind::EVERYDAY_COUNT {
+                        menu = menu.separator();
+                    }
                     menu = menu.action(
                         diagram.label(),
                         Box::new(editor_actions::InsertMermaidDiagram { diagram }),

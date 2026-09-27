@@ -31,7 +31,6 @@ use std::ops::Range;
 
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
-use merman::{Engine, ParseOptions};
 
 use crate::flowchart_model::{FlowDirection, PreservedLine, PreservedPosition};
 use crate::mermaid_model::{INDENT, first_statement_line, join_lines, scan_preamble};
@@ -308,10 +307,11 @@ pub fn is_class_source(source: &str) -> bool {
 /// Reads `source` — the body of a ```` ```mermaid ```` fence — into an editable
 /// document.
 pub fn parse_class(source: &str) -> Result<ClassDocument> {
+    if let Some(problem) = crate::mermaid_model::preprocessing_problem(source) {
+        bail!("{problem}");
+    }
     if !source.trim().is_empty() {
-        let engine = Engine::new();
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
@@ -1285,7 +1285,10 @@ pub fn is_valid_generic(generic: &str) -> bool {
 /// cardinality: Mermaid ends a quoted string at the next quote, and a statement
 /// at the end of the line.
 pub fn is_valid_quoted_text(text: &str) -> bool {
-    !text.contains('"') && !text.contains('\n') && !text.contains('\r')
+    !text.contains('"')
+        && !text.contains('\n')
+        && !text.contains('\r')
+        && !crate::mermaid_model::opens_directive(text)
 }
 
 /// Whether `annotation` can be written between `<<` and `>>`.
@@ -1305,7 +1308,10 @@ pub fn is_valid_annotation(annotation: &str) -> bool {
 /// is part of the label: Mermaid's lexer reads a label to the end of the line
 /// without looking for a comment, and so does this parser.
 pub fn is_valid_relation_label(text: &str) -> bool {
-    !text.contains('\n') && !text.contains('\r') && text.trim() == text
+    !text.contains('\n')
+        && !text.contains('\r')
+        && text.trim() == text
+        && !crate::mermaid_model::opens_directive(text)
 }
 
 /// Whether `text` can be written as the member of an `A : メンバー` statement.
@@ -1325,7 +1331,11 @@ pub fn is_valid_member_text(text: &str) -> bool {
 /// blank line in the block, which Mermaid skips. A line that starts with `}`
 /// would close the block there.
 pub fn is_valid_block_member_text(text: &str) -> bool {
-    !text.contains('\n') && !text.contains('\r') && text.trim() == text && !text.starts_with('}')
+    !text.contains('\n')
+        && !text.contains('\r')
+        && text.trim() == text
+        && !text.starts_with('}')
+        && !crate::mermaid_model::opens_directive(text)
 }
 
 /// Whether `arrow` is a relation operator Mermaid reads as one.
@@ -2550,5 +2560,54 @@ mod tests {
             retain_statement_targets("    classDef A fill:#f96", without_a).as_deref(),
             Some("    classDef A fill:#f96")
         );
+    }
+
+    #[test]
+    fn statements_merman_reads_around_a_directive_are_refused() {
+        crate::mermaid_model::preprocessing_cases::assert_directive_rules(
+            "classDiagram",
+            "A <|-- B",
+            "A %%{init: {}}%% <|-- B",
+        );
+    }
+
+    #[test]
+    fn text_that_merman_rewrites_before_parsing_cannot_be_written() {
+        for text in ["a %%{init: {}}%% b", "%%{"] {
+            assert!(!is_valid_quoted_text(text), "{text}");
+            assert!(!is_valid_relation_label(text), "{text}");
+            assert!(!is_valid_member_text(text), "{text}");
+            assert!(!is_valid_block_member_text(text), "{text}");
+        }
+        assert!(is_valid_relation_label("100%"));
+
+        let mut document =
+            parse_class("classDiagram\n    A --> B").expect("the diagram should open");
+        let ClassItem::Relation(relation) = &mut document.items[0] else {
+            panic!("expected a relation: {:?}", document.items);
+        };
+        // Each is a cardinality on its own; side by side on one line with no
+        // `>` between them, the `="` rewrite would close the first and open
+        // the second.
+        relation.arrow = "--".to_string();
+        relation.left_cardinality = Some("1<b=".to_string());
+        relation.right_cardinality = Some("c>".to_string());
+        let whole = crate::mermaid_model::MermaidDocument::Class(document.clone());
+        assert!(whole.structure_error().is_some(), "{}", whole.emit());
+        assert!(
+            crate::render_to_svg(&whole.emit(), &crate::MermaidTheme::default()).is_err(),
+            "the reason for the refusal no longer holds:
+{}",
+            whole.emit()
+        );
+
+        let ClassItem::Relation(relation) = &mut document.items[0] else {
+            panic!("expected a relation");
+        };
+        relation.left_cardinality = Some("1".to_string());
+        relation.right_cardinality = Some("*".to_string());
+        relation.label = Some("<i title=\"t\">x</i>".to_string());
+        let whole = crate::mermaid_model::MermaidDocument::Class(document);
+        assert_eq!(whole.structure_error(), None);
     }
 }

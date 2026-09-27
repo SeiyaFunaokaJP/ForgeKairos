@@ -21,6 +21,8 @@ mod inject_css;
 mod strip_foreignobject;
 pub(crate) mod util;
 
+pub(crate) use inject_css::{ACCENT_FILL_OPACITY, blend_over_background};
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;

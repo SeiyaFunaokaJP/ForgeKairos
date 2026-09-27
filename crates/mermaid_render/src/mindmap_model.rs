@@ -33,7 +33,6 @@
 
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
-use merman::{Engine, ParseOptions};
 
 use crate::flowchart_model::{PreservedLine, PreservedPosition};
 use crate::mermaid_model::{first_statement_line, join_lines, keyword_tail, scan_preamble};
@@ -443,14 +442,15 @@ pub fn is_mindmap_source(source: &str) -> bool {
 /// Reads `source` — the body of a ```` ```mermaid ```` fence — into an editable
 /// document.
 pub fn parse_mindmap(source: &str) -> Result<MindmapDocument> {
+    if let Some(problem) = crate::mermaid_model::preprocessing_problem(source) {
+        bail!("{problem}");
+    }
     let document = scan_mindmap(source)?;
 
     // `merman` is asked last, so that a construct this module knows about is
     // reported with the reason that says what to do.
     if !source.trim().is_empty() {
-        let engine = Engine::new();
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
@@ -952,7 +952,10 @@ fn preserved_at(
 /// it is quoted and on how `merman` scans for comments and decoration lines, so
 /// rather than repeat those rules the line is written and read back.
 pub fn is_valid_mindmap_label(node: &MindmapNode) -> bool {
-    if node.label.trim().is_empty() || node.label.contains(['\n', '\r']) {
+    if node.label.trim().is_empty()
+        || node.label.contains(['\n', '\r'])
+        || crate::mermaid_model::opens_directive(&node.label)
+    {
         return false;
     }
     if node
@@ -979,12 +982,17 @@ pub fn is_valid_mindmap_label(node: &MindmapNode) -> bool {
 
 /// Whether `icon` can be written inside `::icon(…)`.
 pub fn is_valid_mindmap_icon(icon: &str) -> bool {
-    !icon.trim().is_empty() && !icon.contains([')', '\n', '\r'])
+    !icon.trim().is_empty()
+        && !icon.contains([')', '\n', '\r'])
+        && !crate::mermaid_model::opens_directive(icon)
 }
 
 /// Whether `classes` can be written after `:::`.
 pub fn is_valid_mindmap_classes(classes: &str) -> bool {
-    !classes.trim().is_empty() && classes.trim() == classes && !classes.contains(['\n', '\r'])
+    !classes.trim().is_empty()
+        && classes.trim() == classes
+        && !classes.contains(['\n', '\r'])
+        && !crate::mermaid_model::opens_directive(classes)
 }
 
 /// The first thing wrong with one node, in Japanese.
@@ -994,6 +1002,12 @@ pub fn mindmap_node_problem(node: &MindmapNode) -> Option<String> {
     }
     if node.label.contains(['\n', '\r']) {
         return Some("ノードのラベルに改行は使えません。".to_string());
+    }
+    if crate::mermaid_model::opens_directive(&node.label) {
+        return Some(format!(
+            "ラベル `{}` に `%%{{` は使えません (Mermaid が `}}%%` までを切り取ります)。",
+            node.label
+        ));
     }
     if !is_valid_mindmap_label(node) {
         return Some(if node.shape == MindmapShape::Default {
@@ -1012,7 +1026,7 @@ pub fn mindmap_node_problem(node: &MindmapNode) -> Option<String> {
         && !is_valid_mindmap_icon(icon)
     {
         return Some(format!(
-            "ノード `{}` のアイコン `{icon}` は書けません (`)` と改行は不可、空にもできません)。",
+            "ノード `{}` のアイコン `{icon}` は書けません (`)` `%%{{` と改行は不可、空にもできません)。",
             node.label
         ));
     }
@@ -1020,7 +1034,7 @@ pub fn mindmap_node_problem(node: &MindmapNode) -> Option<String> {
         && !is_valid_mindmap_classes(classes)
     {
         return Some(format!(
-            "ノード `{}` のクラス `{classes}` は書けません (改行は不可、空にもできません)。",
+            "ノード `{}` のクラス `{classes}` は書けません (改行と `%%{{` は不可、空にもできません)。",
             node.label
         ));
     }
@@ -1031,6 +1045,7 @@ pub fn mindmap_node_problem(node: &MindmapNode) -> Option<String> {
 mod tests {
     use super::*;
     use crate::{MermaidTheme, render_to_svg};
+    use merman::{Engine, ParseOptions};
 
     const TEMPLATE: &str = "mindmap\n  root((中心テーマ))\n    分類A\n      項目1\n      項目2\n    分類B\n      項目3";
 
@@ -1535,5 +1550,32 @@ mod tests {
             );
             assert_eq!(emit_mindmap(&document), source);
         }
+    }
+
+    #[test]
+    fn statements_merman_reads_around_a_directive_are_refused() {
+        crate::mermaid_model::preprocessing_cases::assert_directive_rules(
+            "mindmap\n  root",
+            "child",
+            "child %%{init: {}}%% x",
+        );
+    }
+
+    /// Quotes keep a `%%` from starting a comment, but not a `%%{` from
+    /// opening a directive.
+    #[test]
+    fn a_label_that_would_open_a_directive_cannot_be_written() {
+        let mut document = parse_mindmap("mindmap\n  root\n    child").expect("should open");
+        let Some(root) = document.root.as_mut() else {
+            panic!("expected a root");
+        };
+        let child = &mut root.children[0];
+        child.shape = MindmapShape::Square;
+        child.quoted = true;
+        child.label = "a %%{init: {}}%% b".to_string();
+        assert!(!is_valid_mindmap_label(child));
+        assert!(document.structure_error().is_some());
+        assert!(!is_valid_mindmap_icon("fa %%{x"));
+        assert!(!is_valid_mindmap_classes("a %%{x"));
     }
 }

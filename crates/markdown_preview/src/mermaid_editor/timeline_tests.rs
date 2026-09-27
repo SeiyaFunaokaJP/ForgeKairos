@@ -205,3 +205,48 @@ async fn what_would_be_drawn_differently_is_refused(cx: &mut TestAppContext) {
         "the modal should say the first band would vanish, got {message:?}"
     );
 }
+
+/// `merman` cuts a `%%{ … }%%` out of the text wherever it stands, so an event
+/// typed with one would be drawn without it; the fence is left alone and the
+/// field is named.
+#[gpui::test]
+async fn an_event_that_would_open_a_directive_is_not_written(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(TEMPLATE_FENCE, cx).await;
+    let before = cx.update_editor(|editor, _window, cx| editor.text(cx));
+
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            let event = period_row(modal, 0, 0).events.first().cloned();
+            if let Some(event) = event {
+                event.update(cx, |event, cx| {
+                    event.set_text("企画 %%{init: {}}%% 前半", window, cx)
+                });
+            }
+            modal.confirm(&menu::SecondaryConfirm, window, cx);
+        })
+    });
+
+    assert_eq!(
+        cx.update_editor(|editor, _window, cx| editor.text(cx)),
+        before
+    );
+    let message = cx.update(|_window, cx| modal.read(cx).message.clone());
+    assert!(
+        message
+            .as_deref()
+            .is_some_and(|message| message.contains("%%{")),
+        "the modal should say why the event was refused, got {message:?}"
+    );
+}
+
+/// A statement written after a directive on its line is read by `merman` but
+/// would be carried as a comment by the form, so the fence does not open.
+#[test]
+fn a_statement_after_a_directive_on_its_line_does_not_open() {
+    let source = "timeline\n    %%{init: {}}%% 2024 : 企画\n    2025 : 開発";
+    let error = parse_document(source)
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(error.contains("%%{"), "got {error:?}");
+}

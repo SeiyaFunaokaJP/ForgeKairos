@@ -28,7 +28,6 @@
 
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
-use merman::{Engine, ParseOptions};
 
 use crate::flowchart_model::{PreservedLine, PreservedPosition};
 use crate::mermaid_model::{INDENT, first_statement_line, join_lines, keyword_tail, scan_preamble};
@@ -80,7 +79,9 @@ impl TimelineDocument {
         if let Some(title) = &self.title
             && !is_valid_timeline_title(title)
         {
-            return Some("タイトルに改行は使えません (前後の空白だけにもできません)。".to_string());
+            return Some(
+                "タイトルに改行と `%%{` は使えません (前後の空白だけにもできません)。".to_string(),
+            );
         }
 
         let has_named_section = self.sections.iter().any(|section| section.name.is_some());
@@ -89,7 +90,7 @@ impl TimelineDocument {
             match &section.name {
                 Some(name) if !is_valid_timeline_section_name(name) => {
                     return Some(format!(
-                        "セクション名 `{name}` は使えません (`:` と改行は不可、空にもできません)。"
+                        "セクション名 `{name}` は使えません (`:` `%%{{` と改行は不可、空にもできません)。"
                     ));
                 }
                 Some(name) => {
@@ -122,14 +123,14 @@ impl TimelineDocument {
         for period in self.periods() {
             if !is_valid_timeline_period(&period.label) {
                 return Some(format!(
-                    "期間 `{}` は書けません (`:` `#` と改行は不可、空にもできません。`title` `section` `accTitle` `accDescr` `%%` で始めることもできません)。",
+                    "期間 `{}` は書けません (`:` `#` `%%{{` と改行は不可、空にもできません。`title` `section` `accTitle` `accDescr` `%%` で始めることもできません)。",
                     period.label
                 ));
             }
             for event in &period.events {
                 if !is_valid_timeline_event(event) {
                     return Some(format!(
-                        "期間 `{}` の出来事 `{event}` は書けません (`:` のすぐ後に空白を続けることと末尾の `:`、改行は不可、空にもできません)。",
+                        "期間 `{}` の出来事 `{event}` は書けません (`:` のすぐ後に空白を続けることと末尾の `:`、`%%{{`、改行は不可、空にもできません)。",
                         period.label
                     ));
                 }
@@ -147,14 +148,15 @@ pub fn is_timeline_source(source: &str) -> bool {
 /// Reads `source` — the body of a ```` ```mermaid ```` fence — into an editable
 /// document.
 pub fn parse_timeline(source: &str) -> Result<TimelineDocument> {
+    if let Some(problem) = crate::mermaid_model::preprocessing_problem(source) {
+        bail!("{problem}");
+    }
     let document = scan_timeline(source)?;
 
     // `merman` is asked last, so that a construct this module knows about is
     // reported with the reason that says what to do.
     if !source.trim().is_empty() {
-        let engine = Engine::new();
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
@@ -520,13 +522,19 @@ fn preserved_at(
 /// Whether `title` can be written after `title`. It runs to the end of the
 /// line, so only a line break is in the way.
 pub fn is_valid_timeline_title(title: &str) -> bool {
-    !title.trim().is_empty() && title.trim() == title && !title.contains(['\n', '\r'])
+    !title.trim().is_empty()
+        && title.trim() == title
+        && !title.contains(['\n', '\r'])
+        && !crate::mermaid_model::opens_directive(title)
 }
 
 /// Whether `name` can be written after `section`, which Mermaid cuts at the
 /// first `:`.
 pub fn is_valid_timeline_section_name(name: &str) -> bool {
-    !name.is_empty() && name.trim() == name && !name.contains([':', '\n', '\r'])
+    !name.is_empty()
+        && name.trim() == name
+        && !name.contains([':', '\n', '\r'])
+        && !crate::mermaid_model::opens_directive(name)
 }
 
 /// Whether `label` reads back as a period rather than as a statement of some
@@ -540,6 +548,7 @@ pub fn is_valid_timeline_period(label: &str) -> bool {
         && label.trim() == label
         && !label.contains([':', '#', '\n', '\r'])
         && !label.starts_with("%%")
+        && !crate::mermaid_model::opens_directive(label)
         && classify(label) == Statement::Period
         && classify(&format!("{label} : x")) == Statement::Period
 }
@@ -550,6 +559,7 @@ pub fn is_valid_timeline_event(event: &str) -> bool {
         && event.trim() == event
         && !event.contains(['\n', '\r'])
         && !event.ends_with(':')
+        && !crate::mermaid_model::opens_directive(event)
         && !event.char_indices().any(|(offset, character)| {
             character == ':'
                 && event
@@ -857,5 +867,29 @@ mod tests {
             emit_timeline(&parse(with_text)),
             "timeline\n    2024 : a\n    2025 : b\n    %% メモ"
         );
+    }
+
+    #[test]
+    fn statements_merman_reads_around_a_directive_are_refused() {
+        crate::mermaid_model::preprocessing_cases::assert_directive_rules(
+            "timeline",
+            "2024 : a",
+            "2024 %%{init: {}}%% : a",
+        );
+    }
+
+    #[test]
+    fn text_that_would_open_a_directive_cannot_be_written() {
+        assert!(!is_valid_timeline_title("a %%{x}%% b"));
+        assert!(!is_valid_timeline_section_name("a %%{x}%% b"));
+        assert!(!is_valid_timeline_period("20%%{x"));
+        assert!(!is_valid_timeline_event("a %%{x}%% b"));
+        assert!(is_valid_timeline_event(
+            "<span style=\"color:red\">赤</span>"
+        ));
+
+        let mut document = parse_timeline("timeline\n    2024 : a").expect("should open");
+        document.sections[0].periods[0].events[0] = "a %%{x}%% b".to_string();
+        assert!(document.structure_error().is_some());
     }
 }

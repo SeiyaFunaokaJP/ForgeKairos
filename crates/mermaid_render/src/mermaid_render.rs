@@ -63,21 +63,38 @@
 //! 3. `postprocess::inject_css` injects CSS rules for the classes applied by
 //!    `accent_colors`
 
+pub mod architecture_model;
+pub mod block_model;
+pub mod c4_model;
 pub mod class_model;
 pub mod er_model;
+pub mod event_modeling_model;
 pub mod flowchart_model;
 pub mod gantt_model;
 pub mod gitgraph_model;
+pub mod ishikawa_model;
+pub mod journey_model;
+pub mod kanban_model;
 pub mod mermaid_model;
 pub mod mindmap_model;
+pub mod packet_model;
 pub mod pie_model;
 mod postprocess;
+mod preflight;
+pub mod quadrant_model;
+pub mod radar_model;
 mod render;
+pub mod requirement_model;
+pub mod sankey_model;
 pub mod sequence_model;
 pub mod state_model;
 pub mod timeline_model;
+pub mod tree_view_model;
+pub mod treemap_model;
+pub mod venn_model;
+pub mod xychart_model;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result, anyhow};
 use gpui::{Hsla, Rgba};
 
 #[derive(Debug, Clone, Copy)]
@@ -292,6 +309,15 @@ pub fn render_to_svg(source: &str, theme: &MermaidTheme) -> Result<String> {
     render_to_svg_with_geometry(source, theme).map(|(svg, _)| svg)
 }
 
+/// Threads whose name starts with `recoverable-panic:` are ones whose panics
+/// the caller catches, so the crash handler (`crashes::panic_hook`) logs them
+/// instead of terminating Zed.
+const MERMAN_THREAD_NAME: &str = "recoverable-panic:mermaid";
+
+/// merman recurses over nested groups and subgraphs; the default thread stack
+/// overflows on a few thousand levels, and a stack overflow cannot be caught.
+const MERMAN_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
+
 /// Renders like [`render_to_svg`], additionally reporting where the diagram's
 /// nodes and edge labels ended up, so a caller can map a click on the raster
 /// back to the mermaid source.
@@ -300,8 +326,131 @@ pub fn render_to_svg_with_geometry(
     source: &str,
     theme: &MermaidTheme,
 ) -> Result<(String, DiagramGeometry)> {
-    let svg = render::render_mermaid(source, theme)?;
-    postprocess::postprocess(&svg, theme)
+    // merman panics on some incomplete input (for example a C4 boundary whose
+    // arguments are still being typed), and the preview renders after every
+    // keystroke. A panic on a background executor thread would take Zed down.
+    let source = source.to_string();
+    let theme = theme.clone();
+    run_merman_isolated("rendering", move || {
+        let svg = render::render_mermaid(&source, &theme)?;
+        postprocess::postprocess(&svg, &theme)
+    })
+}
+
+/// Parses `source` into merman's render model for the structured editor.
+///
+/// The editor's models parse when "Mermaid 図を編集" is chosen, on the main
+/// thread, and merman's parsers panic or loop on some input the preview
+/// already refuses, so the parse runs behind the same checks and on the same
+/// kind of thread as a render.
+pub(crate) fn parse_for_render_model(
+    source: &str,
+) -> Result<Option<merman::diagram::ParsedDiagramRender>> {
+    let source = source.to_string();
+    run_merman_isolated("parsing", move || {
+        preflight::check_before_parse(&source)?;
+        merman::Engine::new()
+            .parse_diagram_for_render_model_sync(&source, merman::ParseOptions::strict())
+            .map_err(|error| anyhow!("{error}"))
+    })
+}
+
+/// Runs `work` on its own thread so that a panic inside merman ends at `join`
+/// as an error.
+fn run_merman_isolated<T: Send + 'static>(
+    activity: &str,
+    work: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    let merman_thread = std::thread::Builder::new()
+        .name(MERMAN_THREAD_NAME.to_string())
+        .stack_size(MERMAN_THREAD_STACK_SIZE)
+        .spawn(work)
+        .context("failed to start the mermaid thread")?;
+    match merman_thread.join() {
+        Ok(result) => result,
+        Err(payload) => {
+            let message = payload
+                .downcast_ref::<&str>()
+                .map(|message| message.to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".to_string());
+            Err(anyhow!("merman panicked while {activity}: {message}"))
+        }
+    }
+}
+
+/// Where `merman`'s own examples of `kind` are (`fixtures/<kind>` in the
+/// checkout Cargo made of the revision `Cargo.lock` pins). `None`, with the
+/// reason printed, where there is no such checkout (a vendored build, another
+/// `CARGO_HOME`), so that the tests going over them are skipped there rather
+/// than failed.
+#[cfg(test)]
+pub(crate) fn merman_fixture_directory(kind: &str) -> Option<std::path::PathBuf> {
+    use std::path::{Path, PathBuf};
+
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let Ok(lock) = std::fs::read_to_string(manifest.join("../../Cargo.lock")) else {
+        eprintln!("skipping merman's {kind} examples: the workspace has no Cargo.lock");
+        return None;
+    };
+    let Some(revision) = lock
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("source = \"git+https://github.com/zed-industries/merman")?
+                .split('#')
+                .nth(1)
+        })
+        .and_then(|revision| revision.get(..7))
+    else {
+        eprintln!("skipping merman's {kind} examples: Cargo.lock pins no merman revision");
+        return None;
+    };
+    let Some(cargo_home) = std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .or_else(|| std::env::var_os("HOME"))
+                .map(|home| PathBuf::from(home).join(".cargo"))
+        })
+    else {
+        eprintln!("skipping merman's {kind} examples: no CARGO_HOME and no home directory");
+        return None;
+    };
+    let checkouts = cargo_home.join("git").join("checkouts");
+    let found = std::fs::read_dir(&checkouts)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("merman-"))
+        .map(|entry| entry.path().join(revision).join("fixtures").join(kind))
+        .find(|path| path.is_dir());
+    if found.is_none() {
+        eprintln!(
+            "skipping merman's {kind} examples: no checkout of merman {revision} under {checkouts:?}"
+        );
+    }
+    found
+}
+
+/// The `.mmd` examples in [`merman_fixture_directory`], sorted by path, or
+/// nothing where that directory is not on this machine.
+#[cfg(test)]
+pub(crate) fn merman_fixtures(kind: &str) -> Vec<(std::path::PathBuf, String)> {
+    let Some(directory) = merman_fixture_directory(kind) else {
+        return Vec::new();
+    };
+    let mut fixtures = std::fs::read_dir(&directory)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.extension().is_some_and(|extension| extension == "mmd"))
+        .filter_map(|path| {
+            let source = std::fs::read_to_string(&path).ok()?;
+            Some((path, source))
+        })
+        .collect::<Vec<_>>();
+    fixtures.sort();
+    fixtures
 }
 
 #[cfg(test)]
@@ -356,6 +505,68 @@ mod tests {
                 "expected a cycle-related error, got: {message}"
             );
         }
+    }
+
+    /// Opens `source` in the structured editor's model on a separate thread,
+    /// so that a regression shows up as a failed test rather than a test run
+    /// that aborts or never finishes.
+    fn open_in_editor_within_time_limit(source: &str) -> Result<()> {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let source = source.to_string();
+        std::thread::spawn(move || {
+            sender
+                .send(crate::mermaid_model::parse_document(&source).map(|_| ()))
+                .ok();
+        });
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .unwrap_or_else(|_| panic!("opening did not finish (or panicked)"))
+    }
+
+    #[test]
+    fn a_merman_parser_panic_becomes_an_error() {
+        let source = "C4Context\nSystem_Boundary(b) {\n}";
+        let message = format!(
+            "{:#}",
+            parse_for_render_model(source).expect_err("merman panics on this boundary")
+        );
+        assert!(
+            message.contains("merman panicked while parsing"),
+            "got: {message}"
+        );
+        // The same thread is used again after a panic.
+        assert!(parse_for_render_model("C4Context\nSystem_Boundary(b, \"x\") {\n}").is_ok());
+    }
+
+    #[test]
+    fn opening_input_that_breaks_merman_is_refused_without_crashing() {
+        for source in [
+            "C4Context\nSystem_Boundary(b) {\n}",
+            "C4Container\nEnterprise_Boundary() {\n  Container(c1, \"C1\")\n}",
+            "xychart-beta\nx-axis 5 --> 5 %% c\n\nbar [1, 2]",
+            "xychart-beta\nbar [1]\nline [1, 2]",
+            "block-beta\na space:999999999 b",
+        ] {
+            assert!(
+                open_in_editor_within_time_limit(source).is_err(),
+                "should not open:\n{source}"
+            );
+        }
+        // Only merman's layout fails on these, and the editor does not lay
+        // out, so whether they open is up to each kind's model.
+        for source in [
+            "C4Context\nBoundary() {\n}",
+            "C4Context\nBoundary(b1, \"a\") {\n  Boundary(b1, \"b\") {\n  }\n}",
+            "block-beta\ncolumns 0\na b",
+            "radar-beta\naxis a, b, c\ncurve x{1, 2, 3}\nticks 999999999",
+        ] {
+            if let Err(error) = open_in_editor_within_time_limit(source) {
+                eprintln!("refused {source:?}: {error:#}");
+            }
+        }
+        assert!(
+            open_in_editor_within_time_limit("C4Context\nSystem_Boundary(b, \"x\") {\n}").is_ok()
+        );
     }
 }
 

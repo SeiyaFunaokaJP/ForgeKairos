@@ -35,7 +35,6 @@ use std::fmt::Write as _;
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
 use merman::diagrams::flowchart::FlowchartV2Model;
-use merman::{Engine, ParseOptions};
 
 /// The diagram keyword the source opened with. `flowchart` and `graph` select
 /// the same renderer, but rewriting one as the other would be a gratuitous
@@ -480,14 +479,15 @@ pub fn is_flowchart_source(source: &str) -> bool {
 /// Reads `source` — the body of a ```` ```mermaid ```` fence — into an editable
 /// document.
 pub fn parse_flowchart(source: &str) -> Result<FlowchartDocument> {
+    if let Some(problem) = crate::mermaid_model::preprocessing_problem_for_parsed_labels(source) {
+        bail!("{problem}");
+    }
     let scan = scan_source(source)?;
 
     let model = if source.trim().is_empty() {
         None
     } else {
-        let engine = Engine::new();
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        let parsed = crate::parse_for_render_model(source)
             .map_err(|error| anyhow!("{error}"))?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
         match parsed.model {
@@ -1089,13 +1089,39 @@ fn needs_quoting(label: &str) -> bool {
 /// quotes, and so does `\`, which would otherwise escape the quote that closes
 /// the label. A newline cannot survive inside a statement at all, so it becomes
 /// the line break Mermaid draws.
+///
+/// The model holds labels with their entities already decoded, so a `#…;` in
+/// one has to be written with its `#` encoded, or it would be decoded a second
+/// time. `%%{` would open a directive that Mermaid cuts out of the text,
+/// quotes or not, together with everything up to the next `}%%`.
 fn escape_quoted(label: &str) -> String {
-    label
+    let mut out = String::with_capacity(label.len());
+    for (offset, character) in label.char_indices() {
+        let rest = label.get(offset + 1..).unwrap_or_default();
+        if character == '#' && starts_entity_name(rest) {
+            out.push_str("#35;");
+        } else {
+            out.push(character);
+        }
+    }
+    out.replace("%%{", "%#37;{")
         .replace('"', "#quot;")
         .replace('|', "#124;")
         .replace('\\', "#92;")
         .replace("\r\n", "<br/>")
         .replace(['\n', '\r'], "<br/>")
+}
+
+/// Whether `rest`, the text after a `#`, makes that `#` an entity shorthand:
+/// a run of word characters closed by `;`.
+fn starts_entity_name(rest: &str) -> bool {
+    let name_length = rest
+        .find(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .unwrap_or(rest.len());
+    name_length > 0
+        && rest
+            .get(name_length..)
+            .is_some_and(|after| after.starts_with(';'))
 }
 
 /// The class `merman` puts on the target of a `click` statement.
@@ -1897,7 +1923,6 @@ fn lift_link_styles(document: &mut FlowchartDocument) {
 /// parser on its own to count the edges it declares. The answer is only used
 /// when those edges are exactly the model's, in the model's order.
 fn edge_blocks(statements: &[String], document: &FlowchartDocument) -> Option<Vec<Option<String>>> {
-    let engine = Engine::new();
     let mut open: Vec<usize> = Vec::new();
     let mut closing: Vec<Option<usize>> = Vec::new();
     let mut closed = 0;
@@ -1935,12 +1960,8 @@ fn edge_blocks(statements: &[String], document: &FlowchartDocument) -> Option<Ve
         if !statement.contains(['-', '=', '~']) {
             continue;
         }
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(
-                &format!("flowchart TD\n{statement}"),
-                ParseOptions::strict(),
-            )
-            .ok()??;
+        let parsed =
+            crate::parse_for_render_model(&format!("flowchart TD\n{statement}")).ok()??;
         let RenderSemanticModel::Flowchart(model) = parsed.model else {
             return None;
         };
@@ -3107,5 +3128,42 @@ mod tests {
         let document =
             parse_flowchart("flowchart TD\n  A node@--> B").expect("source should parse");
         assert_eq!(document.unused_id("node"), "node1");
+    }
+
+    /// `merman` cuts a `%%{ … }%%` out of its line and reads what is left; kept
+    /// as a comment, the statement after it would be drawn but out of the form's
+    /// reach — and written a second time by the model, which reads it too.
+    #[test]
+    fn statements_merman_reads_around_a_directive_are_refused() {
+        crate::mermaid_model::preprocessing_cases::assert_directive_rules(
+            "flowchart TD",
+            "A --> B",
+            "A %%{init: {}}%% --> B",
+        );
+    }
+
+    /// The model holds labels decoded, so a `#…;` or a `%%{` that came out of
+    /// an entity has to be encoded again, or the next reading would decode it
+    /// once more or cut the rest of the diagram out.
+    #[test]
+    fn labels_that_preprocessing_would_rewrite_are_written_encoded() {
+        let source = "%%{init: {}}%%\nflowchart TD\n    A[\"#35;quot; と #37;#37;{x\"] -->|#35;amp;| B[\"a %%{init: {}}%% b\"]";
+        assert!(parse_flowchart(source).is_err(), "{source}");
+
+        let source =
+            "%%{init: {}}%%\nflowchart TD\n    A[\"#35;quot; と #37;#37;{x\"] -->|#35;amp;| B";
+        let document = parse_flowchart(source).expect("the labels should open");
+        assert_eq!(document.nodes[0].label, "#quot; と %%{x");
+        assert_eq!(document.edges[0].label.as_deref(), Some("#amp;"));
+        let mut document = document;
+        document.nodes[1].label = "c %%{init: {}}%% d #lt;".to_string();
+        let whole = crate::mermaid_model::MermaidDocument::Flowchart(document.clone());
+        assert_eq!(whole.structure_error(), None);
+        let emitted = emit_flowchart(&document);
+        assert_renders(&emitted);
+        let again = parse_flowchart(&emitted).expect("the emitted diagram should reopen");
+        assert_eq!(again.nodes, document.nodes);
+        assert_eq!(again.edges[0].label, document.edges[0].label);
+        assert_eq!(emit_flowchart(&again), emitted);
     }
 }

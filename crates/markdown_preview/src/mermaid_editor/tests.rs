@@ -1574,8 +1574,8 @@ async fn a_diagram_without_a_model_does_not_open(cx: &mut TestAppContext) {
     cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_language()), cx));
     cx.set_state(indoc! {"
         ```mermaid
-        quadrantChart
-          title 優先度ˇ
+        zenuml
+          A->B: 優先度ˇ
         ```
     "});
 
@@ -1584,7 +1584,7 @@ async fn a_diagram_without_a_model_does_not_open(cx: &mut TestAppContext) {
         .expect("the cursor is inside a mermaid fence");
     let error = parse_document(&target.source)
         .err()
-        .expect("a quadrant chart has no editing model");
+        .expect("a ZenUML diagram has no editing model");
     assert!(
         format!("{error}").contains("構造化エディター"),
         "unexpected message: {error}"

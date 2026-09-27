@@ -21,7 +21,6 @@ use std::collections::HashMap;
 
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
-use merman::{Engine, ParseOptions};
 
 use crate::mermaid_model::{INDENT, first_statement_line, join_lines, keyword_tail, scan_preamble};
 
@@ -852,11 +851,12 @@ fn header_tail(line: &str) -> Option<&str> {
 /// Reads `source` — the body of a ```` ```mermaid ```` fence — into an editable
 /// document.
 pub fn parse_gitgraph(source: &str) -> Result<GitGraphDocument> {
+    if let Some(problem) = crate::mermaid_model::preprocessing_problem(source) {
+        bail!("{problem}");
+    }
     let mut main_branch = DEFAULT_MAIN_BRANCH.to_string();
     if !source.trim().is_empty() {
-        let engine = Engine::new();
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
@@ -2026,5 +2026,46 @@ mod tests {
             accepted > 100,
             "too few drawable scripts to mean much: {accepted}"
         );
+    }
+
+    #[test]
+    fn statements_merman_reads_around_a_directive_are_refused() {
+        crate::mermaid_model::preprocessing_cases::assert_directive_rules(
+            "gitGraph",
+            "commit",
+            "commit %%{init: {}}%% id: \"x\"",
+        );
+    }
+
+    /// An id and a tag that are fine on their own, but written on one line
+    /// let `merman`'s rewrite of `="…"` inside what looks like a tag close the
+    /// id at the tag's opening quote.
+    #[test]
+    fn fields_whose_quotes_merman_would_rewrite_cannot_be_written() {
+        let mut document = parse("gitGraph\n    commit");
+        let GitGraphItem::Commit(commit) = &mut document.items[0] else {
+            panic!("expected a commit: {:?}", document.items);
+        };
+        commit.id = Some("a<b=".to_string());
+        commit.tags = vec!["c>".to_string()];
+        assert!(is_valid_gitgraph_text("a<b="));
+        assert!(is_valid_gitgraph_text("c>"));
+        let whole = crate::mermaid_model::MermaidDocument::GitGraph(document.clone());
+        assert!(whole.structure_error().is_some(), "{}", whole.emit());
+        let drawn = crate::render_to_svg(&whole.emit(), &crate::MermaidTheme::default())
+            .expect("merman draws the rewritten line");
+        assert!(
+            !drawn.contains("a&lt;b="),
+            "the reason for the refusal no longer holds:
+{}",
+            whole.emit()
+        );
+
+        let GitGraphItem::Commit(commit) = &mut document.items[0] else {
+            panic!("expected a commit");
+        };
+        commit.id = Some("a<b".to_string());
+        let whole = crate::mermaid_model::MermaidDocument::GitGraph(document);
+        assert_eq!(whole.structure_error(), None);
     }
 }

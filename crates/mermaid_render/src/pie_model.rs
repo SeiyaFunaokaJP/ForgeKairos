@@ -20,7 +20,6 @@ use std::fmt::Write as _;
 
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
-use merman::{Engine, ParseOptions};
 
 use crate::flowchart_model::{PreservedLine, PreservedPosition};
 use crate::mermaid_model::{
@@ -87,10 +86,11 @@ pub fn is_pie_source(source: &str) -> bool {
 /// Reads `source` — the body of a ```` ```mermaid ```` fence — into an editable
 /// document.
 pub fn parse_pie(source: &str) -> Result<PieDocument> {
+    if let Some(problem) = crate::mermaid_model::preprocessing_problem(source) {
+        bail!("{problem}");
+    }
     if !source.trim().is_empty() {
-        let engine = Engine::new();
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
@@ -687,5 +687,43 @@ mod tests {
             emit_pie(&document),
             "pie title 図\n    \"a\" : 1\n    \"b\" : 2"
         );
+    }
+
+    #[test]
+    fn statements_merman_reads_around_a_directive_are_refused() {
+        crate::mermaid_model::preprocessing_cases::assert_directive_rules(
+            "pie",
+            "\"a\" : 1",
+            "\"a\" %%{init: {}}%% : 1",
+        );
+    }
+
+    /// Each label is fine on its own, but written one per line, `merman`'s
+    /// rewrite of `="…"` inside what looks like a tag would take the quote that
+    /// closes the second label and the one that opens the third.
+    #[test]
+    fn labels_whose_quotes_merman_would_rewrite_cannot_be_written() {
+        let mut document = parse_pie("pie\n    \"a\" : 1").expect("the chart should open");
+        document.slices = ["a<b", "c=", "d>"]
+            .into_iter()
+            .map(|label| PieSlice {
+                label: label.to_string(),
+                value: "1".to_string(),
+            })
+            .collect();
+        for slice in &document.slices {
+            assert!(is_valid_pie_label(&slice.label), "{}", slice.label);
+        }
+        let emitted = emit_pie(&document);
+        assert!(
+            crate::render_to_svg(&emitted, &crate::MermaidTheme::default()).is_err(),
+            "the reason for the refusal no longer holds:\n{emitted}"
+        );
+        let whole = crate::mermaid_model::MermaidDocument::Pie(document.clone());
+        assert!(whole.structure_error().is_some(), "{emitted}");
+
+        document.slices[1].label = "c".to_string();
+        let whole = crate::mermaid_model::MermaidDocument::Pie(document);
+        assert_eq!(whole.structure_error(), None);
     }
 }

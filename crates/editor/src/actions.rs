@@ -419,6 +419,19 @@ pub enum MermaidDiagramKind {
     Journey,
     QuadrantChart,
     XyChart,
+    Radar,
+    Requirement,
+    C4,
+    Block,
+    Sankey,
+    Packet,
+    Venn,
+    Kanban,
+    Treemap,
+    Architecture,
+    TreeView,
+    Ishikawa,
+    EventModeling,
 }
 
 /// Inserts a fenced Mermaid diagram template while in Markdown files.

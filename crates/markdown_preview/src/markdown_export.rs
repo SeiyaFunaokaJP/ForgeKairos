@@ -905,7 +905,7 @@ mod tests {
         );
         assert!(!broken.contains("<svg"), "{broken}");
 
-        let unsupported = render("```mermaid\nsankey-beta\n    a,b,1\n```\n");
+        let unsupported = render("```mermaid\nzenuml\n    A->B: x\n```\n");
         assert!(
             unsupported.starts_with(
                 "<p class=\"mermaid-error\">Mermaid 図を描画できませんでした: 未対応の図の種類です</p>\n"

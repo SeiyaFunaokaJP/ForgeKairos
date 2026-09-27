@@ -5,6 +5,8 @@ use anyhow::{Context as _, Result, anyhow};
 use crate::{MermaidTheme, css_color};
 
 pub(super) fn render_mermaid(source: &str, theme: &MermaidTheme) -> Result<String> {
+    crate::preflight::check_before_render(source)?;
+
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let id = COUNTER.fetch_add(1, Ordering::Relaxed);
     let diagram_id = format!("merman-{id}");
@@ -115,7 +117,9 @@ fn to_merman_config(theme: &MermaidTheme) -> merman::MermaidConfig {
             map.insert(format!("cScale{i}"), color.clone().into());
             map.insert(format!("cScaleLabel{i}"), label.clone().into());
             map.insert(format!("pie{pie_number}"), color.clone().into());
+            map.insert(format!("venn{pie_number}"), color.clone().into());
         }
+        insert_newer_diagram_theme_variables(map, theme);
     }
 
     merman::MermaidConfig::from_value(serde_json::json!({
@@ -131,7 +135,86 @@ fn to_merman_config(theme: &MermaidTheme) -> merman::MermaidConfig {
             "padding": 16,
         },
         "themeVariables": theme_vars,
+        // These diagrams read their colors from diagram-level config rather
+        // than `themeVariables`, and default to black text on a light fill.
+        "packet": {
+            "startByteColor": text,
+            "endByteColor": text,
+            "labelColor": text,
+            "titleColor": text,
+            "blockStrokeColor": primary_border,
+            "blockFillColor": primary,
+        },
+        "treemap": {
+            "titleColor": text,
+            "labelColor": text,
+            "valueColor": text,
+        },
+        "radar": {
+            "axisColor": line,
+            "graticuleColor": primary_border,
+        },
     }))
+}
+
+/// Colors for the diagram kinds whose `base` theme defaults are fixed light-mode
+/// colors (black arrows, near-white lanes) instead of being derived from the
+/// variables above, so they vanish on a dark background.
+fn insert_newer_diagram_theme_variables(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    theme: &MermaidTheme,
+) {
+    let text = css_color(theme.text_color);
+    let line = css_color(theme.line_color);
+    let primary = css_color(theme.primary_color);
+    let border = css_color(theme.primary_border_color);
+    let edge_label_background = css_color(theme.edge_label_background);
+    let cluster_background = css_color(theme.cluster_background);
+    let cluster_border = css_color(theme.cluster_border);
+    let accent = |index: usize| theme.git_branch_colors[index % theme.git_branch_colors.len()];
+    let tinted = |index: usize| {
+        css_color(crate::postprocess::blend_over_background(
+            accent(index),
+            theme.background,
+            crate::postprocess::ACCENT_FILL_OPACITY,
+        ))
+    };
+
+    let entries = [
+        ("relationColor", line.clone()),
+        ("relationLabelBackground", edge_label_background.clone()),
+        ("relationLabelColor", text.clone()),
+        ("requirementBackground", primary.clone()),
+        ("requirementBorderColor", border.clone()),
+        ("requirementTextColor", text.clone()),
+        ("requirementEdgeLabelBackground", edge_label_background),
+        ("archEdgeColor", line.clone()),
+        ("archEdgeArrowColor", line.clone()),
+        ("archGroupBorderColor", border.clone()),
+        ("emUiFill", primary),
+        ("emUiStroke", border),
+        ("emCommandFill", tinted(0)),
+        ("emCommandStroke", css_color(accent(0))),
+        ("emReadModelFill", tinted(1)),
+        ("emReadModelStroke", css_color(accent(1))),
+        ("emEventFill", tinted(2)),
+        ("emEventStroke", css_color(accent(2))),
+        ("emProcessorFill", tinted(3)),
+        ("emProcessorStroke", css_color(accent(3))),
+        ("emRelationStroke", line.clone()),
+        ("emArrowhead", line.clone()),
+        ("emSwimlaneBackgroundOdd", cluster_background),
+        ("emSwimlaneBackgroundStroke", cluster_border),
+        ("vennTitleTextColor", text.clone()),
+        ("vennSetTextColor", text.clone()),
+    ];
+    for (key, value) in entries {
+        map.insert(key.to_string(), value.into());
+    }
+    map.insert(
+        "treeView".to_string(),
+        serde_json::json!({ "labelColor": text, "lineColor": line }),
+    );
 }
 
 #[cfg(test)]

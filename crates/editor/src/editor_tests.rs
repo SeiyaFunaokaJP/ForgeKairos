@@ -46276,6 +46276,19 @@ fn test_mermaid_diagram_templates_declare_a_renderable_type(_cx: &mut TestAppCon
         (MermaidDiagramKind::Journey, "journey"),
         (MermaidDiagramKind::QuadrantChart, "quadrantChart"),
         (MermaidDiagramKind::XyChart, "xychart-beta"),
+        (MermaidDiagramKind::Radar, "radar-beta"),
+        (MermaidDiagramKind::Requirement, "requirementDiagram"),
+        (MermaidDiagramKind::C4, "C4Context"),
+        (MermaidDiagramKind::Block, "block-beta"),
+        (MermaidDiagramKind::Sankey, "sankey-beta"),
+        (MermaidDiagramKind::Packet, "packet-beta"),
+        (MermaidDiagramKind::Venn, "venn-beta"),
+        (MermaidDiagramKind::Kanban, "kanban"),
+        (MermaidDiagramKind::Treemap, "treemap-beta"),
+        (MermaidDiagramKind::Architecture, "architecture-beta"),
+        (MermaidDiagramKind::TreeView, "treeView-beta"),
+        (MermaidDiagramKind::Ishikawa, "ishikawa-beta"),
+        (MermaidDiagramKind::EventModeling, "eventmodeling"),
     ];
     assert_eq!(expected_first_tokens.len(), MermaidDiagramKind::ALL.len());
 
@@ -46290,6 +46303,85 @@ fn test_mermaid_diagram_templates_declare_a_renderable_type(_cx: &mut TestAppCon
         assert!(
             !template.ends_with('\n'),
             "the {} template must not end with a newline, the fence adds one",
+            kind.label()
+        );
+    }
+}
+
+#[gpui::test]
+fn test_mermaid_insert_menus_split_after_the_everyday_kinds(_cx: &mut TestAppContext) {
+    // The insert menus draw their separator at this index, which must fall
+    // between the thirteen long-standing kinds and the ones added after them.
+    assert_eq!(
+        MermaidDiagramKind::ALL.get(MermaidDiagramKind::EVERYDAY_COUNT - 1),
+        Some(&MermaidDiagramKind::XyChart)
+    );
+    assert_eq!(
+        MermaidDiagramKind::ALL.get(MermaidDiagramKind::EVERYDAY_COUNT),
+        Some(&MermaidDiagramKind::Radar)
+    );
+}
+
+fn expand_snippet_placeholders(body: &str) -> String {
+    let mut expanded = String::with_capacity(body.len());
+    let mut rest = body;
+    while let Some(dollar) = rest.find('$') {
+        expanded.push_str(&rest[..dollar]);
+        let after = &rest[dollar + 1..];
+        if let Some(placeholder) = after.strip_prefix('{') {
+            let colon = placeholder
+                .find(':')
+                .expect("placeholder without a default");
+            let close = placeholder.find('}').expect("unclosed placeholder");
+            expanded.push_str(&placeholder[colon + 1..close]);
+            rest = &placeholder[close + 1..];
+        } else {
+            rest = after.trim_start_matches(|character: char| character.is_ascii_digit());
+        }
+    }
+    expanded.push_str(rest);
+    expanded
+}
+
+#[gpui::test]
+fn test_mermaid_snippets_insert_the_same_text_as_the_menu(_cx: &mut TestAppContext) {
+    // The structured editors are tested against the menu templates byte for
+    // byte, so a snippet that drifts from its template inserts a diagram they
+    // were never checked against.
+    let snippets: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(include_str!("../../../assets/snippets/markdown.json"))
+            .expect("markdown snippets should parse");
+    let expanded_bodies = snippets
+        .values()
+        .filter(|snippet| {
+            snippet["prefix"]
+                .as_str()
+                .is_some_and(|prefix| prefix.starts_with("mermaid-"))
+        })
+        .map(|snippet| {
+            let lines = snippet["body"]
+                .as_array()
+                .expect("snippet body should be a list of lines")
+                .iter()
+                .map(|line| line.as_str().expect("snippet line should be a string"))
+                .collect::<Vec<_>>();
+            assert_eq!(lines.first(), Some(&"```mermaid"));
+            assert_eq!(lines.last(), Some(&"$0"));
+            expand_snippet_placeholders(&lines[1..lines.len() - 2].join("\n"))
+        })
+        .collect::<Vec<_>>();
+    // The first ten kinds keep their older, shorter snippet bodies.
+    let kinds_with_matching_snippets = MermaidDiagramKind::ALL
+        .iter()
+        .skip_while(|kind| **kind != MermaidDiagramKind::Journey)
+        .collect::<Vec<_>>();
+    assert_eq!(kinds_with_matching_snippets.len(), 16);
+    for kind in kinds_with_matching_snippets {
+        assert!(
+            expanded_bodies
+                .iter()
+                .any(|body| body.as_str() == kind.template()),
+            "no snippet inserts the {} template as it is",
             kind.label()
         );
     }

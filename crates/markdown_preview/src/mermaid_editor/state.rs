@@ -475,7 +475,7 @@ fn scope_problem(scope: &StateScope, declared: &mut Vec<String>) -> Option<Share
         if let StateItem::Note(note) = item
             && !is_valid_note_text(&note.text)
         {
-            return Some("ノートの文章に使えない文字があります (前後の空白や改行)。".into());
+            return Some("ノートの文章に使えない文字があります (前後の空白や改行、`%%{`)。".into());
         }
         if let StateItem::Composite(composite) = item
             && let Some(problem) = scope_problem(&composite.body, declared)
