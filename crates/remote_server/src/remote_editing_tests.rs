@@ -5628,6 +5628,45 @@ async fn session_without_launch_approvals(
     (client, headless)
 }
 
+/// ADR-F50 (zed-jp-enhance): an `AddWorktree` that says nothing about the
+/// worktree's code — what every IDE sends, and what a peer that does not know
+/// the field sends — holds that code back until the IDE decides. The explicit
+/// opt-out is what `open_buffer_over_session` sends.
+#[gpui::test]
+async fn test_an_add_worktree_that_says_nothing_holds_the_code_back(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    use project::worktree_code_execution::WorktreeCodeState;
+
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({ "project1": { "src": { "lib.rs": "fn one() {}" } } }),
+    )
+    .await;
+    let (client, headless) = session_without_launch_approvals(&fs, cx, server_cx).await;
+    let session = client.read_with(cx, |client, _| client.proto_client());
+    let response = session
+        .request(proto::AddWorktree {
+            project_id: proto::REMOTE_SERVER_PROJECT_ID,
+            path: path!("/code/project1").to_string(),
+            visible: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+    let worktree_id = project::WorktreeId::from_proto(response.worktree_id);
+    assert_eq!(
+        headless.read_with(server_cx, |headless, cx| {
+            headless.worktree_code_execution.read(cx).state(worktree_id)
+        }),
+        WorktreeCodeState::Unknown
+    );
+}
+
 /// Opens `/code/project1/src/lib.rs` the way an IDE does, over the session
 /// alone, and returns the buffer's id.
 async fn open_buffer_over_session(session: &rpc::AnyProtoClient, cx: &mut TestAppContext) -> u64 {
@@ -5637,7 +5676,7 @@ async fn open_buffer_over_session(session: &rpc::AnyProtoClient, cx: &mut TestAp
             path: path!("/code/project1").to_string(),
             visible: true,
             // An IDE that never says whether the worktree's code may run.
-            code_execution_follows_ide: false,
+            code_runs_without_ide_decision: true,
         })
         .await
         .unwrap();

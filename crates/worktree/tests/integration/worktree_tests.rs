@@ -1,3 +1,4 @@
+mod jp_private_files_tests;
 mod worktree_settings_tests;
 
 use anyhow::Result;

@@ -51,16 +51,6 @@ message SaveBuffer {
   optional ProjectPath new_path = 4;
 }
 
-// ADR-F49: save the buffer to exactly its path inside its worktree, through
-// no link, or not at all (an agent's write). A server from before this message
-// cannot decode it and never answers, so the client gives up after a while and
-// the write is not made.
-message SaveBufferVerified {
-  uint64 project_id = 1;
-  uint64 buffer_id = 2;
-  repeated VectorClockEntry version = 3;
-}
-
 message CloseBuffer {
   uint64 project_id = 1;
   uint64 buffer_id = 2;

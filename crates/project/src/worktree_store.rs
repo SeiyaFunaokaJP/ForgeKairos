@@ -902,7 +902,7 @@ impl WorktreeStore {
                     project_id: REMOTE_SERVER_PROJECT_ID,
                     path: path.to_proto(),
                     visible,
-                    code_execution_follows_ide: true,
+                    code_runs_without_ide_decision: false,
                 })
                 .await?;
 

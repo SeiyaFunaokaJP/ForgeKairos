@@ -834,9 +834,11 @@ impl HeadlessProject {
                 }
             }
         };
-        // ADR-F50: an IDE that decides whether the worktree's code may run is
-        // heard before any of it runs here.
-        if message.payload.code_execution_follows_ide {
+        // ADR-F50: the IDE decides whether the worktree's code may run, and is
+        // heard before any of it runs here. Only a peer that says it never
+        // decides (tests) is let off, so a message that says nothing holds the
+        // code back.
+        if !message.payload.code_runs_without_ide_decision {
             this.update(&mut cx, |this, cx| {
                 this.worktree_code_execution.update(cx, |execution, _| {
                     execution.expect_ide_decision(canonicalized.clone())

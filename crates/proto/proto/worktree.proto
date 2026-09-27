@@ -16,6 +16,9 @@ message File {
 }
 
 message Entry {
+  // The host's `private_files` verdict, so that clients keep private entries
+  // away from agents and edit prediction. Older hosts leave it false.
+  bool is_private = 10000;
   uint64 id = 1;
   bool is_dir = 2;
   string path = 3;
@@ -30,18 +33,19 @@ message Entry {
   optional string canonical_path = 12;
   bool is_hidden = 13;
   bool is_unloaded = 14;
-  // The host's `private_files` verdict, so that clients keep private entries
-  // away from agents and edit prediction. Older hosts leave it false.
-  bool is_private = 15;
 }
 
 message AddWorktree {
+  // Was `bool code_execution_follows_ide`, which a host that could not read
+  // it took as false: the worktree's code then ran without the IDE's say.
+  reserved 10000;
+  // ADR-F50: set only by a peer that never decides whether the worktree's
+  // code may run (tests). Absent, as from any IDE, the remote host holds the
+  // code back until the IDE has decided.
+  bool code_runs_without_ide_decision = 10001;
   string path = 1;
   uint64 project_id = 2;
   bool visible = 3;
-  // ADR-F50: the IDE says whether the worktree's code may run before any of
-  // it runs on the remote host.
-  bool code_execution_follows_ide = 4;
 }
 
 message AddWorktreeResponse {
@@ -161,27 +165,6 @@ message ExpandAllForProjectEntryResponse {
   uint64 worktree_scan_id = 1;
 }
 
-message RescanProjectWorktree {
-  uint64 project_id = 1;
-  uint64 worktree_id = 2;
-}
-
-message RescanProjectWorktreeResponse {
-  uint64 worktree_scan_id = 1;
-}
-
-// ADR-F49: check, on the host that holds the files, that `path` inside the
-// worktree can be read through no link at all, before Zed reads it for an
-// agent whose own sandbox could not follow one. The counterpart of
-// SaveBufferVerified for reads. A server from before this message cannot
-// decode it and never answers, so the client gives up after a while and reads
-// nothing.
-message VerifyAgentRead {
-  uint64 project_id = 1;
-  uint64 worktree_id = 2;
-  string path = 3;
-}
-
 // TODO(yara|dino): split into per-operation response messages (e.g.
 // `CreateProjectEntryResponse`, `CopyProjectEntryResponse`,
 // `DeleteProjectEntryResponse`, `RenameProjectEntryResponse`) for consistency
@@ -256,18 +239,4 @@ message AllocateWorktreeId {
 
 message AllocateWorktreeIdResponse {
   uint64 worktree_id = 1;
-}
-
-// ADR-F50: from the IDE to the remote server, whether a worktree's own code
-// may run on the remote host. The worktree's code is paused while
-// `generation` differs from `confirmed_generation`, which only the IDE's user
-// advances. A server that does not know this message keeps running it, and
-// does not acknowledge it.
-message SetWorktreeCodeExecution {
-  uint64 project_id = 1;
-  uint64 worktree_id = 2;
-  uint64 generation = 3;
-  uint64 confirmed_generation = 4;
-  // Extension language servers the user lets run while the code is paused.
-  repeated string language_servers_allowed_while_paused = 5;
 }

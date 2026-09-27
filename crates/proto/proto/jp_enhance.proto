@@ -1,0 +1,395 @@
+syntax = "proto3";
+package zed.messages;
+
+// zed-jp-enhance: every message this fork adds to the protocol lives here (or in
+// file_transfer.proto), not among upstream's messages, so that merging an
+// upstream release touches none of these lines. Fields the fork adds to
+// upstream's messages stay in those messages, numbered from 10000 up; see
+// tests/jp_enhance_numbering.rs.
+
+import "buffer.proto";
+
+// The first request on every connection between a client and a remote
+// server, before any other message of this fork. Both ends compare
+// `revision` with their own `JP_ENHANCE_WIRE_REVISION`: the client gives up on
+// a server that answers another revision or does not answer at all (upstream's
+// server, or this fork's from before this message, cannot decode it), and the
+// server handles nothing but pings until a client of its own revision has
+// asked. Several fields are only safe because both ends number and read them
+// alike (`Entry.is_private`, `AddWorktree`), which the binary's name alone
+// cannot promise.
+message CheckWireRevision {
+  uint32 revision = 1;
+}
+
+message CheckWireRevisionResponse {
+  uint32 revision = 1;
+}
+
+// Pushes the connecting IDE's egress allowlist to the remote host so the
+// host's own outgoing HTTP(S) requests (LSP/node downloads, extensions, LLM
+// providers) are gated by the same list. The allowlist on the client side is
+// the source of truth (see docs/jp-enhance/DESIGN.md ADR-F11); this is sent once,
+// right after the connection is established, and is not re-sent if the local
+// allowlist changes later in the session — the remote host picks up the
+// current allowlist again on its next fresh connection.
+message SetEgressAllowlist {
+  repeated string allowed_hosts = 1;
+  // The user's `proxy_child_processes` choice, so the remote host runs (or
+  // does not run) the same child-process egress proxy for the ACP agents, MCP
+  // servers and npm invocations that execute over there (ADR-F14). Absent —
+  // an older client — means on, which is what the policy file's absent value
+  // means too: the mechanism is opted out of, never into.
+  optional bool proxy_child_processes = 2;
+}
+
+// ADR-F27 (docs/jp-enhance/DESIGN.md §4.27): a remote host that cannot reach
+// the internet relays its outgoing HTTP(S) through the connected IDE, so that
+// language server / node / extension downloads run against the client's
+// allowlist, consent flow and proxy instead of the remote host's network.
+//
+// Direction is remote_server -> client, the opposite of most requests here.
+// The client answers `Ack` as soon as it has taken the request, then streams
+// `ProxyHttpResponse` messages back with the same `request_id`.
+message ProxyHttpRequest {
+  // Correlates the response frames below with this request. Unique per
+  // remote_server process, allocated by the relay that sends this.
+  uint64 request_id = 1;
+  string method = 2;
+  string url = 3;
+  repeated ProxyHttpHeader headers = 4;
+  bytes body = 5;
+  // Whether the client should follow redirects on the remote's behalf. Each
+  // hop is re-checked against the client's allowlist either way.
+  bool follow_redirects = 6;
+  // The deadline the caller on the remote host asked for, carried across so
+  // that a request with one (`http_client::HttpRequestExt::timeout`) keeps it
+  // instead of falling back on the relay's much longer stall timeout.
+  optional uint64 timeout_millis = 7;
+}
+
+message ProxyHttpHeader {
+  string name = 1;
+  string value = 2;
+}
+
+// One frame of the response to a `ProxyHttpRequest`. The first frame carries
+// `status` and `headers`; later frames carry body bytes only. `chunk` is
+// capped at 256 KiB so that a multi-megabyte download does not monopolize the
+// RPC channel, and each frame is a request whose `Ack` paces the sender.
+message ProxyHttpResponse {
+  uint64 request_id = 1;
+  uint32 status = 2;
+  repeated ProxyHttpHeader headers = 3;
+  bytes chunk = 4;
+  // Set on the frame that ends the body. No further frames follow.
+  bool is_last = 5;
+  // Set instead of a body frame when the request failed. Terminal.
+  optional ProxyHttpError error = 6;
+}
+
+message ProxyHttpError {
+  oneof kind {
+    ProxyHttpEgressDenied egress_denied = 1;
+    ProxyHttpNetworkError network = 2;
+    ProxyHttpOtherError other = 3;
+  }
+}
+
+// The client's egress allowlist refused the request. Kept as its own variant
+// so the remote host can rebuild `http_client::EgressDenied` and let the
+// ADR-F22 consent flow classify the failure, rather than seeing an opaque
+// string.
+message ProxyHttpEgressDenied {
+  string host = 1;
+  // The requested URL with its query string removed.
+  string url = 2;
+}
+
+message ProxyHttpNetworkError {
+  string message = 1;
+}
+
+message ProxyHttpOtherError {
+  string message = 1;
+}
+
+message AgentServerSandbox {
+  // The agent's configuration folder on the host, which it may write.
+  string config_dir = 1;
+  // The agent's own environment and its profile's, none of the host's.
+  map<string, string> env = 2;
+  // What the agent runs from inside the host's Zed data directory.
+  repeated string readable_paths = 3;
+  // The hosts the agent talks to, unless it takes the IDE-wide allowlist.
+  repeated string hosts = 4;
+  bool hosts_from_editor_allowlist = 5;
+}
+
+// ADR-F49 decision 18 (C): what still runs inside the sandbox an agent was
+// started in, as the host sees it from *outside* that sandbox. The client
+// cannot ask the agent itself: anything a sandboxed command can write, it can
+// also lie on, and a leftover process that reports itself gone is exactly what
+// the pause exists to catch. A server from before this message cannot decode
+// it and never answers, so the client gives up after a while and keeps the
+// agent a writer for as long as its session lasts (decision 18, case B).
+message ListSandboxProcesses {
+  uint64 project_id = 1;
+  // The opaque id the client gave the sandbox when it started the agent.
+  string session_id = 2;
+}
+
+message SandboxProcess {
+  // The pid on the host, never the one the process sees inside its namespace.
+  uint32 pid = 1;
+  // Ticks since boot at which it started, so a recycled pid is not mistaken
+  // for the process that held it.
+  uint64 start_time = 2;
+  string command = 3;
+  // How long it has been running, in seconds, worked out on the host: its
+  // start time is in that kernel's ticks since that host's boot. Absent where
+  // the host could not work it out at all, which the dialog says rather than
+  // showing the process as one that started this very second. A server from
+  // before this was optional always sets it, so it reads as it always did.
+  optional uint64 running_for = 4;
+}
+
+message ListSandboxProcessesResponse {
+  repeated SandboxProcess processes = 1;
+}
+
+// ADR-F49 decision 18 (C): stops exactly these processes of that sandbox —
+// never the agent itself, which the user stops from its own panel.
+message StopSandboxProcesses {
+  uint64 project_id = 1;
+  string session_id = 2;
+  repeated SandboxProcessKey processes = 3;
+}
+
+message SandboxProcessKey {
+  uint32 pid = 1;
+  uint64 start_time = 2;
+}
+
+message StopSandboxProcessesResponse {
+  uint32 stopped = 1;
+}
+
+// ADR-F49: save the buffer to exactly its path inside its worktree, through
+// no link, or not at all (an agent's write). A server from before this message
+// cannot decode it and never answers, so the client gives up after a while and
+// the write is not made.
+message SaveBufferVerified {
+  uint64 project_id = 1;
+  uint64 buffer_id = 2;
+  repeated VectorClockEntry version = 3;
+}
+
+message RescanProjectWorktree {
+  uint64 project_id = 1;
+  uint64 worktree_id = 2;
+}
+
+message RescanProjectWorktreeResponse {
+  uint64 worktree_scan_id = 1;
+}
+
+// ADR-F49: check, on the host that holds the files, that `path` inside the
+// worktree can be read through no link at all, before Zed reads it for an
+// agent whose own sandbox could not follow one. The counterpart of
+// SaveBufferVerified for reads. A server from before this message cannot
+// decode it and never answers, so the client gives up after a while and reads
+// nothing.
+message VerifyAgentRead {
+  uint64 project_id = 1;
+  uint64 worktree_id = 2;
+  string path = 3;
+}
+
+// ADR-F50: from the IDE to the remote server, whether a worktree's own code
+// may run on the remote host. The worktree's code is paused while
+// `generation` differs from `confirmed_generation`, which only the IDE's user
+// advances. A server that does not know this message keeps running it, and
+// does not acknowledge it.
+message SetWorktreeCodeExecution {
+  uint64 project_id = 1;
+  uint64 worktree_id = 2;
+  uint64 generation = 3;
+  uint64 confirmed_generation = 4;
+  // Extension language servers the user lets run while the code is paused.
+  repeated string language_servers_allowed_while_paused = 5;
+}
+
+// client -> remote_server. Ends a persistent remote terminal session (the
+// shell a `terminal-session` holder keeps alive across disconnects) because
+// its tab was closed. Unknown or already finished sessions are not an error.
+message KillTerminalSession {
+  uint64 project_id = 1;
+  string session_id = 2;
+}
+
+// Runs a single git subcommand in a repository. The subcommand is validated
+// against an allowlist on the host before it runs; see ALLOWED_GIT_COMMANDS.
+message GitRunCommand {
+  uint64 project_id = 1;
+  uint64 repository_id = 2;
+  repeated string args = 3;
+  optional string stdin = 4;
+  // Validated against ALLOWED_GIT_COMMAND_ENV on the host, which accepts only the
+  // GIT_AUTHOR_* variables `commit-tree` reads. Anything else is refused there.
+  map<string, string> env = 5;
+}
+
+message GitRunCommandResponse {
+  string stdout = 1;
+  string stderr = 2;
+  // Absent when the process was terminated by a signal.
+  optional int32 exit_code = 3;
+}
+
+// Stops the server's `SearchCommits` with this `search_id` from the same client, and its git.
+message CancelSearchCommits {
+  uint64 project_id = 1;
+  uint64 repository_id = 2;
+  uint64 search_id = 3;
+}
+
+message SearchCommitsCommitSet {
+  repeated string shas = 1;
+}
+
+enum SearchCommitsMerges {
+  SearchCommitsIncludeMerges = 0;
+  SearchCommitsExcludeMerges = 1;
+  SearchCommitsOnlyMerges = 2;
+}
+
+// ADR-F50: the remote server asks the connected IDE whether it may run a
+// program that a project's settings or the remote's own server settings
+// define there. The remote server resolves the definition and hashes the
+// content it runs on its own file system; the IDE adds the host it is
+// connected to and decides with the same approvals as for local projects.
+message RequestProjectLaunchApproval {
+  uint64 project_id = 1;
+  // The remote server's digest of the definition and of the content it runs.
+  string remote_key = 2;
+  ProjectLaunchKind kind = 3;
+  string name = 4;
+  string program = 5;
+  repeated string arguments = 6;
+  repeated string environment_variable_names = 7;
+  repeated ProjectLaunchEnvironmentVariable code_loading_environment = 8;
+
+  oneof definition_file {
+    string worktree_settings_file = 9;
+    ServerSettings server_settings = 10;
+    ResolvedProgram resolved_program = 11;
+  }
+
+  message ServerSettings {}
+  message ResolvedProgram {}
+
+  uint64 worktree_id = 12;
+  string worktree_abs_path = 13;
+  optional string working_directory = 14;
+  repeated string referenced_worktree_files = 15;
+  repeated ProjectLaunchUnboundContent unbound_worktree_content = 16;
+  bool approval_is_session_only = 17;
+  bool replaces_user_entry = 18;
+  // A digest of the machine the remote server runs on, which can only tell
+  // hosts that the IDE reaches under one name further apart.
+  optional string host_machine = 19;
+}
+
+enum ProjectLaunchKind {
+  LaunchKindUnknown = 0;
+  LaunchKindLanguageServerBinary = 1;
+  LaunchKindExternalFormatter = 2;
+}
+
+message ProjectLaunchEnvironmentVariable {
+  string name = 1;
+  string value = 2;
+}
+
+message ProjectLaunchUnboundContent {
+  ProjectLaunchUnboundKind kind = 1;
+  string path = 2;
+  optional string program = 3;
+}
+
+enum ProjectLaunchUnboundKind {
+  UnboundUnknown = 0;
+  UnboundWorkingDirectory = 1;
+  UnboundFile = 2;
+  UnboundDirectory = 3;
+  UnboundArgumentFile = 4;
+  UnboundWrapper = 5;
+  UnboundRemoteFile = 6;
+  UnboundUnreadable = 7;
+}
+
+message RequestProjectLaunchApprovalResponse {
+  ProjectLaunchApprovalState state = 1;
+  optional string reason = 2;
+}
+
+enum ProjectLaunchApprovalState {
+  LaunchApprovalUnavailable = 0;
+  LaunchApprovalPending = 1;
+  LaunchApprovalApproved = 2;
+  LaunchApprovalDenied = 3;
+  // Too many launches of the project wait for the user already; asking
+  // again later may find room.
+  LaunchApprovalDeferred = 4;
+}
+
+// The user decided a launch the remote server asked about.
+message ProjectLaunchApprovalDecided {
+  uint64 project_id = 1;
+  string remote_key = 2;
+  bool approved = 3;
+}
+
+// The user took back a decision about a launch the remote server asked about.
+message ProjectLaunchApprovalRevoked {
+  uint64 project_id = 1;
+  string remote_key = 2;
+}
+
+// The remote server no longer waits for a launch it asked about.
+message WithdrawProjectLaunchApproval {
+  uint64 project_id = 1;
+  string remote_key = 2;
+}
+
+// ADR-F39: which of a language's tools exist on the machine that owns the
+// files. Asked over the wire because on a remote project that machine is the
+// only one whose `PATH` and installs matter.
+message CheckDevTools {
+  uint64 project_id = 1;
+  string language = 2;
+  uint64 worktree_id = 3;
+}
+
+message CheckDevToolsResponse {
+  repeated DevToolState tools = 1;
+}
+
+message DevToolState {
+  string id = 1;
+  bool present = 2;
+  optional string path = 3;
+}
+
+// Downloads one catalogued tool into the owning machine's user data directory.
+// The download runs there, which for a remote host means it goes back out
+// through the client's relay (ADR-F27) and its allowlist.
+message InstallDevTool {
+  uint64 project_id = 1;
+  string id = 2;
+}
+
+message InstallDevToolResponse {
+  string path = 1;
+}

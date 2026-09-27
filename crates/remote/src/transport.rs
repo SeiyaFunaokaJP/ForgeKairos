@@ -241,6 +241,32 @@ fn handle_rpc_messages_over_child_process_stdio(
     })
 }
 
+/// The version part of the name the server binary is installed under
+/// (`zed-remote-server-{channel}-{this}`).
+///
+/// A binary that runs under the expected name is reused over SSH, so the name
+/// has to change whenever the wire format does: a server of the same Zed
+/// version from another revision of this fork, or upstream's own, numbers the
+/// fork's messages and fields differently and would drop or misread them.
+/// The name only picks the binary; the connection then checks the revision
+/// itself (`CheckWireRevision`) and reinstalls a binary that answers another.
+/// That holds for dev builds too: when the source build fails or
+/// `ZED_BUILD_REMOTE_SERVER=never`, SSH reuses whatever dev binary the host
+/// already has.
+pub(crate) fn server_binary_version(
+    release_channel: release_channel::ReleaseChannel,
+    version: impl std::fmt::Display,
+) -> String {
+    let version = match release_channel {
+        release_channel::ReleaseChannel::Dev => "build".to_string(),
+        _ => version.to_string(),
+    };
+    format!(
+        "{version}-jp{}",
+        rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION
+    )
+}
+
 /// File names of a remote server artifact for `platform`, most preferred first.
 ///
 /// The compressed name is exactly what `script/bundle-linux` and

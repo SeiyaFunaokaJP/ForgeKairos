@@ -356,7 +356,9 @@ impl SessionRegistry {
 
         let (incoming_tx, incoming_rx) = mpsc::unbounded::<Envelope>();
         let (outgoing_tx, outgoing_rx) = mpsc::unbounded::<Envelope>();
-        let client = RemoteClient::proto_client_from_channels(
+        // Serves nothing but pings until the client has shown this build's
+        // wire revision.
+        let client = RemoteClient::server_proto_client_from_channels(
             incoming_rx,
             outgoing_tx,
             cx,
@@ -1098,7 +1100,9 @@ mod tests {
     use http_client::{AllowlistedHttpClient, BlockedHttpClient, EgressPolicyHandle, HttpClient};
     use language::LanguageRegistry;
     use node_runtime::NodeRuntime;
-    use rpc::proto::{self, EnvelopedMessage as _, REMOTE_SERVER_PROJECT_ID};
+    use rpc::proto::{
+        self, EnvelopedMessage as _, REMOTE_SERVER_PROJECT_ID, jp_enhance::JP_ENHANCE_WIRE_REVISION,
+    };
     use serde_json::json;
     use std::{cell::Cell, time::Instant};
 
@@ -1212,8 +1216,28 @@ mod tests {
         reconnect: bool,
         cx: &mut TestAppContext,
     ) -> (DaemonHelloOutcome, MemoryStream) {
-        let (reply, stream) = introduce(daemon, hello(identifier, reconnect), None, cx).await;
+        let (reply, mut stream) = introduce(daemon, hello(identifier, reconnect), None, cx).await;
+        // What a client asks first on a fresh session; a resumed one was
+        // checked when it started.
+        if reply.outcome == DaemonHelloOutcome::Accepted && !reconnect {
+            let answer = check_wire_revision(&mut stream, JP_ENHANCE_WIRE_REVISION).await;
+            assert_eq!(answer, Some(JP_ENHANCE_WIRE_REVISION));
+        }
         (reply.outcome, stream)
+    }
+
+    const WIRE_REVISION_CHECK_ID: u32 = 9_999;
+
+    async fn check_wire_revision<S: AsyncRead + AsyncWrite + Unpin>(
+        stream: &mut S,
+        revision: u32,
+    ) -> Option<u32> {
+        let answer = request(
+            stream,
+            proto::CheckWireRevision { revision }.into_envelope(WIRE_REVISION_CHECK_ID, None, None),
+        )
+        .await;
+        proto::CheckWireRevisionResponse::from_envelope(answer).map(|answer| answer.revision)
     }
 
     async fn send<S: AsyncWrite + Unpin>(stream: &mut S, envelope: Envelope) {
@@ -1337,7 +1361,7 @@ mod tests {
                 project_id: REMOTE_SERVER_PROJECT_ID,
                 path: util::path!("/code/project1").to_string(),
                 visible: true,
-                code_execution_follows_ide: false,
+                code_runs_without_ide_decision: true,
             }
             .into_envelope(10, None, None),
         )
@@ -1393,6 +1417,82 @@ mod tests {
                 .read_with(cx, |host, cx| host.live_lsp_stores(cx).len()),
             0
         );
+    }
+
+    /// zed-jp-enhance: a client of another wire revision reads and writes the
+    /// fork's fields differently (`AddWorktree`'s say over the worktree's
+    /// code, `Entry.is_private`), so a session serves nothing but pings until
+    /// the client has shown this build's revision.
+    #[gpui::test]
+    async fn test_a_session_serves_nothing_until_the_client_shows_its_wire_revision(
+        cx: &mut TestAppContext,
+    ) {
+        let daemon = start_daemon(Arc::new(BlockedHttpClient), cx);
+        daemon
+            .fs
+            .insert_tree(
+                util::path!("/code"),
+                json!({ "project1": { "a.txt": "a" } }),
+            )
+            .await;
+        let (reply, mut connection) =
+            introduce(&daemon, hello("client.workspace-1", false), None, cx).await;
+        assert_eq!(reply.outcome, DaemonHelloOutcome::Accepted);
+        let add_worktree = |message_id| {
+            proto::AddWorktree {
+                project_id: REMOTE_SERVER_PROJECT_ID,
+                path: util::path!("/code/project1").to_string(),
+                visible: true,
+                code_runs_without_ide_decision: false,
+            }
+            .into_envelope(message_id, None, None)
+        };
+        let worktree_count = |cx: &mut TestAppContext| {
+            daemon.registry.read_with(cx, |registry, cx| {
+                registry
+                    .project("client.workspace-1")
+                    .expect("the session should exist")
+                    .read(cx)
+                    .worktree_store
+                    .read(cx)
+                    .worktrees()
+                    .count()
+            })
+        };
+
+        ping(&mut connection, 1).await;
+        let refused = request(&mut connection, add_worktree(2)).await;
+        assert!(
+            matches!(refused.payload, Some(proto::envelope::Payload::Error(_))),
+            "{refused:?}"
+        );
+
+        // A client of an older revision is told this one's, and still refused.
+        let answer = check_wire_revision(&mut connection, JP_ENHANCE_WIRE_REVISION - 1).await;
+        assert_eq!(answer, Some(JP_ENHANCE_WIRE_REVISION));
+        let refused = request(&mut connection, add_worktree(3)).await;
+        assert!(
+            matches!(refused.payload, Some(proto::envelope::Payload::Error(_))),
+            "{refused:?}"
+        );
+        cx.run_until_parked();
+        assert_eq!(worktree_count(cx), 0, "no refused message may take effect");
+
+        let answer = check_wire_revision(&mut connection, JP_ENHANCE_WIRE_REVISION).await;
+        assert_eq!(answer, Some(JP_ENHANCE_WIRE_REVISION));
+        let added = request(&mut connection, add_worktree(4)).await;
+        assert!(
+            proto::AddWorktreeResponse::from_envelope(added.clone()).is_some(),
+            "{added:?}"
+        );
+        cx.run_until_parked();
+        assert_eq!(worktree_count(cx), 1);
+
+        // A resumed connection is the same client, already checked.
+        let (outcome, mut resumed) = connect(&daemon, "client.workspace-1", true, cx).await;
+        assert_eq!(outcome, DaemonHelloOutcome::Accepted);
+        read_until_closed(&mut connection).await;
+        ping(&mut resumed, 5).await;
     }
 
     #[gpui::test]

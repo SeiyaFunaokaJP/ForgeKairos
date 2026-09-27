@@ -2867,10 +2867,7 @@ fn server_binary_names(
     version: &Version,
     is_windows: bool,
 ) -> (String, String) {
-    let version_str = match release_channel {
-        ReleaseChannel::Dev => "build".to_string(),
-        _ => version.to_string(),
-    };
+    let version_str = super::server_binary_version(release_channel, version);
     let prefix = server_binary_name_prefix(release_channel);
     let name = format!(
         "{prefix}{version_str}{}",
@@ -3671,14 +3668,20 @@ mod tests {
             server_binary_names(ReleaseChannel::Dev, &Version::new(1, 17, 2), false),
             (
                 "zed-remote-server-dev-".to_string(),
-                "zed-remote-server-dev-build".to_string()
+                format!(
+                    "zed-remote-server-dev-build-jp{}",
+                    rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION
+                )
             )
         );
         assert_eq!(
             server_binary_names(ReleaseChannel::Stable, &Version::new(1, 17, 2), true),
             (
                 "zed-remote-server-stable-".to_string(),
-                "zed-remote-server-stable-1.17.2.exe".to_string()
+                format!(
+                    "zed-remote-server-stable-1.17.2-jp{}.exe",
+                    rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION
+                )
             )
         );
     }

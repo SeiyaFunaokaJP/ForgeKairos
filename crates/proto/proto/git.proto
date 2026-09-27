@@ -2,6 +2,7 @@ syntax = "proto3";
 package zed.messages;
 
 import "buffer.proto";
+import "jp_enhance.proto";
 import "worktree.proto";
 
 message GitBranchesResponse {
@@ -116,6 +117,22 @@ message UpdateGitBranch {
 }
 
 message UpdateRepository {
+  // When set on the last update of a repository, `branch_list` was omitted
+  // because it is identical to the one the receiver already has.
+  bool branch_list_unchanged = 10000;
+  // Why the repository's file statuses could not be read (a failed `git
+  // status`, or a repository that could not be opened). Only the last update
+  // of a repository carries it; absent means the statuses are current.
+  optional string status_error = 10001;
+  // Changes whenever the host's tags may have changed. Absent from hosts that
+  // cannot tell (including older ones), whose tags are then reloaded on every
+  // branch or HEAD change instead.
+  optional uint64 tags_fingerprint = 10002;
+  // How many refs the host keeps as loose files. Absent when it does not know,
+  // in which case nothing suggests packing them.
+  optional uint64 loose_ref_count = 10003;
+  // `loose_ref_count` stopped at a limit and is only a lower bound.
+  bool loose_ref_count_is_lower_bound = 10004;
   uint64 project_id = 1;
   uint64 id = 2;
   string abs_path = 3;
@@ -137,22 +154,6 @@ message UpdateRepository {
   optional string repository_dir_abs_path = 19;
   optional string common_dir_abs_path = 20;
   optional string branch_list_error = 21;
-  // When set on the last update of a repository, `branch_list` was omitted
-  // because it is identical to the one the receiver already has.
-  bool branch_list_unchanged = 22;
-  // Why the repository's file statuses could not be read (a failed `git
-  // status`, or a repository that could not be opened). Only the last update
-  // of a repository carries it; absent means the statuses are current.
-  optional string status_error = 23;
-  // Changes whenever the host's tags may have changed. Absent from hosts that
-  // cannot tell (including older ones), whose tags are then reloaded on every
-  // branch or HEAD change instead.
-  optional uint64 tags_fingerprint = 24;
-  // How many refs the host keeps as loose files. Absent when it does not know,
-  // in which case nothing suggests packing them.
-  optional uint64 loose_ref_count = 25;
-  // `loose_ref_count` stopped at a limit and is only a lower bound.
-  bool loose_ref_count_is_lower_bound = 26;
 }
 
 message RemoveRepository {
@@ -259,25 +260,6 @@ message GitDiffResponse {
   string diff = 1;
 }
 
-// Runs a single git subcommand in a repository. The subcommand is validated
-// against an allowlist on the host before it runs; see ALLOWED_GIT_COMMANDS.
-message GitRunCommand {
-  uint64 project_id = 1;
-  uint64 repository_id = 2;
-  repeated string args = 3;
-  optional string stdin = 4;
-  // Validated against ALLOWED_GIT_COMMAND_ENV on the host, which accepts only the
-  // GIT_AUTHOR_* variables `commit-tree` reads. Anything else is refused there.
-  map<string, string> env = 5;
-}
-
-message GitRunCommandResponse {
-  string stdout = 1;
-  string stderr = 2;
-  // Absent when the process was terminated by a signal.
-  optional int32 exit_code = 3;
-}
-
 message GitInit {
   uint64 project_id = 1;
   string abs_path = 2;
@@ -345,8 +327,8 @@ message GitReset {
   ResetMode mode = 5;
   enum ResetMode {
     SOFT = 0;
+    HARD = 10000;
     MIXED = 1;
-    HARD = 2;
   }
 }
 
@@ -463,6 +445,13 @@ message OpenCommitMessageBuffer {
 }
 
 message Push {
+  // Asks for `--force` rather than `--force-with-lease`, alongside `options = FORCE`.
+  //
+  // `FORCE_WITHOUT_LEASE` is not sent any more: a server too old to know it reads the enum as its
+  // default, `SET_UPSTREAM`, and pushes something else entirely. A server too old to know this
+  // field instead keeps the lease, which only ever refuses a push that would have overwritten
+  // somebody else's work.
+  optional bool force_without_lease = 10000;
   uint64 project_id = 1;
   reserved 2;
   uint64 repository_id = 3;
@@ -471,19 +460,12 @@ message Push {
   optional PushOptions options = 6;
   uint64 askpass_id = 7;
   string remote_branch_name = 8;
-  // Asks for `--force` rather than `--force-with-lease`, alongside `options = FORCE`.
-  //
-  // `FORCE_WITHOUT_LEASE` is not sent any more: a server too old to know it reads the enum as its
-  // default, `SET_UPSTREAM`, and pushes something else entirely. A server too old to know this
-  // field instead keeps the lease, which only ever refuses a push that would have overwritten
-  // somebody else's work.
-  optional bool force_without_lease = 9;
 
   enum PushOptions {
     SET_UPSTREAM = 0;
-    FORCE = 1;
     // Kept for clients that predate `force_without_lease`.
-    FORCE_WITHOUT_LEASE = 2;
+    FORCE_WITHOUT_LEASE = 10000;
+    FORCE = 1;
   }
 }
 
@@ -523,11 +505,11 @@ message Pull {
 }
 
 message RemoteMessageResponse {
-  string stdout = 1;
-  string stderr = 2;
   // Set by a push that honoured `Push.force_without_lease`. Its absence is how a client tells a
   // server that ignored the field from one that acted on it.
-  optional bool forced_without_lease = 3;
+  optional bool forced_without_lease = 10000;
+  string stdout = 1;
+  string stderr = 2;
 }
 
 message BlameBuffer {
@@ -858,59 +840,42 @@ message GetInitialGraphDataResponse {
 }
 
 message SearchCommits {
-  uint64 project_id = 1;
-  uint64 repository_id = 2;
-  GitLogSource log_source = 3;
-  string query = 4;
-  bool case_sensitive = 5;
   // Keeps only commits whose author header contains this. A server too old to know the field
   // ignores it: a search that also has a `query` then answers with more commits than were asked
   // for, and one that has only an author answers with none at all, never with the whole history.
-  optional string author = 6;
+  optional string author = 10000;
   // The filters from here on are applied only by a server that says so with
   // `SearchCommitsResponse.filters_version`. An older one drops them and answers with more
   // commits than were asked for, so a client that sends any of them throws away an answer
   // without that field.
   // Authors after `author`, all of which a commit's author header must contain as well.
-  repeated string more_authors = 7;
+  repeated string more_authors = 10001;
   // Keeps only these commits (the ones a tag condition picked).
-  optional SearchCommitsCommitSet only_commits = 8;
+  optional SearchCommitsCommitSet only_commits = 10002;
   // A full branch ref; keeps its commits that the default branch does not have.
-  optional string branch = 9;
+  optional string branch = 10003;
   // A file or folder the commits changed; a glob when it holds `*`.
-  optional string path = 10;
+  optional string path = 10004;
   // Commit dates, in seconds since the epoch.
-  optional int64 since = 11;
-  optional int64 until = 12;
+  optional int64 since = 10005;
+  optional int64 until = 10006;
   // Text the commits' added or removed lines contain.
-  optional string change = 13;
-  optional SearchCommitsMerges merges = 14;
-  optional string sha_prefix = 15;
+  optional string change = 10007;
+  optional SearchCommitsMerges merges = 10008;
+  optional string sha_prefix = 10009;
   // Names this search for `CancelSearchCommits`; unique per client.
-  optional uint64 search_id = 16;
-}
-
-// Stops the server's `SearchCommits` with this `search_id` from the same client, and its git.
-message CancelSearchCommits {
+  optional uint64 search_id = 10010;
   uint64 project_id = 1;
   uint64 repository_id = 2;
-  uint64 search_id = 3;
-}
-
-message SearchCommitsCommitSet {
-  repeated string shas = 1;
-}
-
-enum SearchCommitsMerges {
-  SearchCommitsIncludeMerges = 0;
-  SearchCommitsExcludeMerges = 1;
-  SearchCommitsOnlyMerges = 2;
+  GitLogSource log_source = 3;
+  string query = 4;
+  bool case_sensitive = 5;
 }
 
 message SearchCommitsResponse {
-  repeated string shas = 1;
   // Set on the first response by a server that applies every filter of `SearchCommits`.
-  optional uint32 filters_version = 2;
+  optional uint32 filters_version = 10000;
   // Set on the first response by a server that stops the search on `CancelSearchCommits`.
-  optional bool cancellable = 3;
+  optional bool cancellable = 10001;
+  repeated string shas = 1;
 }

@@ -55,6 +55,11 @@ use util::{
     rel_path::RelPath,
 };
 
+mod jp_wire_revision;
+#[cfg(any(test, feature = "test-support"))]
+pub use jp_wire_revision::WireRevisionAnswerForTests;
+pub use jp_wire_revision::WireRevisionMismatch;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RemoteOs {
     Linux,
@@ -426,6 +431,7 @@ impl EventEmitter<RemoteClientEvent> for RemoteClient {}
 
 /// Identifies the session on the remote server so that reconnects
 /// can re-join the same project.
+#[derive(Clone)]
 pub enum ConnectionIdentifier {
     Setup(u64),
     Workspace(i64),
@@ -510,7 +516,10 @@ pub fn has_active_connection(opts: &RemoteConnectionOptions, cx: &App) -> bool {
 }
 
 impl RemoteClient {
-    pub fn new(
+    /// zed-jp-enhance: reached through `RemoteClient::new` in
+    /// jp_wire_revision.rs, which connects again once when the server's wire
+    /// revision does not match.
+    fn new_without_reinstall(
         unique_identifier: ConnectionIdentifier,
         remote_connection: Arc<dyn RemoteConnection>,
         cancellation: oneshot::Receiver<()>,
@@ -533,6 +542,7 @@ impl RemoteClient {
                         remote_connection.has_wsl_interop(),
                     )
                 });
+                client.require_confirmed_wire_revision();
 
                 let path_style = remote_connection.path_style();
                 let platform = remote_connection.remote_platform();
@@ -626,6 +636,11 @@ impl RemoteClient {
                     "remote connect timing: first ping answered {:?} after the proxy started",
                     proxy_started.elapsed()
                 );
+                // zed-jp-enhance: before anything of this fork's is sent.
+                if let Err(error) = jp_wire_revision::confirm(&client).await {
+                    log::error!("failed to establish connection: {error:#}");
+                    return Err(error);
+                }
                 delegate.set_status(Some("ワークスペースを開いています"), cx);
 
                 let heartbeat_task = Self::heartbeat(this.downgrade(), connection_activity_rx, cx);
@@ -873,9 +888,19 @@ impl RemoteClient {
             let multiplex_task = Self::monitor(this.clone(), io_task, cx);
             client.reconnect(incoming_rx, outgoing_tx, cx);
 
-            if let Err(error) = client.resync(HEARTBEAT_TIMEOUT).await {
+            // zed-jp-enhance: sent ahead of the replay, which the server holds
+            // back from a client it has not checked, but not waited on before
+            // it (see `jp_wire_revision::confirm`). Both are polled together:
+            // an answer nobody takes holds up every message behind it.
+            let wire_revision = jp_wire_revision::confirm(&client);
+            let (resynced, wire_revision) =
+                futures::join!(client.resync(HEARTBEAT_TIMEOUT), wire_revision);
+            if let Err(error) = resynced {
                 failed!(error, attempts, remote_connection, delegate);
             };
+            if let Err(error) = wire_revision {
+                failed!(error, attempts, remote_connection, delegate);
+            }
 
             // Nothing pushes the allowlist while the connection is down, and
             // the replay above only repeats what went out before it went down,
@@ -2074,6 +2099,7 @@ pub(crate) struct ChannelClient {
     remote_started: Signal<()>,
     has_wsl_interop: bool,
     executor: BackgroundExecutor,
+    wire_revision: jp_wire_revision::PeerWireRevision,
 }
 
 impl ChannelClient {
@@ -2101,6 +2127,7 @@ impl ChannelClient {
             )),
             remote_started: Signal::new(cx),
             has_wsl_interop,
+            wire_revision: Default::default(),
         })
     }
 
@@ -2156,6 +2183,10 @@ impl ChannelClient {
                     let mut envelope = proto::Ack {}.into_envelope(0, Some(incoming.id), None);
                     envelope.id = this.next_message_id.fetch_add(1, SeqCst);
                     this.outgoing_tx.lock().unbounded_send(envelope).ok();
+                    continue;
+                }
+
+                if jp_wire_revision::intercept(&this, &incoming, cx) {
                     continue;
                 }
 

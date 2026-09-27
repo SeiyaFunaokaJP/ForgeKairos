@@ -219,10 +219,9 @@ impl DockerExecConnection {
         let version_str = match release_channel {
             ReleaseChannel::Nightly => {
                 let commit = commit.map(|s| s.full()).unwrap_or_default();
-                format!("{}-{}", version, commit)
+                super::server_binary_version(release_channel, format!("{}-{}", version, commit))
             }
-            ReleaseChannel::Dev => "build".to_string(),
-            _ => version.to_string(),
+            _ => super::server_binary_version(release_channel, version),
         };
         let binary_name = format!(
             "zed-remote-server-{}-{}",

@@ -58,11 +58,3 @@ message GetDirectoryEnvironment {
 message DirectoryEnvironment {
   map<string, string> environment = 1;
 }
-
-// client -> remote_server. Ends a persistent remote terminal session (the
-// shell a `terminal-session` holder keeps alive across disconnects) because
-// its tab was closed. Unknown or already finished sessions are not an error.
-message KillTerminalSession {
-  uint64 project_id = 1;
-  string session_id = 2;
-}

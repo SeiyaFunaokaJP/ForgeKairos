@@ -1838,10 +1838,39 @@ fn cleanup_old_binaries_wsl() {
 }
 
 fn is_new_version(version: &str) -> bool {
-    semver::Version::from_str(version)
-        .ok()
-        .zip(semver::Version::from_str(env!("ZED_PKG_VERSION")).ok())
-        .is_some_and(|(version, current_version)| version >= current_version)
+    is_version_at_least(
+        version,
+        env!("ZED_PKG_VERSION"),
+        rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION,
+    )
+}
+
+/// `version` is what follows the channel in a binary's name, which for this
+/// fork ends in `-jp{wire revision}` (`remote::transport::server_binary_version`).
+/// Semver reads that as a pre-release, which sorts below the plain version, so
+/// the revision is compared on its own: otherwise every binary of this Zed
+/// version, a newer revision's just uploaded one included, would count as old.
+fn is_version_at_least(version: &str, current_version: &str, current_revision: u32) -> bool {
+    let version = version.strip_suffix(".exe").unwrap_or(version);
+    let (Ok(version), Ok(current_version)) = (
+        semver::Version::from_str(version),
+        semver::Version::from_str(current_version),
+    ) else {
+        return false;
+    };
+    let revision = version
+        .pre
+        .as_str()
+        .strip_prefix("jp")
+        .and_then(|revision| revision.parse::<u32>().ok())
+        .unwrap_or(0);
+    (version.major, version.minor, version.patch, revision)
+        >= (
+            current_version.major,
+            current_version.minor,
+            current_version.patch,
+            current_revision,
+        )
 }
 
 fn is_file_in_use(file_name: &OsStr) -> bool {
@@ -1868,6 +1897,24 @@ mod tests {
     use remote::protocol::{decode_envelope, read_message, write_envelope_frame, write_message};
     use rpc::proto::EnvelopedMessage as _;
     use std::cell::RefCell;
+
+    #[test]
+    fn old_binary_cleanup_compares_the_wire_revision_in_the_name() {
+        // What this revision installs, and a newer revision's binary that a
+        // client may have just uploaded, are both kept.
+        assert!(is_version_at_least("1.17.2-jp1", "1.17.2", 1));
+        assert!(is_version_at_least("1.17.2-jp2", "1.17.2", 1));
+        assert!(is_version_at_least("1.17.2-jp10", "1.17.2", 2));
+        assert!(is_version_at_least("1.17.2-jp2.exe", "1.17.2", 1));
+        assert!(is_version_at_least("1.18.0-jp1", "1.17.2", 2));
+        // A plain name is from before the revision was part of it, or
+        // upstream's own server: a wire format this build cannot speak.
+        assert!(!is_version_at_least("1.17.2", "1.17.2", 1));
+        assert!(!is_version_at_least("1.17.2.exe", "1.17.2", 1));
+        assert!(!is_version_at_least("1.17.2-jp1", "1.17.2", 2));
+        assert!(!is_version_at_least("1.17.1-jp9", "1.17.2", 1));
+        assert!(!is_version_at_least("build-jp1", "1.17.2", 1));
+    }
 
     #[test]
     fn rotated_remote_log_path_uses_numbered_log_suffix() {

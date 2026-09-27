@@ -12,6 +12,7 @@ import "download.proto";
 import "file_transfer.proto";
 import "git.proto";
 import "image.proto";
+import "jp_enhance.proto";
 import "lsp.proto";
 import "notification.proto";
 import "task.proto";
@@ -26,6 +27,48 @@ message Envelope {
   optional uint32 ack_id = 266;
 
   oneof payload {
+    // zed-jp-enhance: this fork's own messages are numbered from 10000 up, far
+    // from the sequential numbers upstream hands out, so that merging an
+    // upstream release never gives one number to two messages. Numbers below
+    // 10000 are upstream's alone. Enforced by
+    // crates/proto/tests/jp_enhance_numbering.rs.
+    // Looking for a fork number? Search "// jp-enhance current max"
+    SetEgressAllowlist set_egress_allowlist = 10000;
+    GitRunCommand git_run_command = 10001;
+    GitRunCommandResponse git_run_command_response = 10002;
+    ProxyHttpRequest proxy_http_request = 10003;
+    ProxyHttpResponse proxy_http_response = 10004;
+    RunTransferCommand run_transfer_command = 10005;
+    RunTransferCommandResponse run_transfer_command_response = 10006;
+    CancelTransferCommand cancel_transfer_command = 10007;
+    TransferAskPassRequest transfer_ask_pass_request = 10008;
+    TransferAskPassResponse transfer_ask_pass_response = 10009;
+    ListTransferDirectory list_transfer_directory = 10010;
+    ListTransferDirectoryResponse list_transfer_directory_response = 10011;
+    TransferFileOperation transfer_file_operation = 10012;
+    CheckDevTools check_dev_tools = 10013;
+    CheckDevToolsResponse check_dev_tools_response = 10014;
+    InstallDevTool install_dev_tool = 10015;
+    InstallDevToolResponse install_dev_tool_response = 10016;
+    RescanProjectWorktree rescan_project_worktree = 10017;
+    RescanProjectWorktreeResponse rescan_project_worktree_response = 10018;
+    RequestProjectLaunchApproval request_project_launch_approval = 10019;
+    RequestProjectLaunchApprovalResponse request_project_launch_approval_response = 10020;
+    ProjectLaunchApprovalDecided project_launch_approval_decided = 10021;
+    ProjectLaunchApprovalRevoked project_launch_approval_revoked = 10022;
+    WithdrawProjectLaunchApproval withdraw_project_launch_approval = 10023;
+    SetWorktreeCodeExecution set_worktree_code_execution = 10024;
+    SaveBufferVerified save_buffer_verified = 10025;
+    VerifyAgentRead verify_agent_read = 10026;
+    ListSandboxProcesses list_sandbox_processes = 10027;
+    ListSandboxProcessesResponse list_sandbox_processes_response = 10028;
+    StopSandboxProcesses stop_sandbox_processes = 10029;
+    StopSandboxProcessesResponse stop_sandbox_processes_response = 10030;
+    CancelSearchCommits cancel_search_commits = 10031;
+    KillTerminalSession kill_terminal_session = 10032;
+    CheckWireRevision check_wire_revision = 10033;
+    CheckWireRevisionResponse check_wire_revision_response = 10034; // jp-enhance current max
+
     Hello hello = 4;
     Ack ack = 5;
     Error error = 6;
@@ -508,40 +551,7 @@ message Envelope {
     RefreshFoldingRanges refresh_folding_ranges = 476;
     RefreshDocumentSymbols refresh_document_symbols = 477;
     BlameBufferAtRevision blame_buffer_at_revision = 478;
-    BlameBufferAtRevisionResponse blame_buffer_at_revision_response = 479;
-    SetEgressAllowlist set_egress_allowlist = 480;
-    GitRunCommand git_run_command = 481;
-    GitRunCommandResponse git_run_command_response = 482;
-    ProxyHttpRequest proxy_http_request = 483;
-    ProxyHttpResponse proxy_http_response = 484;
-    RunTransferCommand run_transfer_command = 485;
-    RunTransferCommandResponse run_transfer_command_response = 486;
-    CancelTransferCommand cancel_transfer_command = 487;
-    TransferAskPassRequest transfer_ask_pass_request = 488;
-    TransferAskPassResponse transfer_ask_pass_response = 489;
-    ListTransferDirectory list_transfer_directory = 490;
-    ListTransferDirectoryResponse list_transfer_directory_response = 491;
-    TransferFileOperation transfer_file_operation = 492;
-    CheckDevTools check_dev_tools = 493;
-    CheckDevToolsResponse check_dev_tools_response = 494;
-    InstallDevTool install_dev_tool = 495;
-    InstallDevToolResponse install_dev_tool_response = 496;
-    RescanProjectWorktree rescan_project_worktree = 497;
-    RescanProjectWorktreeResponse rescan_project_worktree_response = 498;
-    RequestProjectLaunchApproval request_project_launch_approval = 499;
-    RequestProjectLaunchApprovalResponse request_project_launch_approval_response = 500;
-    ProjectLaunchApprovalDecided project_launch_approval_decided = 501;
-    ProjectLaunchApprovalRevoked project_launch_approval_revoked = 502;
-    WithdrawProjectLaunchApproval withdraw_project_launch_approval = 503;
-    SetWorktreeCodeExecution set_worktree_code_execution = 504;
-    SaveBufferVerified save_buffer_verified = 505;
-    VerifyAgentRead verify_agent_read = 506;
-    ListSandboxProcesses list_sandbox_processes = 507;
-    ListSandboxProcessesResponse list_sandbox_processes_response = 508;
-    StopSandboxProcesses stop_sandbox_processes = 509;
-    StopSandboxProcessesResponse stop_sandbox_processes_response = 510;
-    CancelSearchCommits cancel_search_commits = 511;
-    KillTerminalSession kill_terminal_session = 520; // current max
+    BlameBufferAtRevisionResponse blame_buffer_at_revision_response = 479; // current max
   }
 
   reserved 87 to 88;

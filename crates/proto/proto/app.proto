@@ -27,23 +27,6 @@ message OpenServerSettings {
   uint64 project_id = 1;
 }
 
-// Pushes the connecting IDE's egress allowlist to the remote host so the
-// host's own outgoing HTTP(S) requests (LSP/node downloads, extensions, LLM
-// providers) are gated by the same list. The allowlist on the client side is
-// the source of truth (see docs/jp-enhance/DESIGN.md ADR-F11); this is sent once,
-// right after the connection is established, and is not re-sent if the local
-// allowlist changes later in the session — the remote host picks up the
-// current allowlist again on its next fresh connection.
-message SetEgressAllowlist {
-  repeated string allowed_hosts = 1;
-  // The user's `proxy_child_processes` choice, so the remote host runs (or
-  // does not run) the same child-process egress proxy for the ACP agents, MCP
-  // servers and npm invocations that execute over there (ADR-F14). Absent —
-  // an older client — means on, which is what the policy file's absent value
-  // means too: the mechanism is opted out of, never into.
-  optional bool proxy_child_processes = 2;
-}
-
 message GetCrashFiles {}
 
 message GetCrashFilesResponse {
@@ -115,75 +98,4 @@ message RemoteProfilingLocation {
   string file = 1;
   uint32 line = 2;
   uint32 column = 3;
-}
-
-// ADR-F27 (docs/jp-enhance/DESIGN.md §4.27): a remote host that cannot reach
-// the internet relays its outgoing HTTP(S) through the connected IDE, so that
-// language server / node / extension downloads run against the client's
-// allowlist, consent flow and proxy instead of the remote host's network.
-//
-// Direction is remote_server -> client, the opposite of most requests here.
-// The client answers `Ack` as soon as it has taken the request, then streams
-// `ProxyHttpResponse` messages back with the same `request_id`.
-message ProxyHttpRequest {
-  // Correlates the response frames below with this request. Unique per
-  // remote_server process, allocated by the relay that sends this.
-  uint64 request_id = 1;
-  string method = 2;
-  string url = 3;
-  repeated ProxyHttpHeader headers = 4;
-  bytes body = 5;
-  // Whether the client should follow redirects on the remote's behalf. Each
-  // hop is re-checked against the client's allowlist either way.
-  bool follow_redirects = 6;
-  // The deadline the caller on the remote host asked for, carried across so
-  // that a request with one (`http_client::HttpRequestExt::timeout`) keeps it
-  // instead of falling back on the relay's much longer stall timeout.
-  optional uint64 timeout_millis = 7;
-}
-
-message ProxyHttpHeader {
-  string name = 1;
-  string value = 2;
-}
-
-// One frame of the response to a `ProxyHttpRequest`. The first frame carries
-// `status` and `headers`; later frames carry body bytes only. `chunk` is
-// capped at 256 KiB so that a multi-megabyte download does not monopolize the
-// RPC channel, and each frame is a request whose `Ack` paces the sender.
-message ProxyHttpResponse {
-  uint64 request_id = 1;
-  uint32 status = 2;
-  repeated ProxyHttpHeader headers = 3;
-  bytes chunk = 4;
-  // Set on the frame that ends the body. No further frames follow.
-  bool is_last = 5;
-  // Set instead of a body frame when the request failed. Terminal.
-  optional ProxyHttpError error = 6;
-}
-
-message ProxyHttpError {
-  oneof kind {
-    ProxyHttpEgressDenied egress_denied = 1;
-    ProxyHttpNetworkError network = 2;
-    ProxyHttpOtherError other = 3;
-  }
-}
-
-// The client's egress allowlist refused the request. Kept as its own variant
-// so the remote host can rebuild `http_client::EgressDenied` and let the
-// ADR-F22 consent flow classify the failure, rather than seeing an opaque
-// string.
-message ProxyHttpEgressDenied {
-  string host = 1;
-  // The requested URL with its query string removed.
-  string url = 2;
-}
-
-message ProxyHttpNetworkError {
-  string message = 1;
-}
-
-message ProxyHttpOtherError {
-  string message = 1;
 }
