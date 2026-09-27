@@ -89,18 +89,19 @@ where
             .iter()
             .position(|v| *v == self.current_value)
             .unwrap()];
+        let enum_name = enum_context::<T>();
 
-        let context_menu = window.use_keyed_state(current_value_label, cx, |window, cx| {
+        // The menu is built once per key, so the key has to change with the
+        // language for the entries to be rebuilt in it.
+        let context_menu_key =
+            SharedString::from(format!("{current_value_label}-{}", i18n::current_locale()));
+        let context_menu = window.use_keyed_state(context_menu_key, cx, |window, cx| {
             ContextMenu::new(window, cx, move |mut menu, _, _| {
                 for (&value, &label) in std::iter::zip(self.variants, self.labels) {
                     let on_change = self.on_change.clone();
                     let current_value = self.current_value;
                     menu = menu.toggleable_entry(
-                        if self.should_do_title_case {
-                            label.to_title_case()
-                        } else {
-                            label.to_string()
-                        },
+                        display_label(enum_name, label, self.should_do_title_case),
                         value == current_value,
                         IconPosition::End,
                         None,
@@ -115,11 +116,7 @@ where
 
         DropdownMenu::new(
             self.id,
-            if self.should_do_title_case {
-                current_value_label.to_title_case()
-            } else {
-                current_value_label.to_string()
-            },
+            display_label(enum_name, current_value_label, self.should_do_title_case),
             context_menu,
         )
         .when_some(self.aria_label, |this, label| this.aria_label(label))
@@ -136,4 +133,24 @@ where
         })
         .into_any_element()
     }
+}
+
+/// The msgctxt under which the labels of `T` are translated: the enum's name, so
+/// that two enums sharing an English label ("Default", "None") can read differently.
+pub(crate) fn enum_context<T>() -> &'static str {
+    let name = std::any::type_name::<T>();
+    name.rsplit("::").next().unwrap_or(name)
+}
+
+/// What the dropdown shows for a strum label: the English as upstream draws it,
+/// translated only by an entry made for `enum_name`. Without the context, "No"
+/// or "Selection" would take the translation of the same English from anywhere
+/// else in the catalog, whatever it means there.
+pub(crate) fn display_label(enum_name: &str, label: &str, title_case: bool) -> String {
+    let english = if title_case {
+        label.to_title_case()
+    } else {
+        label.to_string()
+    };
+    i18n::tr_ctx(enum_name, &english).to_string()
 }

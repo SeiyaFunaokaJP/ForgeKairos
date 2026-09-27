@@ -1,0 +1,1311 @@
+p0.title	全般
+p0.i0.header	全般設定
+p0.i2[accessible_mode].title	アクセシビリティモード
+p0.i2[accessible_mode].description	スクリーンリーダーなどの支援技術向けに Zed のインターフェースを最適化します。有効にすると、通常は折りたたまれるコントロールが展開されたままになり、キーボードで操作できます。
+p0.i3[when_closing_with_no_tabs].title	タブがない状態で閉じたとき
+p0.i3[when_closing_with_no_tabs].description	タブがない状態で「アクティブな項目を閉じる」アクションを使ったときの動作です。
+p0.i4[on_last_window_closed].title	最後のウィンドウを閉じたとき
+p0.i4[on_last_window_closed].description	最後のウィンドウが閉じられたときの動作です。
+p0.i5[use_system_path_prompts].title	システムのファイルダイアログを使用
+p0.i5[use_system_path_prompts].description	「開く」と「名前を付けて保存」に OS ネイティブのダイアログを使用します。
+p0.i6[use_system_prompts].title	システムの確認ダイアログを使用
+p0.i6[use_system_prompts].description	確認ダイアログに OS ネイティブのダイアログを使用します。
+p0.i7[redact_private_values].title	プライベートな値を伏せる
+p0.i7[redact_private_values].description	プライベートファイル内の変数の値を隠します。
+p0.i8[worktree.private_files].title	プライベートファイル
+p0.i8[worktree.private_files].description	ファイルがプライベートかどうかを判定するために、ファイルパスと照合する glob です。
+p0.i9[cli_default_open_behavior].title	CLI の既定の開き方
+p0.i9[cli_default_open_behavior].description	フラグを指定しなかったときに `zed <path>` がディレクトリをどう開くかを設定します。
+p0.i10[default_open_behavior].title	既定の開き方
+p0.i10[default_open_behavior].description	UI からプロジェクトを開くときの既定の動作です。
+p0.i11.header	セキュリティ
+p0.i12[session.trust_all_projects].title	すべてのプロジェクトを既定で信頼
+p0.i12[session.trust_all_projects].description	Zed を開くときにすべてのプロジェクトを自動的に信頼して制限モードを回避し、プロジェクトごとに許可を与えなくてもすべての機能を使えるようにします。
+p0.i13.link	起動の許可・不許可の記録
+p0.i13.link_description	プロジェクトの設定が起動しようとした MCP サーバー・言語サーバー・外部フォーマッターについて、許可・不許可の記録を確認して取り消します。
+p0.i14.header	ワークスペースの復元
+p0.i15[session.restore_unsaved_buffers].title	未保存のバッファーを復元
+p0.i15[session.restore_unsaved_buffers].description	再起動時に未保存のバッファーを復元するかどうかを設定します。
+p0.i16[restore_on_startup].title	起動時に復元する内容
+p0.i16[restore_on_startup].description	Zed を開いたときに前回のセッションから何を復元するかを設定します。
+p0.i17.header	適用範囲付きの設定
+p0.i18[preview_channel_settings].title	Preview チャンネル
+p0.i18[preview_channel_settings].description	Zed の Preview ビルドでのみ有効にする設定です。
+p0.i19[settings_profiles].title	設定プロファイル
+p0.i19[settings_profiles].description	既存のユーザー設定に一時的に上書き適用する設定プロファイルを、任意の数だけ定義できます。
+p0.i20.header	プライバシー
+p0.i21[telemetry.diagnostics].title	診断テレメトリ
+p0.i21[telemetry.diagnostics].description	クラッシュレポートなどのデバッグ情報を送信します。
+p0.i22[telemetry.metrics].title	利用状況テレメトリ
+p0.i22[telemetry.metrics].description	Zed でどの言語を使っているかなど、匿名化された利用データを送信します。
+p0.i23[telemetry.anthropic_retention].title	Anthropic のデータ保持
+p0.i23[telemetry.anthropic_retention].description	Zero Data Retention では提供できない Anthropic モデルへのリクエスト送信を許可します。
+p0.i24.header	自動更新
+p0.i25[auto_update].title	自動更新
+p0.i25[auto_update].description	更新を自動的に確認するかどうかを設定します。
+p1.title	外観
+p1.i0.header	テーマ
+p1.i1[theme$].title	テーマモード
+p1.i1[theme$].description	固定のテーマを使うか、外観とライト/ダークモードに応じてテーマを動的に切り替えるかを選択します。
+p1.i1.v0.f0[theme].title	テーマ名
+p1.i1.v0.f0[theme].description	選択したテーマの名前です。
+p1.i1.v1.f0[theme.mode].title	モード
+p1.i1.v1.f0[theme.mode].description	選択したライト/ダークテーマのどちらを使うか、または OS の外観設定に従うかを選択します。
+p1.i1.v1.f1[theme.light].title	ライトテーマ
+p1.i1.v1.f1[theme.light].description	モードがライトのとき、またはモードがシステムで OS がライトモードのときに使うテーマです。
+p1.i1.v1.f2[theme.dark].title	ダークテーマ
+p1.i1.v1.f2[theme.dark].description	モードがダークのとき、またはモードがシステムで OS がダークモードのときに使うテーマです。
+p1.i2[icon_theme$].title	アイコンテーマ
+p1.i2[icon_theme$].description	Zed がファイルとディレクトリに関連付けるアイコンのセットです。
+p1.i2.v0.f0[icon_theme$string].title	アイコンテーマ名
+p1.i2.v0.f0[icon_theme$string].description	選択したアイコンテーマの名前です。
+p1.i2.v1.f0[icon_theme].title	モード
+p1.i2.v1.f0[icon_theme].description	選択したライト/ダークのアイコンテーマのどちらを使うか、または OS の外観設定に従うかを選択します。
+p1.i2.v1.f1[icon_theme.light].title	ライトアイコンテーマ
+p1.i2.v1.f1[icon_theme.light].description	モードがライトのとき、またはモードがシステムで OS がライトモードのときに使うアイコンテーマです。
+p1.i2.v1.f2[icon_theme.dark].title	ダークアイコンテーマ
+p1.i2.v1.f2[icon_theme.dark].description	モードがダークのとき、またはモードがシステムで OS がダークモードのときに使うアイコンテーマです。
+p1.i3.header	バッファーのフォント
+p1.i4[buffer_font_family].title	フォントファミリー
+p1.i4[buffer_font_family].description	エディターのテキストのフォントファミリーです。
+p1.i5[buffer_font_size].title	フォントサイズ
+p1.i5[buffer_font_size].description	エディターのテキストのフォントサイズです。
+p1.i6[buffer_font_weight].title	フォントの太さ
+p1.i6[buffer_font_weight].description	エディターのテキストのフォントの太さです (100〜900)。
+p1.i7[buffer_line_height$].title	行の高さ
+p1.i7[buffer_line_height$].description	エディターのテキストの行の高さです。
+p1.i7.v2.f0[buffer_line_height].title	カスタムの行の高さ
+p1.i7.v2.f0[buffer_line_height].description	行の高さのカスタム値です (1.0 以上)。
+p1.i8[buffer_font_features].title	フォント機能
+p1.i8[buffer_font_features].description	テキストバッファーの描画で有効にする OpenType 機能です。
+p1.i9[buffer_font_fallbacks].title	フォールバックフォント
+p1.i9[buffer_font_fallbacks].description	テキストバッファーの描画に使うフォールバックフォントです。
+p1.i10.header	UI のフォント
+p1.i11[ui_font_family].title	フォントファミリー
+p1.i11[ui_font_family].description	UI 要素のフォントファミリーです。
+p1.i12[ui_font_size].title	フォントサイズ
+p1.i12[ui_font_size].description	UI 要素のフォントサイズです。
+p1.i13[ui_font_weight].title	フォントの太さ
+p1.i13[ui_font_weight].description	UI 要素のフォントの太さです (100〜900)。
+p1.i14[ui_font_features].title	フォント機能
+p1.i14[ui_font_features].description	UI 要素の描画で有効にする OpenType 機能です。
+p1.i15[ui_font_fallbacks].title	フォールバックフォント
+p1.i15[ui_font_fallbacks].description	UI の描画に使うフォールバックフォントです。
+p1.i16.header	エージェントパネルのフォント
+p1.i17[agent_ui_font_family].title	UI フォントファミリー
+p1.i17[agent_ui_font_family].description	エージェントパネルの応答テキストのフォントファミリーです。未設定の場合は通常の UI フォントファミリーを使います。
+p1.i18[agent_ui_font_size].title	UI フォントサイズ
+p1.i18[agent_ui_font_size].description	エージェントパネルの応答テキストのフォントサイズです。未設定の場合は通常の UI フォントサイズを使います。
+p1.i19[agent_buffer_font_family].title	バッファーのフォントファミリー
+p1.i19[agent_buffer_font_family].description	エージェントパネルのユーザーメッセージのフォントファミリーです。未設定の場合は通常のバッファーのフォントファミリーを使います。
+p1.i20[agent_buffer_font_size].title	バッファーのフォントサイズ
+p1.i20[agent_buffer_font_size].description	エージェントパネルのユーザーメッセージのフォントサイズです。
+p1.i21.header	Markdown プレビューのフォント
+p1.i22[markdown_preview_font_family].title	フォントファミリー
+p1.i22[markdown_preview_font_family].description	Markdown プレビューのフォントファミリーです。未設定の場合は UI フォントファミリーを使います。
+p1.i23[markdown_preview_code_font_family].title	コードのフォントファミリー
+p1.i23[markdown_preview_code_font_family].description	Markdown プレビュー内のコードブロックのフォントファミリーです。未設定の場合はエディターのフォントファミリーを使います。
+p1.i24[markdown_preview_font_size].title	フォントサイズ
+p1.i24[markdown_preview_font_size].description	Markdown プレビューのフォントサイズです。未設定の場合はエディターのフォントサイズを使います。
+p1.i25.header	テキストの描画
+p1.i26[text_rendering_mode].title	テキストの描画モード
+p1.i26[text_rendering_mode].description	使用するテキストの描画モードです。
+p1.i27.header	カーソル
+p1.i28[multi_cursor_modifier].title	複数カーソルの修飾キー
+p1.i28[multi_cursor_modifier].description	カーソルを追加するときの修飾キーです。
+p1.i29[cursor_blink].title	カーソルの点滅
+p1.i29[cursor_blink].description	エディターでカーソルを点滅させるかどうかを設定します。
+p1.i30[cursor_shape].title	カーソルの形状
+p1.i30[cursor_shape].description	エディターのカーソルの形状です。
+p1.i31[hide_mouse].title	マウスカーソルを隠す
+p1.i31[hide_mouse].description	マウスカーソルを隠すタイミングです。
+p1.i32[reduce_motion].title	モーションを減らす
+p1.i32[reduce_motion].description	読み込み中のスピナーなど、必須ではないアニメーションを静止状態で描画して減らすかどうかを設定します。
+p1.i33.header	ハイライト
+p1.i34[unnecessary_code_fade].title	未使用コードの淡色化
+p1.i34[unnecessary_code_fade].description	未使用のコードをどの程度淡く表示するかを設定します (0.0〜0.9)。
+p1.i35[current_line_highlight].title	現在の行のハイライト
+p1.i35[current_line_highlight].description	現在の行をどのようにハイライトするかを設定します。
+p1.i36[selection_highlight].title	選択テキストのハイライト
+p1.i36[selection_highlight].description	選択したテキストと一致するすべての箇所をハイライトします。
+p1.i37[rounded_selection].title	選択範囲の角丸
+p1.i37[rounded_selection].description	テキストの選択範囲の角を丸くするかどうかを設定します。
+p1.i38[minimum_contrast_for_highlights].title	ハイライトの最小コントラスト
+p1.i38[minimum_contrast_for_highlights].description	ハイライトの背景の上にテキストを描画するときに保つ、APCA 知覚コントラストの最小値です。
+p1.i39.header	ガイド
+p1.i40[show_wrap_guides].title	折り返しガイドを表示
+p1.i40[show_wrap_guides].description	折り返しガイド (縦のルーラー) を表示します。
+p1.i41[wrap_guides].title	折り返しガイド
+p1.i41[wrap_guides].description	折り返しガイドを表示する文字数です。
+p2.title	キーマップ
+p2.i0.header	キーバインド
+p2.i1.action	キーバインドの編集
+p2.i1.action_description	キーマップエディターでキーバインドをカスタマイズします。
+p2.i1.button	キーマップを開く
+p2.i2.header	ベースキーマップ
+p2.i3[base_keymap].title	ベースキーマップ
+p2.i3[base_keymap].description	基準にするキーバインドのセットの名前です。Emacs (ベータ) では C-x C-s (保存) / C-x C-f (ファイルを開く) / C-k (行をキル) / C-y (ヤンク) / M-y (直前のヤンクを 1 つ古い世代に差し替え) / C-space (マーク) などが使えます。C-x などのプレフィックスキーの入力中に候補を出したいときは、「エディター」ページの「Which-key メニューを表示」を有効にしてください。
+p2.i4.header	モーダル編集
+p2.i5[vim_mode].title	Vim モード
+p2.i5[vim_mode].description	Vim モードとそのキーバインドを有効にします。
+p2.i6[helix_mode].title	Helix モード
+p2.i6[helix_mode].description	Helix モードとそのキーバインドを有効にします。
+p3.title	エディター
+p3.i0.header	自動保存
+p3.i1[autosave$].title	自動保存のモード
+p3.i1[autosave$].description	バッファーの変更を自動保存するタイミングです。
+p3.i1.v1.f0[autosave.after_delay.milliseconds].title	遅延 (ミリ秒)
+p3.i1.v1.f0[autosave.after_delay.milliseconds].description	操作がない状態が続いた後に保存します (ミリ秒)。
+p3.i2.header	Which-key メニュー
+p3.i3[which_key.enabled].title	Which-key メニューを表示
+p3.i3[which_key.enabled].description	複数ストロークのキーバインドの入力中に、一致するキーバインドを Which-key メニューとして表示します。
+p3.i4[which_key.delay_ms].title	メニューの遅延
+p3.i4[which_key.delay_ms].description	Which-key メニューが表示されるまでの遅延 (ミリ秒) です。
+p3.i5.header	マルチバッファー
+p3.i6[double_click_in_multibuffer].title	マルチバッファーでのダブルクリック
+p3.i6[double_click_in_multibuffer].description	マルチバッファーの抜粋内でダブルクリックしたときの動作です。
+p3.i7[expand_excerpt_lines].title	抜粋を展開する行数
+p3.i7[expand_excerpt_lines].description	マルチバッファーの抜粋を既定で何行分展開するかを設定します。
+p3.i8[excerpt_context_lines].title	抜粋の前後の行数
+p3.i8[excerpt_context_lines].description	マルチバッファーの抜粋に既定で何行分の前後関係を含めるかを設定します。
+p3.i9[outline_panel.expand_outlines_with_depth].title	アウトラインを展開する深さ
+p3.i9[outline_panel.expand_outlines_with_depth].description	現在のファイルのアウトライン項目を既定で展開する深さです。
+p3.i10[diff_view_style].title	差分の表示スタイル
+p3.i10[diff_view_style].description	エディターで差分をどのように表示するかを設定します。
+p3.i11[minimum_split_diff_width].title	左右分割の差分の最小幅
+p3.i11[minimum_split_diff_width].description	左右分割の差分表示を使う最小の幅 (列数) です。エディターがこれより狭い場合は自動的にインライン表示に切り替わります。0 で無効になります。
+p3.i12.header	スクロール
+p3.i13[scroll_beyond_last_line].title	最終行を越えてスクロール
+p3.i13[scroll_beyond_last_line].description	エディターで最終行より先までスクロールできるようにします。
+p3.i14[vertical_scroll_margin].title	垂直スクロールの余白
+p3.i14[vertical_scroll_margin].description	自動スクロール時にカーソルの上下に残す行数です。
+p3.i15[horizontal_scroll_margin].title	水平スクロールの余白
+p3.i15[horizontal_scroll_margin].description	マウスでスクロールするときに左右に残す文字数です。
+p3.i16[scroll_sensitivity].title	スクロールの感度
+p3.i16[scroll_sensitivity].description	水平・垂直スクロールの感度の倍率です。
+p3.i17[mouse_wheel_zoom].title	マウスホイールでズーム
+p3.i17[mouse_wheel_zoom].description	主修飾キーを押しながらマウスホイールを回したときに、エディターのフォントサイズを拡大縮小するかどうかを設定します。
+p3.i18[fast_scroll_sensitivity].title	高速スクロールの感度
+p3.i18[fast_scroll_sensitivity].description	水平・垂直の高速スクロールの感度の倍率です。
+p3.i19[autoscroll_on_clicks].title	クリック時の自動スクロール
+p3.i19[autoscroll_on_clicks].description	表示領域の端の近くをクリックしたときにスクロールするかどうかを設定します。
+p3.i20[sticky_scroll.enabled].title	スティッキースクロール
+p3.i20[sticky_scroll.enabled].description	スコープをエディターの上部に固定表示するかどうかを設定します
+p3.i21.header	シグネチャヘルプ
+p3.i22[auto_signature_help].title	シグネチャヘルプの自動表示
+p3.i22[auto_signature_help].description	シグネチャヘルプのポップアップを自動的に表示します。
+p3.i23[show_signature_help_after_edits].title	編集後にシグネチャヘルプを表示
+p3.i23[show_signature_help_after_edits].description	補完や括弧の対を挿入した後にシグネチャヘルプのポップアップを表示します。
+p3.i24[snippet_sort_order].title	スニペットの並び順
+p3.i24[snippet_sort_order].description	スニペットを他の補完候補に対してどう並べるかを設定します。
+p3.i25.header	ホバーポップアップ
+p3.i26[hover_popover_enabled].title	有効
+p3.i26[hover_popover_enabled].description	エディター内のシンボルにマウスを重ねたときに情報ポップアップを表示します。
+p3.i27[hover_popover_delay].title	遅延
+p3.i27[hover_popover_delay].description	情報ポップアップを表示するまでの待ち時間 (ミリ秒) です。
+p3.i28[hover_popover_sticky].title	固定表示
+p3.i28[hover_popover_sticky].description	マウスをポップアップの方へ動かしたときにホバーポップアップを残し、内容を操作できるようにするかどうかを設定します。
+p3.i29[hover_popover_hiding_delay].title	非表示までの遅延
+p3.i29[hover_popover_hiding_delay].description	マウスが離れてからホバーポップアップを隠すまでの待ち時間 (ミリ秒) です。
+p3.i30.header	ドラッグ&ドロップによる選択
+p3.i31[drag_and_drop_selection.enabled].title	有効
+p3.i31[drag_and_drop_selection.enabled].description	ドラッグ&ドロップによる選択を有効にします。
+p3.i32[drag_and_drop_selection.delay].title	遅延
+p3.i32[drag_and_drop_selection.delay].description	ドラッグ&ドロップによる選択が始まるまでの遅延 (ミリ秒) です。
+p3.i33.header	ガター
+p3.i34[gutter.line_numbers].title	行番号を表示
+p3.i34[gutter.line_numbers].description	ガターに行番号を表示します。
+p3.i35[relative_line_numbers].title	相対行番号
+p3.i35[relative_line_numbers].description	エディターのガターの行番号表示を制御します。"disabled" は絶対行番号を、"enabled" は各絶対行に対する相対行番号を、"wrapped" は折り返し行も含めたすべての行に対する相対行番号を表示します。
+p3.i36[gutter.runnables].title	実行ボタンを表示
+p3.i36[gutter.runnables].description	ガターに実行ボタンを表示します。
+p3.i37[gutter.breakpoints].title	ブレークポイントを表示
+p3.i37[gutter.breakpoints].description	ガターにブレークポイントを表示します。
+p3.i38[gutter.bookmarks].title	ブックマークを表示
+p3.i38[gutter.bookmarks].description	ガターにブックマークを表示します。
+p3.i39[gutter.folds].title	折りたたみコントロールを表示
+p3.i39[gutter.folds].description	ガターにコードの折りたたみコントロールを表示します。
+p3.i40[gutter.min_line_number_digits].title	行番号の最小桁数
+p3.i40[gutter.min_line_number_digits].description	ガターに領域を確保しておく最小の文字数です。
+p3.i41[gutter.git_gutter_width$].title	Git ガターの幅
+p3.i41[gutter.git_gutter_width$].description	ガターに表示する Git 差分インジケーターの幅です。既定ではバッファーのフォントサイズに合わせて拡大縮小します。
+p3.i41.v1.f0[gutter.git_gutter_width].title	カスタム幅
+p3.i41.v1.f0[gutter.git_gutter_width].description	Git 差分インジケーターの幅 (ピクセル) です。
+p3.i42[inline_code_actions].title	インラインのコードアクション
+p3.i42[inline_code_actions].description	バッファーの行頭にコードアクションのボタンを表示します。
+p3.i43.header	スクロールバー
+p3.i44[scrollbar].title	表示
+p3.i44[scrollbar].description	エディターにスクロールバーを表示するタイミングです。
+p3.i45[scrollbar.cursors].title	カーソル
+p3.i45[scrollbar.cursors].description	スクロールバーにカーソル位置を表示します。
+p3.i46[scrollbar.git_diff].title	Git の差分
+p3.i46[scrollbar.git_diff].description	スクロールバーに Git の差分インジケーターを表示します。
+p3.i47[scrollbar.search_results].title	検索結果
+p3.i47[scrollbar.search_results].description	スクロールバーにバッファー内検索の結果インジケーターを表示します。
+p3.i48[scrollbar.selected_text].title	選択テキスト
+p3.i48[scrollbar.selected_text].description	スクロールバーに選択テキストと一致する箇所を表示します。
+p3.i49[scrollbar.selected_symbol].title	選択シンボル
+p3.i49[scrollbar.selected_symbol].description	スクロールバーに選択シンボルと一致する箇所を表示します。
+p3.i50[scrollbar.diagnostics].title	診断
+p3.i50[scrollbar.diagnostics].description	スクロールバーに表示する診断インジケーターの種類です。
+p3.i51[scrollbar.axes.horizontal].title	水平スクロールバー
+p3.i51[scrollbar.axes.horizontal].description	false にすると水平スクロールバーを強制的に無効にします。
+p3.i52[scrollbar.axes.vertical].title	垂直スクロールバー
+p3.i52[scrollbar.axes.vertical].description	false にすると垂直スクロールバーを強制的に無効にします。
+p3.i53.header	ミニマップ
+p3.i54[minimap.show].title	表示
+p3.i54[minimap.show].description	エディターにミニマップを表示するタイミングです。
+p3.i55[minimap.display_in].title	表示する場所
+p3.i55[minimap.display_in].description	エディターのどこにミニマップを表示するかを設定します。
+p3.i56[minimap.thumb].title	つまみ
+p3.i56[minimap.thumb].description	ミニマップのつまみを表示するタイミングです。
+p3.i57[minimap.thumb_border].title	つまみの境界線
+p3.i57[minimap.thumb_border].description	ミニマップのスクロールバーのつまみの境界線のスタイルです。
+p3.i58[minimap.current_line_highlight].title	現在の行のハイライト
+p3.i58[minimap.current_line_highlight].description	ミニマップで現在の行をどのようにハイライトするかを設定します。
+p3.i59[minimap.max_width_columns].title	最大幅 (列数)
+p3.i59[minimap.max_width_columns].description	ミニマップに表示する最大の列数です。
+p3.i60.header	ツールバー
+p3.i61[toolbar.breadcrumbs].title	パンくずリスト
+p3.i61[toolbar.breadcrumbs].description	パンくずリストを表示します。
+p3.i62[toolbar.quick_actions].title	クイックアクション
+p3.i62[toolbar.quick_actions].description	クイックアクションのボタン (検索・選択・エディター操作など) を表示します。
+p3.i63[toolbar.markdown_format_bar].title	Markdown 整形バー
+p3.i63[toolbar.markdown_format_bar].description	Markdown ファイルを開いているときに、ツールバーの下へ整形ボタンの行を表示します。
+p3.i64[toolbar.selections_menu].title	選択範囲メニュー
+p3.i64[toolbar.selections_menu].description	エディターのツールバーに選択範囲メニューを表示します。
+p3.i65[toolbar.agent_review].title	エージェントのレビュー
+p3.i65[toolbar.agent_review].description	エディターのツールバーにエージェントのレビューボタンを表示します。
+p3.i66[toolbar.code_actions].title	コードアクション
+p3.i66[toolbar.code_actions].description	エディターのツールバーにコードアクションのボタンを表示します。
+p3.i67.header	Vim
+p3.i68[vim.default_mode].title	既定のモード
+p3.i68[vim.default_mode].description	Vim の開始時のモードです。
+p3.i69[vim.toggle_relative_line_numbers].title	相対行番号の切り替え
+p3.i69[vim.toggle_relative_line_numbers].description	Vim モードで相対行番号を切り替えます。
+p3.i70[vim.use_system_clipboard].title	システムのクリップボードを使用
+p3.i70[vim.use_system_clipboard].description	Vim モードでシステムのクリップボードを使うタイミングを設定します。
+p3.i71[vim.use_smartcase_find].title	smartcase 検索を使用
+p3.i71[vim.use_smartcase_find].description	Vim モードで smartcase 検索を有効にします。
+p3.i72[vim.gdefault].title	置換を既定で行全体に適用
+p3.i72[vim.gdefault].description	:substitute コマンドが既定で行内のすべての一致を置換するようにします。この場合、'g' フラグは逆に 1 件だけの置換に切り替えます。
+p3.i73[vim.highlight_on_yank_duration].title	ヤンク時のハイライト時間
+p3.i73[vim.highlight_on_yank_duration].description	Vim モードでヤンクしたテキストをハイライトする時間 (ミリ秒) です。
+p3.i74[vim.use_regex_search].title	正規表現検索
+p3.i74[vim.use_regex_search].description	Vim の検索で既定で正規表現を使用します。
+p3.i75[vim.show_edit_predictions_in_normal_mode].title	ノーマルモードで編集予測を表示
+p3.i75[vim.show_edit_predictions_in_normal_mode].description	ノーマルモードで編集予測を表示するかどうかを設定します。既定では挿入モードと置換モードでのみ表示されます。
+p3.i76[vim.cursor_shape.normal].title	カーソルの形状 - ノーマルモード
+p3.i76[vim.cursor_shape.normal].description	ノーマルモードのカーソルの形状です。
+p3.i77[vim.cursor_shape.insert].title	カーソルの形状 - 挿入モード
+p3.i77[vim.cursor_shape.insert].description	挿入モードのカーソルの形状です。Inherit はエディターのカーソルの形状を使います。
+p3.i78[vim.cursor_shape.replace].title	カーソルの形状 - 置換モード
+p3.i78[vim.cursor_shape.replace].description	置換モードのカーソルの形状です。
+p3.i79[vim.cursor_shape.visual].title	カーソルの形状 - ビジュアルモード
+p3.i79[vim.cursor_shape.visual].description	ビジュアルモードのカーソルの形状です。
+p3.i80[vim.custom_digraphs].title	カスタムダイグラフ
+p3.i80[vim.custom_digraphs].description	Vim モードのカスタムダイグラフの定義です。
+p3.i81.header	インデント
+p3.i82[languages.$(language).tab_size].title	タブのサイズ
+p3.i82[languages.$(language).tab_size].description	タブが占める列数です。
+p3.i83[languages.$(language).hard_tabs].title	タブ文字を使用
+p3.i83[languages.$(language).hard_tabs].description	複数のスペースではなくタブ文字でインデントするかどうかを設定します。
+p3.i84[languages.$(language).auto_indent].title	自動インデント
+p3.i84[languages.$(language).auto_indent].description	入力時の自動インデントの動作を設定します。
+p3.i85[languages.$(language).auto_indent_on_paste].title	貼り付け時の自動インデント
+p3.i85[languages.$(language).auto_indent_on_paste].description	貼り付けた内容のインデントを、文脈に応じて調整するかどうかを設定します。
+p3.i86.header	折り返し
+p3.i87[languages.$(language).soft_wrap].title	折り返し
+p3.i87[languages.$(language).soft_wrap].description	長い行をどのように折り返すかを設定します。
+p3.i88[languages.$(language).show_wrap_guides].title	折り返しガイドを表示
+p3.i88[languages.$(language).show_wrap_guides].description	エディターに折り返しガイドを表示します。
+p3.i89[languages.$(language).preferred_line_length].title	推奨の行の長さ
+p3.i89[languages.$(language).preferred_line_length].description	折り返しが有効なバッファーで、行を折り返す列位置です。
+p3.i90[languages.$(language).wrap_guides].title	折り返しガイド
+p3.i90[languages.$(language).wrap_guides].description	エディターで折り返しガイドを表示する文字数です。
+p3.i91[languages.$(language).allow_rewrap].title	再折り返しを許可
+p3.i91[languages.$(language).allow_rewrap].description	この言語で `editor::rewrap` アクションを許可する範囲を設定します。
+p3.i92.header	インデントガイド
+p3.i93[languages.$(language).indent_guides.enabled].title	有効
+p3.i93[languages.$(language).indent_guides.enabled].description	エディターにインデントガイドを表示します。
+p3.i94[languages.$(language).indent_guides.line_width].title	線の太さ
+p3.i94[languages.$(language).indent_guides.line_width].description	インデントガイドの太さ (ピクセル) です。1 から 10 の範囲で指定します。
+p3.i95[languages.$(language).indent_guides.active_line_width].title	アクティブな線の太さ
+p3.i95[languages.$(language).indent_guides.active_line_width].description	アクティブなインデントガイドの太さ (ピクセル) です。1 から 10 の範囲で指定します。
+p3.i96[languages.$(language).indent_guides.coloring].title	配色
+p3.i96[languages.$(language).indent_guides.coloring].description	インデントガイドの配色方法を設定します。
+p3.i97[languages.$(language).indent_guides.background_coloring].title	背景の配色
+p3.i97[languages.$(language).indent_guides.background_coloring].description	インデントガイドの背景の配色方法を設定します。
+p3.i98.header	フォーマット
+p3.i99[languages.$(language).format_on_save].title	保存時にフォーマット
+p3.i99[languages.$(language).format_on_save].description	On: バッファー全体をフォーマットします。\nOff: フォーマットしません。\nModifications: 未ステージの変更がある行だけをフォーマットします。git の差分または LSP の範囲フォーマットが使えない場合はフォーマットしません。\nModifications If Available: 同様ですが、使えない場合はバッファー全体のフォーマットにフォールバックします。
+p3.i100[languages.$(language).remove_trailing_whitespace_on_save].title	保存時に行末の空白を削除
+p3.i100[languages.$(language).remove_trailing_whitespace_on_save].description	保存する前に、バッファーの各行から行末の空白を削除するかどうかを設定します。
+p3.i101[languages.$(language).ensure_final_newline_on_save].title	保存時に末尾へ改行を確保
+p3.i101[languages.$(language).ensure_final_newline_on_save].description	保存時にバッファーの末尾に改行を 1 つだけ確保するかどうかを設定します。
+p3.i102[languages.$(language).line_ending].title	改行コード
+p3.i102[languages.$(language).line_ending].description	新規ファイル、およびフォーマットと保存の操作で、改行コードをどう扱うかを設定します。
+p3.i103[languages.$(language).formatter].title	フォーマッタ
+p3.i103[languages.$(language).formatter].description	バッファーのフォーマット方法を設定します。
+p3.i104[languages.$(language).use_on_type_format].title	入力時フォーマットを使用
+p3.i104[languages.$(language).use_on_type_format].description	LSP サーバーの機能で定義された「トリガー」文字を入力するたびに、追加の LSP 問い合わせでコードを整形・修正するかどうかを設定します
+p3.i105[languages.$(language).code_actions_on_format].title	フォーマット時のコードアクション
+p3.i105[languages.$(language).code_actions_on_format].description	フォーマット時に追加で実行するコードアクションです。
+p3.i106.header	自動閉じ
+p3.i107[languages.$(language).use_autoclose].title	閉じ文字を自動的に挿入
+p3.i107[languages.$(language).use_autoclose].description	閉じ文字を自動的に入力するかどうかを設定します。たとえば '(' を入力すると、Zed が正しい位置に ')' を自動的に追加します。
+p3.i108[languages.$(language).use_auto_surround].title	囲み文字を自動的に挿入
+p3.i108[languages.$(language).use_auto_surround].description	テキストを自動的に文字で囲むかどうかを設定します。たとえばテキストを選択して '(' を入力すると、Zed がそのテキストを () で囲みます。
+p3.i109[languages.$(language).always_treat_brackets_as_autoclosed].title	括弧を常に自動閉じとして扱う
+p3.i109[languages.$(language).always_treat_brackets_as_autoclosed].description	閉じ文字がどのように挿入されたかにかかわらず、常に読み飛ばして自動的に削除するかどうかを設定します。
+p3.i110[languages.$(language).jsx_tag_auto_close].title	JSX タグの自動閉じ
+p3.i110[languages.$(language).jsx_tag_auto_close].description	JSX のタグを自動的に閉じるかどうかを設定します。
+p3.i111.header	空白文字
+p3.i112[languages.$(language).show_whitespaces].title	空白文字を表示
+p3.i112[languages.$(language).show_whitespaces].description	エディターにタブとスペースを表示するかどうかを設定します。
+p3.i113[languages.$(language).whitespace_map.space].title	スペースの表示文字
+p3.i113[languages.$(language).whitespace_map.space].description	show_whitespaces を有効にしたときに、スペースの描画に使う文字です (既定: "•")
+p3.i114[languages.$(language).whitespace_map.tab].title	タブの表示文字
+p3.i114[languages.$(language).whitespace_map.tab].description	show_whitespaces を有効にしたときに、タブの描画に使う文字です (既定: "→")
+p3.i115.header	補完候補
+p3.i116[languages.$(language).show_completions_on_input].title	入力時に補完候補を表示
+p3.i116[languages.$(language).show_completions_on_input].description	明示的に要求しなくても、エディターでの入力中に補完メニューを表示するかどうかを設定します。
+p3.i117[languages.$(language).show_completion_documentation].title	補完候補のドキュメントを表示
+p3.i117[languages.$(language).show_completion_documentation].description	補完メニューの候補について、インラインおよび隣接する領域にドキュメントを表示するかどうかを設定します。
+p3.i118[languages.$(language).completions.words].title	単語
+p3.i118[languages.$(language).completions.words].description	単語をどのように補完するかを設定します。
+p3.i119[languages.$(language).completions.words_min_length].title	単語補完の最小文字数
+p3.i119[languages.$(language).completions.words_min_length].description	単語ベースの補完を自動的に表示するために必要な、補完クエリの文字数です。
+p3.i120[editor.completion_menu_scrollbar].title	補完メニューのスクロールバー
+p3.i120[editor.completion_menu_scrollbar].description	補完メニューにスクロールバーを表示するタイミングです。
+p3.i121[editor.completion_detail_alignment].title	補完の詳細の配置
+p3.i121[editor.completion_detail_alignment].description	コード補完のメニューで、詳細テキストを左右どちらに寄せるかを設定します。
+p3.i122[editor.completion_menu_item_kind].title	補完メニューの項目の種類
+p3.i122[editor.completion_menu_item_kind].description	補完メニューの各項目について、LSP の項目の種類 (関数・メソッド・変数など) をどのように表示するかを設定します。
+p3.i123.header	インレイヒント
+p3.i124[languages.$(language).inlay_hints.enabled].title	有効
+p3.i124[languages.$(language).inlay_hints.enabled].description	ヒントの表示を切り替える全体スイッチです。
+p3.i125[languages.$(language).inlay_hints.show_value_hints].title	値のヒントを表示
+p3.i125[languages.$(language).inlay_hints.show_value_hints].description	デバッグ中のインライン値の表示を切り替える全体スイッチです。
+p3.i126[languages.$(language).inlay_hints.show_type_hints].title	型のヒントを表示
+p3.i126[languages.$(language).inlay_hints.show_type_hints].description	型のヒントを表示するかどうかを設定します。
+p3.i127[languages.$(language).inlay_hints.show_parameter_hints].title	引数のヒントを表示
+p3.i127[languages.$(language).inlay_hints.show_parameter_hints].description	引数のヒントを表示するかどうかを設定します。
+p3.i128[languages.$(language).inlay_hints.show_other_hints].title	その他のヒントを表示
+p3.i128[languages.$(language).inlay_hints.show_other_hints].description	その他のヒントを表示するかどうかを設定します。
+p3.i129[languages.$(language).inlay_hints.show_background].title	背景を表示
+p3.i129[languages.$(language).inlay_hints.show_background].description	インレイヒントに背景を表示します。
+p3.i130[languages.$(language).inlay_hints.edit_debounce_ms].title	編集後のデバウンス (ミリ秒)
+p3.i130[languages.$(language).inlay_hints.edit_debounce_ms].description	バッファーの編集後にインレイヒントの更新をデバウンスするかどうかを設定します (0 でデバウンスを無効化)。
+p3.i131[languages.$(language).inlay_hints.scroll_debounce_ms].title	スクロール後のデバウンス (ミリ秒)
+p3.i131[languages.$(language).inlay_hints.scroll_debounce_ms].description	バッファーのスクロール後にインレイヒントの更新をデバウンスするかどうかを設定します (0 でデバウンスを無効化)。
+p3.i132[languages.$(language).inlay_hints.toggle_on_modifiers_press].title	修飾キーで切り替え
+p3.i132[languages.$(language).inlay_hints.toggle_on_modifiers_press].description	指定した修飾キーを押したときに、インレイヒントの表示/非表示を切り替えます。
+p3.i133[code_lens].title	コードレンズ
+p3.i133[code_lens].description	言語サーバーのコードレンズを表示するかどうか、またどのように表示するかを設定します。
+p3.i134[lsp_document_colors].title	LSP の色プレビュー
+p3.i134[lsp_document_colors].description	エディターで LSP の色プレビューをどのように描画するかを設定します。
+p3.i135.header	タスク
+p3.i136[languages.$(language).tasks.enabled].title	有効
+p3.i136[languages.$(language).tasks.enabled].description	この言語でタスクを有効にするかどうかを設定します。
+p3.i137[languages.$(language).tasks.variables].title	変数
+p3.i137[languages.$(language).tasks.variables].description	特定の言語に対して設定する、追加のタスク変数です。
+p3.i138[languages.$(language).tasks.prefer_lsp].title	LSP を優先
+p3.i138[languages.$(language).tasks.prefer_lsp].description	Zed の言語拡張のタスクより、LSP のタスクを優先します。
+p3.i139.header	その他
+p3.i140[languages.$(language).word_diff_enabled].title	単語単位の差分を有効にする
+p3.i140[languages.$(language).word_diff_enabled].description	エディターで単語単位の差分ハイライトを有効にするかどうかを設定します。有効にすると、変更された行の中で実際に変わった単語がハイライトされます。
+p3.i141[languages.$(language).debuggers].title	デバッガー
+p3.i141[languages.$(language).debuggers].description	この言語で優先的に使うデバッガーです。
+p3.i142[languages.$(language).editor.middle_click_paste].title	中クリックで貼り付け
+p3.i142[languages.$(language).editor.middle_click_paste].description	Linux で中クリックによる貼り付けを有効にします。
+p3.i143[languages.$(language).extend_comment_on_newline].title	改行時にコメントを継続
+p3.i143[languages.$(language).extend_comment_on_newline].description	直前の行がコメントの場合に、新しい行もコメントで始めるかどうかを設定します。
+p3.i144[languages.$(language).colorize_brackets].title	括弧の色分け
+p3.i144[languages.$(language).colorize_brackets].description	エディターで括弧を色分けするかどうかを設定します。
+p3.i145[modeline_lines].title	Vim/Emacs の modeline のサポート
+p3.i145[modeline_lines].description	modeline を探す行数です (0 で無効)。
+p3.i146[image_viewer.unit].title	画像ビューアー
+p3.i146[image_viewer.unit].description	画像ファイルのサイズの単位です。
+p3.i147[markdown_preview.limit_content_width].title	Markdown プレビューの幅を制限
+p3.i147[markdown_preview.limit_content_width].description	読みやすさのために、Markdown プレビューの内容を最大幅に制限し、ペインがそれより広いときは中央に寄せるかどうかを設定します。
+p3.i147.v1.f0[markdown_preview.max_width].title	最大幅
+p3.i147.v1.f0[markdown_preview.max_width].description	内容の最大幅 (ピクセル) です。ペインがこの値より広いときは内容を中央に寄せます。
+p3.i148[markdown_preview.soft_break_as_hard_break].title	改行をそのまま改行として表示
+p3.i148[markdown_preview.soft_break_as_hard_break].description	オフにすると CommonMark 準拠になり、行末の半角スペース 2 つ / `\\` / `<br>` だけが改行になります。PDF の書き出しにも同じ設定が効きます。
+p3.i149[tabular_data.open_as_grid].title	CSV / TSV を表として開く
+p3.i149[tabular_data.open_as_grid].description	オフにするとテキストエディターで開きます。どちらからでも横に切り替えられます。
+p3.i150[tabular_data.multiline_cells].title	複数行のセルをすべて表示
+p3.i150[tabular_data.multiline_cells].description	表 (グリッド) で、改行を含むセルの行の高さを広げてすべて表示します。オフにすると 1 行に切り詰めます。
+p3.i151[drop_target_size].title	ドロップ領域のサイズ
+p3.i151[drop_target_size].description	ドロップしたファイルを分割ペインで開くための、エディター内のドロップ領域の相対サイズです。
+p4.title	言語とツール
+p4.i0.header	LSP
+p4.i1[languages.$(language).enable_language_server].title	言語サーバーを有効にする
+p4.i1[languages.$(language).enable_language_server].description	コードインテリジェンスに言語サーバーを使うかどうかを設定します。
+p4.i2[languages.$(language).language_servers].title	言語サーバー
+p4.i2[languages.$(language).language_servers].description	この言語で使用する (または無効にする) 言語サーバーの一覧です。
+p4.i3[languages.$(language).linked_edits].title	連動編集
+p4.i3[languages.$(language).linked_edits].description	言語サーバーが対応している場合に、関連する範囲を連動して編集するかどうかを設定します。たとえば開始タグ <html> を編集すると、対応する終了タグ </html> の内容も一緒に編集されます。
+p4.i4[go_to_definition_fallback].title	定義へ移動のフォールバック
+p4.i4[go_to_definition_fallback].description	言語サーバーからの「定義へ移動」の結果が空だったときに、追加の問い合わせを行うかどうかを設定します。
+p4.i5[go_to_definition_scroll_strategy].title	定義へ移動したときのスクロール方法
+p4.i5[go_to_definition_scroll_strategy].description	定義や参照へ移動したときに、移動先をどのようにスクロールして表示するかを設定します。
+p4.i6[lsp_results_location].title	LSP の結果の表示先
+p4.i6[lsp_results_location].description	複数の位置を含みうる LSP の結果 (定義へ移動・実装へ移動・すべての参照を検索) をどこに表示するかを設定します。
+p4.i7[languages.$(language).semantic_tokens].title	セマンティックトークン
+p4.i7[languages.$(language).semantic_tokens].description	Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting.
+p4.i8[languages.$(language).document_folding_ranges].title	LSP の折りたたみ範囲
+p4.i8[languages.$(language).document_folding_ranges].description	有効にすると、インデントに基づく折りたたみの代わりに、言語サーバーの折りたたみ範囲を使用します。
+p4.i9[languages.$(language).document_symbols].title	LSP のドキュメントシンボル
+p4.i9[languages.$(language).document_symbols].description	有効にすると、アウトラインとパンくずリストに tree-sitter ではなく、言語サーバーのドキュメントシンボルを使用します。
+p4.i10.header	LSP の補完
+p4.i11[languages.$(language).completions.lsp].title	有効
+p4.i11[languages.$(language).completions.lsp].description	LSP の補完候補を取得するかどうかを設定します。
+p4.i12[languages.$(language).completions.lsp_fetch_timeout_ms].title	取得のタイムアウト (ミリ秒)
+p4.i12[languages.$(language).completions.lsp_fetch_timeout_ms].description	LSP の補完候補を取得するときに、個々のサーバーの応答をどれだけ待つかを設定します (0 で無期限に待機)。
+p4.i13[languages.$(language).completions.lsp_insert_mode].title	挿入方法
+p4.i13[languages.$(language).completions.lsp_insert_mode].description	LSP の補完候補をどのように挿入するかを設定します。
+p4.i14.header	デバッガー
+p4.i15[languages.$(language).debuggers].title	デバッガー
+p4.i15[languages.$(language).debuggers].description	この言語で優先的に使うデバッガーです。
+p4.i16.header	Prettier
+p4.i17[languages.$(language).prettier.allowed].title	使用を許可
+p4.i17[languages.$(language).prettier.allowed].description	指定した言語で、Prettier によるフォーマットを有効または無効にします。
+p4.i18[languages.$(language).prettier.parser].title	パーサー
+p4.i18[languages.$(language).prettier.parser].description	この言語のファイルをフォーマットするときに、Prettier 連携が使用するパーサー名を強制します。
+p4.i19[languages.$(language).prettier.plugins].title	プラグイン
+p4.i19[languages.$(language).prettier.plugins].description	この言語のファイルをフォーマットするときに、Prettier 連携が使用するプラグインを強制します。
+p4.i20[languages.$(language).prettier.options].title	オプション
+p4.i20[languages.$(language).prettier.options].description	Prettier の既定のオプションです。package.json の Prettier セクションと同じ形式で指定します。
+p4.i21.header	ファイルの種類
+p4.i22[file_type_associations].title	ファイルの関連付け
+p4.i22[file_type_associations].description	言語と、その言語として扱うファイル名・拡張子の対応です。
+p4.i23.header	診断
+p4.i24[diagnostics_max_severity].title	最大の重大度
+p4.i24[diagnostics_max_severity].description	エディターに表示する診断を絞り込む重大度です。
+p4.i25[diagnostics.include_warnings].title	警告を含める
+p4.i25[diagnostics.include_warnings].description	既定で警告を表示するかどうかを設定します。
+p4.i26.header	インライン診断
+p4.i27[diagnostics.inline.enabled].title	有効
+p4.i27[diagnostics.inline.enabled].description	診断をインラインで表示するかどうかを設定します。
+p4.i28[diagnostics.inline.update_debounce_ms].title	更新のデバウンス
+p4.i28[diagnostics.inline.update_debounce_ms].description	最後の診断の更新からインライン診断を表示するまでの遅延 (ミリ秒) です。
+p4.i29[diagnostics.inline.padding].title	余白
+p4.i29[diagnostics.inline.padding].description	ソース行の末尾からインライン診断の開始位置までの余白です。
+p4.i30[diagnostics.inline.min_column].title	最小の列
+p4.i30[diagnostics.inline.min_column].description	インライン診断を表示する最小の列位置です。
+p4.i31.header	LSP のプル型診断
+p4.i32[diagnostics.lsp_pull_diagnostics.enabled].title	有効
+p4.i32[diagnostics.lsp_pull_diagnostics.enabled].description	言語サーバーからプル型で診断を取得するかどうかを設定します。
+p4.i33[diagnostics.lsp_pull_diagnostics.debounce_ms].title	デバウンス
+p4.i33[diagnostics.lsp_pull_diagnostics.debounce_ms].description	言語サーバーから診断を取得するまでの最小の待ち時間です。
+p4.i34.header	LSP のハイライト
+p4.i35[lsp_highlight_debounce].title	デバウンス
+p4.i35[lsp_highlight_debounce].description	言語サーバーにハイライトを問い合わせるまでのデバウンスの遅延です。
+p4.i36.header	言語
+p5.title	検索とファイル
+p5.i0.header	検索
+p5.i1[search.whole_word].title	単語単位で検索
+p5.i1[search.whole_word].description	既定で単語単位で検索します。
+p5.i2[search.case_sensitive].title	大文字と小文字を区別
+p5.i2[search.case_sensitive].description	既定で大文字と小文字を区別して検索します。
+p5.i3[use_smartcase_search].title	smartcase 検索を使用
+p5.i3[use_smartcase_search].description	検索クエリの内容に応じて、大文字と小文字の区別を自動的に有効にするかどうかを設定します。
+p5.i4[search.include_ignored].title	無視されたファイルを含める
+p5.i4[search.include_ignored].description	既定で検索結果に無視されたファイルを含めます。
+p5.i5[search.regex].title	正規表現
+p5.i5[search.regex].description	既定で正規表現検索を使用します。
+p5.i6[search_wrap].title	検索の折り返し
+p5.i6[search_wrap].description	エディターの検索結果を末尾から先頭へ循環させるかどうかを設定します。
+p5.i7[editor.search.center_on_match].title	一致箇所を中央に表示
+p5.i7[editor.search.center_on_match].description	現在の一致箇所をエディターの中央に表示するかどうかを設定します
+p5.i8[seed_search_query_from_cursor].title	カーソル位置から検索クエリを初期化
+p5.i8[seed_search_query_from_cursor].description	新しい検索のクエリをカーソル位置のテキストで埋めるタイミングを設定します。
+p5.i9.header	ファイル検索
+p5.i10[file_finder.include_ignored].title	検索に無視されたファイルを含める
+p5.i10[file_finder.include_ignored].description	検索時に gitignore されたファイルも対象にします。
+p5.i11[file_finder.file_icons].title	ファイルアイコン
+p5.i11[file_finder.file_icons].description	ファイル検索にファイルアイコンを表示します。
+p5.i12[file_finder.skip_focus_for_active_in_search].title	検索結果でアクティブなファイルを飛ばす
+p5.i12[file_finder.skip_focus_for_active_in_search].description	ファイル検索の結果で、アクティブなファイルにはフォーカスを合わせないようにするかどうかを設定します。
+p5.i13.header	ファイルスキャン
+p5.i14[file_scan_exclusions].title	ファイルスキャンの除外
+p5.i14[file_scan_exclusions].description	Zed が完全に除外するファイルまたは glob です。ファイルスキャンとファイル検索から除外され、プロジェクトのファイルツリーにも表示されません。「ファイルスキャンの対象」より優先されます
+p5.i15[file_scan_inclusions].title	ファイルスキャンの対象
+p5.i15[file_scan_inclusions].description	git に無視されていても Zed が対象に含めるファイルまたは glob です。git の管理外でもプロジェクトにとって重要なファイルに便利です。範囲が広すぎる glob は Zed のファイルスキャンを遅くする点に注意してください。「ファイルスキャンの除外」がこの設定より優先されます
+p5.i16[file_scan_depth].title	ファイルスキャンの深さ
+p5.i16[file_scan_depth].description	git リポジトリの外側で先読みインデックスを作成するディレクトリの最大の深さです。この深さ以上のディレクトリの内容は、必要になった時点でインデックスされます。この深さより浅い位置にあるリポジトリは常に完全にインデックスされます。git リポジトリを起点としないプロジェクトでは、ルートフォルダーの直下にあるリポジトリは即座に git 機能が有効になり、それより深いものは最初に使われた時点で有効になります。0 は無制限を意味し、すべての git リポジトリを即座に有効にします
+p5.i17[scan_symlinks].title	シンボリックリンクをスキャン
+p5.i17[scan_symlinks].description	リンク先のディレクトリの内容をスキャンするタイミングです
+p5.i18[restore_on_file_reopen].title	ファイルの状態を復元
+p5.i18[restore_on_file_reopen].description	ファイルを再度開いたときに前回の状態を復元します。
+p5.i19[close_on_file_delete].title	ファイル削除時に閉じる
+p5.i19[close_on_file_delete].description	削除されたファイルを自動的に閉じます。
+p6.title	ウィンドウとレイアウト
+p6.i0.header	ステータスバー
+p6.i1[project_panel.button].title	プロジェクトパネルのボタン
+p6.i1[project_panel.button].description	ステータスバーにプロジェクトパネルのボタンを表示します。
+p6.i2[status_bar.active_language_button].title	現在の言語のボタン
+p6.i2[status_bar.active_language_button].description	ステータスバーに現在の言語のボタンを表示します。
+p6.i3[status_bar.active_encoding_button].title	現在のエンコーディングのボタン
+p6.i3[status_bar.active_encoding_button].description	ステータスバーに現在のエンコーディングを表示するタイミングを設定します。
+p6.i4[status_bar.cursor_position_button].title	カーソル位置のボタン
+p6.i4[status_bar.cursor_position_button].description	ステータスバーにカーソル位置のボタンを表示します。
+p6.i5[status_bar.line_endings_button].title	改行コードのボタン
+p6.i5[status_bar.line_endings_button].description	ステータスバーに現在の改行コードのボタンを表示します。
+p6.i6[terminal.button].title	ターミナルのボタン
+p6.i6[terminal.button].description	ステータスバーにターミナルのボタンを表示します。
+p6.i7[diagnostics.button].title	診断のボタン
+p6.i7[diagnostics.button].description	ステータスバーにプロジェクトの診断のボタンを表示します。
+p6.i8[search.button].title	プロジェクト内検索のボタン
+p6.i8[search.button].description	ステータスバーにプロジェクト内検索のボタンを表示します。
+p6.i9[debugger.button].title	デバッガーのボタン
+p6.i9[debugger.button].description	ステータスバーにデバッガーのボタンを表示します。
+p6.i10[status_bar.show_active_file].title	現在のファイル名
+p6.i10[status_bar.show_active_file].description	ステータスバーに現在のファイル名を表示します。
+p6.i11.header	タイトルバー
+p6.i12[title_bar.show_branch_status_icon].title	ブランチの状態アイコンを表示
+p6.i12[title_bar.show_branch_status_icon].description	タイトルバーのブランチアイコンに git の状態インジケーターを表示します。
+p6.i13[title_bar.show_branch_name].title	ブランチ名を表示
+p6.i13[title_bar.show_branch_name].description	タイトルバーにブランチ名のボタンを表示します。
+p6.i14[title_bar.show_worktree_name].title	ワークツリー名を表示
+p6.i14[title_bar.show_worktree_name].description	タイトルバーにワークツリー名のボタンを表示します。
+p6.i15[title_bar.show_project_items].title	プロジェクト情報を表示
+p6.i15[title_bar.show_project_items].description	タイトルバーにプロジェクトのホストと名前を表示します。
+p6.i16[title_bar.show_onboarding_banner].title	お知らせバナーを表示
+p6.i16[title_bar.show_onboarding_banner].description	タイトルバーに新機能を知らせるバナーを表示します。
+p6.i17[title_bar.show_sign_in].title	サインインを表示
+p6.i17[title_bar.show_sign_in].description	タイトルバーにサインインのボタンを表示します。
+p6.i18[title_bar.show_user_menu].title	ユーザーメニューを表示
+p6.i18[title_bar.show_user_menu].description	タイトルバーにユーザーメニューのボタンを表示します。
+p6.i19[title_bar.show_user_picture].title	ユーザーの画像を表示
+p6.i19[title_bar.show_user_picture].description	タイトルバーにユーザーの画像を表示します。
+p6.i20[title_bar.show_menus].title	メニューを表示
+p6.i20[title_bar.show_menus].description	タイトルバーにメニューを表示します。
+p6.i21[title_bar.button_layout$].title	ボタンの配置
+p6.i21[title_bar.button_layout$].description	(Linux のみ) タイトルバーのウィンドウ操作ボタンの配置を選択します。
+p6.i21.v2.f0[title_bar.button_layout].title	カスタムのボタン配置
+p6.i21.v2.f0[title_bar.button_layout].description	"close:minimize,maximize" のような GNOME 形式の配置文字列です。
+p6.i21.v2.f0[title_bar.button_layout].placeholder	close:minimize,maximize
+p6.i22.header	タブバー
+p6.i23[tab_bar.show].title	タブバーを表示
+p6.i23[tab_bar.show].description	エディターにタブバーを表示します。
+p6.i24[tabs.git_status].title	タブに Git の状態を表示
+p6.i24[tabs.git_status].description	タブの項目に Git のファイルの状態を表示します。
+p6.i25[tabs.file_icons].title	タブにファイルアイコンを表示
+p6.i25[tabs.file_icons].description	タブにファイルのアイコンを表示します。
+p6.i26[tabs.close_position].title	タブの閉じるボタンの位置
+p6.i26[tabs.close_position].description	タブ内の閉じるボタンの位置です。
+p6.i27[max_tabs].title	タブの最大数
+p6.i27[max_tabs].description	1 つのペインで開けるタブの最大数です。未保存のタブは閉じられません。
+p6.i28[tab_bar.show_nav_history_buttons].title	ナビゲーション履歴のボタンを表示
+p6.i28[tab_bar.show_nav_history_buttons].description	タブバーにナビゲーション履歴のボタンを表示します。
+p6.i29[tab_bar.show_tab_bar_buttons].title	タブバーのボタンを表示
+p6.i29[tab_bar.show_tab_bar_buttons].description	タブバーのボタン (新規・ペインの分割・ズーム) を表示します。
+p6.i30[tab_bar.show_buttons_on_inactive_panes].title	非アクティブなペインにもボタンを表示
+p6.i30[tab_bar.show_buttons_on_inactive_panes].description	フォーカスされていないペインのタブバーにも、新規・ペインの分割・ズームなどのボタンを表示します。
+p6.i31[tab_bar.show_pinned_tabs_in_separate_row].title	ピン留めタブの配置
+p6.i31[tab_bar.show_pinned_tabs_in_separate_row].description	ピン留めしたタブを、ピン留めしていないタブの上の別の行に表示します。
+p6.i32.header	タブの設定
+p6.i33[tabs.activate_on_close].title	閉じた後にアクティブにするタブ
+p6.i33[tabs.activate_on_close].description	現在のタブを閉じた後の動作です。
+p6.i34[tabs.show_diagnostics].title	タブに診断を表示
+p6.i34[tabs.show_diagnostics].description	診断のエラー・警告を含むファイルのうち、どれをタブ上で示すかを設定します。
+p6.i35[tabs.show_close_button].title	閉じるボタンを表示
+p6.i35[tabs.show_close_button].description	タブの閉じるボタンの表示動作を設定します。
+p6.i36.header	プレビュータブ
+p6.i37[preview_tabs.enabled].title	プレビュータブを有効にする
+p6.i37[preview_tabs.enabled].description	開いたエディターをプレビュータブとして表示します。
+p6.i38[preview_tabs.enable_preview_from_project_panel].title	プロジェクトパネルからのプレビュー
+p6.i38[preview_tabs.enable_preview_from_project_panel].description	プロジェクトパネルからシングルクリックで開いたときに、プレビューモードのタブで開くかどうかを設定します。
+p6.i39[preview_tabs.enable_preview_from_file_finder].title	ファイル検索からのプレビュー
+p6.i39[preview_tabs.enable_preview_from_file_finder].description	ファイル検索から選んだときに、プレビューモードのタブで開くかどうかを設定します。
+p6.i40[preview_tabs.enable_preview_from_multibuffer].title	マルチバッファーからのプレビュー
+p6.i40[preview_tabs.enable_preview_from_multibuffer].description	マルチバッファーから開いたときに、プレビューモードのタブで開くかどうかを設定します。
+p6.i41[preview_tabs.enable_preview_multibuffer_from_code_navigation].title	コードナビゲーションからのマルチバッファーのプレビュー
+p6.i41[preview_tabs.enable_preview_multibuffer_from_code_navigation].description	コードナビゲーションでマルチバッファーを開いたときに、プレビューモードのタブで開くかどうかを設定します。
+p6.i42[preview_tabs.enable_preview_file_from_code_navigation].title	コードナビゲーションからのファイルのプレビュー
+p6.i42[preview_tabs.enable_preview_file_from_code_navigation].description	コードナビゲーションで単一のファイルを開いたときに、プレビューモードのタブで開くかどうかを設定します。
+p6.i43[preview_tabs.enable_keep_preview_on_code_navigation].title	コードナビゲーション時にプレビューを維持
+p6.i43[preview_tabs.enable_keep_preview_on_code_navigation].description	コードナビゲーションでタブから移動したときに、そのタブをプレビューモードのまま維持するかどうかを設定します。`enable_preview_file_from_code_navigation` または `enable_preview_multibuffer_from_code_navigation` も true の場合、新しいタブが既存のタブを置き換えることがあります。
+p6.i44.header	レイアウト
+p6.i45[default_stacked_dock].title	既定でパネルを 2 枚並べるドック
+p6.i45[default_stacked_dock].description	プロジェクトを初めて開いたときに、パネルを 2 枚 (左右のドックは縦、下ドックは横) 並べておくドックです。ドック自体は開きません (起動時に開くかどうかは各パネルの「起動時に開く」で設定します)。以降はプロジェクトごとに保存されたレイアウトが優先されます。
+p6.i46[default_stacked_panel].title	既定で並べる 1 枚目のパネル
+p6.i46[default_stacked_panel].description	そのドックを埋めるパネルです。「並べない」にすると、初回のレイアウトを組みません。
+p6.i47[default_stacked_secondary_panel].title	既定で並べる 2 枚目のパネル
+p6.i47[default_stacked_secondary_panel].description	1 枚目の隣に並べて表示するパネルです。「並べない」にすると、上流の Zed と同じく 1 枚だけを表示します。
+p6.i48[bottom_dock_layout].title	下ドックのレイアウト
+p6.i48[bottom_dock_layout].description	下ドックのレイアウトモードです。
+p6.i49[centered_layout.left_padding].title	中央寄せレイアウトの左余白
+p6.i49[centered_layout.left_padding].description	中央寄せレイアウトの左側の余白です。
+p6.i50[centered_layout.right_padding].title	中央寄せレイアウトの右余白
+p6.i50[centered_layout.right_padding].description	中央寄せレイアウトの右側の余白です。
+p6.i51[focus_follows_mouse.enabled].title	マウスでフォーカスを移動
+p6.i51[focus_follows_mouse.enabled].description	マウスがペインの上に来たときに、そのペインへフォーカスを移すかどうかを設定します。
+p6.i52[focus_follows_mouse.debounce_ms].title	フォーカス移動のデバウンス (ミリ秒)
+p6.i52[focus_follows_mouse.debounce_ms].description	フォーカスを移すまでの待ち時間です。
+p6.i53.header	ウィンドウ
+p6.i54[use_system_window_tabs].title	システムのウィンドウタブを使用
+p6.i54[use_system_window_tabs].description	(macOS のみ) ウィンドウをタブとしてまとめられるようにするかどうかを設定します。
+p6.i55[fullscreen_mode].title	全画面表示のモード
+p6.i55[fullscreen_mode].description	(macOS のみ) 全画面表示の切り替えアクションで入る全画面モードを設定します。
+p6.i56[window_decorations].title	ウィンドウの装飾
+p6.i56[window_decorations].description	(Linux のみ) ウィンドウの装飾を Zed が描画するか、コンポジターに任せるかを設定します。
+p6.i57.header	ペインの表示調整
+p6.i58[active_pane_modifiers.inactive_opacity].title	非アクティブ時の不透明度
+p6.i58[active_pane_modifiers.inactive_opacity].description	非アクティブなパネルの不透明度です (0.0〜1.0)。
+p6.i59[active_pane_modifiers.border_size].title	境界線の太さ
+p6.i59[active_pane_modifiers.border_size].description	アクティブなペインを囲む境界線の太さです。
+p6.i60[zoomed_padding].title	ズーム時の余白
+p6.i60[zoomed_padding].description	ズームしたペインに余白を表示します。
+p6.i61.header	ペインの分割方向
+p6.i62[pane_split_direction_vertical].title	垂直分割の方向
+p6.i62[pane_split_direction_vertical].description	垂直に分割するときの方向です。
+p6.i63[pane_split_direction_horizontal].title	水平分割の方向
+p6.i63[pane_split_direction_horizontal].description	水平に分割するときの方向です。
+p7.title	パネル
+p7.i0.header	プロジェクトパネル
+p7.i1[project_panel.dock].title	プロジェクトパネルのドック位置
+p7.i1[project_panel.dock].description	プロジェクトパネルをドッキングする位置です。
+p7.i2[project_panel.default_width].title	プロジェクトパネルの既定の幅
+p7.i2[project_panel.default_width].description	プロジェクトパネルの既定の幅 (ピクセル) です。
+p7.i3[project_panel.hide_gitignore].title	.gitignore の項目を隠す
+p7.i3[project_panel.hide_gitignore].description	プロジェクトパネルで gitignore の対象項目を隠すかどうかを設定します。
+p7.i4[project_panel.entry_spacing].title	項目の間隔
+p7.i4[project_panel.entry_spacing].description	プロジェクトパネルのワークツリー項目の間隔です。
+p7.i5[project_panel.file_icons].title	ファイルアイコン
+p7.i5[project_panel.file_icons].description	プロジェクトパネルにファイルアイコンを表示します。
+p7.i6[project_panel.folder_icons].title	フォルダーアイコン
+p7.i6[project_panel.folder_icons].description	プロジェクトパネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。
+p7.i7[project_panel.git_status].title	Git の状態
+p7.i7[project_panel.git_status].description	プロジェクトパネルに Git の状態を表示します。
+p7.i8[project_panel.indent_size].title	インデント幅
+p7.i8[project_panel.indent_size].description	入れ子になった項目のインデント幅です。
+p7.i9[project_panel.auto_reveal_entries].title	項目を自動的に表示
+p7.i9[project_panel.auto_reveal_entries].description	対応するプロジェクトの項目がアクティブになったときに、プロジェクトパネルでその項目を自動的に表示するかどうかを設定します。
+p7.i10[project_panel.starts_open].title	起動時に開く
+p7.i10[project_panel.starts_open].description	起動時にプロジェクトパネルを開くかどうかを設定します。
+p7.i11[project_panel.auto_fold_dirs].title	ディレクトリを自動的にまとめる
+p7.i11[project_panel.auto_fold_dirs].description	ディレクトリの中にサブディレクトリが 1 つだけあるときに、自動的にまとめてコンパクトに表示するかどうかを設定します。
+p7.i12[project_panel.bold_folder_labels].title	フォルダー名を太字にする
+p7.i12[project_panel.bold_folder_labels].description	プロジェクトパネルでフォルダー名を太字で表示するかどうかを設定します。
+p7.i13[project_panel.scrollbar.show].title	スクロールバーを表示
+p7.i13[project_panel.scrollbar.show].description	プロジェクトパネルにスクロールバーを表示します。
+p7.i14[project_panel.scrollbar.horizontal_scroll].title	水平スクロール
+p7.i14[project_panel.scrollbar.horizontal_scroll].description	プロジェクトパネルで水平スクロールを許可するかどうかを設定します。無効にすると表示は常に左端に固定され、長いファイル名は切り詰められます。
+p7.i15[project_panel.show_diagnostics].title	診断を表示
+p7.i15[project_panel.show_diagnostics].description	診断のエラー・警告を含むファイルのうち、どれをプロジェクトパネルで示すかを設定します。
+p7.i16[project_panel.diagnostic_badges].title	診断のバッジ
+p7.i16[project_panel.diagnostic_badges].description	プロジェクトパネルのファイル名の横に、エラーと警告の件数バッジを表示します。
+p7.i17[project_panel.git_status_indicator].title	Git の状態インジケーター
+p7.i17[project_panel.git_status_indicator].description	プロジェクトパネルのファイル名の横に git の状態インジケーターを表示します。
+p7.i18[project_panel.sticky_scroll].title	スティッキースクロール
+p7.i18[project_panel.sticky_scroll].description	親ディレクトリをプロジェクトパネルの上部に固定表示するかどうかを設定します。
+p7.i19[project_panel.indent_guides.show].title	インデントガイドを表示
+p7.i19[project_panel.indent_guides.show].description	プロジェクトパネルにインデントガイドを表示します。
+p7.i20[project_panel.drag_and_drop].title	ドラッグ&ドロップ
+p7.i20[project_panel.drag_and_drop].description	プロジェクトパネルでドラッグ&ドロップ操作を有効にするかどうかを設定します。
+p7.i21[project_panel.hide_root].title	ルート項目を隠す
+p7.i21[project_panel.hide_root].description	ウィンドウで 1 つのフォルダーだけを開いているときに、ルート項目を隠すかどうかを設定します。
+p7.i22[project_panel.hide_hidden].title	隠し項目を隠す
+p7.i22[project_panel.hide_hidden].description	プロジェクトパネルで隠し項目を表示しないかどうかを設定します。
+p7.i23[project_panel.sort_mode].title	並べ替えの方法
+p7.i23[project_panel.sort_mode].description	プロジェクトパネルの項目の並び順です。
+p7.i24[project_panel.sort_order].title	並べ替えの基準
+p7.i24[project_panel.sort_order].description	プロジェクトパネルで、ファイル名とフォルダー名を大文字と小文字を区別して並べ替えるかどうかを設定します。
+p7.i25[project_panel.auto_open.on_create].title	作成時にファイルを自動的に開く
+p7.i25[project_panel.auto_open.on_create].description	新しく作成したファイルをエディターで自動的に開くかどうかを設定します。
+p7.i26[project_panel.auto_open.on_paste].title	貼り付け時にファイルを自動的に開く
+p7.i26[project_panel.auto_open.on_paste].description	貼り付けまたは複製したファイルを自動的に開くかどうかを設定します。
+p7.i27[project_panel.auto_open.on_drop].title	ドロップ時にファイルを自動的に開く
+p7.i27[project_panel.auto_open.on_drop].description	外部からドロップされたファイルを自動的に開くかどうかを設定します。
+p7.i28[worktree.hidden_files].title	隠しファイル
+p7.i28[worktree.hidden_files].description	「隠しファイル」として扱い、プロジェクトパネルから隠せるようにするファイルを照合する glob です。
+p7.i29.header	ターミナルパネル
+p7.i30[terminal.dock].title	ターミナルのドック位置
+p7.i30[terminal.dock].description	ターミナルパネルをドッキングする位置です。
+p7.i31[terminal.starts_open].title	起動時に開く
+p7.i31[terminal.starts_open].description	起動時にターミナルパネルを開くかどうかを設定します。
+p7.i32[terminal.flexible].title	ターミナルパネルの可変サイズ
+p7.i32[terminal.flexible].description	左右にドッキングしたときに、ターミナルパネルで可変 (比率) サイズを使うかどうかを設定します。
+p7.i33[terminal.show_count_badge].title	件数バッジを表示
+p7.i33[terminal.show_count_badge].description	ターミナルパネルのアイコンに、開いているターミナルの数のバッジを表示します。
+p7.i34.header	アウトラインパネル
+p7.i35[outline_panel.button].title	アウトラインパネルのボタン
+p7.i35[outline_panel.button].description	ステータスバーにアウトラインパネルのボタンを表示します。
+p7.i36[outline_panel.dock].title	アウトラインパネルのドック位置
+p7.i36[outline_panel.dock].description	アウトラインパネルをドッキングする位置です。
+p7.i37[outline_panel.default_width].title	アウトラインパネルの既定の幅
+p7.i37[outline_panel.default_width].description	アウトラインパネルの既定の幅 (ピクセル) です。
+p7.i38[outline_panel.file_icons].title	ファイルアイコン
+p7.i38[outline_panel.file_icons].description	アウトラインパネルにファイルアイコンを表示します。
+p7.i39[outline_panel.folder_icons].title	フォルダーアイコン
+p7.i39[outline_panel.folder_icons].description	アウトラインパネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。
+p7.i40[outline_panel.git_status].title	Git の状態
+p7.i40[outline_panel.git_status].description	アウトラインパネルに Git の状態を表示します。
+p7.i41[outline_panel.indent_size].title	インデント幅
+p7.i41[outline_panel.indent_size].description	入れ子になった項目のインデント幅です。
+p7.i42[outline_panel.auto_reveal_entries].title	項目を自動的に表示
+p7.i42[outline_panel.auto_reveal_entries].description	対応するアウトラインの項目がアクティブになったときに、自動的に表示するかどうかを設定します。
+p7.i43[outline_panel.auto_fold_dirs].title	ディレクトリを自動的にまとめる
+p7.i43[outline_panel.auto_fold_dirs].description	ディレクトリの中にサブディレクトリが 1 つだけあるときに、自動的にまとめるかどうかを設定します。
+p7.i44[outline_panel.indent_guides.show].title	インデントガイドを表示
+p7.i44[outline_panel.indent_guides.show].description	アウトラインパネルにインデントガイドを表示するタイミングです。
+p7.i45.header	Git パネル
+p7.i46[git_panel.button].title	Git パネルのボタン
+p7.i46[git_panel.button].description	ステータスバーに Git パネルのボタンを表示します。
+p7.i47[git_panel.dock].title	Git パネルのドック位置
+p7.i47[git_panel.dock].description	Git パネルをドッキングする位置です。
+p7.i48[git_panel.starts_open].title	起動時に開く
+p7.i48[git_panel.starts_open].description	起動時に git パネルを開くかどうかを設定します。
+p7.i49[git_panel.default_width].title	Git パネルの既定の幅
+p7.i49[git_panel.default_width].description	Git パネルの既定の幅 (ピクセル) です。
+p7.i50[git_panel.status_style].title	Git パネルの状態の表示スタイル
+p7.i50[git_panel.status_style].description	項目の状態をどのように表示するかを設定します。
+p7.i51[git_panel.fallback_branch_name].title	既定のブランチ名
+p7.i51[git_panel.fallback_branch_name].description	Git で init.defaultbranch が設定されていないときに使うブランチ名です。
+p7.i52[git_panel.sort_by].title	並べ替え
+p7.i52[git_panel.sort_by].description	git パネルの項目の並び順です。
+p7.i53[git_panel.group_by].title	グループ化
+p7.i53[git_panel.group_by].description	git パネルの項目のグループ化の方法です。
+p7.i54[git_panel.collapse_untracked_diff].title	未追跡ファイルの差分を折りたたむ
+p7.i54[git_panel.collapse_untracked_diff].description	差分パネルで未追跡のファイルを折りたたむかどうかを設定します。
+p7.i55[git_panel.tree_view].title	ツリー表示
+p7.i55[git_panel.tree_view].description	有効にすると項目をツリー表示で、無効にするとフラットな一覧で表示します。
+p7.i56[git_panel.file_icons].title	ファイルアイコン
+p7.i56[git_panel.file_icons].description	Git の状態アイコンの横にファイルアイコンを表示します。
+p7.i57[git_panel.folder_icons].title	フォルダーアイコン
+p7.i57[git_panel.folder_icons].description	git パネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。
+p7.i58[git_panel.diff_stats].title	差分の統計
+p7.i58[git_panel.diff_stats].description	Git パネルの各ファイルの横に、追加・削除の行数を表示するかどうかを設定します。
+p7.i59[git_panel.entry_primary_click_action].title	クリック時の動作
+p7.i59[git_panel.entry_primary_click_action].description	Git パネルで変更されたファイルをクリックしたときの既定の動作です。
+p7.i60[git_panel.show_count_badge].title	件数バッジを表示
+p7.i60[git_panel.show_count_badge].description	git パネルのアイコンに、未コミットの変更数のバッジを表示するかどうかを設定します。
+p7.i61[git_panel.commit_title_max_length].title	コミットタイトルの最大長
+p7.i61[git_panel.commit_title_max_length].description	警告を表示するまでのコミットメッセージのタイトルの最大長です。0 で無効になります。
+p7.i62[git_panel.scrollbar.show].title	スクロールバー
+p7.i62[git_panel.scrollbar.show].description	スクロールバーをどのように、いつ表示するかを設定します。
+p7.i63.header	デバッガーパネル
+p7.i64[debugger.dock].title	デバッガーパネルのドック位置
+p7.i64[debugger.dock].description	デバッグパネルをドッキングする位置です。
+p7.i65.header	コラボレーションパネル
+p7.i66[collaboration_panel.button].title	コラボレーションパネルのボタン
+p7.i66[collaboration_panel.button].description	ステータスバーにコラボレーションパネルのボタンを表示します。
+p7.i67[collaboration_panel.dock].title	コラボレーションパネルのドック位置
+p7.i67[collaboration_panel.dock].description	コラボレーションパネルをドッキングする位置です。
+p7.i68[collaboration_panel.dock].title	コラボレーションパネルの既定の幅
+p7.i68[collaboration_panel.dock].description	コラボレーションパネルの既定の幅 (ピクセル) です。
+p7.i69.header	エージェントパネル
+p7.i70[agent.button].title	エージェントパネルのボタン
+p7.i70[agent.button].description	ステータスバーにエージェントパネルのボタンを表示するかどうかを設定します。
+p7.i71[agent.dock].title	エージェントパネルのドック位置
+p7.i71[agent.dock].description	エージェントパネルをドッキングする位置です。
+p7.i72[agent.starts_open].title	起動時に開く
+p7.i72[agent.starts_open].description	起動時にエージェントパネルを開くかどうかを設定します。
+p7.i73[agent.flexible].title	エージェントパネルの可変サイズ
+p7.i73[agent.flexible].description	左右にドッキングしたときに、エージェントパネルで可変 (比率) サイズを使うかどうかを設定します。
+p7.i74[agent.default_width].title	エージェントパネルの既定の幅
+p7.i74[agent.default_width].description	エージェントパネルを左右にドッキングしたときの既定の幅です。
+p7.i75[agent.default_height].title	エージェントパネルの既定の高さ
+p7.i75[agent.default_height].description	エージェントパネルを下にドッキングしたときの既定の高さです。
+p7.i76[agent.limit_content_width].title	内容の幅を制限
+p7.i76[agent.limit_content_width].description	読みやすさのために、エージェントパネルの内容を最大幅に制限し、パネルがそれより広いときは中央に寄せるかどうかを設定します。
+p7.i76.v1.f0[agent.max_content_width].title	内容の最大幅
+p7.i76.v1.f0[agent.max_content_width].description	内容の最大幅 (ピクセル) です。パネルがこの値より広いときは内容を中央に寄せます。
+p8.title	デバッガー
+p8.i0.header	全般
+p8.i1[debugger.stepping_granularity].title	ステップ実行の粒度
+p8.i1[debugger.stepping_granularity].description	デバッグ操作のステップ実行の粒度を設定します。
+p8.i2[debugger.save_breakpoints].title	ブレークポイントを保存
+p8.i2[debugger.save_breakpoints].description	Zed のセッションをまたいでブレークポイントを引き継ぐかどうかを設定します。
+p8.i3[debugger.timeout].title	タイムアウト
+p8.i3[debugger.timeout].description	TCP のデバッグアダプターに接続するときに、タイムアウトエラーとするまでの時間 (ミリ秒) です。
+p8.i4[debugger.log_dap_communications].title	DAP の通信をログに記録
+p8.i4[debugger.log_dap_communications].description	アクティブなデバッグアダプターと Zed の間のメッセージをログに記録するかどうかを設定します。
+p8.i5[debugger.format_dap_log_messages].title	DAP のログメッセージを整形
+p8.i5[debugger.format_dap_log_messages].description	デバッグアダプターのロガーに追加するときに、DAP のメッセージを整形するかどうかを設定します。
+p9.title	ターミナル
+p9.i0.header	環境
+p9.i1[terminal.shell$].title	シェル
+p9.i1[terminal.shell$].description	ターミナルを開くときに使うシェルです。
+p9.i1.v1.f0[terminal.shell].title	プログラム
+p9.i1.v1.f0[terminal.shell].description	使用するシェルのプログラムです。
+p9.i1.v2.f0[terminal.shell.program].title	プログラム
+p9.i1.v2.f0[terminal.shell.program].description	実行するシェルのプログラムです。
+p9.i1.v2.f1[terminal.shell.args].title	引数
+p9.i1.v2.f1[terminal.shell.args].description	シェルのプログラムに渡す引数です。
+p9.i1.v2.f2[terminal.shell.title_override].title	タイトルの上書き
+p9.i1.v2.f2[terminal.shell.title_override].description	ターミナルのタブのタイトルを上書きする文字列です (省略可)。
+p9.i2[terminal.working_directory$].title	作業ディレクトリ
+p9.i2[terminal.working_directory$].description	ターミナルを起動するときに使う作業ディレクトリです。
+p9.i2.v4.f0[terminal.working_directory.always].title	ディレクトリ
+p9.i2.v4.f0[terminal.working_directory.always].description	使用するディレクトリのパスです (シェルによる展開が行われます)。
+p9.i3[terminal.env].title	環境変数
+p9.i3[terminal.env].description	ターミナルの環境に追加するキーと値の組です。
+p9.i4[terminal.detect_venv].title	仮想環境を検出
+p9.i4[terminal.detect_venv].description	ターミナルの作業ディレクトリに Python の仮想環境があれば有効化します。
+p9.i5.header	フォント
+p9.i6[terminal.font_size].title	フォントサイズ
+p9.i6[terminal.font_size].description	ターミナルのテキストのフォントサイズです。未設定の場合はバッファーのフォントサイズを使います。
+p9.i7[terminal.font_family].title	フォントファミリー
+p9.i7[terminal.font_family].description	ターミナルのテキストのフォントファミリーです。未設定の場合はバッファーのフォントファミリーを使います。
+p9.i8[terminal.font_fallbacks].title	フォールバックフォント
+p9.i8[terminal.font_fallbacks].description	ターミナルのテキストのフォールバックフォントです。未設定の場合はバッファーのフォールバックフォントを使います。
+p9.i9[terminal.font_weight].title	フォントの太さ
+p9.i9[terminal.font_weight].description	ターミナルのテキストのフォントの太さです (CSS の重み単位で 100〜900)。
+p9.i10[terminal.font_features].title	フォント機能
+p9.i10[terminal.font_features].description	ターミナルのテキストのフォント機能です。
+p9.i11.header	表示の設定
+p9.i12[terminal.line_height].title	行の高さ
+p9.i12[terminal.line_height].description	ターミナルのテキストの行の高さです。
+p9.i13[terminal.cursor_shape].title	カーソルの形状
+p9.i13[terminal.cursor_shape].description	ターミナルの既定のカーソルの形状です (bar・block・underline・hollow)。
+p9.i14[terminal.blinking].title	カーソルの点滅
+p9.i14[terminal.blinking].description	ターミナルのカーソルの点滅動作を設定します。
+p9.i15[terminal.alternate_scroll].title	代替スクロール
+p9.i15[terminal.alternate_scroll].description	代替スクロールモードを既定で有効にするかどうかを設定します (Vim などのアプリでマウスのスクロールを矢印キーに変換します)。
+p9.i16[terminal.minimum_contrast].title	最小コントラスト
+p9.i16[terminal.minimum_contrast].description	前景色と背景色の間で保つ APCA 知覚コントラストの最小値です (0〜106)。
+p9.i17.header	動作の設定
+p9.i18[terminal.option_as_meta].title	Option キーを Meta キーとして扱う
+p9.i18[terminal.option_as_meta].description	Option キーを Meta キーとして扱うかどうかを設定します。
+p9.i19[terminal.copy_on_select].title	選択時にコピー
+p9.i19[terminal.copy_on_select].description	ターミナルでテキストを選択したときに、自動的にシステムのクリップボードへコピーするかどうかを設定します。
+p9.i20[terminal.keep_selection_on_copy].title	コピー後も選択を維持
+p9.i20[terminal.keep_selection_on_copy].description	クリップボードへコピーした後もテキストの選択を維持するかどうかを設定します。
+p9.i21[terminal.open_links_in_mouse_mode].title	マウスモードでもリンクを開く
+p9.i21[terminal.open_links_in_mouse_mode].description	ターミナルのアプリケーションがマウスレポートを有効にしている場合でも、cmd + クリック (Linux と Windows では ctrl + クリック) でハイパーリンクを開くかどうかを設定します。無効にするとこれらのクリックはアプリケーションへ転送されますが、shift + cmd + クリックでリンクを開けます。
+p9.i22[terminal.macro_picker_folders_collapsed].title	マクロのフォルダーを閉じて開く
+p9.i22[terminal.macro_picker_folders_collapsed].description	「マクロを実行」を開いたとき、フォルダーをすべて閉じた状態で表示します。絞り込みを入力すると一致するマクロはすべて表示されます。
+p9.i23[terminal.bell].title	ベル音
+p9.i23[terminal.bell].description	BEL 文字 (`\\a`、`0x07`) が出力されたときに音を鳴らすかどうかを設定します
+p9.i24.header	レイアウトの設定
+p9.i25[terminal.default_width].title	既定の幅
+p9.i25[terminal.default_width].description	ターミナルを左右にドッキングしたときの既定の幅 (ピクセル) です。
+p9.i26[terminal.default_height].title	既定の高さ
+p9.i26[terminal.default_height].description	ターミナルを下にドッキングしたときの既定の高さ (ピクセル) です。
+p9.i27.header	詳細設定
+p9.i28[terminal.max_scroll_history_lines].title	スクロール履歴の最大行数
+p9.i28[terminal.max_scroll_history_lines].description	スクロールバックの履歴に保持する最大の行数です (最大 100,000。0 でスクロールを無効化)。
+p9.i29[terminal.scroll_multiplier].title	スクロールの倍率
+p9.i29[terminal.scroll_multiplier].description	ターミナルをマウスホイールでスクロールするときの倍率です
+p9.i30.header	セッションログ
+p9.i31[terminal.session_log.auto].title	自動でログを記録する
+p9.i31[terminal.session_log.auto].description	新しく開いたターミナルが、出力の記録を自動で始めます。
+p9.i32[terminal.session_log.directory].title	保存先フォルダー
+p9.i32[terminal.session_log.directory].description	ログファイルを書き出すフォルダーです (`~` は展開されます)。空欄のときは Zed のログフォルダー配下の `terminal-sessions` に保存します。
+p9.i33[terminal.session_log.file_name_template].title	ファイル名のテンプレート
+p9.i33[terminal.session_log.file_name_template].description	新しいログのファイル名です。`{date}` `{time}` `{title}` `{host}` `{pid}` を展開します。
+p9.i34[terminal.session_log.strip_control_sequences].title	制御シーケンスを除去する
+p9.i34[terminal.session_log.strip_control_sequences].description	ANSI / VT のエスケープシーケンスを取り除いて、素のテキストとして保存します。
+p9.i35[terminal.session_log.timestamps].title	行頭にタイムスタンプを付ける
+p9.i35[terminal.session_log.timestamps].description	各行の先頭に `[YYYY-MM-DD HH:MM:SS] ` を付けます。記録中のターミナルでは、記録中のバーからも切り替えられます。
+p9.i36.header	リモートターミナルの切断対策
+p9.i37[terminal.remote_persistence.enabled].title	切断してもシェルを動かし続ける
+p9.i37[terminal.remote_persistence.enabled].description	SSH のターミナルのシェルをリモートの Zed サーバーに預けます。接続が切れても実行中のコマンドは止まらず、再接続するとそれまでの出力を表示し直して続きから使えます。タブを閉じるとシェルも終了します。Windows のリモートホストでは使えません。
+p9.i38[terminal.remote_persistence.detached_timeout_hours].title	未接続のシェルを終了するまでの時間
+p9.i38[terminal.remote_persistence.detached_timeout_hours].description	どのターミナルからも接続されていない状態がこの時間 (時間単位) 続いたら、リモートのシェルを終了します。0 のときは終了しません。新しく起動するシェルから反映されます。
+p9.i39.header	ツールバー
+p9.i40[terminal.toolbar.breadcrumbs].title	パンくずリスト
+p9.i40[terminal.toolbar.breadcrumbs].description	ターミナルペイン内のパンくずリストに、ターミナルのタイトルを表示します。
+p9.i41.header	スクロールバー
+p9.i42[terminal.scrollbar.show].title	スクロールバーを表示
+p9.i42[terminal.scrollbar.show].description	ターミナルにスクロールバーを表示するタイミングです。
+p10.title	バージョン管理
+p10.i0.header	Git 連携
+p10.i1[git.disable_git].title	Git 連携を無効にする
+p10.i1[git.disable_git].description	Zed の Git 連携機能をすべて無効にします。表示だけでなく、ワークツリーの Git リポジトリ追跡と git status / git diff の実行自体を止めます。リモート SSH ではサーバー側の実行も止まります。切り替えは再起動なしで反映されます。
+p10.i1.v1.f0[git.enable_status].title	Git の状態を有効にする
+p10.i1.v1.f0[git.enable_status].description	エディターに Git の状態情報を表示します。
+p10.i1.v1.f1[git.enable_diff].title	Git の差分を有効にする
+p10.i1.v1.f1[git.enable_diff].description	エディターに Git の差分情報を表示します。
+p10.i2[git.status_untracked_files].title	追跡されていないファイルの検出範囲
+p10.i2[git.status_untracked_files].description	git status に追跡されていないファイルをどこまで報告させるかを設定します。All は追跡されていないフォルダーの中身も 1 件ずつ報告するため、プロジェクトパネルの色分けが正確になりますが、巨大なリポジトリでは最も重くなります。Normal はフォルダーだけ、No は追跡されていないファイルを一切扱いません。リモート SSH でも同じ値がサーバー側で使われます。
+p10.i3.header	Git ガター
+p10.i4[git.git_gutter].title	表示
+p10.i4[git.git_gutter].description	エディターのガターに Git の状態を表示するかどうかを設定します。
+p10.i5[git.gutter_debounce].title	デバウンス
+p10.i5[git.gutter_debounce].description	変更が Git ガターに反映されるまでのデバウンスのしきい値 (ミリ秒) です。
+p10.i6.header	インライン Git blame
+p10.i7[git.inline_blame.enabled].title	有効
+p10.i7[git.inline_blame.enabled].description	現在フォーカスしている行の Git blame 情報を表示するかどうかを設定します。
+p10.i7.v1.f0[git.inline_blame.location].title	表示位置
+p10.i7.v1.f0[git.inline_blame.location].description	Git blame を有効にしたときの表示位置です。
+p10.i8[git.inline_blame.delay_ms].title	遅延
+p10.i8[git.inline_blame.delay_ms].description	インライン blame の情報を表示するまでの遅延です。
+p10.i9[git.inline_blame.padding].title	余白
+p10.i9[git.inline_blame.padding].description	ソース行の末尾からインライン blame の開始位置までの余白 (列数) です。
+p10.i10[git.inline_blame.min_column].title	最小の列
+p10.i10[git.inline_blame.min_column].description	インライン blame の情報を表示する最小の列位置です。
+p10.i11[git.inline_blame.show_commit_summary].title	コミットの概要を表示
+p10.i11[git.inline_blame.show_commit_summary].description	インライン blame にコミットの概要を表示します。
+p10.i12.header	Git blame ビュー
+p10.i13[git.blame.show_avatar].title	アバターを表示
+p10.i13[git.blame.show_avatar].description	コミットの作成者のアバターを表示します。
+p10.i14.header	ブランチの選択
+p10.i15[git.branch_picker.show_author_name].title	作成者名を表示
+p10.i15[git.branch_picker.show_author_name].description	ブランチの選択で、コミット情報の一部として作成者名を表示します。
+p10.i16.header	ファイルの差分
+p10.i17[git.file_diff.show_full_file].title	既定でファイル全体を表示
+p10.i17[git.file_diff.show_full_file].description	新しく開いたファイルの差分で、変更箇所だけでなくファイル全体を表示するかどうかを設定します。
+p10.i18.header	Git の変更箇所
+p10.i19[git.hunk_style].title	変更箇所のスタイル
+p10.i19[git.hunk_style].description	エディターで Git の変更箇所をどのように表示するかを設定します。
+p10.i20[git.diff_base].title	差分の基準
+p10.i20[git.diff_base].description	git の機能が HEAD との差分 (未コミットの変更) を示すか、既定のブランチとの差分 (現在のブランチのすべての変更) を示すかを設定します。
+p10.i21[git.path_style].title	パスの表示スタイル
+p10.i21[git.path_style].description	git のビューで、名前とパスのどちらを先に表示するかを設定します。
+p10.i22[git.show_stage_restore_buttons].title	ステージ/元に戻すボタンを表示
+p10.i22[git.show_stage_restore_buttons].description	差分の変更箇所に、ステージと元に戻すのボタンを表示するかどうかを設定します。
+p11.title	コラボレーション
+p11.i0.header	通話
+p11.i1[calls.mute_on_join].title	参加時にミュート
+p11.i1[calls.mute_on_join].description	チャンネルや通話に参加するときにマイクをミュートするかどうかを設定します。
+p11.i2[calls.share_on_join].title	参加時に共有
+p11.i2[calls.share_on_join].description	空のチャンネルに参加するときに、現在のプロジェクトを共有するかどうかを設定します。
+p11.i3.action	音声のテスト
+p11.i3.action_description	マイクとスピーカーの設定をテストします
+p11.i3.button	音声をテスト
+p11.i4[audio.experimental.output_audio_device].title	出力オーディオデバイス
+p11.i4[audio.experimental.output_audio_device].description	出力オーディオデバイスを選択します
+p11.i5[audio.experimental.input_audio_device].title	入力オーディオデバイス
+p11.i5[audio.experimental.input_audio_device].description	入力オーディオデバイスを選択します
+p12.title	AI
+p12.i0.header	全般
+p12.i1[agent.enabled].title	エージェントを有効にする
+p12.i1[agent.enabled].description	エージェントパネル・インラインアシスタント・コミットメッセージ生成などのエージェント機能を有効にするかどうかを設定します。既定では無効です。
+p12.i2[disable_ai].title	AI を無効にする
+p12.i2[disable_ai].description	Zed の AI 機能をすべて無効にするかどうかを設定します。一度有効にすると設定ファイルから消すまで元に戻せません。
+p12.i3[agent.sidebar_enabled].title	スレッドサイドバー
+p12.i3[agent.sidebar_enabled].description	ウィンドウ幅のスレッドサイドバーを表示します。オフのときはエージェントパネル内のスレッド履歴を使います。
+p12.i4[agent.sidebar_side].title	スレッドサイドバーの位置
+p12.i4[agent.sidebar_side].description	スレッドサイドバーをウィンドウのどちら側に表示するかを設定します。
+p12.i5[agent.panel_thread_history].title	パネル内にスレッド履歴を表示
+p12.i5[agent.panel_thread_history].description	エージェントパネルの中に、現在のスレッドの左側へスレッド履歴を分割表示します。パネルの幅が足りないときは自動的に隠れます。
+p12.i6[agent.panel_tab_bar].title	パネルのタブバー
+p12.i6[agent.panel_tab_bar].description	エージェントパネル内のタブ列をいつ表示するかを設定します。「自動」はパネル内のスレッド履歴が出ていて分割していないとき (履歴側に開いているタブが並ぶため) 隠します。「表示しない」でも、パネルが狭くて履歴もその帯も出せないときは、開いているタブへ届かなくなるので表示します。
+p12.i7[llm_providers].link	LLM プロバイダー
+p12.i7[llm_providers].link_description	標準で同梱されているモデルプロバイダーを設定します。
+p12.i8[acknowledged_external_ai_providers].link	承諾済みの外部 AI プロバイダー
+p12.i8[acknowledged_external_ai_providers].link_description	学習リスクの警告に同意して有効化した外部 AI プロバイダーの一覧です。承諾を取り消すと、次にそのプロバイダーを使うときに再び警告が表示されます。
+p12.i9[agent_servers].link	外部エージェント
+p12.i9[agent_servers].link_description	Agent Client Protocol で接続するエージェントの確認・追加・削除を行います。
+p12.i10.action	サンドボックスの外での起動の同意
+p12.i10.action_description	スレッドごとに「サンドボックスの外で起動」に同意した記録を取り消し、次の起動の前にもう一度確認するようにします。動いているエージェントは止めません。「常にサンドボックスの外で起動」の設定は変わりません。
+p12.i10.button	同意を取り消す
+p12.i11[context_servers].link	MCP サーバー
+p12.i11[context_servers].link_description	Model Context Protocol サーバーの確認・追加・設定・削除を行います。
+p12.i12[ide_server.enabled].title	IDE サーバーを有効にする
+p12.i12[ide_server.enabled].description	Zed 自身を 127.0.0.1 の IDE サーバーとして公開し、統合ターミナルの Claude Code CLI や外部のエージェントから、開いているファイル・選択範囲・診断を読めるようにします。差分はエディターのタブで「採用 / 拒否」を選べます。外向きの通信はしません。既定では無効です。
+p12.i13[ide_server.assist_tools].title	エージェントに IDE ツールを渡す
+p12.i13[ide_server.assist_tools].description	Claude Code のタブや外部のエージェントに、ハイライト・注釈・ツアー・定義・参照・シンボル検索のツールを渡します。「IDE サーバーを有効にする」とは別の設定で、ロックファイルは書きません。外向きの通信はしません。
+p12.i14[ide_server.share_active_file].title	開いているファイルを Claude Code に伝える
+p12.i14[ide_server.share_active_file].description	何も選んでいないときも、開いているファイルを接続中の Claude Code に伝えます (入力欄の「In <ファイル名>」)。オフにすると、行を選んだときだけ送ります。
+p12.i15[ide_server.share_task_output].title	失敗したタスクの出力をエージェントに渡す
+p12.i15[ide_server.share_task_output].description	最後に失敗したタスク (0 以外で終了) の出力の末尾 (最大 4 KB) を、IDE サーバーのツール getLastTaskOutput でエージェントが読めるようにします。
+p12.i16.header	エージェントの設定
+p12.i17[agent.skills].link	スキル
+p12.i17[agent.skills].link_description	グローバル、またはプロジェクトのワークツリーにインストールされたエージェントのスキルを確認・管理します。
+p12.i18[agent.sandbox_permissions].link	サンドボックス
+p12.i18[agent.sandbox_permissions].link_description	エージェントのターミナルコマンドを OS のサンドボックスで実行するかどうかを切り替え、サンドボックス内の許可 (書き込み先・ネットワーク) を設定します。自動承認はサンドボックス内で実行するときだけ効きます。
+p12.i19[agent.tool_permissions].link	ツールの権限
+p12.i19[agent.tool_permissions].link_description	特定のツール入力に対して自動的に許可・拒否する、あるいは常に確認を求める正規表現パターンを設定します。
+p12.i20[agent.single_file_review].title	単一ファイルでのレビュー
+p12.i20[agent.single_file_review].description	有効にすると、エージェントの編集を単一ファイルのバッファーにも表示してレビューできるようにします。
+p12.i21[agent.enable_feedback].title	フィードバックを有効にする
+p12.i21[agent.enable_feedback].description	エージェントの編集に対するフィードバック用の、高評価/低評価のボタンを表示します。
+p12.i22[agent.notify_when_agent_waiting].title	エージェントの待機時に通知
+p12.i22[agent.notify_when_agent_waiting].description	エージェントが応答を終えたとき、またはツールの実行前に確認が必要なときに、通知をどこに表示するかを設定します。
+p12.i23[agent.play_sound_when_agent_done].title	エージェントの完了時に音を鳴らす
+p12.i23[agent.play_sound_when_agent_done].description	エージェントが応答を終えたとき、またはユーザーの入力が必要なときに、音を鳴らすタイミングを設定します。
+p12.i24[agent.expand_edit_card].title	編集カードを展開
+p12.i24[agent.expand_edit_card].description	エージェントパネルの編集カードを展開し、差分のプレビューを表示するかどうかを設定します。
+p12.i25[agent.expand_terminal_card].title	ターミナルカードを展開
+p12.i25[agent.expand_terminal_card].description	エージェントパネルのターミナルカードを展開し、コマンドの出力全体を表示するかどうかを設定します。
+p12.i26[agent.terminal_init_command].title	ターミナルスレッドの初期化コマンド
+p12.i26[agent.terminal_init_command].description	エージェントパネルでターミナルスレッドのシェルを作成したときに、自動的に実行するコマンドです。設定済みのシェルで実行されます。
+p12.i26[agent.terminal_init_command].placeholder	例: claude
+p12.i27[agent.thinking_display].title	思考の表示
+p12.i27[agent.thinking_display].description	思考ブロックを既定でどのように表示するかを設定します。'Auto' はストリーミング中は完全に展開し、完了後に自動的に折りたたみます。'Preview' は高さを制限した状態でストリーミング中に自動展開します。'Always Expanded' は常に全体を表示します。'Always Collapsed' は常に折りたたんだままにします。
+p12.i28[agent.cancel_generation_on_terminal_stop].title	ターミナルの停止時に生成を中止
+p12.i28[agent.cancel_generation_on_terminal_stop].description	実行中のターミナルツールの停止ボタンを押したときに、エージェントの生成も中止するかどうかを設定します。これは停止ボタンにのみ適用され、ターミナル内の ctrl+c には適用されません。
+p12.i29[agent.use_modifier_to_send].title	修飾キーで送信
+p12.i29[agent.use_modifier_to_send].description	メッセージの送信に常に cmd + Enter (Linux と Windows では ctrl + Enter) を使うかどうかを設定します。
+p12.i30[agent.message_editor_min_lines].title	メッセージエディターの最小行数
+p12.i30[agent.message_editor_min_lines].description	エージェントのメッセージエディターに表示する最小の行数です。
+p12.i31[agent.show_turn_stats].title	ターンの統計を表示
+p12.i31[agent.show_turn_stats].description	生成中の経過時間やターンの所要時間などの統計を表示するかどうかを設定します。
+p12.i32[agent.show_merge_conflict_indicator].title	マージコンフリクトのインジケーターを表示
+p12.i32[agent.show_merge_conflict_indicator].description	エージェントでコンフリクトを解決できることを示すインジケーターを、ステータスバーに表示するかどうかを設定します。
+p12.i33[agent.auto_compact.enabled].title	自動圧縮
+p12.i33[agent.auto_compact.enabled].description	エージェントのコンテキストが大きくなりすぎたときに自動的に圧縮し、以前のメッセージを要約してモデルのコンテキストウィンドウに空きを作ります。
+p12.i34[agent.auto_compact.threshold].title	自動圧縮のしきい値
+p12.i34[agent.auto_compact.threshold].description	自動圧縮を実行する条件です。"90%" のようなパーセント文字列は、コンテキストウィンドウに対する割合として扱われます。正の整数は、使用トークン数がその値を超えたら圧縮することを意味します。負の整数は、コンテキストウィンドウの残りトークン数がその値を下回ったら圧縮することを意味します。
+p12.i34[agent.auto_compact.threshold].placeholder	90%
+p12.i35[agent.auto_compact_min_context_window].title	自動圧縮を行う最小コンテキストウィンドウ
+p12.i35[agent.auto_compact_min_context_window].description	自動圧縮を実行するモデルのコンテキストウィンドウの下限 (トークン数) です。これを下回るモデルでは圧縮を行わず、トークン上限の警告だけを表示します。ローカル LLM の小さいコンテキストでも自動圧縮を効かせたいときに下げてください。8000 未満を指定しても 8000 として扱われます。
+p12.i35[agent.auto_compact_min_context_window].placeholder	80000
+p12.i36[agent.attach_active_file].title	アクティブなファイルを自動で添付
+p12.i36[agent.attach_active_file].description	メッセージを送信するときに、アクティブなエディターを自動で添付します。選択範囲があればその行だけを、なければファイル全体を添付します。同じものを手で @ メンションしている場合は二重に添付しません。
+p12.i37[agent.context_attachments.inline_max_bytes].title	添付を全文で送る上限 (バイト)
+p12.i37[agent.context_attachments.inline_max_bytes].description	これより大きいファイルは全文ではなくアウトライン (シンボルと行番号の一覧) で送り、必要な範囲だけエージェントに読ませます。1024 未満は 1024 として扱われます。
+p12.i37[agent.context_attachments.inline_max_bytes].placeholder	16384
+p12.i38[agent.context_attachments.message_budget_bytes].title	1 メッセージの添付の合計上限 (バイト)
+p12.i38[agent.context_attachments.message_budget_bytes].description	1 つのメッセージの添付の合計がこれを超えたら、大きいものから順にアウトラインや参照だけに減らして送ります。「全文で送る」にした添付は減らしません。4096 未満は 4096 として扱われます。
+p12.i38[agent.context_attachments.message_budget_bytes].placeholder	65536
+p12.i39[agent.context_attachments.outline_max_bytes].title	アウトラインの上限 (バイト)
+p12.i39[agent.context_attachments.outline_max_bytes].description	大きいファイルを添付したときに送るアウトラインの大きさの上限です。収まらないときは深い階層のシンボルから省きます。512 未満は 512 として扱われます。
+p12.i39[agent.context_attachments.outline_max_bytes].placeholder	8192
+p12.i40[agent.context_attachments.fetch_max_bytes].title	Web ページの添付の上限 (バイト)
+p12.i40[agent.context_attachments.fetch_max_bytes].description	@fetch で添付した Web ページの本文のうち、送る部分の上限です。1024 未満は 1024 として扱われます。
+p12.i40[agent.context_attachments.fetch_max_bytes].placeholder	32768
+p12.i41[agent.context_attachments.diagnostics_max_files].title	診断を添付するファイル数の上限
+p12.i41[agent.context_attachments.diagnostics_max_files].description	@diagnostics で添付する診断を、この数のファイルまでに絞ります。1 未満は 1 として扱われます。
+p12.i41[agent.context_attachments.diagnostics_max_files].placeholder	50
+p12.i42[agent.system_prompt_repo_map_bytes].title	システムプロンプトに含めるリポジトリマップのバイト数
+p12.i42[agent.system_prompt_repo_map_bytes].description	システムプロンプトのプロジェクトのルートフォルダー一覧の直後に、リポジトリマップ (ファイルとそこで宣言されているシンボルの一覧) を差し込みます。0 で無効です。上限は 32768 バイトで、それより大きい値は 32768 として扱われます。プロジェクトの内容が変わったときだけ作り直します。
+p12.i42[agent.system_prompt_repo_map_bytes].placeholder	0
+p12.i43[agent.idle_disconnect_minutes].title	使わなくなったエージェントを止めるまでの分数
+p12.i43[agent.idle_disconnect_minutes].description	外部エージェントのスレッドが 1 つも開かれていない状態がこの分数だけ続いたら、そのエージェントとの接続を終了します (エージェントとそのサンドボックスも止まります)。スレッドを開き直すと接続し直します。0 でウィンドウを閉じるまで接続を保ちます。
+p12.i43[agent.idle_disconnect_minutes].placeholder	5
+p12.i44.header	編集予測
+p12.i45[edit_predictions.providers].link	プロバイダーの設定
+p12.i45[edit_predictions.providers].link_description	編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。
+p12.i46[edit_predictions.allow_data_collection].title	データの収集
+p12.i46[edit_predictions.allow_data_collection].description	Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。
+p12.i47[languages.$(language).show_edit_predictions].title	編集予測を表示
+p12.i47[languages.$(language).show_edit_predictions].description	編集予測をすぐに表示するか、手動で表示するかを設定します。
+p12.i48[languages.$(language).edit_predictions_disabled_in].title	無効にする言語スコープ
+p12.i48[languages.$(language).edit_predictions_disabled_in].description	指定した言語スコープで編集予測を表示するかどうかを設定します。
+p12.i49[edit_prediction.display_mode].title	表示モード
+p12.i49[edit_prediction.display_mode].description	バッファーで編集予測のプレビューを表示するタイミングです。eager モードはインラインで表示し、subtle モードは修飾キーを押している間だけ表示します。
+p13.title	ネットワーク
+p13.i0.header	ネットワーク
+p13.i1[proxy].title	プロキシ
+p13.i1[proxy].description	ネットワークリクエストに使うプロキシです。
+p13.i1[proxy].placeholder	socks5h://localhost:10808
+p13.i2[server_url].title	サーバー URL
+p13.i2[server_url].description	接続先の Zed サーバーの URL です。
+p13.i2[server_url].placeholder	https://zed.dev
+p13.i3.header	外部通信の統制
+p13.i4.link	ネットワーク許可リスト
+p13.i4.link_description	AI が起点になる外部通信 (AI プロバイダー・エージェントのツール・MCP サーバー・外部エージェントのプロセス) を既定ですべて拒否する、このフォーク独自の機能です。言語サーバーや拡張機能など IDE 自身の道具立ての通信は対象外です。通信を許可するホストを確認・追加・削除します。
+p13.i5.header	リモート
+p13.i6[remote.relay_http_through_client].title	リモートの通信をこの PC 経由にする
+p13.i6[remote.relay_http_through_client].description	オンにすると、SSH などのリモートホストが行う外部通信 (言語サーバーや node のダウンロード、拡張機能のアーカイブ、エージェントのバイナリ) をこの PC が代行します。インターネットに出られないリモートでも言語サーバーを自動取得できます。許可リストと同意ダイアログの対象になるのはエージェント関連の取得だけで、言語サーバーなど IDE の道具立ての取得は制限されません。オフにするとリモートが自分で外部に接続します。切り替えは再接続なしで反映されます。
+p13.i7.header	開発ツール
+p13.i8[dev_tools.suggest_missing].title	足りない開発ツールを知らせる
+p13.i8[dev_tools.suggest_missing].description	オンにすると、開いたファイルの言語に必要な言語サーバーやフォーマッタ (C なら clangd と clang-format、Python なら Ruff) が見つからないときに通知を出し、その場で導入できます。導入先はユーザーのデータディレクトリ内だけで、管理者権限は要らず、他のユーザーにも影響しません。リモート接続中は接続先を調べて接続先に導入し、取得はこの PC のネットワーク経由で行うので、接続先がインターネットに出られなくても入ります。個別に知らせないツールは settings.json の `dev_tools.ignored` に ID を並べます (通知の「今後表示しない」でも追加されます)。
+p14.title	ブラウザー
+p14.i0.header	ブラウジング
+p14.i1[browser.home_url].title	起動時に開くページ
+p14.i1[browser.home_url].description	内蔵ブラウザーのパネルやタブを開いたときに最初に表示するページです。ブラウザーのツールバーのピンボタンからも設定できます。
+p14.i1[browser.home_url].placeholder	https://m365.cloud.microsoft/chat
+p14.i2[browser.search_url].title	検索 URL
+p14.i2[browser.search_url].description	アドレスバーの入力が URL でなかったときと、「選択テキストを Web で検索」で使う URL です。{query} が検索語に置き換わります。
+p14.i2[browser.search_url].placeholder	https://www.google.com/search?q={query}
+p14.i3[browser.copilot_url].title	Copilot URL
+p14.i3[browser.copilot_url].description	「選択テキストを Copilot に聞く」で開く URL です。{query} を書くとそこに質問が埋め込まれます。プレースホルダーが無い場合は選択テキストをクリップボードにコピーします。
+p14.i3[browser.copilot_url].placeholder	https://github.com/copilot
+p14.i4.header	ブラウザーパネル
+p14.i5[browser.button].title	ブラウザーパネルのボタン
+p14.i5[browser.button].description	ステータスバーにブラウザーパネルのボタンを表示します。
+p14.i6[browser.dock].title	ブラウザーパネルのドック位置
+p14.i6[browser.dock].description	ブラウザーパネルをドッキングする位置です。
+p14.i7[browser.starts_open].title	起動時に開く
+p14.i7[browser.starts_open].description	起動時にブラウザーパネルを開くかどうかを設定します。
+p14.i8[browser.default_width].title	ブラウザーパネルの既定の幅
+p14.i8[browser.default_width].description	ブラウザーパネルを左右にドッキングしたときの既定の幅 (ピクセル) です。
+p14.i9[browser.default_height].title	ブラウザーパネルの既定の高さ
+p14.i9[browser.default_height].description	ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。
+p14.i10.header	外部通信
+p14.i11[browser.use_egress_proxy].title	内蔵ブラウザーを許可リストの対象にする
+p14.i11[browser.use_egress_proxy].description	オンにすると内蔵ブラウザーの通信も外部通信の許可リストで制限されます。既定では人間操作のターミナルと同様に許可リストの対象外です。切り替えは内蔵ブラウザーの次回起動から反映されます。
+p15.title	開発者
+p15.i0.header	計測
+p15.i1[instrumentation.performance_profiler.enabled].title	パフォーマンスプロファイラー
+p15.i1[instrumentation.performance_profiler.enabled].description	フォアグラウンドとバックグラウンドの実行タスクのタイミングデータを収集し、`zed: open performance profiler` で確認できるようにします。メモリ使用量が増えることがあります。
+language.i0.header	インデント
+language.i1[languages.$(language).tab_size].title	タブのサイズ
+language.i1[languages.$(language).tab_size].description	タブが占める列数です。
+language.i2[languages.$(language).hard_tabs].title	タブ文字を使用
+language.i2[languages.$(language).hard_tabs].description	複数のスペースではなくタブ文字でインデントするかどうかを設定します。
+language.i3[languages.$(language).auto_indent].title	自動インデント
+language.i3[languages.$(language).auto_indent].description	入力時の自動インデントの動作を設定します。
+language.i4[languages.$(language).auto_indent_on_paste].title	貼り付け時の自動インデント
+language.i4[languages.$(language).auto_indent_on_paste].description	貼り付けた内容のインデントを、文脈に応じて調整するかどうかを設定します。
+language.i5.header	折り返し
+language.i6[languages.$(language).soft_wrap].title	折り返し
+language.i6[languages.$(language).soft_wrap].description	長い行をどのように折り返すかを設定します。
+language.i7[languages.$(language).show_wrap_guides].title	折り返しガイドを表示
+language.i7[languages.$(language).show_wrap_guides].description	エディターに折り返しガイドを表示します。
+language.i8[languages.$(language).preferred_line_length].title	推奨の行の長さ
+language.i8[languages.$(language).preferred_line_length].description	折り返しが有効なバッファーで、行を折り返す列位置です。
+language.i9[languages.$(language).wrap_guides].title	折り返しガイド
+language.i9[languages.$(language).wrap_guides].description	エディターで折り返しガイドを表示する文字数です。
+language.i10[languages.$(language).allow_rewrap].title	再折り返しを許可
+language.i10[languages.$(language).allow_rewrap].description	この言語で `editor::rewrap` アクションを許可する範囲を設定します。
+language.i11.header	インデントガイド
+language.i12[languages.$(language).indent_guides.enabled].title	有効
+language.i12[languages.$(language).indent_guides.enabled].description	エディターにインデントガイドを表示します。
+language.i13[languages.$(language).indent_guides.line_width].title	線の太さ
+language.i13[languages.$(language).indent_guides.line_width].description	インデントガイドの太さ (ピクセル) です。1 から 10 の範囲で指定します。
+language.i14[languages.$(language).indent_guides.active_line_width].title	アクティブな線の太さ
+language.i14[languages.$(language).indent_guides.active_line_width].description	アクティブなインデントガイドの太さ (ピクセル) です。1 から 10 の範囲で指定します。
+language.i15[languages.$(language).indent_guides.coloring].title	配色
+language.i15[languages.$(language).indent_guides.coloring].description	インデントガイドの配色方法を設定します。
+language.i16[languages.$(language).indent_guides.background_coloring].title	背景の配色
+language.i16[languages.$(language).indent_guides.background_coloring].description	インデントガイドの背景の配色方法を設定します。
+language.i17.header	フォーマット
+language.i18[languages.$(language).format_on_save].title	保存時にフォーマット
+language.i18[languages.$(language).format_on_save].description	On: バッファー全体をフォーマットします。\nOff: フォーマットしません。\nModifications: 未ステージの変更がある行だけをフォーマットします。git の差分または LSP の範囲フォーマットが使えない場合はフォーマットしません。\nModifications If Available: 同様ですが、使えない場合はバッファー全体のフォーマットにフォールバックします。
+language.i19[languages.$(language).remove_trailing_whitespace_on_save].title	保存時に行末の空白を削除
+language.i19[languages.$(language).remove_trailing_whitespace_on_save].description	保存する前に、バッファーの各行から行末の空白を削除するかどうかを設定します。
+language.i20[languages.$(language).ensure_final_newline_on_save].title	保存時に末尾へ改行を確保
+language.i20[languages.$(language).ensure_final_newline_on_save].description	保存時にバッファーの末尾に改行を 1 つだけ確保するかどうかを設定します。
+language.i21[languages.$(language).line_ending].title	改行コード
+language.i21[languages.$(language).line_ending].description	新規ファイル、およびフォーマットと保存の操作で、改行コードをどう扱うかを設定します。
+language.i22[languages.$(language).formatter].title	フォーマッタ
+language.i22[languages.$(language).formatter].description	バッファーのフォーマット方法を設定します。
+language.i23[languages.$(language).use_on_type_format].title	入力時フォーマットを使用
+language.i23[languages.$(language).use_on_type_format].description	LSP サーバーの機能で定義された「トリガー」文字を入力するたびに、追加の LSP 問い合わせでコードを整形・修正するかどうかを設定します
+language.i24[languages.$(language).code_actions_on_format].title	フォーマット時のコードアクション
+language.i24[languages.$(language).code_actions_on_format].description	フォーマット時に追加で実行するコードアクションです。
+language.i25.header	自動閉じ
+language.i26[languages.$(language).use_autoclose].title	閉じ文字を自動的に挿入
+language.i26[languages.$(language).use_autoclose].description	閉じ文字を自動的に入力するかどうかを設定します。たとえば '(' を入力すると、Zed が正しい位置に ')' を自動的に追加します。
+language.i27[languages.$(language).use_auto_surround].title	囲み文字を自動的に挿入
+language.i27[languages.$(language).use_auto_surround].description	テキストを自動的に文字で囲むかどうかを設定します。たとえばテキストを選択して '(' を入力すると、Zed がそのテキストを () で囲みます。
+language.i28[languages.$(language).always_treat_brackets_as_autoclosed].title	括弧を常に自動閉じとして扱う
+language.i28[languages.$(language).always_treat_brackets_as_autoclosed].description	閉じ文字がどのように挿入されたかにかかわらず、常に読み飛ばして自動的に削除するかどうかを設定します。
+language.i29[languages.$(language).jsx_tag_auto_close].title	JSX タグの自動閉じ
+language.i29[languages.$(language).jsx_tag_auto_close].description	JSX のタグを自動的に閉じるかどうかを設定します。
+language.i30.header	空白文字
+language.i31[languages.$(language).show_whitespaces].title	空白文字を表示
+language.i31[languages.$(language).show_whitespaces].description	エディターにタブとスペースを表示するかどうかを設定します。
+language.i32[languages.$(language).whitespace_map.space].title	スペースの表示文字
+language.i32[languages.$(language).whitespace_map.space].description	show_whitespaces を有効にしたときに、スペースの描画に使う文字です (既定: "•")
+language.i33[languages.$(language).whitespace_map.tab].title	タブの表示文字
+language.i33[languages.$(language).whitespace_map.tab].description	show_whitespaces を有効にしたときに、タブの描画に使う文字です (既定: "→")
+language.i34.header	補完候補
+language.i35[languages.$(language).show_completions_on_input].title	入力時に補完候補を表示
+language.i35[languages.$(language).show_completions_on_input].description	明示的に要求しなくても、エディターでの入力中に補完メニューを表示するかどうかを設定します。
+language.i36[languages.$(language).show_completion_documentation].title	補完候補のドキュメントを表示
+language.i36[languages.$(language).show_completion_documentation].description	補完メニューの候補について、インラインおよび隣接する領域にドキュメントを表示するかどうかを設定します。
+language.i37[languages.$(language).completions.words].title	単語
+language.i37[languages.$(language).completions.words].description	単語をどのように補完するかを設定します。
+language.i38[languages.$(language).completions.words_min_length].title	単語補完の最小文字数
+language.i38[languages.$(language).completions.words_min_length].description	単語ベースの補完を自動的に表示するために必要な、補完クエリの文字数です。
+language.i39[editor.completion_menu_scrollbar].title	補完メニューのスクロールバー
+language.i39[editor.completion_menu_scrollbar].description	補完メニューにスクロールバーを表示するタイミングです。
+language.i40[editor.completion_detail_alignment].title	補完の詳細の配置
+language.i40[editor.completion_detail_alignment].description	コード補完のメニューで、詳細テキストを左右どちらに寄せるかを設定します。
+language.i41[editor.completion_menu_item_kind].title	補完メニューの項目の種類
+language.i41[editor.completion_menu_item_kind].description	補完メニューの各項目について、LSP の項目の種類 (関数・メソッド・変数など) をどのように表示するかを設定します。
+language.i42.header	インレイヒント
+language.i43[languages.$(language).inlay_hints.enabled].title	有効
+language.i43[languages.$(language).inlay_hints.enabled].description	ヒントの表示を切り替える全体スイッチです。
+language.i44[languages.$(language).inlay_hints.show_value_hints].title	値のヒントを表示
+language.i44[languages.$(language).inlay_hints.show_value_hints].description	デバッグ中のインライン値の表示を切り替える全体スイッチです。
+language.i45[languages.$(language).inlay_hints.show_type_hints].title	型のヒントを表示
+language.i45[languages.$(language).inlay_hints.show_type_hints].description	型のヒントを表示するかどうかを設定します。
+language.i46[languages.$(language).inlay_hints.show_parameter_hints].title	引数のヒントを表示
+language.i46[languages.$(language).inlay_hints.show_parameter_hints].description	引数のヒントを表示するかどうかを設定します。
+language.i47[languages.$(language).inlay_hints.show_other_hints].title	その他のヒントを表示
+language.i47[languages.$(language).inlay_hints.show_other_hints].description	その他のヒントを表示するかどうかを設定します。
+language.i48[languages.$(language).inlay_hints.show_background].title	背景を表示
+language.i48[languages.$(language).inlay_hints.show_background].description	インレイヒントに背景を表示します。
+language.i49[languages.$(language).inlay_hints.edit_debounce_ms].title	編集後のデバウンス (ミリ秒)
+language.i49[languages.$(language).inlay_hints.edit_debounce_ms].description	バッファーの編集後にインレイヒントの更新をデバウンスするかどうかを設定します (0 でデバウンスを無効化)。
+language.i50[languages.$(language).inlay_hints.scroll_debounce_ms].title	スクロール後のデバウンス (ミリ秒)
+language.i50[languages.$(language).inlay_hints.scroll_debounce_ms].description	バッファーのスクロール後にインレイヒントの更新をデバウンスするかどうかを設定します (0 でデバウンスを無効化)。
+language.i51[languages.$(language).inlay_hints.toggle_on_modifiers_press].title	修飾キーで切り替え
+language.i51[languages.$(language).inlay_hints.toggle_on_modifiers_press].description	指定した修飾キーを押したときに、インレイヒントの表示/非表示を切り替えます。
+language.i52[code_lens].title	コードレンズ
+language.i52[code_lens].description	言語サーバーのコードレンズを表示するかどうか、またどのように表示するかを設定します。
+language.i53[lsp_document_colors].title	LSP の色プレビュー
+language.i53[lsp_document_colors].description	エディターで LSP の色プレビューをどのように描画するかを設定します。
+language.i54.header	タスク
+language.i55[languages.$(language).tasks.enabled].title	有効
+language.i55[languages.$(language).tasks.enabled].description	この言語でタスクを有効にするかどうかを設定します。
+language.i56[languages.$(language).tasks.variables].title	変数
+language.i56[languages.$(language).tasks.variables].description	特定の言語に対して設定する、追加のタスク変数です。
+language.i57[languages.$(language).tasks.prefer_lsp].title	LSP を優先
+language.i57[languages.$(language).tasks.prefer_lsp].description	Zed の言語拡張のタスクより、LSP のタスクを優先します。
+language.i58.header	その他
+language.i59[languages.$(language).word_diff_enabled].title	単語単位の差分を有効にする
+language.i59[languages.$(language).word_diff_enabled].description	エディターで単語単位の差分ハイライトを有効にするかどうかを設定します。有効にすると、変更された行の中で実際に変わった単語がハイライトされます。
+language.i60[languages.$(language).debuggers].title	デバッガー
+language.i60[languages.$(language).debuggers].description	この言語で優先的に使うデバッガーです。
+language.i61[languages.$(language).editor.middle_click_paste].title	中クリックで貼り付け
+language.i61[languages.$(language).editor.middle_click_paste].description	Linux で中クリックによる貼り付けを有効にします。
+language.i62[languages.$(language).extend_comment_on_newline].title	改行時にコメントを継続
+language.i62[languages.$(language).extend_comment_on_newline].description	直前の行がコメントの場合に、新しい行もコメントで始めるかどうかを設定します。
+language.i63[languages.$(language).colorize_brackets].title	括弧の色分け
+language.i63[languages.$(language).colorize_brackets].description	エディターで括弧を色分けするかどうかを設定します。
+language.i64[modeline_lines].title	Vim/Emacs の modeline のサポート
+language.i64[modeline_lines].description	modeline を探す行数です (0 で無効)。
+language.i65[image_viewer.unit].title	画像ビューアー
+language.i65[image_viewer.unit].description	画像ファイルのサイズの単位です。
+language.i66[markdown_preview.limit_content_width].title	Markdown プレビューの幅を制限
+language.i66[markdown_preview.limit_content_width].description	読みやすさのために、Markdown プレビューの内容を最大幅に制限し、ペインがそれより広いときは中央に寄せるかどうかを設定します。
+language.i66.v1.f0[markdown_preview.max_width].title	最大幅
+language.i66.v1.f0[markdown_preview.max_width].description	内容の最大幅 (ピクセル) です。ペインがこの値より広いときは内容を中央に寄せます。
+language.i67[markdown_preview.soft_break_as_hard_break].title	改行をそのまま改行として表示
+language.i67[markdown_preview.soft_break_as_hard_break].description	オフにすると CommonMark 準拠になり、行末の半角スペース 2 つ / `\\` / `<br>` だけが改行になります。PDF の書き出しにも同じ設定が効きます。
+language.i68[tabular_data.open_as_grid].title	CSV / TSV を表として開く
+language.i68[tabular_data.open_as_grid].description	オフにするとテキストエディターで開きます。どちらからでも横に切り替えられます。
+language.i69[tabular_data.multiline_cells].title	複数行のセルをすべて表示
+language.i69[tabular_data.multiline_cells].description	表 (グリッド) で、改行を含むセルの行の高さを広げてすべて表示します。オフにすると 1 行に切り詰めます。
+language.i70[drop_target_size].title	ドロップ領域のサイズ
+language.i70[drop_target_size].description	ドロップしたファイルを分割ペインで開くための、エディター内のドロップ領域の相対サイズです。
+language.i71.header	LSP
+language.i72[languages.$(language).enable_language_server].title	言語サーバーを有効にする
+language.i72[languages.$(language).enable_language_server].description	コードインテリジェンスに言語サーバーを使うかどうかを設定します。
+language.i73[languages.$(language).language_servers].title	言語サーバー
+language.i73[languages.$(language).language_servers].description	この言語で使用する (または無効にする) 言語サーバーの一覧です。
+language.i74[languages.$(language).linked_edits].title	連動編集
+language.i74[languages.$(language).linked_edits].description	言語サーバーが対応している場合に、関連する範囲を連動して編集するかどうかを設定します。たとえば開始タグ <html> を編集すると、対応する終了タグ </html> の内容も一緒に編集されます。
+language.i75[go_to_definition_fallback].title	定義へ移動のフォールバック
+language.i75[go_to_definition_fallback].description	言語サーバーからの「定義へ移動」の結果が空だったときに、追加の問い合わせを行うかどうかを設定します。
+language.i76[go_to_definition_scroll_strategy].title	定義へ移動したときのスクロール方法
+language.i76[go_to_definition_scroll_strategy].description	定義や参照へ移動したときに、移動先をどのようにスクロールして表示するかを設定します。
+language.i77[lsp_results_location].title	LSP の結果の表示先
+language.i77[lsp_results_location].description	複数の位置を含みうる LSP の結果 (定義へ移動・実装へ移動・すべての参照を検索) をどこに表示するかを設定します。
+language.i78[languages.$(language).semantic_tokens].title	セマンティックトークン
+language.i78[languages.$(language).semantic_tokens].description	Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting.
+language.i79[languages.$(language).document_folding_ranges].title	LSP の折りたたみ範囲
+language.i79[languages.$(language).document_folding_ranges].description	有効にすると、インデントに基づく折りたたみの代わりに、言語サーバーの折りたたみ範囲を使用します。
+language.i80[languages.$(language).document_symbols].title	LSP のドキュメントシンボル
+language.i80[languages.$(language).document_symbols].description	有効にすると、アウトラインとパンくずリストに tree-sitter ではなく、言語サーバーのドキュメントシンボルを使用します。
+language.i81.header	LSP の補完
+language.i82[languages.$(language).completions.lsp].title	有効
+language.i82[languages.$(language).completions.lsp].description	LSP の補完候補を取得するかどうかを設定します。
+language.i83[languages.$(language).completions.lsp_fetch_timeout_ms].title	取得のタイムアウト (ミリ秒)
+language.i83[languages.$(language).completions.lsp_fetch_timeout_ms].description	LSP の補完候補を取得するときに、個々のサーバーの応答をどれだけ待つかを設定します (0 で無期限に待機)。
+language.i84[languages.$(language).completions.lsp_insert_mode].title	挿入方法
+language.i84[languages.$(language).completions.lsp_insert_mode].description	LSP の補完候補をどのように挿入するかを設定します。
+language.i85.header	デバッガー
+language.i86[languages.$(language).debuggers].title	デバッガー
+language.i86[languages.$(language).debuggers].description	この言語で優先的に使うデバッガーです。
+language.i87.header	Prettier
+language.i88[languages.$(language).prettier.allowed].title	使用を許可
+language.i88[languages.$(language).prettier.allowed].description	指定した言語で、Prettier によるフォーマットを有効または無効にします。
+language.i89[languages.$(language).prettier.parser].title	パーサー
+language.i89[languages.$(language).prettier.parser].description	この言語のファイルをフォーマットするときに、Prettier 連携が使用するパーサー名を強制します。
+language.i90[languages.$(language).prettier.plugins].title	プラグイン
+language.i90[languages.$(language).prettier.plugins].description	この言語のファイルをフォーマットするときに、Prettier 連携が使用するプラグインを強制します。
+language.i91[languages.$(language).prettier.options].title	オプション
+language.i91[languages.$(language).prettier.options].description	Prettier の既定のオプションです。package.json の Prettier セクションと同じ形式で指定します。
+language.i92.header	編集予測
+language.i93[edit_predictions.providers].link	プロバイダーの設定
+language.i93[edit_predictions.providers].link_description	編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。
+language.i94[edit_predictions.allow_data_collection].title	データの収集
+language.i94[edit_predictions.allow_data_collection].description	Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。
+language.i95[languages.$(language).show_edit_predictions].title	編集予測を表示
+language.i95[languages.$(language).show_edit_predictions].description	編集予測をすぐに表示するか、手動で表示するかを設定します。
+language.i96[languages.$(language).edit_predictions_disabled_in].title	無効にする言語スコープ
+language.i96[languages.$(language).edit_predictions_disabled_in].description	指定した言語スコープで編集予測を表示するかどうかを設定します。

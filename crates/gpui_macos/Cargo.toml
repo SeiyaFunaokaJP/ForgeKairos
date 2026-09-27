@@ -42,6 +42,7 @@ foreign-types.workspace = true
 futures.workspace = true
 gpui_apple.workspace = true
 gpui_util.workspace = true
+i18n.workspace = true
 image.workspace = true
 itertools.workspace = true
 libc.workspace = true

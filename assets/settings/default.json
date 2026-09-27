@@ -1842,6 +1842,13 @@
   //
   // Default: []
   "acknowledged_external_ai_providers": [],
+  // UI の表示言語。"system" は OS の優先言語に従う (翻訳が無ければ英語)。
+  // "en" で英語 (翻訳を使わない)、"ja" や "pt-BR" などの BCP 47 の言語タグでその言語。
+  // 同梱の翻訳に加えて、<設定ディレクトリ>/locales/<言語タグ>/*.po を再ビルドなしで重ねて読む。
+  // 切り替えは即座に反映されるが、タブ名など一部の表示は再起動後に切り替わる。
+  //
+  // Default: "system"
+  "ui_language": "system",
   // Automatically update Zed. This setting may be ignored on Linux if
   // installed through a package manager.
   // Off in this fork: it is a hard fork of v1.17.2 and does not track

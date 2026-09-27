@@ -3172,6 +3172,8 @@ dependencies = [
  "fuzzy_nucleo",
  "go_to_line",
  "gpui",
+ "i18n",
+ "i18n_catalog",
  "language",
  "log",
  "menu",
@@ -7293,6 +7295,7 @@ dependencies = [
  "gpui",
  "gpui_apple",
  "gpui_util",
+ "i18n",
  "image",
  "itertools 0.14.0",
  "libc",
@@ -8089,6 +8092,66 @@ dependencies = [
  "tokio",
  "tower-service",
  "tracing",
+]
+
+[[package]]
+name = "i18n"
+version = "0.1.0"
+dependencies = [
+ "i18n_macros",
+ "log",
+ "parking_lot",
+]
+
+[[package]]
+name = "i18n_catalog"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "i18n",
+ "log",
+ "parking_lot",
+ "pretty_assertions",
+ "rust-embed",
+ "sys-locale",
+ "tempfile",
+]
+
+[[package]]
+name = "i18n_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "i18n_settings"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "i18n",
+ "i18n_catalog",
+ "log",
+ "parking_lot",
+ "paths",
+ "serde",
+ "settings",
+ "tempfile",
+ "ui",
+ "workspace",
+]
+
+[[package]]
+name = "i18n_tool"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -8936,6 +8999,8 @@ dependencies = [
  "fs",
  "fuzzy",
  "gpui",
+ "i18n",
+ "i18n_catalog",
  "itertools 0.14.0",
  "json_schema_store",
  "language",
@@ -15656,6 +15721,9 @@ dependencies = [
  "heck 0.5.0",
  "http_client",
  "http_proxy",
+ "i18n",
+ "i18n_catalog",
+ "i18n_settings",
  "itertools 0.14.0",
  "language",
  "language_model",
@@ -17463,6 +17531,8 @@ dependencies = [
  "fs",
  "git_ui_core",
  "gpui",
+ "i18n",
+ "i18n_catalog",
  "notifications",
  "platform_title_bar",
  "project",
@@ -17477,6 +17547,7 @@ dependencies = [
  "smallvec",
  "telemetry",
  "theme",
+ "theme_settings",
  "ui",
  "util",
  "windows 0.61.3",
@@ -21638,6 +21709,9 @@ dependencies = [
  "gpui_tokio",
  "hdrhistogram",
  "http_client",
+ "i18n",
+ "i18n_catalog",
+ "i18n_settings",
  "ide_assist",
  "ide_server",
  "image",

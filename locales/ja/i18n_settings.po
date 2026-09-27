@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"{}\" is not a language tag; showing English."
+msgstr "「{}」は言語タグではありません。英語で表示します。"
+
+msgid "Problems in the UI translation files"
+msgstr "UI の翻訳ファイルに問題があります"
+
+msgid "Restart Now"
+msgstr "今すぐ再起動"
+
+msgid "Some parts of the UI switch to the new language after a restart."
+msgstr "一部の表示は再起動後に新しい言語に切り替わります。"
+
+msgid "There is no translation for \"{}\"; showing English."
+msgstr "「{}」の翻訳はありません。英語で表示します。"
+
+msgid "…and {} more (see the log)."
+msgstr "…ほか {} 件 (ログを参照してください)。"

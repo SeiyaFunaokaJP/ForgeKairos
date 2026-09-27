@@ -180,22 +180,25 @@ pub struct WorkspaceSettingsContent {
 pub enum DefaultDockPanel {
     /// Leave the slot empty: the dock shows a single panel, as upstream Zed
     /// does, or none at all.
+    // Labels for the settings dropdown, which translates them by their English
+    // text; plain "None" stays untranslated in other dropdowns. The JSON values
+    // stay snake_case via serde.
     #[default]
-    #[strum(serialize = "並べない")]
+    #[strum(serialize = "Don't Stack")]
     None,
-    #[strum(serialize = "エージェントパネル")]
+    #[strum(serialize = "Agent Panel")]
     Agent,
-    #[strum(serialize = "ブラウザーパネル")]
+    #[strum(serialize = "Browser Panel")]
     Browser,
-    #[strum(serialize = "ターミナルパネル")]
+    #[strum(serialize = "Terminal Panel")]
     Terminal,
-    #[strum(serialize = "プロジェクトパネル")]
+    #[strum(serialize = "Project Panel")]
     Project,
-    #[strum(serialize = "Git パネル")]
+    #[strum(serialize = "Git Panel")]
     Git,
-    #[strum(serialize = "アウトラインパネル")]
+    #[strum(serialize = "Outline Panel")]
     Outline,
-    #[strum(serialize = "デバッグパネル")]
+    #[strum(serialize = "Debug Panel")]
     Debug,
 }
 

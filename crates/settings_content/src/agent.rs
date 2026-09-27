@@ -65,15 +65,12 @@ pub enum PanelTabBar {
     /// horizontal row would say the same thing twice. Split the panel or close
     /// the history and the tab bar comes back.
     #[default]
-    #[strum(serialize = "自動")]
     Auto,
-    #[strum(serialize = "常に表示")]
     Always,
     /// Keep the tab bar hidden, leaving the in-panel thread history as the way
     /// to the open tabs. A panel too narrow to show that list, or the strip
     /// that brings it back, still gets the tab bar: otherwise nothing would
     /// reach the tabs that are not in front.
-    #[strum(serialize = "表示しない")]
     Never,
 }
 

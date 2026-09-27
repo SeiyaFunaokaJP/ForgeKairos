@@ -1,0 +1,563 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "menu"
+msgid "About Zed"
+msgstr "Zed について"
+
+msgctxt "menu"
+msgid "Add Cursor Above"
+msgstr "上にカーソルを追加"
+
+msgctxt "menu"
+msgid "Add Cursor Below"
+msgstr "下にカーソルを追加"
+
+msgctxt "menu"
+msgid "Add Folder to Project…"
+msgstr "プロジェクトにフォルダーを追加…"
+
+msgctxt "menu"
+msgid "Agent Panel"
+msgstr "エージェントパネル"
+
+msgctxt "menu"
+msgid "Amend Last Commit"
+msgstr "直前のコミットを修正 (amend)"
+
+msgctxt "menu"
+msgid "Back"
+msgstr "戻る"
+
+msgctxt "menu"
+msgid "Browser Panel"
+msgstr "ブラウザーパネル"
+
+msgctxt "menu"
+msgid "Change Folder…"
+msgstr "フォルダーを変更…"
+
+msgctxt "menu"
+msgid "Check for Updates"
+msgstr "更新を確認"
+
+msgctxt "menu"
+msgid "Clear All Breakpoints"
+msgstr "すべてのブレークポイントを削除"
+
+msgctxt "menu"
+msgid "Close Editor"
+msgstr "エディターを閉じる"
+
+msgctxt "menu"
+msgid "Close Project"
+msgstr "プロジェクトを閉じる"
+
+msgctxt "menu"
+msgid "Close Window"
+msgstr "ウィンドウを閉じる"
+
+msgctxt "menu"
+msgid "Command Palette..."
+msgstr "コマンドパレット..."
+
+msgctxt "menu"
+msgid "Compare Two Branches…"
+msgstr "2 つのブランチを比較…"
+
+msgctxt "menu"
+msgid "Continue"
+msgstr "続行"
+
+msgctxt "menu"
+msgid "Copy"
+msgstr "コピー"
+
+msgctxt "menu"
+msgid "Copy and Trim"
+msgstr "余白を削ってコピー"
+
+msgctxt "menu"
+msgid "Create Branch…"
+msgstr "ブランチを作成…"
+
+msgctxt "menu"
+msgid "Create Merge Request"
+msgstr "MR を作る"
+
+msgctxt "menu"
+msgid "Cut"
+msgstr "切り取り"
+
+msgctxt "menu"
+msgid "Debugger Panel"
+msgstr "デバッガーパネル"
+
+msgctxt "menu"
+msgid "Diagnostics"
+msgstr "診断"
+
+msgctxt "menu"
+msgid "Documentation"
+msgstr "ドキュメント"
+
+msgctxt "menu"
+msgid "Duplicate Selection"
+msgstr "選択範囲を複製"
+
+msgctxt "menu"
+msgid "Edit"
+msgstr "編集"
+
+msgctxt "menu"
+msgid "Edit Breakpoint"
+msgstr "ブレークポイントを編集"
+
+msgctxt "menu"
+msgid "Edit debug.json…"
+msgstr "debug.json を編集…"
+
+msgctxt "menu"
+msgid "Edit tasks.json…"
+msgstr "tasks.json を編集…"
+
+msgctxt "menu"
+msgid "Editor Layout"
+msgstr "エディターのレイアウト"
+
+msgctxt "menu"
+msgid "Email Us..."
+msgstr "メールを送る..."
+
+msgctxt "menu"
+msgid "Expand Selection"
+msgstr "選択範囲を拡張"
+
+msgctxt "menu"
+msgid "Extensions"
+msgstr "拡張機能"
+
+msgctxt "menu"
+msgid "Fetch"
+msgstr "フェッチ"
+
+msgctxt "menu"
+msgid "File"
+msgstr "ファイル"
+
+msgctxt "menu"
+msgid "File Bug Report..."
+msgstr "バグを報告..."
+
+msgctxt "menu"
+msgid "Find"
+msgstr "検索"
+
+msgctxt "menu"
+msgid "Find All References"
+msgstr "すべての参照を検索"
+
+msgctxt "menu"
+msgid "Find in Project"
+msgstr "プロジェクト内を検索"
+
+msgctxt "menu"
+msgid "Fixup into an Earlier Commit…"
+msgstr "今の変更を昔のコミットに入れる (fixup)…"
+
+msgctxt "menu"
+msgid "Force Push with Lease…"
+msgstr "強制プッシュ (lease 付き)…"
+
+msgctxt "menu"
+msgid "Forward"
+msgstr "進む"
+
+msgctxt "menu"
+msgid "Git"
+msgstr "Git"
+
+msgctxt "menu"
+msgid "Git Guide"
+msgstr "Git の操作ガイド"
+
+msgctxt "menu"
+msgid "Git Panel"
+msgstr "Git パネル"
+
+msgctxt "menu"
+msgid "Go"
+msgstr "移動"
+
+msgctxt "menu"
+msgid "Go to Declaration"
+msgstr "宣言へ移動"
+
+msgctxt "menu"
+msgid "Go to Definition"
+msgstr "定義へ移動"
+
+msgctxt "menu"
+msgid "Go to File..."
+msgstr "ファイルへ移動..."
+
+msgctxt "menu"
+msgid "Go to Line/Column..."
+msgstr "行/列へ移動..."
+
+msgctxt "menu"
+msgid "Go to Symbol in Editor..."
+msgstr "エディター内のシンボルへ移動..."
+
+msgctxt "menu"
+msgid "Go to Type Definition"
+msgstr "型定義へ移動"
+
+msgctxt "menu"
+msgid "Help"
+msgstr "ヘルプ"
+
+msgctxt "menu"
+msgid "Hide Others"
+msgstr "ほかを非表示"
+
+msgctxt "menu"
+msgid "Hide Zed"
+msgstr "Zed を非表示"
+
+msgctxt "menu"
+msgid "Install CLI"
+msgstr "CLI をインストール"
+
+msgctxt "menu"
+msgid "Join the Team"
+msgstr "採用情報"
+
+msgctxt "menu"
+msgid "Minimize"
+msgstr "最小化"
+
+msgctxt "menu"
+msgid "Move Line Down"
+msgstr "行を下へ移動"
+
+msgctxt "menu"
+msgid "Move Line Up"
+msgstr "行を上へ移動"
+
+msgctxt "menu"
+msgid "New"
+msgstr "新規ファイル"
+
+msgctxt "menu"
+msgid "New Browser Tab"
+msgstr "新しいブラウザータブ"
+
+msgctxt "menu"
+msgid "New Window"
+msgstr "新規ウィンドウ"
+
+msgctxt "menu"
+msgid "Next Problem"
+msgstr "次の問題へ"
+
+msgctxt "menu"
+msgid "Open Default Key Bindings"
+msgstr "既定のキーバインドを開く"
+
+msgctxt "menu"
+msgid "Open Default Settings"
+msgstr "既定の設定を開く"
+
+msgctxt "menu"
+msgid "Open File..."
+msgstr "ファイルを開く..."
+
+msgctxt "menu"
+msgid "Open Folder..."
+msgstr "フォルダーを開く..."
+
+msgctxt "menu"
+msgid "Open Git Graph"
+msgstr "コミットグラフを開く"
+
+msgctxt "menu"
+msgid "Open Keymap"
+msgstr "キーマップを開く"
+
+msgctxt "menu"
+msgid "Open Keymap File"
+msgstr "キーマップファイルを開く"
+
+msgctxt "menu"
+msgid "Open Project Settings"
+msgstr "プロジェクト設定を開く"
+
+msgctxt "menu"
+msgid "Open Project Settings File"
+msgstr "プロジェクト設定ファイルを開く"
+
+msgctxt "menu"
+msgid "Open Recent…"
+msgstr "最近のプロジェクトを開く…"
+
+msgctxt "menu"
+msgid "Open Remote…"
+msgstr "リモートプロジェクトを開く…"
+
+msgctxt "menu"
+msgid "Open Settings"
+msgstr "設定を開く"
+
+msgctxt "menu"
+msgid "Open Settings File"
+msgstr "設定ファイルを開く"
+
+msgctxt "menu"
+msgid "Open…"
+msgstr "開く…"
+
+msgctxt "menu"
+msgid "Outline Panel"
+msgstr "アウトラインパネル"
+
+msgctxt "menu"
+msgid "Paste"
+msgstr "貼り付け"
+
+msgctxt "menu"
+msgid "Previous Problem"
+msgstr "前の問題へ"
+
+msgctxt "menu"
+msgid "Project Panel"
+msgstr "プロジェクトパネル"
+
+msgctxt "menu"
+msgid "Pull"
+msgstr "プル"
+
+msgctxt "menu"
+msgid "Push"
+msgstr "プッシュ"
+
+msgctxt "menu"
+msgid "Quit Zed"
+msgstr "Zed を終了"
+
+msgctxt "menu"
+msgid "Redo"
+msgstr "やり直し"
+
+msgctxt "menu"
+msgid "Request Feature..."
+msgstr "機能をリクエスト..."
+
+msgctxt "menu"
+msgid "Reset All Zoom"
+msgstr "すべてのズームをリセット"
+
+msgctxt "menu"
+msgid "Reset Zoom"
+msgstr "ズームをリセット"
+
+msgctxt "menu"
+msgid "Run"
+msgstr "実行"
+
+msgctxt "menu"
+msgid "Save"
+msgstr "保存"
+
+msgctxt "menu"
+msgid "Save All"
+msgstr "すべて保存"
+
+msgctxt "menu"
+msgid "Save As…"
+msgstr "名前を付けて保存…"
+
+msgctxt "menu"
+msgid "Select All"
+msgstr "すべて選択"
+
+msgctxt "menu"
+msgid "Select All Occurrences"
+msgstr "すべての出現箇所を選択"
+
+msgctxt "menu"
+msgid "Select Icon Theme..."
+msgstr "アイコンテーマを選択..."
+
+msgctxt "menu"
+msgid "Select Next Occurrence"
+msgstr "次の出現箇所を選択"
+
+msgctxt "menu"
+msgid "Select Next Sibling"
+msgstr "次の兄弟ノードを選択"
+
+msgctxt "menu"
+msgid "Select Previous Occurrence"
+msgstr "前の出現箇所を選択"
+
+msgctxt "menu"
+msgid "Select Previous Sibling"
+msgstr "前の兄弟ノードを選択"
+
+msgctxt "menu"
+msgid "Select Theme..."
+msgstr "テーマを選択..."
+
+msgctxt "menu"
+msgid "Selection"
+msgstr "選択"
+
+msgctxt "menu"
+msgid "Services"
+msgstr "サービス"
+
+msgctxt "menu"
+msgid "Settings"
+msgstr "設定"
+
+msgctxt "menu"
+msgid "Show All"
+msgstr "すべて表示"
+
+msgctxt "menu"
+msgid "Show Welcome"
+msgstr "ようこそページを表示"
+
+msgctxt "menu"
+msgid "Shrink Selection"
+msgstr "選択範囲を縮小"
+
+msgctxt "menu"
+msgid "Spawn Task"
+msgstr "タスクを実行"
+
+msgctxt "menu"
+msgid "Split Down"
+msgstr "下に分割"
+
+msgctxt "menu"
+msgid "Split Left"
+msgstr "左に分割"
+
+msgctxt "menu"
+msgid "Split Right"
+msgstr "右に分割"
+
+msgctxt "menu"
+msgid "Split Up"
+msgstr "上に分割"
+
+msgctxt "menu"
+msgid "Start Debugger"
+msgstr "デバッガーを開始"
+
+msgctxt "menu"
+msgid "Stash…"
+msgstr "stash…"
+
+msgctxt "menu"
+msgid "Step Into"
+msgstr "ステップイン"
+
+msgctxt "menu"
+msgid "Step Out"
+msgstr "ステップアウト"
+
+msgctxt "menu"
+msgid "Step Over"
+msgstr "ステップオーバー"
+
+msgctxt "menu"
+msgid "Switch Branch…"
+msgstr "ブランチを切り替え…"
+
+msgctxt "menu"
+msgid "Terminal Panel"
+msgstr "ターミナルパネル"
+
+msgctxt "menu"
+msgid "Toggle All Docks"
+msgstr "すべてのドックの表示切り替え"
+
+msgctxt "menu"
+msgid "Toggle Bottom Dock"
+msgstr "下ドックの表示切り替え"
+
+msgctxt "menu"
+msgid "Toggle Breakpoint"
+msgstr "ブレークポイントの切り替え"
+
+msgctxt "menu"
+msgid "Toggle GPUI Inspector"
+msgstr "GPUI インスペクターの表示切り替え"
+
+msgctxt "menu"
+msgid "Toggle Left Dock"
+msgstr "左ドックの表示切り替え"
+
+msgctxt "menu"
+msgid "Toggle Line Comment"
+msgstr "行コメントの切り替え"
+
+msgctxt "menu"
+msgid "Toggle Right Dock"
+msgstr "右ドックの表示切り替え"
+
+msgctxt "menu"
+msgid "Undo"
+msgstr "元に戻す"
+
+msgctxt "menu"
+msgid "View"
+msgstr "表示"
+
+msgctxt "menu"
+msgid "View Dependency Licenses"
+msgstr "依存ライブラリのライセンス"
+
+msgctxt "menu"
+msgid "View Release Notes Locally"
+msgstr "リリースノートをエディターで表示"
+
+msgctxt "menu"
+msgid "View Telemetry"
+msgstr "テレメトリログを表示"
+
+msgctxt "menu"
+msgid "Window"
+msgstr "ウィンドウ"
+
+msgctxt "menu"
+msgid "Zed"
+msgstr "Zed"
+
+msgctxt "menu"
+msgid "Zed Repository"
+msgstr "Zed のリポジトリ"
+
+msgctxt "menu"
+msgid "Zed Twitter"
+msgstr "Zed の Twitter"
+
+msgctxt "menu"
+msgid "Zoom"
+msgstr "ズーム"
+
+msgctxt "menu"
+msgid "Zoom In"
+msgstr "拡大"
+
+msgctxt "menu"
+msgid "Zoom Out"
+msgstr "縮小"
+

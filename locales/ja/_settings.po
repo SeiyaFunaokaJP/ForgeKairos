@@ -1,0 +1,4315 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "BaseKeymapContent"
+msgid "Cursor"
+msgstr "Cursor (ベータ)"
+
+msgctxt "BaseKeymapContent"
+msgid "Emacs"
+msgstr "Emacs (ベータ)"
+
+msgctxt "BaseKeymapContent"
+msgid "None"
+msgstr "なし"
+
+msgctxt "DefaultDockPanel"
+msgid "Agent Panel"
+msgstr "エージェントパネル"
+
+msgctxt "DefaultDockPanel"
+msgid "Browser Panel"
+msgstr "ブラウザーパネル"
+
+msgctxt "DefaultDockPanel"
+msgid "Debug Panel"
+msgstr "デバッグパネル"
+
+msgctxt "DefaultDockPanel"
+msgid "Don't Stack"
+msgstr "並べない"
+
+msgctxt "DefaultDockPanel"
+msgid "Git Panel"
+msgstr "Git パネル"
+
+msgctxt "DefaultDockPanel"
+msgid "Outline Panel"
+msgstr "アウトラインパネル"
+
+msgctxt "DefaultDockPanel"
+msgid "Project Panel"
+msgstr "プロジェクトパネル"
+
+msgctxt "DefaultDockPanel"
+msgid "Terminal Panel"
+msgstr "ターミナルパネル"
+
+msgctxt "EditPredictionDataCollectionChoice"
+msgid "Default"
+msgstr "既定 (過去の切替に従う)"
+
+msgctxt "EditPredictionDataCollectionChoice"
+msgid "No"
+msgstr "いいえ"
+
+msgctxt "EditPredictionDataCollectionChoice"
+msgid "Yes"
+msgstr "はい"
+
+msgctxt "PanelTabBar"
+msgid "Always"
+msgstr "常に表示"
+
+msgctxt "PanelTabBar"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "PanelTabBar"
+msgid "Never"
+msgstr "表示しない"
+
+
+msgctxt "ShowWhitespaceSetting"
+msgid "Selection"
+msgstr "選択範囲"
+
+msgctxt "StatusUntrackedFilesSetting"
+msgid "All Files"
+msgstr "すべて"
+
+msgctxt "StatusUntrackedFilesSetting"
+msgid "Do Not Report"
+msgstr "報告しない"
+
+msgctxt "StatusUntrackedFilesSetting"
+msgid "Folders Only"
+msgstr "通常"
+
+msgctxt "settings"
+msgid "(Linux only) choose how window control buttons are laid out in the titlebar."
+msgstr "(Linux のみ) タイトルバーのウィンドウ操作ボタンの配置を選択します。"
+
+msgctxt "settings"
+msgid "(Linux only) whether Zed or your compositor should draw window decorations."
+msgstr "(Linux のみ) ウィンドウの装飾を Zed が描画するか、コンポジターに任せるかを設定します。"
+
+msgctxt "settings"
+msgid "(macOS only) whether to allow Windows to tab together."
+msgstr "(macOS のみ) ウィンドウをタブとしてまとめられるようにするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "(macOS only) which fullscreen mode the toggle fullscreen action enters."
+msgstr "(macOS のみ) 全画面表示の切り替えアクションで入る全画面モードを設定します。"
+
+msgctxt "settings"
+msgid "A feature of this fork that denies all AI-initiated outgoing connections (AI providers, agent tools, MCP servers, external agent processes) by default. Connections of the IDE's own tooling, such as language servers and extensions, are not affected. Review, add and remove the hosts that are allowed."
+msgstr "AI が起点になる外部通信 (AI プロバイダー・エージェントのツール・MCP サーバー・外部エージェントのプロセス) を既定ですべて拒否する、このフォーク独自の機能です。言語サーバーや拡張機能など IDE 自身の道具立ての通信は対象外です。通信を許可するホストを確認・追加・削除します。"
+
+msgctxt "settings"
+msgid "A mapping from languages to files and file extensions that should be treated as that language."
+msgstr "言語と、その言語として扱うファイル名・拡張子の対応です。"
+
+msgctxt "settings"
+msgid "AI"
+msgstr "AI"
+
+msgctxt "settings"
+msgid "Accessible Mode"
+msgstr "アクセシビリティモード"
+
+msgctxt "settings"
+msgid "Acknowledged External AI Providers"
+msgstr "承諾済みの外部 AI プロバイダー"
+
+msgctxt "settings"
+msgid "Activate On Close"
+msgstr "閉じた後にアクティブにするタブ"
+
+msgctxt "settings"
+msgid "Activates the Python virtual environment, if one is found, in the terminal's working directory."
+msgstr "ターミナルの作業ディレクトリに Python の仮想環境があれば有効化します。"
+
+msgctxt "settings"
+msgid "Active Encoding Button"
+msgstr "現在のエンコーディングのボタン"
+
+msgctxt "settings"
+msgid "Active File Name"
+msgstr "現在のファイル名"
+
+msgctxt "settings"
+msgid "Active Language Button"
+msgstr "現在の言語のボタン"
+
+msgctxt "settings"
+msgid "Active Line Width"
+msgstr "アクティブな線の太さ"
+
+msgctxt "settings"
+msgid "Additional code actions to run when formatting."
+msgstr "フォーマット時に追加で実行するコードアクションです。"
+
+msgctxt "settings"
+msgid "Advanced Settings"
+msgstr "詳細設定"
+
+msgctxt "settings"
+msgid "Agent Configuration"
+msgstr "エージェントの設定"
+
+msgctxt "settings"
+msgid "Agent Panel"
+msgstr "エージェントパネル"
+
+msgctxt "settings"
+msgid "Agent Panel Button"
+msgstr "エージェントパネルのボタン"
+
+msgctxt "settings"
+msgid "Agent Panel Default Height"
+msgstr "エージェントパネルの既定の高さ"
+
+msgctxt "settings"
+msgid "Agent Panel Default Width"
+msgstr "エージェントパネルの既定の幅"
+
+msgctxt "settings"
+msgid "Agent Panel Dock"
+msgstr "エージェントパネルのドック位置"
+
+msgctxt "settings"
+msgid "Agent Panel Flexible Sizing"
+msgstr "エージェントパネルの可変サイズ"
+
+msgctxt "settings"
+msgid "Agent Panel Font"
+msgstr "エージェントパネルのフォント"
+
+msgctxt "settings"
+msgid "Agent Review"
+msgstr "エージェントのレビュー"
+
+msgctxt "settings"
+msgid "Allow Rewrap"
+msgstr "再折り返しを許可"
+
+msgctxt "settings"
+msgid "Allow sending requests to Anthropic models that cannot be offered with Zero Data Retention."
+msgstr "Zero Data Retention では提供できない Anthropic モデルへのリクエスト送信を許可します。"
+
+msgctxt "settings"
+msgid "Allowed"
+msgstr "使用を許可"
+
+msgctxt "settings"
+msgid "Alternate Scroll"
+msgstr "代替スクロール"
+
+msgctxt "settings"
+msgid "Always Treat Brackets As Autoclosed"
+msgstr "括弧を常に自動閉じとして扱う"
+
+msgctxt "settings"
+msgid "Amount of indentation for nested items."
+msgstr "入れ子になった項目のインデント幅です。"
+
+msgctxt "settings"
+msgid "Amount of time to wait before changing focus."
+msgstr "フォーカスを移すまでの待ち時間です。"
+
+msgctxt "settings"
+msgid "An optional string to override the title of the terminal tab."
+msgstr "ターミナルのタブのタイトルを上書きする文字列です (省略可)。"
+
+msgctxt "settings"
+msgid "Anthropic Data Retention"
+msgstr "Anthropic のデータ保持"
+
+msgctxt "settings"
+msgid "Any number of settings profiles that are temporarily applied on top of your existing user settings."
+msgstr "既存のユーザー設定に一時的に上書き適用する設定プロファイルを、任意の数だけ定義できます。"
+
+msgctxt "settings"
+msgid "Appearance"
+msgstr "外観"
+
+msgctxt "settings"
+msgid "Apply the Allowlist to the Built-in Browser"
+msgstr "内蔵ブラウザーを許可リストの対象にする"
+
+msgctxt "settings"
+msgid "Arguments"
+msgstr "引数"
+
+msgctxt "settings"
+msgid "Attach Active File Automatically"
+msgstr "アクティブなファイルを自動で添付"
+
+msgctxt "settings"
+msgid "Attach the active editor automatically when sending a message: only the selected lines when there is a selection, otherwise the whole file. Nothing is attached twice when you have already @-mentioned it."
+msgstr "メッセージを送信するときに、アクティブなエディターを自動で添付します。選択範囲があればその行だけを、なければファイル全体を添付します。同じものを手で @ メンションしている場合は二重に添付しません。"
+
+msgctxt "settings"
+msgid "Attachment Budget per Message (Bytes)"
+msgstr "1 メッセージの添付の合計上限 (バイト)"
+
+msgctxt "settings"
+msgid "Audible Bell"
+msgstr "ベル音"
+
+msgctxt "settings"
+msgid "Auto Compact"
+msgstr "自動圧縮"
+
+msgctxt "settings"
+msgid "Auto Compact Minimum Context Window"
+msgstr "自動圧縮を行う最小コンテキストウィンドウ"
+
+msgctxt "settings"
+msgid "Auto Compact Threshold"
+msgstr "自動圧縮のしきい値"
+
+msgctxt "settings"
+msgid "Auto Fold Directories"
+msgstr "ディレクトリを自動的にまとめる"
+
+msgctxt "settings"
+msgid "Auto Indent"
+msgstr "自動インデント"
+
+msgctxt "settings"
+msgid "Auto Indent On Paste"
+msgstr "貼り付け時の自動インデント"
+
+msgctxt "settings"
+msgid "Auto Open Files On Create"
+msgstr "作成時にファイルを自動的に開く"
+
+msgctxt "settings"
+msgid "Auto Open Files On Drop"
+msgstr "ドロップ時にファイルを自動的に開く"
+
+msgctxt "settings"
+msgid "Auto Open Files On Paste"
+msgstr "貼り付け時にファイルを自動的に開く"
+
+msgctxt "settings"
+msgid "Auto Reveal Entries"
+msgstr "項目を自動的に表示"
+
+msgctxt "settings"
+msgid "Auto Save"
+msgstr "自動保存"
+
+msgctxt "settings"
+msgid "Auto Save Mode"
+msgstr "自動保存のモード"
+
+msgctxt "settings"
+msgid "Auto Signature Help"
+msgstr "シグネチャヘルプの自動表示"
+
+msgctxt "settings"
+msgid "Auto Update"
+msgstr "自動更新"
+
+msgctxt "settings"
+msgid "Autoclose"
+msgstr "自動閉じ"
+
+msgctxt "settings"
+msgid "Automatically close files that have been deleted."
+msgstr "削除されたファイルを自動的に閉じます。"
+
+msgctxt "settings"
+msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
+msgstr "エージェントのコンテキストが大きくなりすぎたときに自動的に圧縮し、以前のメッセージを要約してモデルのコンテキストウィンドウに空きを作ります。"
+
+msgctxt "settings"
+msgid "Automatically show a signature help pop-up."
+msgstr "シグネチャヘルプのポップアップを自動的に表示します。"
+
+msgctxt "settings"
+msgid "Autoscroll On Clicks"
+msgstr "クリック時の自動スクロール"
+
+msgctxt "settings"
+msgid "Background Coloring"
+msgstr "背景の配色"
+
+msgctxt "settings"
+msgid "Base Keymap"
+msgstr "ベースキーマップ"
+
+msgctxt "settings"
+msgid "Behavior Settings"
+msgstr "動作の設定"
+
+msgctxt "settings"
+msgid "Bold Folder Labels"
+msgstr "フォルダー名を太字にする"
+
+msgctxt "settings"
+msgid "Border Size"
+msgstr "境界線の太さ"
+
+msgctxt "settings"
+msgid "Border style for the minimap's scrollbar thumb."
+msgstr "ミニマップのスクロールバーのつまみの境界線のスタイルです。"
+
+msgctxt "settings"
+msgid "Bottom Dock Layout"
+msgstr "下ドックのレイアウト"
+
+msgctxt "settings"
+msgid "Branch Picker"
+msgstr "ブランチの選択"
+
+msgctxt "settings"
+msgid "Breadcrumbs"
+msgstr "パンくずリスト"
+
+msgctxt "settings"
+msgid "Browser"
+msgstr "ブラウザー"
+
+msgctxt "settings"
+msgid "Browser Panel"
+msgstr "ブラウザーパネル"
+
+msgctxt "settings"
+msgid "Browser Panel Button"
+msgstr "ブラウザーパネルのボタン"
+
+msgctxt "settings"
+msgid "Browser Panel Default Height"
+msgstr "ブラウザーパネルの既定の高さ"
+
+msgctxt "settings"
+msgid "Browser Panel Default Width"
+msgstr "ブラウザーパネルの既定の幅"
+
+msgctxt "settings"
+msgid "Browser Panel Dock"
+msgstr "ブラウザーパネルのドック位置"
+
+msgctxt "settings"
+msgid "Browsing"
+msgstr "ブラウジング"
+
+msgctxt "settings"
+msgid "Buffer Font"
+msgstr "バッファーのフォント"
+
+msgctxt "settings"
+msgid "Buffer Font Family"
+msgstr "バッファーのフォントファミリー"
+
+msgctxt "settings"
+msgid "Buffer Font Size"
+msgstr "バッファーのフォントサイズ"
+
+msgctxt "settings"
+msgid "Button Layout"
+msgstr "ボタンの配置"
+
+msgctxt "settings"
+msgid "CLI Default Open Behavior"
+msgstr "CLI の既定の開き方"
+
+msgctxt "settings"
+msgid "Calls"
+msgstr "通話"
+
+msgctxt "settings"
+msgid "Cancel Generation On Terminal Stop"
+msgstr "ターミナルの停止時に生成を中止"
+
+msgctxt "settings"
+msgid "Case Sensitive"
+msgstr "大文字と小文字を区別"
+
+msgctxt "settings"
+msgid "Center on Match"
+msgstr "一致箇所を中央に表示"
+
+msgctxt "settings"
+msgid "Centered Layout Left Padding"
+msgstr "中央寄せレイアウトの左余白"
+
+msgctxt "settings"
+msgid "Centered Layout Right Padding"
+msgstr "中央寄せレイアウトの右余白"
+
+msgctxt "settings"
+msgid "Character counts at which to show wrap guides in the editor."
+msgstr "エディターで折り返しガイドを表示する文字数です。"
+
+msgctxt "settings"
+msgid "Character counts at which to show wrap guides."
+msgstr "折り返しガイドを表示する文字数です。"
+
+msgctxt "settings"
+msgid "Choose a static, fixed theme or dynamically select themes based on appearance and light/dark modes."
+msgstr "固定のテーマを使うか、外観とライト/ダークモードに応じてテーマを動的に切り替えるかを選択します。"
+
+msgctxt "settings"
+msgid "Choose whether to use the selected light or dark icon theme or to follow your OS appearance configuration."
+msgstr "選択したライト/ダークのアイコンテーマのどちらを使うか、または OS の外観設定に従うかを選択します。"
+
+msgctxt "settings"
+msgid "Choose whether to use the selected light or dark theme or to follow your OS appearance configuration."
+msgstr "選択したライト/ダークテーマのどちらを使うか、または OS の外観設定に従うかを選択します。"
+
+msgctxt "settings"
+msgid "Close on File Delete"
+msgstr "ファイル削除時に閉じる"
+
+msgctxt "settings"
+msgid "Code Actions"
+msgstr "コードアクション"
+
+msgctxt "settings"
+msgid "Code Actions On Format"
+msgstr "フォーマット時のコードアクション"
+
+msgctxt "settings"
+msgid "Code Font Family"
+msgstr "コードのフォントファミリー"
+
+msgctxt "settings"
+msgid "Code Lens"
+msgstr "コードレンズ"
+
+msgctxt "settings"
+msgid "Collaboration"
+msgstr "コラボレーション"
+
+msgctxt "settings"
+msgid "Collaboration Panel"
+msgstr "コラボレーションパネル"
+
+msgctxt "settings"
+msgid "Collaboration Panel Button"
+msgstr "コラボレーションパネルのボタン"
+
+msgctxt "settings"
+msgid "Collaboration Panel Default Width"
+msgstr "コラボレーションパネルの既定の幅"
+
+msgctxt "settings"
+msgid "Collaboration Panel Dock"
+msgstr "コラボレーションパネルのドック位置"
+
+msgctxt "settings"
+msgid "Collapse Untracked Diff"
+msgstr "未追跡ファイルの差分を折りたたむ"
+
+msgctxt "settings"
+msgid "Collect timing data for foreground and background executor tasks so they can be inspected via `zed: open performance profiler`. May lead to increased memory usage."
+msgstr "フォアグラウンドとバックグラウンドの実行タスクのタイミングデータを収集し、`zed: open performance profiler` で確認できるようにします。メモリ使用量が増えることがあります。"
+
+msgctxt "settings"
+msgid "Coloring"
+msgstr "配色"
+
+msgctxt "settings"
+msgid "Colorize Brackets"
+msgstr "括弧の色分け"
+
+msgctxt "settings"
+msgid "Command to automatically run when Zed creates a Terminal Thread shell in the agent panel. Runs in your configured shell."
+msgstr "エージェントパネルでターミナルスレッドのシェルを作成したときに、自動的に実行するコマンドです。設定済みのシェルで実行されます。"
+
+msgctxt "settings"
+msgid "Commit Title Max Length"
+msgstr "コミットタイトルの最大長"
+
+msgctxt "settings"
+msgid "Completion Detail Alignment"
+msgstr "補完の詳細の配置"
+
+msgctxt "settings"
+msgid "Completion Menu Item Kind"
+msgstr "補完メニューの項目の種類"
+
+msgctxt "settings"
+msgid "Completion Menu Scrollbar"
+msgstr "補完メニューのスクロールバー"
+
+msgctxt "settings"
+msgid "Completions"
+msgstr "補完候補"
+
+msgctxt "settings"
+msgid "Configure Providers"
+msgstr "プロバイダーの設定"
+
+msgctxt "settings"
+msgid "Configure natively-included model providers."
+msgstr "標準で同梱されているモデルプロバイダーを設定します。"
+
+msgctxt "settings"
+msgid "Consent to Launch Outside the Sandbox"
+msgstr "サンドボックスの外での起動の同意"
+
+msgctxt "settings"
+msgid "Control when to show the active encoding in the status bar."
+msgstr "ステータスバーに現在のエンコーディングを表示するタイミングを設定します。"
+
+msgctxt "settings"
+msgid "Control whether Git status is shown in the editor's gutter."
+msgstr "エディターのガターに Git の状態を表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Controls automatic indentation behavior when typing."
+msgstr "入力時の自動インデントの動作を設定します。"
+
+msgctxt "settings"
+msgid "Controls how LSP completions are inserted."
+msgstr "LSP の補完候補をどのように挿入するかを設定します。"
+
+msgctxt "settings"
+msgid "Controls how words are completed."
+msgstr "単語をどのように補完するかを設定します。"
+
+msgctxt "settings"
+msgid "Controls line number display in the editor's gutter. \"disabled\" shows absolute line numbers, \"enabled\" shows relative line numbers for each absolute line, and \"wrapped\" shows relative line numbers for every line, absolute or wrapped."
+msgstr "エディターのガターの行番号表示を制御します。\"disabled\" は絶対行番号を、\"enabled\" は各絶対行に対する相対行番号を、\"wrapped\" は折り返し行も含めたすべての行に対する相対行番号を表示します。"
+
+msgctxt "settings"
+msgid "Controls the appearance behavior of the tab's close button."
+msgstr "タブの閉じるボタンの表示動作を設定します。"
+
+msgctxt "settings"
+msgid "Controls when to use system clipboard in Vim mode."
+msgstr "Vim モードでシステムのクリップボードを使うタイミングを設定します。"
+
+msgctxt "settings"
+msgid "Controls where the `editor::rewrap` action is allowed for this language."
+msgstr "この言語で `editor::rewrap` アクションを許可する範囲を設定します。"
+
+msgctxt "settings"
+msgid "Controls whether Zed may collect training data when using Zed's Edit Predictions. Data is only collected for files in projects detected as open source. The default value uses the preference previously set via the status-bar toggle, or false if no preference has been stored."
+msgstr "Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。"
+
+msgctxt "settings"
+msgid "Controls whether edit predictions are shown immediately or manually."
+msgstr "編集予測をすぐに表示するか、手動で表示するかを設定します。"
+
+msgctxt "settings"
+msgid "Controls whether edit predictions are shown in the given language scopes."
+msgstr "指定した言語スコープで編集予測を表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Controls whether the closing characters are always skipped over and auto-removed no matter how they were inserted."
+msgstr "閉じ文字がどのように挿入されたかにかかわらず、常に読み飛ばして自動的に削除するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Copilot URL"
+msgstr "Copilot URL"
+
+msgctxt "settings"
+msgid "Copy On Select"
+msgstr "選択時にコピー"
+
+msgctxt "settings"
+msgid "Create Skill"
+msgstr "スキルを作成"
+
+msgctxt "settings"
+msgid "Current Line Highlight"
+msgstr "現在の行のハイライト"
+
+msgctxt "settings"
+msgid "Cursor"
+msgstr "カーソル"
+
+msgctxt "settings"
+msgid "Cursor Blink"
+msgstr "カーソルの点滅"
+
+msgctxt "settings"
+msgid "Cursor Blinking"
+msgstr "カーソルの点滅"
+
+msgctxt "settings"
+msgid "Cursor Position Button"
+msgstr "カーソル位置のボタン"
+
+msgctxt "settings"
+msgid "Cursor Shape"
+msgstr "カーソルの形状"
+
+msgctxt "settings"
+msgid "Cursor Shape - Insert Mode"
+msgstr "カーソルの形状 - 挿入モード"
+
+msgctxt "settings"
+msgid "Cursor Shape - Normal Mode"
+msgstr "カーソルの形状 - ノーマルモード"
+
+msgctxt "settings"
+msgid "Cursor Shape - Replace Mode"
+msgstr "カーソルの形状 - 置換モード"
+
+msgctxt "settings"
+msgid "Cursor Shape - Visual Mode"
+msgstr "カーソルの形状 - ビジュアルモード"
+
+msgctxt "settings"
+msgid "Cursor shape for insert mode. Inherit uses the editor's cursor shape."
+msgstr "挿入モードのカーソルの形状です。Inherit はエディターのカーソルの形状を使います。"
+
+msgctxt "settings"
+msgid "Cursor shape for normal mode."
+msgstr "ノーマルモードのカーソルの形状です。"
+
+msgctxt "settings"
+msgid "Cursor shape for replace mode."
+msgstr "置換モードのカーソルの形状です。"
+
+msgctxt "settings"
+msgid "Cursor shape for the editor."
+msgstr "エディターのカーソルの形状です。"
+
+msgctxt "settings"
+msgid "Cursor shape for visual mode."
+msgstr "ビジュアルモードのカーソルの形状です。"
+
+msgctxt "settings"
+msgid "Cursors"
+msgstr "カーソル"
+
+msgctxt "settings"
+msgid "Custom Button Layout"
+msgstr "カスタムのボタン配置"
+
+msgctxt "settings"
+msgid "Custom Digraphs"
+msgstr "カスタムダイグラフ"
+
+msgctxt "settings"
+msgid "Custom Line Height"
+msgstr "カスタムの行の高さ"
+
+msgctxt "settings"
+msgid "Custom Width"
+msgstr "カスタム幅"
+
+msgctxt "settings"
+msgid "Custom digraph mappings for Vim mode."
+msgstr "Vim モードのカスタムダイグラフの定義です。"
+
+msgctxt "settings"
+msgid "Custom line height value (must be at least 1.0)."
+msgstr "行の高さのカスタム値です (1.0 以上)。"
+
+msgctxt "settings"
+msgid "Customize keybindings in the keymap editor."
+msgstr "キーマップエディターでキーバインドをカスタマイズします。"
+
+msgctxt "settings"
+msgid "Dark Icon Theme"
+msgstr "ダークアイコンテーマ"
+
+msgctxt "settings"
+msgid "Dark Theme"
+msgstr "ダークテーマ"
+
+msgctxt "settings"
+msgid "Data Collection"
+msgstr "データの収集"
+
+msgctxt "settings"
+msgid "Debounce"
+msgstr "デバウンス"
+
+msgctxt "settings"
+msgid "Debounce threshold in milliseconds after which changes are reflected in the Git gutter."
+msgstr "変更が Git ガターに反映されるまでのデバウンスのしきい値 (ミリ秒) です。"
+
+msgctxt "settings"
+msgid "Debugger"
+msgstr "デバッガー"
+
+msgctxt "settings"
+msgid "Debugger Button"
+msgstr "デバッガーのボタン"
+
+msgctxt "settings"
+msgid "Debugger Panel"
+msgstr "デバッガーパネル"
+
+msgctxt "settings"
+msgid "Debugger Panel Dock"
+msgstr "デバッガーパネルのドック位置"
+
+msgctxt "settings"
+msgid "Debuggers"
+msgstr "デバッガー"
+
+msgctxt "settings"
+msgid "Default Height"
+msgstr "既定の高さ"
+
+msgctxt "settings"
+msgid "Default Mode"
+msgstr "既定のモード"
+
+msgctxt "settings"
+msgid "Default Open Behavior"
+msgstr "既定の開き方"
+
+msgctxt "settings"
+msgid "Default Prettier options, in the format as in package.json section for Prettier."
+msgstr "Prettier の既定のオプションです。package.json の Prettier セクションと同じ形式で指定します。"
+
+msgctxt "settings"
+msgid "Default Stacked Dock"
+msgstr "既定でパネルを 2 枚並べるドック"
+
+msgctxt "settings"
+msgid "Default Stacked Panel"
+msgstr "既定で並べる 1 枚目のパネル"
+
+msgctxt "settings"
+msgid "Default Stacked Secondary Panel"
+msgstr "既定で並べる 2 枚目のパネル"
+
+msgctxt "settings"
+msgid "Default Width"
+msgstr "既定の幅"
+
+msgctxt "settings"
+msgid "Default action when clicking a changed file in the Git panel."
+msgstr "Git パネルで変更されたファイルをクリックしたときの既定の動作です。"
+
+msgctxt "settings"
+msgid "Default branch name will be when init.defaultbranch is not set in Git."
+msgstr "Git で init.defaultbranch が設定されていないときに使うブランチ名です。"
+
+msgctxt "settings"
+msgid "Default cursor shape for the terminal (bar, block, underline, or hollow)."
+msgstr "ターミナルの既定のカーソルの形状です (bar・block・underline・hollow)。"
+
+msgctxt "settings"
+msgid "Default depth to expand outline items in the current file."
+msgstr "現在のファイルのアウトライン項目を既定で展開する深さです。"
+
+msgctxt "settings"
+msgid "Default height of the browser panel in pixels when docked to the bottom."
+msgstr "ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。"
+
+msgctxt "settings"
+msgid "Default height when the agent panel is docked to the bottom."
+msgstr "エージェントパネルを下にドッキングしたときの既定の高さです。"
+
+msgctxt "settings"
+msgid "Default height when the terminal is docked to the bottom (in pixels)."
+msgstr "ターミナルを下にドッキングしたときの既定の高さ (ピクセル) です。"
+
+msgctxt "settings"
+msgid "Default width of the Git panel in pixels."
+msgstr "Git パネルの既定の幅 (ピクセル) です。"
+
+msgctxt "settings"
+msgid "Default width of the browser panel in pixels when docked to the left or right."
+msgstr "ブラウザーパネルを左右にドッキングしたときの既定の幅 (ピクセル) です。"
+
+msgctxt "settings"
+msgid "Default width of the collaboration panel in pixels."
+msgstr "コラボレーションパネルの既定の幅 (ピクセル) です。"
+
+msgctxt "settings"
+msgid "Default width of the outline panel in pixels."
+msgstr "アウトラインパネルの既定の幅 (ピクセル) です。"
+
+msgctxt "settings"
+msgid "Default width of the project panel in pixels."
+msgstr "プロジェクトパネルの既定の幅 (ピクセル) です。"
+
+msgctxt "settings"
+msgid "Default width when the agent panel is docked to the left or right."
+msgstr "エージェントパネルを左右にドッキングしたときの既定の幅です。"
+
+msgctxt "settings"
+msgid "Default width when the terminal is docked to the left or right (in pixels)."
+msgstr "ターミナルを左右にドッキングしたときの既定の幅 (ピクセル) です。"
+
+msgctxt "settings"
+msgid "Delay"
+msgstr "遅延"
+
+msgctxt "settings"
+msgid "Delay (milliseconds)"
+msgstr "遅延 (ミリ秒)"
+
+msgctxt "settings"
+msgid "Delay in milliseconds before drag and drop selection starts."
+msgstr "ドラッグ&ドロップによる選択が始まるまでの遅延 (ミリ秒) です。"
+
+msgctxt "settings"
+msgid "Delay in milliseconds before the which-key menu appears."
+msgstr "Which-key メニューが表示されるまでの遅延 (ミリ秒) です。"
+
+msgctxt "settings"
+msgid "Detached Shell Timeout"
+msgstr "未接続のシェルを終了するまでの時間"
+
+msgctxt "settings"
+msgid "Detect Virtual Environment"
+msgstr "仮想環境を検出"
+
+msgctxt "settings"
+msgid "Determines how indent guide backgrounds are colored."
+msgstr "インデントガイドの背景の配色方法を設定します。"
+
+msgctxt "settings"
+msgid "Determines how indent guides are colored."
+msgstr "インデントガイドの配色方法を設定します。"
+
+msgctxt "settings"
+msgid "Determines how snippets are sorted relative to other completion items."
+msgstr "スニペットを他の補完候補に対してどう並べるかを設定します。"
+
+msgctxt "settings"
+msgid "Determines the stepping granularity for debug operations."
+msgstr "デバッグ操作のステップ実行の粒度を設定します。"
+
+msgctxt "settings"
+msgid "Developer"
+msgstr "開発者"
+
+msgctxt "settings"
+msgid "Development Tools"
+msgstr "開発ツール"
+
+msgctxt "settings"
+msgid "Diagnostic Badges"
+msgstr "診断のバッジ"
+
+msgctxt "settings"
+msgid "Diagnostics"
+msgstr "診断"
+
+msgctxt "settings"
+msgid "Diagnostics Attachment File Limit"
+msgstr "診断を添付するファイル数の上限"
+
+msgctxt "settings"
+msgid "Diagnostics Button"
+msgstr "診断のボタン"
+
+msgctxt "settings"
+msgid "Diff Base"
+msgstr "差分の基準"
+
+msgctxt "settings"
+msgid "Diff Stats"
+msgstr "差分の統計"
+
+msgctxt "settings"
+msgid "Diff View Style"
+msgstr "差分の表示スタイル"
+
+msgctxt "settings"
+msgid "Direction to split horizontally."
+msgstr "水平に分割するときの方向です。"
+
+msgctxt "settings"
+msgid "Direction to split vertically."
+msgstr "垂直に分割するときの方向です。"
+
+msgctxt "settings"
+msgid "Directory"
+msgstr "ディレクトリ"
+
+msgctxt "settings"
+msgid "Disable AI"
+msgstr "AI を無効にする"
+
+msgctxt "settings"
+msgid "Disable Git Integration"
+msgstr "Git 連携を無効にする"
+
+msgctxt "settings"
+msgid "Disable all Git integration features in Zed."
+msgstr "Zed の Git 連携機能をすべて無効にします。表示だけでなく、ワークツリーの Git リポジトリ追跡と git status / git diff の実行自体を止めます。リモート SSH ではサーバー側の実行も止まります。切り替えは再起動なしで反映されます。"
+
+msgctxt "settings"
+msgid "Disable in Language Scopes"
+msgstr "無効にする言語スコープ"
+
+msgctxt "settings"
+msgid "Display In"
+msgstr "表示する場所"
+
+msgctxt "settings"
+msgid "Display Language"
+msgstr "表示言語"
+
+msgctxt "settings"
+msgid "Display Mode"
+msgstr "表示モード"
+
+msgctxt "settings"
+msgid "Display Settings"
+msgstr "表示の設定"
+
+msgctxt "settings"
+msgid "Display indent guides in the editor."
+msgstr "エディターにインデントガイドを表示します。"
+
+msgctxt "settings"
+msgid "Display the terminal title in breadcrumbs inside the terminal pane."
+msgstr "ターミナルペイン内のパンくずリストに、ターミナルのタイトルを表示します。"
+
+msgctxt "settings"
+msgid "Display the which-key menu with matching bindings while a multi-stroke binding is pending."
+msgstr "複数ストロークのキーバインドの入力中に、一致するキーバインドを Which-key メニューとして表示します。"
+
+msgctxt "settings"
+msgid "Double Click In Multibuffer"
+msgstr "マルチバッファーでのダブルクリック"
+
+msgctxt "settings"
+msgid "Drag And Drop Selection"
+msgstr "ドラッグ&ドロップによる選択"
+
+msgctxt "settings"
+msgid "Drag and Drop"
+msgstr "ドラッグ&ドロップ"
+
+msgctxt "settings"
+msgid "Drop Size Target"
+msgstr "ドロップ領域のサイズ"
+
+msgctxt "settings"
+msgid "Duration in milliseconds to highlight yanked text in Vim mode."
+msgstr "Vim モードでヤンクしたテキストをハイライトする時間 (ミリ秒) です。"
+
+msgctxt "settings"
+msgid "Edit Debounce Ms"
+msgstr "編集後のデバウンス (ミリ秒)"
+
+msgctxt "settings"
+msgid "Edit Keybindings"
+msgstr "キーバインドの編集"
+
+msgctxt "settings"
+msgid "Edit Predictions"
+msgstr "編集予測"
+
+msgctxt "settings"
+msgid "Editor"
+msgstr "エディター"
+
+msgctxt "settings"
+msgid "Egress"
+msgstr "外部通信"
+
+msgctxt "settings"
+msgid "Egress Control"
+msgstr "外部通信の統制"
+
+msgctxt "settings"
+msgid "Enable Agent"
+msgstr "エージェントを有効にする"
+
+msgctxt "settings"
+msgid "Enable Feedback"
+msgstr "フィードバックを有効にする"
+
+msgctxt "settings"
+msgid "Enable Git Diff"
+msgstr "Git の差分を有効にする"
+
+msgctxt "settings"
+msgid "Enable Git Status"
+msgstr "Git の状態を有効にする"
+
+msgctxt "settings"
+msgid "Enable Helix mode and key bindings."
+msgstr "Helix モードとそのキーバインドを有効にします。"
+
+msgctxt "settings"
+msgid "Enable IDE Server"
+msgstr "IDE サーバーを有効にする"
+
+msgctxt "settings"
+msgid "Enable Keep Preview On Code Navigation"
+msgstr "コードナビゲーション時にプレビューを維持"
+
+msgctxt "settings"
+msgid "Enable Language Server"
+msgstr "言語サーバーを有効にする"
+
+msgctxt "settings"
+msgid "Enable Preview File From Code Navigation"
+msgstr "コードナビゲーションからのファイルのプレビュー"
+
+msgctxt "settings"
+msgid "Enable Preview From File Finder"
+msgstr "ファイル検索からのプレビュー"
+
+msgctxt "settings"
+msgid "Enable Preview From Multibuffer"
+msgstr "マルチバッファーからのプレビュー"
+
+msgctxt "settings"
+msgid "Enable Preview From Project Panel"
+msgstr "プロジェクトパネルからのプレビュー"
+
+msgctxt "settings"
+msgid "Enable Preview Multibuffer From Code Navigation"
+msgstr "コードナビゲーションからのマルチバッファーのプレビュー"
+
+msgctxt "settings"
+msgid "Enable Vim mode and key bindings."
+msgstr "Vim モードとそのキーバインドを有効にします。"
+
+msgctxt "settings"
+msgid "Enable drag and drop selection."
+msgstr "ドラッグ&ドロップによる選択を有効にします。"
+
+msgctxt "settings"
+msgid "Enable middle-click paste on Linux."
+msgstr "Linux で中クリックによる貼り付けを有効にします。"
+
+msgctxt "settings"
+msgid "Enable smartcase searching in Vim mode."
+msgstr "Vim モードで smartcase 検索を有効にします。"
+
+msgctxt "settings"
+msgid "Enable to show entries in tree view list, disable to show in flat view list."
+msgstr "有効にすると項目をツリー表示で、無効にするとフラットな一覧で表示します。"
+
+msgctxt "settings"
+msgid "Enabled"
+msgstr "有効"
+
+msgctxt "settings"
+msgid "Enables or disables formatting with Prettier for a given language."
+msgstr "指定した言語で、Prettier によるフォーマットを有効または無効にします。"
+
+msgctxt "settings"
+msgid "End a remote shell once no terminal has been attached to it for this many hours. 0 never ends it. Applies to shells started after the change."
+msgstr "どのターミナルからも接続されていない状態がこの時間 (時間単位) 続いたら、リモートのシェルを終了します。0 のときは終了しません。新しく起動するシェルから反映されます。"
+
+msgctxt "settings"
+msgid "End the connection to an external agent once none of its threads has been open for this many minutes (the agent and its sandbox stop too). Reopening a thread connects again. 0 keeps the connection until the window closes."
+msgstr "外部エージェントのスレッドが 1 つも開かれていない状態がこの分数だけ続いたら、そのエージェントとの接続を終了します (エージェントとそのサンドボックスも止まります)。スレッドを開き直すと接続し直します。0 でウィンドウを閉じるまで接続を保ちます。"
+
+msgctxt "settings"
+msgid "Ensure Final Newline On Save"
+msgstr "保存時に末尾へ改行を確保"
+
+msgctxt "settings"
+msgid "Entry Spacing"
+msgstr "項目の間隔"
+
+msgctxt "settings"
+msgid "Environment"
+msgstr "環境"
+
+msgctxt "settings"
+msgid "Environment Variables"
+msgstr "環境変数"
+
+msgctxt "settings"
+msgid "Excerpt Context Lines"
+msgstr "抜粋の前後の行数"
+
+msgctxt "settings"
+msgid "Expand Edit Card"
+msgstr "編集カードを展開"
+
+msgctxt "settings"
+msgid "Expand Excerpt Lines"
+msgstr "抜粋を展開する行数"
+
+msgctxt "settings"
+msgid "Expand Outlines With Depth"
+msgstr "アウトラインを展開する深さ"
+
+msgctxt "settings"
+msgid "Expand Terminal Card"
+msgstr "ターミナルカードを展開"
+
+msgctxt "settings"
+msgid "Expose Zed itself as an IDE server on 127.0.0.1 so the Claude Code CLI in the integrated terminal and external agents can read the open files, selections and diagnostics. Diffs can be accepted or rejected in an editor tab. Makes no outgoing connections. Disabled by default."
+msgstr "Zed 自身を 127.0.0.1 の IDE サーバーとして公開し、統合ターミナルの Claude Code CLI や外部のエージェントから、開いているファイル・選択範囲・診断を読めるようにします。差分はエディターのタブで「採用 / 拒否」を選べます。外向きの通信はしません。既定では無効です。"
+
+msgctxt "settings"
+msgid "Extend Comment On Newline"
+msgstr "改行時にコメントを継続"
+
+msgctxt "settings"
+msgid "External Agents"
+msgstr "外部エージェント"
+
+msgctxt "settings"
+msgid "Extra task variables to set for a particular language."
+msgstr "特定の言語に対して設定する、追加のタスク変数です。"
+
+msgctxt "settings"
+msgid "Fallback Branch Name"
+msgstr "既定のブランチ名"
+
+msgctxt "settings"
+msgid "Fast Scroll Sensitivity"
+msgstr "高速スクロールの感度"
+
+msgctxt "settings"
+msgid "Fast scroll sensitivity multiplier for both horizontal and vertical scrolling."
+msgstr "水平・垂直の高速スクロールの感度の倍率です。"
+
+msgctxt "settings"
+msgid "Feature Flags"
+msgstr "機能フラグ"
+
+msgctxt "settings"
+msgid "Fetch Timeout (milliseconds)"
+msgstr "取得のタイムアウト (ミリ秒)"
+
+msgctxt "settings"
+msgid "File Diff"
+msgstr "ファイルの差分"
+
+msgctxt "settings"
+msgid "File Finder"
+msgstr "ファイル検索"
+
+msgctxt "settings"
+msgid "File Icons"
+msgstr "ファイルアイコン"
+
+msgctxt "settings"
+msgid "File Name Template"
+msgstr "ファイル名のテンプレート"
+
+msgctxt "settings"
+msgid "File Scan"
+msgstr "ファイルスキャン"
+
+msgctxt "settings"
+msgid "File Scan Depth"
+msgstr "ファイルスキャンの深さ"
+
+msgctxt "settings"
+msgid "File Scan Exclusions"
+msgstr "ファイルスキャンの除外"
+
+msgctxt "settings"
+msgid "File Scan Inclusions"
+msgstr "ファイルスキャンの対象"
+
+msgctxt "settings"
+msgid "File Type Associations"
+msgstr "ファイルの関連付け"
+
+msgctxt "settings"
+msgid "File Types"
+msgstr "ファイルの種類"
+
+msgctxt "settings"
+msgid "Files larger than this are sent as an outline (a list of symbols and line numbers) instead of in full, and the agent reads only the ranges it needs. Values below 1024 are treated as 1024."
+msgstr "これより大きいファイルは全文ではなくアウトライン (シンボルと行番号の一覧) で送り、必要な範囲だけエージェントに読ませます。1024 未満は 1024 として扱われます。"
+
+msgctxt "settings"
+msgid "Files or globs of files that will be excluded by Zed entirely. They will be skipped during file scans, file searches, and not be displayed in the project file tree. Takes precedence over \"File Scan Inclusions\""
+msgstr "Zed が完全に除外するファイルまたは glob です。ファイルスキャンとファイル検索から除外され、プロジェクトのファイルツリーにも表示されません。「ファイルスキャンの対象」より優先されます"
+
+msgctxt "settings"
+msgid "Files or globs of files that will be included by Zed, even when ignored by git. This is useful for files that are not tracked by git, but are still important to your project. Note that globs that are overly broad can slow down Zed's file scanning. \"File Scan Exclusions\" takes precedence over these inclusions"
+msgstr "git に無視されていても Zed が対象に含めるファイルまたは glob です。git の管理外でもプロジェクトにとって重要なファイルに便利です。範囲が広すぎる glob は Zed のファイルスキャンを遅くする点に注意してください。「ファイルスキャンの除外」がこの設定より優先されます"
+
+msgctxt "settings"
+msgid "Focus Follows Mouse"
+msgstr "マウスでフォーカスを移動"
+
+msgctxt "settings"
+msgid "Focus Follows Mouse Debounce ms"
+msgstr "フォーカス移動のデバウンス (ミリ秒)"
+
+msgctxt "settings"
+msgid "Folder Icons"
+msgstr "フォルダーアイコン"
+
+msgctxt "settings"
+msgid "Follow the System Language"
+msgstr "システムの言語に従う"
+
+msgctxt "settings"
+msgid "Font"
+msgstr "フォント"
+
+msgctxt "settings"
+msgid "Font Fallbacks"
+msgstr "フォールバックフォント"
+
+msgctxt "settings"
+msgid "Font Family"
+msgstr "フォントファミリー"
+
+msgctxt "settings"
+msgid "Font Features"
+msgstr "フォント機能"
+
+msgctxt "settings"
+msgid "Font Size"
+msgstr "フォントサイズ"
+
+msgctxt "settings"
+msgid "Font Weight"
+msgstr "フォントの太さ"
+
+msgctxt "settings"
+msgid "Font fallbacks for terminal text. If not set, defaults to buffer font fallbacks."
+msgstr "ターミナルのテキストのフォールバックフォントです。未設定の場合はバッファーのフォールバックフォントを使います。"
+
+msgctxt "settings"
+msgid "Font family for UI elements."
+msgstr "UI 要素のフォントファミリーです。"
+
+msgctxt "settings"
+msgid "Font family for agent response text in the agent panel. Falls back to the regular UI font family."
+msgstr "エージェントパネルの応答テキストのフォントファミリーです。未設定の場合は通常の UI フォントファミリーを使います。"
+
+msgctxt "settings"
+msgid "Font family for code blocks in the markdown preview. Falls back to the editor font family."
+msgstr "Markdown プレビュー内のコードブロックのフォントファミリーです。未設定の場合はエディターのフォントファミリーを使います。"
+
+msgctxt "settings"
+msgid "Font family for editor text."
+msgstr "エディターのテキストのフォントファミリーです。"
+
+msgctxt "settings"
+msgid "Font family for terminal text. If not set, defaults to buffer font family."
+msgstr "ターミナルのテキストのフォントファミリーです。未設定の場合はバッファーのフォントファミリーを使います。"
+
+msgctxt "settings"
+msgid "Font family for the markdown preview. Falls back to the UI font family."
+msgstr "Markdown プレビューのフォントファミリーです。未設定の場合は UI フォントファミリーを使います。"
+
+msgctxt "settings"
+msgid "Font family for user messages in the agent panel. Falls back to the regular buffer font family."
+msgstr "エージェントパネルのユーザーメッセージのフォントファミリーです。未設定の場合は通常のバッファーのフォントファミリーを使います。"
+
+msgctxt "settings"
+msgid "Font features for terminal text."
+msgstr "ターミナルのテキストのフォント機能です。"
+
+msgctxt "settings"
+msgid "Font size for UI elements."
+msgstr "UI 要素のフォントサイズです。"
+
+msgctxt "settings"
+msgid "Font size for agent response text in the agent panel. Falls back to the regular UI font size."
+msgstr "エージェントパネルの応答テキストのフォントサイズです。未設定の場合は通常の UI フォントサイズを使います。"
+
+msgctxt "settings"
+msgid "Font size for editor text."
+msgstr "エディターのテキストのフォントサイズです。"
+
+msgctxt "settings"
+msgid "Font size for terminal text. If not set, defaults to buffer font size."
+msgstr "ターミナルのテキストのフォントサイズです。未設定の場合はバッファーのフォントサイズを使います。"
+
+msgctxt "settings"
+msgid "Font size for the markdown preview. Falls back to the editor font size."
+msgstr "Markdown プレビューのフォントサイズです。未設定の場合はエディターのフォントサイズを使います。"
+
+msgctxt "settings"
+msgid "Font size for user messages text in the agent panel."
+msgstr "エージェントパネルのユーザーメッセージのフォントサイズです。"
+
+msgctxt "settings"
+msgid "Font weight for UI elements (100-900)."
+msgstr "UI 要素のフォントの太さです (100〜900)。"
+
+msgctxt "settings"
+msgid "Font weight for editor text (100-900)."
+msgstr "エディターのテキストのフォントの太さです (100〜900)。"
+
+msgctxt "settings"
+msgid "Font weight for terminal text in CSS weight units (100-900)."
+msgstr "ターミナルのテキストのフォントの太さです (CSS の重み単位で 100〜900)。"
+
+msgctxt "settings"
+msgid "Forces Prettier integration to use a specific parser name when formatting files with the language."
+msgstr "この言語のファイルをフォーマットするときに、Prettier 連携が使用するパーサー名を強制します。"
+
+msgctxt "settings"
+msgid "Forces Prettier integration to use specific plugins when formatting files with the language."
+msgstr "この言語のファイルをフォーマットするときに、Prettier 連携が使用するプラグインを強制します。"
+
+msgctxt "settings"
+msgid "Forget each thread's consent to \"Launch Outside the Sandbox\" so the next launch asks again. Running agents are not stopped, and the \"Always Launch Outside the Sandbox\" setting stays as it is."
+msgstr "スレッドごとに「サンドボックスの外で起動」に同意した記録を取り消し、次の起動の前にもう一度確認するようにします。動いているエージェントは止めません。「常にサンドボックスの外で起動」の設定は変わりません。"
+
+msgctxt "settings"
+msgid "Format DAP Log Messages"
+msgstr "DAP のログメッセージを整形"
+
+msgctxt "settings"
+msgid "Format On Save"
+msgstr "保存時にフォーマット"
+
+msgctxt "settings"
+msgid "Formatter"
+msgstr "フォーマッタ"
+
+msgctxt "settings"
+msgid "Formatting"
+msgstr "フォーマット"
+
+msgctxt "settings"
+msgid "Fullscreen Mode"
+msgstr "全画面表示のモード"
+
+msgctxt "settings"
+msgid "GNOME-style layout string such as \"close:minimize,maximize\"."
+msgstr "\"close:minimize,maximize\" のような GNOME 形式の配置文字列です。"
+
+msgctxt "settings"
+msgid "General"
+msgstr "全般"
+
+msgctxt "settings"
+msgid "General Settings"
+msgstr "全般設定"
+
+msgctxt "settings"
+msgid "Git Blame View"
+msgstr "Git blame ビュー"
+
+msgctxt "settings"
+msgid "Git Diff"
+msgstr "Git の差分"
+
+msgctxt "settings"
+msgid "Git Gutter"
+msgstr "Git ガター"
+
+msgctxt "settings"
+msgid "Git Gutter Width"
+msgstr "Git ガターの幅"
+
+msgctxt "settings"
+msgid "Git Hunks"
+msgstr "Git の変更箇所"
+
+msgctxt "settings"
+msgid "Git Integration"
+msgstr "Git 連携"
+
+msgctxt "settings"
+msgid "Git Panel"
+msgstr "Git パネル"
+
+msgctxt "settings"
+msgid "Git Panel Button"
+msgstr "Git パネルのボタン"
+
+msgctxt "settings"
+msgid "Git Panel Default Width"
+msgstr "Git パネルの既定の幅"
+
+msgctxt "settings"
+msgid "Git Panel Dock"
+msgstr "Git パネルのドック位置"
+
+msgctxt "settings"
+msgid "Git Panel Status Style"
+msgstr "Git パネルの状態の表示スタイル"
+
+msgctxt "settings"
+msgid "Git Status"
+msgstr "Git の状態"
+
+msgctxt "settings"
+msgid "Git Status Indicator"
+msgstr "Git の状態インジケーター"
+
+msgctxt "settings"
+msgid "Give Agents IDE Tools"
+msgstr "エージェントに IDE ツールを渡す"
+
+msgctxt "settings"
+msgid "Give Claude Code tabs and external agents tools for highlights, annotations, tours, definitions, references and symbol search. Separate from \"Enable IDE Server\", and writes no lock file. Makes no outgoing connections."
+msgstr "Claude Code のタブや外部のエージェントに、ハイライト・注釈・ツアー・定義・参照・シンボル検索のツールを渡します。「IDE サーバーを有効にする」とは別の設定で、ロックファイルは書きません。外向きの通信はしません。"
+
+msgctxt "settings"
+msgid "Global Substitution Default"
+msgstr "置換を既定で行全体に適用"
+
+msgctxt "settings"
+msgid "Global switch to toggle hints on and off."
+msgstr "ヒントの表示を切り替える全体スイッチです。"
+
+msgctxt "settings"
+msgid "Global switch to toggle inline values on and off when debugging."
+msgstr "デバッグ中のインライン値の表示を切り替える全体スイッチです。"
+
+msgctxt "settings"
+msgid "Globs to match against file paths to determine if a file is private."
+msgstr "ファイルがプライベートかどうかを判定するために、ファイルパスと照合する glob です。"
+
+msgctxt "settings"
+msgid "Globs to match files that will be considered \"hidden\" and can be hidden from the project panel."
+msgstr "「隠しファイル」として扱い、プロジェクトパネルから隠せるようにするファイルを照合する glob です。"
+
+msgctxt "settings"
+msgid "Go To Definition Fallback"
+msgstr "定義へ移動のフォールバック"
+
+msgctxt "settings"
+msgid "Go To Definition Scroll Strategy"
+msgstr "定義へ移動したときのスクロール方法"
+
+msgctxt "settings"
+msgid "Group By"
+msgstr "グループ化"
+
+msgctxt "settings"
+msgid "Guides"
+msgstr "ガイド"
+
+msgctxt "settings"
+msgid "Gutter"
+msgstr "ガター"
+
+msgctxt "settings"
+msgid "Hand the shells of SSH terminals to the remote Zed server. Running commands keep going when the connection drops, and reconnecting shows the output so far again so you can carry on. Closing the tab ends the shell. Not available on Windows remote hosts."
+msgstr "SSH のターミナルのシェルをリモートの Zed サーバーに預けます。接続が切れても実行中のコマンドは止まらず、再接続するとそれまでの出力を表示し直して続きから使えます。タブを閉じるとシェルも終了します。Windows のリモートホストでは使えません。"
+
+msgctxt "settings"
+msgid "Hard Tabs"
+msgstr "タブ文字を使用"
+
+msgctxt "settings"
+msgid "Helix Mode"
+msgstr "Helix モード"
+
+msgctxt "settings"
+msgid "Hidden Files"
+msgstr "隠しファイル"
+
+msgctxt "settings"
+msgid "Hide .gitignore"
+msgstr ".gitignore の項目を隠す"
+
+msgctxt "settings"
+msgid "Hide Hidden"
+msgstr "隠し項目を隠す"
+
+msgctxt "settings"
+msgid "Hide Mouse"
+msgstr "マウスカーソルを隠す"
+
+msgctxt "settings"
+msgid "Hide Root"
+msgstr "ルート項目を隠す"
+
+msgctxt "settings"
+msgid "Hide the values of variables in private files."
+msgstr "プライベートファイル内の変数の値を隠します。"
+
+msgctxt "settings"
+msgid "Hiding Delay"
+msgstr "非表示までの遅延"
+
+msgctxt "settings"
+msgid "Highlight all occurrences of selected text."
+msgstr "選択したテキストと一致するすべての箇所をハイライトします。"
+
+msgctxt "settings"
+msgid "Highlight on Yank Duration"
+msgstr "ヤンク時のハイライト時間"
+
+msgctxt "settings"
+msgid "Highlighting"
+msgstr "ハイライト"
+
+msgctxt "settings"
+msgid "Home Page"
+msgstr "起動時に開くページ"
+
+msgctxt "settings"
+msgid "Horizontal Scroll"
+msgstr "水平スクロール"
+
+msgctxt "settings"
+msgid "Horizontal Scroll Margin"
+msgstr "水平スクロールの余白"
+
+msgctxt "settings"
+msgid "Horizontal Scrollbar"
+msgstr "水平スクロールバー"
+
+msgctxt "settings"
+msgid "Horizontal Split Direction"
+msgstr "水平分割の方向"
+
+msgctxt "settings"
+msgid "Hover Popover"
+msgstr "ホバーポップアップ"
+
+msgctxt "settings"
+msgid "How Git hunks are displayed visually in the editor."
+msgstr "エディターで Git の変更箇所をどのように表示するかを設定します。"
+
+msgctxt "settings"
+msgid "How `zed <path>` opens directories when no flag is specified."
+msgstr "フラグを指定しなかったときに `zed <path>` がディレクトリをどう開くかを設定します。"
+
+msgctxt "settings"
+msgid "How and when the scrollbar should be displayed."
+msgstr "スクロールバーをどのように、いつ表示するかを設定します。"
+
+msgctxt "settings"
+msgid "How entry statuses are displayed."
+msgstr "項目の状態をどのように表示するかを設定します。"
+
+msgctxt "settings"
+msgid "How line endings should be handled for new files and during format and save operations."
+msgstr "新規ファイル、およびフォーマットと保存の操作で、改行コードをどう扱うかを設定します。"
+
+msgctxt "settings"
+msgid "How many characters has to be in the completions query to automatically show the words-based completions."
+msgstr "単語ベースの補完を自動的に表示するために必要な、補完クエリの文字数です。"
+
+msgctxt "settings"
+msgid "How many columns a tab should occupy."
+msgstr "タブが占める列数です。"
+
+msgctxt "settings"
+msgid "How many lines of context to provide in multibuffer excerpts by default."
+msgstr "マルチバッファーの抜粋に既定で何行分の前後関係を含めるかを設定します。"
+
+msgctxt "settings"
+msgid "How many lines to expand the multibuffer excerpts by default."
+msgstr "マルチバッファーの抜粋を既定で何行分展開するかを設定します。"
+
+msgctxt "settings"
+msgid "How much `git status` reports about untracked files. All reports every file inside untracked folders, which makes the project panel's colors exact but is the slowest on huge repositories. Normal reports only the folders, and No leaves untracked files out entirely. Over remote SSH the same value is used on the server."
+msgstr "git status に追跡されていないファイルをどこまで報告させるかを設定します。All は追跡されていないフォルダーの中身も 1 件ずつ報告するため、プロジェクトパネルの色分けが正確になりますが、巨大なリポジトリでは最も重くなります。Normal はフォルダーだけ、No は追跡されていないファイルを一切扱いません。リモート SSH でも同じ値がサーバー側で使われます。"
+
+msgctxt "settings"
+msgid "How much of the body of a web page attached with @fetch is sent. Values below 1024 are treated as 1024."
+msgstr "@fetch で添付した Web ページの本文のうち、送る部分の上限です。1024 未満は 1024 として扱われます。"
+
+msgctxt "settings"
+msgid "How much to fade out unused code (0.0 - 0.9)."
+msgstr "未使用のコードをどの程度淡く表示するかを設定します (0.0〜0.9)。"
+
+msgctxt "settings"
+msgid "How projects open from the UI by default."
+msgstr "UI からプロジェクトを開くときの既定の動作です。"
+
+msgctxt "settings"
+msgid "How thinking blocks should be displayed by default. 'Auto' fully expands during streaming, then auto-collapses when done. 'Preview' auto-expands with a height constraint during streaming. 'Always Expanded' shows full content. 'Always Collapsed' keeps them collapsed."
+msgstr "思考ブロックを既定でどのように表示するかを設定します。'Auto' はストリーミング中は完全に展開し、完了後に自動的に折りたたみます。'Preview' は高さを制限した状態でストリーミング中に自動展開します。'Always Expanded' は常に全体を表示します。'Always Collapsed' は常に折りたたんだままにします。"
+
+msgctxt "settings"
+msgid "How to display diffs in the editor."
+msgstr "エディターで差分をどのように表示するかを設定します。"
+
+msgctxt "settings"
+msgid "How to display the LSP item kind (function, method, variable, etc.) of each entry in the completions menu."
+msgstr "補完メニューの各項目について、LSP の項目の種類 (関数・メソッド・変数など) をどのように表示するかを設定します。"
+
+msgctxt "settings"
+msgid "How to group entries in the git panel."
+msgstr "git パネルの項目のグループ化の方法です。"
+
+msgctxt "settings"
+msgid "How to highlight the current line in the minimap."
+msgstr "ミニマップで現在の行をどのようにハイライトするかを設定します。"
+
+msgctxt "settings"
+msgid "How to highlight the current line."
+msgstr "現在の行をどのようにハイライトするかを設定します。"
+
+msgctxt "settings"
+msgid "How to perform a buffer format."
+msgstr "バッファーのフォーマット方法を設定します。"
+
+msgctxt "settings"
+msgid "How to render LSP color previews in the editor."
+msgstr "エディターで LSP の色プレビューをどのように描画するかを設定します。"
+
+msgctxt "settings"
+msgid "How to scroll the target into view when navigating to a definition or reference."
+msgstr "定義や参照へ移動したときに、移動先をどのようにスクロールして表示するかを設定します。"
+
+msgctxt "settings"
+msgid "How to soft-wrap long lines of text."
+msgstr "長い行をどのように折り返すかを設定します。"
+
+msgctxt "settings"
+msgid "How to sort entries in the git panel."
+msgstr "git パネルの項目の並び順です。"
+
+msgctxt "settings"
+msgid "Hunk Style"
+msgstr "変更箇所のスタイル"
+
+msgctxt "settings"
+msgid "Icon Theme"
+msgstr "アイコンテーマ"
+
+msgctxt "settings"
+msgid "Icon Theme Name"
+msgstr "アイコンテーマ名"
+
+msgctxt "settings"
+msgid "Idle Agent Disconnect (Minutes)"
+msgstr "使わなくなったエージェントを止めるまでの分数"
+
+msgctxt "settings"
+msgid "Image Viewer"
+msgstr "画像ビューアー"
+
+msgctxt "settings"
+msgid "In the grid, grow the row height so that cells containing line breaks are shown in full. When off, they are cut to one line."
+msgstr "表 (グリッド) で、改行を含むセルの行の高さを広げてすべて表示します。オフにすると 1 行に切り詰めます。"
+
+msgctxt "settings"
+msgid "Inactive Opacity"
+msgstr "非アクティブ時の不透明度"
+
+msgctxt "settings"
+msgid "Include Ignored"
+msgstr "無視されたファイルを含める"
+
+msgctxt "settings"
+msgid "Include Ignored in Search"
+msgstr "検索に無視されたファイルを含める"
+
+msgctxt "settings"
+msgid "Include Warnings"
+msgstr "警告を含める"
+
+msgctxt "settings"
+msgid "Include ignored files in search results by default."
+msgstr "既定で検索結果に無視されたファイルを含めます。"
+
+msgctxt "settings"
+msgid "Indent Guides"
+msgstr "インデントガイド"
+
+msgctxt "settings"
+msgid "Indent Size"
+msgstr "インデント幅"
+
+msgctxt "settings"
+msgid "Indentation"
+msgstr "インデント"
+
+msgctxt "settings"
+msgid "Inlay Hints"
+msgstr "インレイヒント"
+
+msgctxt "settings"
+msgid "Inline Attachment Limit (Bytes)"
+msgstr "添付を全文で送る上限 (バイト)"
+
+msgctxt "settings"
+msgid "Inline Code Actions"
+msgstr "インラインのコードアクション"
+
+msgctxt "settings"
+msgid "Inline Diagnostics"
+msgstr "インライン診断"
+
+msgctxt "settings"
+msgid "Inline Git Blame"
+msgstr "インライン Git blame"
+
+msgctxt "settings"
+msgid "Input Audio Device"
+msgstr "入力オーディオデバイス"
+
+msgctxt "settings"
+msgid "Insert Mode"
+msgstr "挿入方法"
+
+msgctxt "settings"
+msgid "Insert a repository map (the files and the symbols declared in them) right after the list of project root folders in the system prompt. 0 turns it off. The limit is 32768 bytes; larger values are treated as 32768. It is rebuilt only when the project's contents change."
+msgstr "システムプロンプトのプロジェクトのルートフォルダー一覧の直後に、リポジトリマップ (ファイルとそこで宣言されているシンボルの一覧) を差し込みます。0 で無効です。上限は 32768 バイトで、それより大きい値は 32768 として扱われます。プロジェクトの内容が変わったときだけ作り直します。"
+
+msgctxt "settings"
+msgid "Instrumentation"
+msgstr "計測"
+
+msgctxt "settings"
+msgid "JSX Tag Auto Close"
+msgstr "JSX タグの自動閉じ"
+
+msgctxt "settings"
+msgid "Keep Selection On Copy"
+msgstr "コピー後も選択を維持"
+
+msgctxt "settings"
+msgid "Keep Shells Running When Disconnected"
+msgstr "切断してもシェルを動かし続ける"
+
+msgctxt "settings"
+msgid "Key-value pairs to add to the terminal's environment."
+msgstr "ターミナルの環境に追加するキーと値の組です。"
+
+msgctxt "settings"
+msgid "Keybindings"
+msgstr "キーバインド"
+
+msgctxt "settings"
+msgid "Keymap"
+msgstr "キーマップ"
+
+msgctxt "settings"
+msgid "LLM Providers"
+msgstr "LLM プロバイダー"
+
+msgctxt "settings"
+msgid "LSP"
+msgstr "LSP"
+
+msgctxt "settings"
+msgid "LSP Completions"
+msgstr "LSP の補完"
+
+msgctxt "settings"
+msgid "LSP Document Colors"
+msgstr "LSP の色プレビュー"
+
+msgctxt "settings"
+msgid "LSP Document Symbols"
+msgstr "LSP のドキュメントシンボル"
+
+msgctxt "settings"
+msgid "LSP Folding Ranges"
+msgstr "LSP の折りたたみ範囲"
+
+msgctxt "settings"
+msgid "LSP Highlights"
+msgstr "LSP のハイライト"
+
+msgctxt "settings"
+msgid "LSP Pull Diagnostics"
+msgstr "LSP のプル型診断"
+
+msgctxt "settings"
+msgid "LSP Results Location"
+msgstr "LSP の結果の表示先"
+
+msgctxt "settings"
+msgid "Language Servers"
+msgstr "言語サーバー"
+
+msgctxt "settings"
+msgid "Languages"
+msgstr "言語"
+
+msgctxt "settings"
+msgid "Languages & Tools"
+msgstr "言語とツール"
+
+msgctxt "settings"
+msgid "Launch Approvals"
+msgstr "起動の許可・不許可の記録"
+
+msgctxt "settings"
+msgid "Layout"
+msgstr "レイアウト"
+
+msgctxt "settings"
+msgid "Layout Settings"
+msgstr "レイアウトの設定"
+
+msgctxt "settings"
+msgid "Layout mode for the bottom dock."
+msgstr "下ドックのレイアウトモードです。"
+
+msgctxt "settings"
+msgid "Left padding for centered layout."
+msgstr "中央寄せレイアウトの左側の余白です。"
+
+msgctxt "settings"
+msgid "Let agents read the end (up to 4 KB) of the output of the last failed task (non-zero exit) through the IDE server's getLastTaskOutput tool."
+msgstr "最後に失敗したタスク (0 以外で終了) の出力の末尾 (最大 4 KB) を、IDE サーバーのツール getLastTaskOutput でエージェントが読めるようにします。"
+
+msgctxt "settings"
+msgid "Light Icon Theme"
+msgstr "ライトアイコンテーマ"
+
+msgctxt "settings"
+msgid "Light Theme"
+msgstr "ライトテーマ"
+
+msgctxt "settings"
+msgid "Limit Content Width"
+msgstr "内容の幅を制限"
+
+msgctxt "settings"
+msgid "Limit Markdown Preview Width"
+msgstr "Markdown プレビューの幅を制限"
+
+msgctxt "settings"
+msgid "Limit the diagnostics attached with @diagnostics to this many files. Values below 1 are treated as 1."
+msgstr "@diagnostics で添付する診断を、この数のファイルまでに絞ります。1 未満は 1 として扱われます。"
+
+msgctxt "settings"
+msgid "Line Ending"
+msgstr "改行コード"
+
+msgctxt "settings"
+msgid "Line Endings Button"
+msgstr "改行コードのボタン"
+
+msgctxt "settings"
+msgid "Line Height"
+msgstr "行の高さ"
+
+msgctxt "settings"
+msgid "Line Width"
+msgstr "線の太さ"
+
+msgctxt "settings"
+msgid "Line height for editor text."
+msgstr "エディターのテキストの行の高さです。"
+
+msgctxt "settings"
+msgid "Line height for terminal text."
+msgstr "ターミナルのテキストの行の高さです。"
+
+msgctxt "settings"
+msgid "Linked Edits"
+msgstr "連動編集"
+
+msgctxt "settings"
+msgid "Location"
+msgstr "表示位置"
+
+msgctxt "settings"
+msgid "Log DAP Communications"
+msgstr "DAP の通信をログに記録"
+
+msgctxt "settings"
+msgid "Log Directory"
+msgstr "保存先フォルダー"
+
+msgctxt "settings"
+msgid "MCP Servers"
+msgstr "MCP サーバー"
+
+msgctxt "settings"
+msgid "Markdown Format Bar"
+msgstr "Markdown 整形バー"
+
+msgctxt "settings"
+msgid "Markdown Preview Font"
+msgstr "Markdown プレビューのフォント"
+
+msgctxt "settings"
+msgid "Max Content Width"
+msgstr "内容の最大幅"
+
+msgctxt "settings"
+msgid "Max Scroll History Lines"
+msgstr "スクロール履歴の最大行数"
+
+msgctxt "settings"
+msgid "Max Severity"
+msgstr "最大の重大度"
+
+msgctxt "settings"
+msgid "Max Width"
+msgstr "最大幅"
+
+msgctxt "settings"
+msgid "Max Width Columns"
+msgstr "最大幅 (列数)"
+
+msgctxt "settings"
+msgid "Maximum Tabs"
+msgstr "タブの最大数"
+
+msgctxt "settings"
+msgid "Maximum content width in pixels. Content will be centered when the pane is wider than this value."
+msgstr "内容の最大幅 (ピクセル) です。ペインがこの値より広いときは内容を中央に寄せます。"
+
+msgctxt "settings"
+msgid "Maximum content width in pixels. Content will be centered when the panel is wider than this value."
+msgstr "内容の最大幅 (ピクセル) です。パネルがこの値より広いときは内容を中央に寄せます。"
+
+msgctxt "settings"
+msgid "Maximum directory depth to eagerly index outside of git repositories; contents of directories at this depth or deeper are indexed on demand. Repositories rooted shallower than this depth are always indexed fully. In projects that are not rooted at a git repository, repositories directly inside a root folder activate their git features immediately; deeper ones activate on first use. 0 means no limit and activates all git repositories immediately"
+msgstr "git リポジトリの外側で先読みインデックスを作成するディレクトリの最大の深さです。この深さ以上のディレクトリの内容は、必要になった時点でインデックスされます。この深さより浅い位置にあるリポジトリは常に完全にインデックスされます。git リポジトリを起点としないプロジェクトでは、ルートフォルダーの直下にあるリポジトリは即座に git 機能が有効になり、それより深いものは最初に使われた時点で有効になります。0 は無制限を意味し、すべての git リポジトリを即座に有効にします"
+
+msgctxt "settings"
+msgid "Maximum length of the commit message title before a warning is shown. Set to 0 to disable."
+msgstr "警告を表示するまでのコミットメッセージのタイトルの最大長です。0 で無効になります。"
+
+msgctxt "settings"
+msgid "Maximum number of columns to display in the minimap."
+msgstr "ミニマップに表示する最大の列数です。"
+
+msgctxt "settings"
+msgid "Maximum number of lines to keep in scrollback history (max: 100,000; 0 disables scrolling)."
+msgstr "スクロールバックの履歴に保持する最大の行数です (最大 100,000。0 でスクロールを無効化)。"
+
+msgctxt "settings"
+msgid "Maximum open tabs in a pane. Will not close an unsaved tab."
+msgstr "1 つのペインで開けるタブの最大数です。未保存のタブは閉じられません。"
+
+msgctxt "settings"
+msgid "Menu Delay"
+msgstr "メニューの遅延"
+
+msgctxt "settings"
+msgid "Message Editor Min Lines"
+msgstr "メッセージエディターの最小行数"
+
+msgctxt "settings"
+msgid "Middle Click Paste"
+msgstr "中クリックで貼り付け"
+
+msgctxt "settings"
+msgid "Min Line Number Digits"
+msgstr "行番号の最小桁数"
+
+msgctxt "settings"
+msgid "Minimap"
+msgstr "ミニマップ"
+
+msgctxt "settings"
+msgid "Minimum Column"
+msgstr "最小の列"
+
+msgctxt "settings"
+msgid "Minimum Contrast"
+msgstr "最小コントラスト"
+
+msgctxt "settings"
+msgid "Minimum Contrast For Highlights"
+msgstr "ハイライトの最小コントラスト"
+
+msgctxt "settings"
+msgid "Minimum Split Diff Width"
+msgstr "左右分割の差分の最小幅"
+
+msgctxt "settings"
+msgid "Minimum number of characters to reserve space for in the gutter."
+msgstr "ガターに領域を確保しておく最小の文字数です。"
+
+msgctxt "settings"
+msgid "Minimum number of lines to display in the agent message editor."
+msgstr "エージェントのメッセージエディターに表示する最小の行数です。"
+
+msgctxt "settings"
+msgid "Minimum time to wait before pulling diagnostics from the language server(s)."
+msgstr "言語サーバーから診断を取得するまでの最小の待ち時間です。"
+
+msgctxt "settings"
+msgid "Miscellaneous"
+msgstr "その他"
+
+msgctxt "settings"
+msgid "Modal Editing"
+msgstr "モーダル編集"
+
+msgctxt "settings"
+msgid "Mode"
+msgstr "モード"
+
+msgctxt "settings"
+msgid "Modifier key for adding multiple cursors."
+msgstr "カーソルを追加するときの修飾キーです。"
+
+msgctxt "settings"
+msgid "Mouse Wheel Zoom"
+msgstr "マウスホイールでズーム"
+
+msgctxt "settings"
+msgid "Multi Cursor Modifier"
+msgstr "複数カーソルの修飾キー"
+
+msgctxt "settings"
+msgid "Multibuffer"
+msgstr "マルチバッファー"
+
+msgctxt "settings"
+msgid "Mute On Join"
+msgstr "参加時にミュート"
+
+msgctxt "settings"
+msgid "Network"
+msgstr "ネットワーク"
+
+msgctxt "settings"
+msgid "Network Allowlist"
+msgstr "ネットワーク許可リスト"
+
+msgctxt "settings"
+msgid "Newly opened terminals start recording their output automatically."
+msgstr "新しく開いたターミナルが、出力の記録を自動で始めます。"
+
+msgctxt "settings"
+msgid "Notify When Agent Waiting"
+msgstr "エージェントの待機時に通知"
+
+msgctxt "settings"
+msgid "Number of lines to search for modelines (set to 0 to disable)."
+msgstr "modeline を探す行数です (0 で無効)。"
+
+msgctxt "settings"
+msgid "Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting."
+msgstr "Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting."
+
+msgctxt "settings"
+msgid "On Last Window Closed"
+msgstr "最後のウィンドウを閉じたとき"
+
+msgctxt "settings"
+msgid "On: format the whole buffer.\nOff: do not format.\nModifications: format only lines with unstaged changes; skips formatting when a git diff or LSP range formatting is unavailable.\nModifications If Available: same, but falls back to formatting the whole buffer."
+msgstr "On: バッファー全体をフォーマットします。\nOff: フォーマットしません。\nModifications: 未ステージの変更がある行だけをフォーマットします。git の差分または LSP の範囲フォーマットが使えない場合はフォーマットしません。\nModifications If Available: 同様ですが、使えない場合はバッファー全体のフォーマットにフォールバックします。"
+
+msgctxt "settings"
+msgid "Opacity of inactive panels (0.0 - 1.0)."
+msgstr "非アクティブなパネルの不透明度です (0.0〜1.0)。"
+
+msgctxt "settings"
+msgid "Open CSV / TSV as a Grid"
+msgstr "CSV / TSV を表として開く"
+
+msgctxt "settings"
+msgid "Open Keymap"
+msgstr "キーマップを開く"
+
+msgctxt "settings"
+msgid "Open Links In Mouse Mode"
+msgstr "マウスモードでもリンクを開く"
+
+msgctxt "settings"
+msgid "Open Macro Folders Collapsed"
+msgstr "マクロのフォルダーを閉じて開く"
+
+msgctxt "settings"
+msgid "Optimize Zed's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
+msgstr "スクリーンリーダーなどの支援技術向けに Zed のインターフェースを最適化します。有効にすると、通常は折りたたまれるコントロールが展開されたままになり、キーボードで操作できます。"
+
+msgctxt "settings"
+msgid "Option As Meta"
+msgstr "Option キーを Meta キーとして扱う"
+
+msgctxt "settings"
+msgid "Options"
+msgstr "オプション"
+
+msgctxt "settings"
+msgid "Outline Limit (Bytes)"
+msgstr "アウトラインの上限 (バイト)"
+
+msgctxt "settings"
+msgid "Outline Panel"
+msgstr "アウトラインパネル"
+
+msgctxt "settings"
+msgid "Outline Panel Button"
+msgstr "アウトラインパネルのボタン"
+
+msgctxt "settings"
+msgid "Outline Panel Default Width"
+msgstr "アウトラインパネルの既定の幅"
+
+msgctxt "settings"
+msgid "Outline Panel Dock"
+msgstr "アウトラインパネルのドック位置"
+
+msgctxt "settings"
+msgid "Output Audio Device"
+msgstr "出力オーディオデバイス"
+
+msgctxt "settings"
+msgid "Padding"
+msgstr "余白"
+
+msgctxt "settings"
+msgid "Padding between the end of the source line and the start of the inline blame in columns."
+msgstr "ソース行の末尾からインライン blame の開始位置までの余白 (列数) です。"
+
+msgctxt "settings"
+msgid "Pane Modifiers"
+msgstr "ペインの表示調整"
+
+msgctxt "settings"
+msgid "Pane Split Direction"
+msgstr "ペインの分割方向"
+
+msgctxt "settings"
+msgid "Panel Tab Bar"
+msgstr "パネルのタブバー"
+
+msgctxt "settings"
+msgid "Panels"
+msgstr "パネル"
+
+msgctxt "settings"
+msgid "Parser"
+msgstr "パーサー"
+
+msgctxt "settings"
+msgid "Path Style"
+msgstr "パスの表示スタイル"
+
+msgctxt "settings"
+msgid "Performance Profiler"
+msgstr "パフォーマンスプロファイラー"
+
+msgctxt "settings"
+msgid "Pinned Tabs Layout"
+msgstr "ピン留めタブの配置"
+
+msgctxt "settings"
+msgid "Play Sound When Agent Done"
+msgstr "エージェントの完了時に音を鳴らす"
+
+msgctxt "settings"
+msgid "Plugins"
+msgstr "プラグイン"
+
+msgctxt "settings"
+msgid "Position of the close button in a tab."
+msgstr "タブ内の閉じるボタンの位置です。"
+
+msgctxt "settings"
+msgid "Prefer LSP"
+msgstr "LSP を優先"
+
+msgctxt "settings"
+msgid "Preferred Line Length"
+msgstr "推奨の行の長さ"
+
+msgctxt "settings"
+msgid "Preferred debuggers for this language."
+msgstr "この言語で優先的に使うデバッガーです。"
+
+msgctxt "settings"
+msgid "Prefix every line with `[YYYY-MM-DD HH:MM:SS] `. In a terminal that is recording, this can also be toggled from the recording bar."
+msgstr "各行の先頭に `[YYYY-MM-DD HH:MM:SS] ` を付けます。記録中のターミナルでは、記録中のバーからも切り替えられます。"
+
+msgctxt "settings"
+msgid "Prettier"
+msgstr "Prettier"
+
+msgctxt "settings"
+msgid "Preview Channel"
+msgstr "Preview チャンネル"
+
+msgctxt "settings"
+msgid "Preview Tabs"
+msgstr "プレビュータブ"
+
+msgctxt "settings"
+msgid "Preview Tabs Enabled"
+msgstr "プレビュータブを有効にする"
+
+msgctxt "settings"
+msgid "Primary Click Behavior"
+msgstr "クリック時の動作"
+
+msgctxt "settings"
+msgid "Privacy"
+msgstr "プライバシー"
+
+msgctxt "settings"
+msgid "Private Files"
+msgstr "プライベートファイル"
+
+msgctxt "settings"
+msgid "Program"
+msgstr "プログラム"
+
+msgctxt "settings"
+msgid "Project Panel"
+msgstr "プロジェクトパネル"
+
+msgctxt "settings"
+msgid "Project Panel Button"
+msgstr "プロジェクトパネルのボタン"
+
+msgctxt "settings"
+msgid "Project Panel Default Width"
+msgstr "プロジェクトパネルの既定の幅"
+
+msgctxt "settings"
+msgid "Project Panel Dock"
+msgstr "プロジェクトパネルのドック位置"
+
+msgctxt "settings"
+msgid "Project Search Button"
+msgstr "プロジェクト内検索のボタン"
+
+msgctxt "settings"
+msgid "Proxy"
+msgstr "プロキシ"
+
+msgctxt "settings"
+msgid "Quick Actions"
+msgstr "クイックアクション"
+
+msgctxt "settings"
+msgid "Record Automatically"
+msgstr "自動でログを記録する"
+
+msgctxt "settings"
+msgid "Redact Private Values"
+msgstr "プライベートな値を伏せる"
+
+msgctxt "settings"
+msgid "Reduce Motion"
+msgstr "モーションを減らす"
+
+msgctxt "settings"
+msgid "Regex"
+msgstr "正規表現"
+
+msgctxt "settings"
+msgid "Regex Search"
+msgstr "正規表現検索"
+
+msgctxt "settings"
+msgid "Relative Line Numbers"
+msgstr "相対行番号"
+
+msgctxt "settings"
+msgid "Relative size of the drop target in the editor that will open dropped file as a split pane."
+msgstr "ドロップしたファイルを分割ペインで開くための、エディター内のドロップ領域の相対サイズです。"
+
+msgctxt "settings"
+msgid "Relay Remote Downloads Through This Machine"
+msgstr "リモートの通信をこの PC 経由にする"
+
+msgctxt "settings"
+msgid "Remote"
+msgstr "リモート"
+
+msgctxt "settings"
+msgid "Remote Terminal Persistence"
+msgstr "リモートターミナルの切断対策"
+
+msgctxt "settings"
+msgid "Remove ANSI / VT escape sequences and save plain text."
+msgstr "ANSI / VT のエスケープシーケンスを取り除いて、素のテキストとして保存します。"
+
+msgctxt "settings"
+msgid "Remove Trailing Whitespace On Save"
+msgstr "保存時に行末の空白を削除"
+
+msgctxt "settings"
+msgid "Repository Map Size in System Prompt (Bytes)"
+msgstr "システムプロンプトに含めるリポジトリマップのバイト数"
+
+msgctxt "settings"
+msgid "Restore File State"
+msgstr "ファイルの状態を復元"
+
+msgctxt "settings"
+msgid "Restore On Startup"
+msgstr "起動時に復元する内容"
+
+msgctxt "settings"
+msgid "Restore Unsaved Buffers"
+msgstr "未保存のバッファーを復元"
+
+msgctxt "settings"
+msgid "Restore previous file state when reopening."
+msgstr "ファイルを再度開いたときに前回の状態を復元します。"
+
+msgctxt "settings"
+msgid "Review and change the elevated terminal sandbox permissions that are always allowed without prompting."
+msgstr "エージェントのターミナルコマンドを OS のサンドボックスで実行するかどうかを切り替え、サンドボックス内の許可 (書き込み先・ネットワーク) を設定します。自動承認はサンドボックス内で実行するときだけ効きます。"
+
+msgctxt "settings"
+msgid "Review and revoke the decisions recorded for the MCP servers, language servers and external formatters that project settings tried to launch."
+msgstr "プロジェクトの設定が起動しようとした MCP サーバー・言語サーバー・外部フォーマッターについて、許可・不許可の記録を確認して取り消します。"
+
+msgctxt "settings"
+msgid "Revoke Consents"
+msgstr "同意を取り消す"
+
+msgctxt "settings"
+msgid "Right padding for centered layout."
+msgstr "中央寄せレイアウトの右側の余白です。"
+
+msgctxt "settings"
+msgid "Rounded Selection"
+msgstr "選択範囲の角丸"
+
+msgctxt "settings"
+msgid "Sandbox"
+msgstr "サンドボックス"
+
+msgctxt "settings"
+msgid "Save Breakpoints"
+msgstr "ブレークポイントを保存"
+
+msgctxt "settings"
+msgid "Save after inactivity period (in milliseconds)."
+msgstr "操作がない状態が続いた後に保存します (ミリ秒)。"
+
+msgctxt "settings"
+msgid "Scan Symbolic Links"
+msgstr "シンボリックリンクをスキャン"
+
+msgctxt "settings"
+msgid "Scoped Settings"
+msgstr "適用範囲付きの設定"
+
+msgctxt "settings"
+msgid "Scroll Bar"
+msgstr "スクロールバー"
+
+msgctxt "settings"
+msgid "Scroll Beyond Last Line"
+msgstr "最終行を越えてスクロール"
+
+msgctxt "settings"
+msgid "Scroll Debounce Ms"
+msgstr "スクロール後のデバウンス (ミリ秒)"
+
+msgctxt "settings"
+msgid "Scroll Multiplier"
+msgstr "スクロールの倍率"
+
+msgctxt "settings"
+msgid "Scroll Sensitivity"
+msgstr "スクロールの感度"
+
+msgctxt "settings"
+msgid "Scroll sensitivity multiplier for both horizontal and vertical scrolling."
+msgstr "水平・垂直スクロールの感度の倍率です。"
+
+msgctxt "settings"
+msgid "Scrollbar"
+msgstr "スクロールバー"
+
+msgctxt "settings"
+msgid "Scrolling"
+msgstr "スクロール"
+
+msgctxt "settings"
+msgid "Search"
+msgstr "検索"
+
+msgctxt "settings"
+msgid "Search & Files"
+msgstr "検索とファイル"
+
+msgctxt "settings"
+msgid "Search Results"
+msgstr "検索結果"
+
+msgctxt "settings"
+msgid "Search URL"
+msgstr "検索 URL"
+
+msgctxt "settings"
+msgid "Search Wrap"
+msgstr "検索の折り返し"
+
+msgctxt "settings"
+msgid "Search case-sensitively by default."
+msgstr "既定で大文字と小文字を区別して検索します。"
+
+msgctxt "settings"
+msgid "Search for whole words by default."
+msgstr "既定で単語単位で検索します。"
+
+msgctxt "settings"
+msgid "Security"
+msgstr "セキュリティ"
+
+msgctxt "settings"
+msgid "Seed Search Query From Cursor"
+msgstr "カーソル位置から検索クエリを初期化"
+
+msgctxt "settings"
+msgid "Select input audio device"
+msgstr "入力オーディオデバイスを選択します"
+
+msgctxt "settings"
+msgid "Select output audio device"
+msgstr "出力オーディオデバイスを選択します"
+
+msgctxt "settings"
+msgid "Selected Symbol"
+msgstr "選択シンボル"
+
+msgctxt "settings"
+msgid "Selected Text"
+msgstr "選択テキスト"
+
+msgctxt "settings"
+msgid "Selection Highlight"
+msgstr "選択テキストのハイライト"
+
+msgctxt "settings"
+msgid "Selections Menu"
+msgstr "選択範囲メニュー"
+
+msgctxt "settings"
+msgid "Semantic Tokens"
+msgstr "セマンティックトークン"
+
+msgctxt "settings"
+msgid "Send anonymized usage data like what languages you're using Zed with."
+msgstr "Zed でどの言語を使っているかなど、匿名化された利用データを送信します。"
+
+msgctxt "settings"
+msgid "Send debug information like crash reports."
+msgstr "クラッシュレポートなどのデバッグ情報を送信します。"
+
+msgctxt "settings"
+msgid "Server URL"
+msgstr "サーバー URL"
+
+msgctxt "settings"
+msgid "Session Log"
+msgstr "セッションログ"
+
+msgctxt "settings"
+msgid "Set up different edit prediction providers in complement to Zed's built-in Zeta model."
+msgstr "編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。"
+
+msgctxt "settings"
+msgid "Set up regex patterns to auto-allow, auto-deny, or always request confirmation, for specific tool inputs."
+msgstr "特定のツール入力に対して自動的に許可・拒否する、あるいは常に確認を求める正規表現パターンを設定します。"
+
+msgctxt "settings"
+msgid "Sets the cursor blinking behavior in the terminal."
+msgstr "ターミナルのカーソルの点滅動作を設定します。"
+
+msgctxt "settings"
+msgid "Settings"
+msgstr "設定"
+
+msgctxt "settings"
+msgid "Settings Profiles"
+msgstr "設定プロファイル"
+
+msgctxt "settings"
+msgid "Share Active File with Claude Code"
+msgstr "開いているファイルを Claude Code に伝える"
+
+msgctxt "settings"
+msgid "Share Failed Task Output with Agents"
+msgstr "失敗したタスクの出力をエージェントに渡す"
+
+msgctxt "settings"
+msgid "Share On Join"
+msgstr "参加時に共有"
+
+msgctxt "settings"
+msgid "Shell"
+msgstr "シェル"
+
+msgctxt "settings"
+msgid "Should the name or path be displayed first in the git view."
+msgstr "git のビューで、名前とパスのどちらを先に表示するかを設定します。"
+
+msgctxt "settings"
+msgid "Show"
+msgstr "表示"
+
+msgctxt "settings"
+msgid "Show Author Name"
+msgstr "作成者名を表示"
+
+msgctxt "settings"
+msgid "Show Avatar"
+msgstr "アバターを表示"
+
+msgctxt "settings"
+msgid "Show Background"
+msgstr "背景を表示"
+
+msgctxt "settings"
+msgid "Show Bookmarks"
+msgstr "ブックマークを表示"
+
+msgctxt "settings"
+msgid "Show Branch Name"
+msgstr "ブランチ名を表示"
+
+msgctxt "settings"
+msgid "Show Branch Status Icon"
+msgstr "ブランチの状態アイコンを表示"
+
+msgctxt "settings"
+msgid "Show Breakpoints"
+msgstr "ブレークポイントを表示"
+
+msgctxt "settings"
+msgid "Show Buttons in Inactive Panes"
+msgstr "非アクティブなペインにもボタンを表示"
+
+msgctxt "settings"
+msgid "Show Close Button"
+msgstr "閉じるボタンを表示"
+
+msgctxt "settings"
+msgid "Show Commit Summary"
+msgstr "コミットの概要を表示"
+
+msgctxt "settings"
+msgid "Show Completion Documentation"
+msgstr "補完候補のドキュメントを表示"
+
+msgctxt "settings"
+msgid "Show Completions On Input"
+msgstr "入力時に補完候補を表示"
+
+msgctxt "settings"
+msgid "Show Count Badge"
+msgstr "件数バッジを表示"
+
+msgctxt "settings"
+msgid "Show Diagnostics"
+msgstr "診断を表示"
+
+msgctxt "settings"
+msgid "Show Edit Predictions"
+msgstr "編集予測を表示"
+
+msgctxt "settings"
+msgid "Show Edit Predictions in Normal Mode"
+msgstr "ノーマルモードで編集予測を表示"
+
+msgctxt "settings"
+msgid "Show File Icons In Tabs"
+msgstr "タブにファイルアイコンを表示"
+
+msgctxt "settings"
+msgid "Show Folds"
+msgstr "折りたたみコントロールを表示"
+
+msgctxt "settings"
+msgid "Show Full File by Default"
+msgstr "既定でファイル全体を表示"
+
+msgctxt "settings"
+msgid "Show Git Status In Tabs"
+msgstr "タブに Git の状態を表示"
+
+msgctxt "settings"
+msgid "Show Git diff indicators in the scrollbar."
+msgstr "スクロールバーに Git の差分インジケーターを表示します。"
+
+msgctxt "settings"
+msgid "Show Git diff information in the editor."
+msgstr "エディターに Git の差分情報を表示します。"
+
+msgctxt "settings"
+msgid "Show Git status information in the editor."
+msgstr "エディターに Git の状態情報を表示します。"
+
+msgctxt "settings"
+msgid "Show Indent Guides"
+msgstr "インデントガイドを表示"
+
+msgctxt "settings"
+msgid "Show Line Breaks as Written"
+msgstr "改行をそのまま改行として表示"
+
+msgctxt "settings"
+msgid "Show Line Numbers"
+msgstr "行番号を表示"
+
+msgctxt "settings"
+msgid "Show Menus"
+msgstr "メニューを表示"
+
+msgctxt "settings"
+msgid "Show Merge Conflict Indicator"
+msgstr "マージコンフリクトのインジケーターを表示"
+
+msgctxt "settings"
+msgid "Show Multiline Cells in Full"
+msgstr "複数行のセルをすべて表示"
+
+msgctxt "settings"
+msgid "Show Navigation History Buttons"
+msgstr "ナビゲーション履歴のボタンを表示"
+
+msgctxt "settings"
+msgid "Show Onboarding Banner"
+msgstr "お知らせバナーを表示"
+
+msgctxt "settings"
+msgid "Show Other Hints"
+msgstr "その他のヒントを表示"
+
+msgctxt "settings"
+msgid "Show Parameter Hints"
+msgstr "引数のヒントを表示"
+
+msgctxt "settings"
+msgid "Show Project Items"
+msgstr "プロジェクト情報を表示"
+
+msgctxt "settings"
+msgid "Show Runnables"
+msgstr "実行ボタンを表示"
+
+msgctxt "settings"
+msgid "Show Scrollbar"
+msgstr "スクロールバーを表示"
+
+msgctxt "settings"
+msgid "Show Sign In"
+msgstr "サインインを表示"
+
+msgctxt "settings"
+msgid "Show Signature Help After Edits"
+msgstr "編集後にシグネチャヘルプを表示"
+
+msgctxt "settings"
+msgid "Show Stage/Restore Buttons"
+msgstr "ステージ/元に戻すボタンを表示"
+
+msgctxt "settings"
+msgid "Show Tab Bar"
+msgstr "タブバーを表示"
+
+msgctxt "settings"
+msgid "Show Tab Bar Buttons"
+msgstr "タブバーのボタンを表示"
+
+msgctxt "settings"
+msgid "Show Turn Stats"
+msgstr "ターンの統計を表示"
+
+msgctxt "settings"
+msgid "Show Type Hints"
+msgstr "型のヒントを表示"
+
+msgctxt "settings"
+msgid "Show User Menu"
+msgstr "ユーザーメニューを表示"
+
+msgctxt "settings"
+msgid "Show User Picture"
+msgstr "ユーザーの画像を表示"
+
+msgctxt "settings"
+msgid "Show Value Hints"
+msgstr "値のヒントを表示"
+
+msgctxt "settings"
+msgid "Show Which-key Menu"
+msgstr "Which-key メニューを表示"
+
+msgctxt "settings"
+msgid "Show Whitespaces"
+msgstr "空白文字を表示"
+
+msgctxt "settings"
+msgid "Show Worktree Name"
+msgstr "ワークツリー名を表示"
+
+msgctxt "settings"
+msgid "Show Wrap Guides"
+msgstr "折り返しガイドを表示"
+
+msgctxt "settings"
+msgid "Show a background for inlay hints."
+msgstr "インレイヒントに背景を表示します。"
+
+msgctxt "settings"
+msgid "Show a badge on the terminal panel icon with the count of open terminals."
+msgstr "ターミナルパネルのアイコンに、開いているターミナルの数のバッジを表示します。"
+
+msgctxt "settings"
+msgid "Show a git status indicator next to file names in the project panel."
+msgstr "プロジェクトパネルのファイル名の横に git の状態インジケーターを表示します。"
+
+msgctxt "settings"
+msgid "Show a row of formatting buttons below the toolbar while a Markdown file is open."
+msgstr "Markdown ファイルを開いているときに、ツールバーの下へ整形ボタンの行を表示します。"
+
+msgctxt "settings"
+msgid "Show agent review buttons in the editor toolbar."
+msgstr "エディターのツールバーにエージェントのレビューボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show author name as part of the commit information in branch picker."
+msgstr "ブランチの選択で、コミット情報の一部として作成者名を表示します。"
+
+msgctxt "settings"
+msgid "Show banners announcing new features in the titlebar."
+msgstr "タイトルバーに新機能を知らせるバナーを表示します。"
+
+msgctxt "settings"
+msgid "Show bookmarks in the gutter."
+msgstr "ガターにブックマークを表示します。"
+
+msgctxt "settings"
+msgid "Show breadcrumbs."
+msgstr "パンくずリストを表示します。"
+
+msgctxt "settings"
+msgid "Show breakpoints in the gutter."
+msgstr "ガターにブレークポイントを表示します。"
+
+msgctxt "settings"
+msgid "Show buffer search result indicators in the scrollbar."
+msgstr "スクロールバーにバッファー内検索の結果インジケーターを表示します。"
+
+msgctxt "settings"
+msgid "Show code action button at start of buffer line."
+msgstr "バッファーの行頭にコードアクションのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show code action buttons in the editor toolbar."
+msgstr "エディターのツールバーにコードアクションのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show code folding controls in the gutter."
+msgstr "ガターにコードの折りたたみコントロールを表示します。"
+
+msgctxt "settings"
+msgid "Show commit summary as part of the inline blame."
+msgstr "インライン blame にコミットの概要を表示します。"
+
+msgctxt "settings"
+msgid "Show cursor positions in the scrollbar."
+msgstr "スクロールバーにカーソル位置を表示します。"
+
+msgctxt "settings"
+msgid "Show error and warning count badges next to file names in the project panel."
+msgstr "プロジェクトパネルのファイル名の横に、エラーと警告の件数バッジを表示します。"
+
+msgctxt "settings"
+msgid "Show every folder collapsed when \"Run Macro\" opens. Typing a filter still shows every matching macro."
+msgstr "「マクロを実行」を開いたとき、フォルダーをすべて閉じた状態で表示します。絞り込みを入力すると一致するマクロはすべて表示されます。"
+
+msgctxt "settings"
+msgid "Show file icons in the file finder."
+msgstr "ファイル検索にファイルアイコンを表示します。"
+
+msgctxt "settings"
+msgid "Show file icons in the outline panel."
+msgstr "アウトラインパネルにファイルアイコンを表示します。"
+
+msgctxt "settings"
+msgid "Show file icons in the project panel."
+msgstr "プロジェクトパネルにファイルアイコンを表示します。"
+
+msgctxt "settings"
+msgid "Show file icons next to the Git status icon."
+msgstr "Git の状態アイコンの横にファイルアイコンを表示します。"
+
+msgctxt "settings"
+msgid "Show git status indicators on the branch icon in the titlebar."
+msgstr "タイトルバーのブランチアイコンに git の状態インジケーターを表示します。"
+
+msgctxt "settings"
+msgid "Show indent guides in the project panel."
+msgstr "プロジェクトパネルにインデントガイドを表示します。"
+
+msgctxt "settings"
+msgid "Show line numbers in the gutter."
+msgstr "ガターに行番号を表示します。"
+
+msgctxt "settings"
+msgid "Show opened editors as preview tabs."
+msgstr "開いたエディターをプレビュータブとして表示します。"
+
+msgctxt "settings"
+msgid "Show padding for zoomed panes."
+msgstr "ズームしたペインに余白を表示します。"
+
+msgctxt "settings"
+msgid "Show pinned tabs in a separate row above unpinned tabs."
+msgstr "ピン留めしたタブを、ピン留めしていないタブの上の別の行に表示します。"
+
+msgctxt "settings"
+msgid "Show quick action buttons (e.g., search, selection, editor controls, etc.)."
+msgstr "クイックアクションのボタン (検索・選択・エディター操作など) を表示します。"
+
+msgctxt "settings"
+msgid "Show runnable buttons in the gutter."
+msgstr "ガターに実行ボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show selected symbol occurrences in the scrollbar."
+msgstr "スクロールバーに選択シンボルと一致する箇所を表示します。"
+
+msgctxt "settings"
+msgid "Show selected text occurrences in the scrollbar."
+msgstr "スクロールバーに選択テキストと一致する箇所を表示します。"
+
+msgctxt "settings"
+msgid "Show the Git file status on a tab item."
+msgstr "タブの項目に Git のファイルの状態を表示します。"
+
+msgctxt "settings"
+msgid "Show the Git panel button in the status bar."
+msgstr "ステータスバーに Git パネルのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the Git status in the outline panel."
+msgstr "アウトラインパネルに Git の状態を表示します。"
+
+msgctxt "settings"
+msgid "Show the Git status in the project panel."
+msgstr "プロジェクトパネルに Git の状態を表示します。"
+
+msgctxt "settings"
+msgid "Show the active language button in the status bar."
+msgstr "ステータスバーに現在の言語のボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the active line endings button in the status bar."
+msgstr "ステータスバーに現在の改行コードのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the avatar of the author of the commit."
+msgstr "コミットの作成者のアバターを表示します。"
+
+msgctxt "settings"
+msgid "Show the branch name button in the titlebar."
+msgstr "タイトルバーにブランチ名のボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the browser panel button in the status bar."
+msgstr "ステータスバーにブラウザーパネルのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the collaboration panel button in the status bar."
+msgstr "ステータスバーにコラボレーションパネルのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the cursor position button in the status bar."
+msgstr "ステータスバーにカーソル位置のボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the debugger button in the status bar."
+msgstr "ステータスバーにデバッガーのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the file icon for a tab."
+msgstr "タブにファイルのアイコンを表示します。"
+
+msgctxt "settings"
+msgid "Show the full-height threads sidebar in the window. When off, the thread history inside the agent panel is used instead."
+msgstr "ウィンドウ幅のスレッドサイドバーを表示します。オフのときはエージェントパネル内のスレッド履歴を使います。"
+
+msgctxt "settings"
+msgid "Show the informational hover box when moving the mouse over symbols in the editor."
+msgstr "エディター内のシンボルにマウスを重ねたときに情報ポップアップを表示します。"
+
+msgctxt "settings"
+msgid "Show the menus in the titlebar."
+msgstr "タイトルバーにメニューを表示します。"
+
+msgctxt "settings"
+msgid "Show the name of the active file in the status bar."
+msgstr "ステータスバーに現在のファイル名を表示します。"
+
+msgctxt "settings"
+msgid "Show the navigation history buttons in the tab bar."
+msgstr "タブバーにナビゲーション履歴のボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the outline panel button in the status bar."
+msgstr "ステータスバーにアウトラインパネルのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the project diagnostics button in the status bar."
+msgstr "ステータスバーにプロジェクトの診断のボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the project host and name in the titlebar."
+msgstr "タイトルバーにプロジェクトのホストと名前を表示します。"
+
+msgctxt "settings"
+msgid "Show the project panel button in the status bar."
+msgstr "ステータスバーにプロジェクトパネルのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the project search button in the status bar."
+msgstr "ステータスバーにプロジェクト内検索のボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the scrollbar in the project panel."
+msgstr "プロジェクトパネルにスクロールバーを表示します。"
+
+msgctxt "settings"
+msgid "Show the selections menu in the editor toolbar."
+msgstr "エディターのツールバーに選択範囲メニューを表示します。"
+
+msgctxt "settings"
+msgid "Show the sign in button in the titlebar."
+msgstr "タイトルバーにサインインのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the signature help pop-up after completions or bracket pairs are inserted."
+msgstr "補完や括弧の対を挿入した後にシグネチャヘルプのポップアップを表示します。"
+
+msgctxt "settings"
+msgid "Show the tab bar buttons (New, Split Pane, Zoom)."
+msgstr "タブバーのボタン (新規・ペインの分割・ズーム) を表示します。"
+
+msgctxt "settings"
+msgid "Show the tab bar buttons (New, Split Pane, Zoom, and so on) in panes that are not focused as well."
+msgstr "フォーカスされていないペインのタブバーにも、新規・ペインの分割・ズームなどのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the tab bar in the editor."
+msgstr "エディターにタブバーを表示します。"
+
+msgctxt "settings"
+msgid "Show the terminal button in the status bar."
+msgstr "ステータスバーにターミナルのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the thread history to the left of the current thread inside the agent panel. Hidden automatically when the panel is too narrow."
+msgstr "エージェントパネルの中に、現在のスレッドの左側へスレッド履歴を分割表示します。パネルの幅が足りないときは自動的に隠れます。"
+
+msgctxt "settings"
+msgid "Show the user menu button in the titlebar."
+msgstr "タイトルバーにユーザーメニューのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the worktree name button in the titlebar."
+msgstr "タイトルバーにワークツリー名のボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show user picture in the titlebar."
+msgstr "タイトルバーにユーザーの画像を表示します。"
+
+msgctxt "settings"
+msgid "Show voting thumbs up/down icon buttons for feedback on agent edits."
+msgstr "エージェントの編集に対するフィードバック用の、高評価/低評価のボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show wrap guides (vertical rulers)."
+msgstr "折り返しガイド (縦のルーラー) を表示します。"
+
+msgctxt "settings"
+msgid "Show wrap guides in the editor."
+msgstr "エディターに折り返しガイドを表示します。"
+
+msgctxt "settings"
+msgid "Signature Help"
+msgstr "シグネチャヘルプ"
+
+msgctxt "settings"
+msgid "Single File Review"
+msgstr "単一ファイルでのレビュー"
+
+msgctxt "settings"
+msgid "Size of the border surrounding the active pane."
+msgstr "アクティブなペインを囲む境界線の太さです。"
+
+msgctxt "settings"
+msgid "Skills"
+msgstr "スキル"
+
+msgctxt "settings"
+msgid "Skip Focus For Active In Search"
+msgstr "検索結果でアクティブなファイルを飛ばす"
+
+msgctxt "settings"
+msgid "Snippet Sort Order"
+msgstr "スニペットの並び順"
+
+msgctxt "settings"
+msgid "Soft Wrap"
+msgstr "折り返し"
+
+msgctxt "settings"
+msgid "Sort By"
+msgstr "並べ替え"
+
+msgctxt "settings"
+msgid "Sort Mode"
+msgstr "並べ替えの方法"
+
+msgctxt "settings"
+msgid "Sort Order"
+msgstr "並べ替えの基準"
+
+msgctxt "settings"
+msgid "Sort order for entries in the project panel."
+msgstr "プロジェクトパネルの項目の並び順です。"
+
+msgctxt "settings"
+msgid "Space Whitespace Indicator"
+msgstr "スペースの表示文字"
+
+msgctxt "settings"
+msgid "Spacing between worktree entries in the project panel."
+msgstr "プロジェクトパネルのワークツリー項目の間隔です。"
+
+msgctxt "settings"
+msgid "Starts Open"
+msgstr "起動時に開く"
+
+msgctxt "settings"
+msgid "Status Bar"
+msgstr "ステータスバー"
+
+msgctxt "settings"
+msgid "Stepping Granularity"
+msgstr "ステップ実行の粒度"
+
+msgctxt "settings"
+msgid "Sticky"
+msgstr "固定表示"
+
+msgctxt "settings"
+msgid "Sticky Scroll"
+msgstr "スティッキースクロール"
+
+msgctxt "settings"
+msgid "Strip Control Sequences"
+msgstr "制御シーケンスを除去する"
+
+msgctxt "settings"
+msgid "Suggest Missing Development Tools"
+msgstr "足りない開発ツールを知らせる"
+
+msgctxt "settings"
+msgid "Tab Bar"
+msgstr "タブバー"
+
+msgctxt "settings"
+msgid "Tab Close Position"
+msgstr "タブの閉じるボタンの位置"
+
+msgctxt "settings"
+msgid "Tab Settings"
+msgstr "タブの設定"
+
+msgctxt "settings"
+msgid "Tab Show Diagnostics"
+msgstr "タブに診断を表示"
+
+msgctxt "settings"
+msgid "Tab Size"
+msgstr "タブのサイズ"
+
+msgctxt "settings"
+msgid "Tab Whitespace Indicator"
+msgstr "タブの表示文字"
+
+msgctxt "settings"
+msgid "Tasks"
+msgstr "タスク"
+
+msgctxt "settings"
+msgid "Telemetry Diagnostics"
+msgstr "診断テレメトリ"
+
+msgctxt "settings"
+msgid "Telemetry Metrics"
+msgstr "利用状況テレメトリ"
+
+msgctxt "settings"
+msgid "Tell the connected Claude Code which file is open even when nothing is selected (the \"In <file name>\" in its input). When off, only selected lines are sent."
+msgstr "何も選んでいないときも、開いているファイルを接続中の Claude Code に伝えます (入力欄の「In <ファイル名>」)。オフにすると、行を選んだときだけ送ります。"
+
+msgctxt "settings"
+msgid "Terminal"
+msgstr "ターミナル"
+
+msgctxt "settings"
+msgid "Terminal Button"
+msgstr "ターミナルのボタン"
+
+msgctxt "settings"
+msgid "Terminal Dock"
+msgstr "ターミナルのドック位置"
+
+msgctxt "settings"
+msgid "Terminal Panel"
+msgstr "ターミナルパネル"
+
+msgctxt "settings"
+msgid "Terminal Panel Flexible Sizing"
+msgstr "ターミナルパネルの可変サイズ"
+
+msgctxt "settings"
+msgid "Terminal Thread Init Command"
+msgstr "ターミナルスレッドの初期化コマンド"
+
+msgctxt "settings"
+msgid "Test Audio"
+msgstr "音声のテスト"
+
+msgctxt "settings"
+msgid "Test your microphone and speaker setup"
+msgstr "マイクとスピーカーの設定をテストします"
+
+msgctxt "settings"
+msgid "Text Rendering"
+msgstr "テキストの描画"
+
+msgctxt "settings"
+msgid "Text Rendering Mode"
+msgstr "テキストの描画モード"
+
+msgctxt "settings"
+msgid "The OpenType features to enable for rendering in UI elements."
+msgstr "UI 要素の描画で有効にする OpenType 機能です。"
+
+msgctxt "settings"
+msgid "The OpenType features to enable for rendering in text buffers."
+msgstr "テキストバッファーの描画で有効にする OpenType 機能です。"
+
+msgctxt "settings"
+msgid "The URL of the Zed server to connect to."
+msgstr "接続先の Zed サーバーの URL です。"
+
+msgctxt "settings"
+msgid "The URL opened by \"Ask Copilot\". {query} is replaced with the question; without the placeholder, the selected text is copied to the clipboard instead."
+msgstr "「選択テキストを Copilot に聞く」で開く URL です。{query} を書くとそこに質問が埋め込まれます。プレースホルダーが無い場合は選択テキストをクリップボードにコピーします。"
+
+msgctxt "settings"
+msgid "The URL used when the address bar input is not a URL, and by \"Search Selection on the Web\". {query} is replaced with the search terms."
+msgstr "アドレスバーの入力が URL でなかったときと、「選択テキストを Web で検索」で使う URL です。{query} が検索語に置き換わります。"
+
+msgctxt "settings"
+msgid "The amount of padding between the end of the source line and the start of the inline diagnostic."
+msgstr "ソース行の末尾からインライン診断の開始位置までの余白です。"
+
+msgctxt "settings"
+msgid "The arguments to pass to the shell program."
+msgstr "シェルのプログラムに渡す引数です。"
+
+msgctxt "settings"
+msgid "The column at which to soft-wrap lines, for buffers where soft-wrap is enabled."
+msgstr "折り返しが有効なバッファーで、行を折り返す列位置です。"
+
+msgctxt "settings"
+msgid "The custom set of icons Zed will associate with files and directories."
+msgstr "Zed がファイルとディレクトリに関連付けるアイコンのセットです。"
+
+msgctxt "settings"
+msgid "The debounce delay before querying highlights from the language."
+msgstr "言語サーバーにハイライトを問い合わせるまでのデバウンスの遅延です。"
+
+msgctxt "settings"
+msgid "The default mode when Vim starts."
+msgstr "Vim の開始時のモードです。"
+
+msgctxt "settings"
+msgid "The delay after which the inline blame information is shown."
+msgstr "インライン blame の情報を表示するまでの遅延です。"
+
+msgctxt "settings"
+msgid "The delay in milliseconds to show inline diagnostics after the last diagnostic update."
+msgstr "最後の診断の更新からインライン診断を表示するまでの遅延 (ミリ秒) です。"
+
+msgctxt "settings"
+msgid "The directory path to use (will be shell expanded)."
+msgstr "使用するディレクトリのパスです (シェルによる展開が行われます)。"
+
+msgctxt "settings"
+msgid "The dock position of the debug panel."
+msgstr "デバッグパネルをドッキングする位置です。"
+
+msgctxt "settings"
+msgid "The dock that holds two panels (stacked vertically in the left and right docks, side by side in the bottom dock) when a project is opened for the first time. The dock itself is not opened (whether it opens on startup is set by each panel's \"Starts Open\"). After that, the layout saved for each project takes precedence."
+msgstr "プロジェクトを初めて開いたときに、パネルを 2 枚 (左右のドックは縦、下ドックは横) 並べておくドックです。ドック自体は開きません (起動時に開くかどうかは各パネルの「起動時に開く」で設定します)。以降はプロジェクトごとに保存されたレイアウトが優先されます。"
+
+msgctxt "settings"
+msgid "The external AI providers you enabled after accepting the training risk warning. Revoking an acknowledgement shows the warning again the next time that provider is used."
+msgstr "学習リスクの警告に同意して有効化した外部 AI プロバイダーの一覧です。承諾を取り消すと、次にそのプロバイダーを使うときに再び警告が表示されます。"
+
+msgctxt "settings"
+msgid "The file name of new logs. `{date}` `{time}` `{title}` `{host}` `{pid}` are expanded."
+msgstr "新しいログのファイル名です。`{date}` `{time}` `{title}` `{host}` `{pid}` を展開します。"
+
+msgctxt "settings"
+msgid "The folder log files are written to (`~` is expanded). When empty, logs are saved to `terminal-sessions` in Zed's log folder."
+msgstr "ログファイルを書き出すフォルダーです (`~` は展開されます)。空欄のときは Zed のログフォルダー配下の `terminal-sessions` に保存します。"
+
+msgctxt "settings"
+msgid "The font fallbacks to use for rendering in text buffers."
+msgstr "テキストバッファーの描画に使うフォールバックフォントです。"
+
+msgctxt "settings"
+msgid "The font fallbacks to use for rendering in the UI."
+msgstr "UI の描画に使うフォールバックフォントです。"
+
+msgctxt "settings"
+msgid "The icon theme to use when mode is set to dark, or when mode is set to system and it is in dark mode."
+msgstr "モードがダークのとき、またはモードがシステムで OS がダークモードのときに使うアイコンテーマです。"
+
+msgctxt "settings"
+msgid "The icon theme to use when mode is set to light, or when mode is set to system and it is in light mode."
+msgstr "モードがライトのとき、またはモードがシステムで OS がライトモードのときに使うアイコンテーマです。"
+
+msgctxt "settings"
+msgid "The language of Zed's menus, settings and messages. Some text, such as tab titles, switches after a restart."
+msgstr "Zed のメニュー、設定、メッセージを表示する言語です。タブ名など一部の表示は再起動後に切り替わります。"
+
+msgctxt "settings"
+msgid "The largest outline sent for a large attached file. When it does not fit, the most deeply nested symbols are left out first. Values below 512 are treated as 512."
+msgstr "大きいファイルを添付したときに送るアウトラインの大きさの上限です。収まらないときは深い階層のシンボルから省きます。512 未満は 512 として扱われます。"
+
+msgctxt "settings"
+msgid "The list of language servers to use (or disable) for this language."
+msgstr "この言語で使用する (または無効にする) 言語サーバーの一覧です。"
+
+msgctxt "settings"
+msgid "The minimum APCA perceptual contrast between foreground and background colors (0-106)."
+msgstr "前景色と背景色の間で保つ APCA 知覚コントラストの最小値です (0〜106)。"
+
+msgctxt "settings"
+msgid "The minimum APCA perceptual contrast to maintain when rendering text over highlight backgrounds."
+msgstr "ハイライトの背景の上にテキストを描画するときに保つ、APCA 知覚コントラストの最小値です。"
+
+msgctxt "settings"
+msgid "The minimum column at which to display inline diagnostics."
+msgstr "インライン診断を表示する最小の列位置です。"
+
+msgctxt "settings"
+msgid "The minimum column number at which to show the inline blame information."
+msgstr "インライン blame の情報を表示する最小の列位置です。"
+
+msgctxt "settings"
+msgid "The minimum width (in columns) at which the split diff view is used. When the editor is narrower, the diff view automatically switches to unified mode. Set to 0 to disable."
+msgstr "左右分割の差分表示を使う最小の幅 (列数) です。エディターがこれより狭い場合は自動的にインライン表示に切り替わります。0 で無効になります。"
+
+msgctxt "settings"
+msgid "The multiplier for scrolling in the terminal with the mouse wheel"
+msgstr "ターミナルをマウスホイールでスクロールするときの倍率です"
+
+msgctxt "settings"
+msgid "The name of a base set of key bindings to use."
+msgstr "基準にするキーバインドのセットの名前です。Emacs (ベータ) では C-x C-s (保存) / C-x C-f (ファイルを開く) / C-k (行をキル) / C-y (ヤンク) / M-y (直前のヤンクを 1 つ古い世代に差し替え) / C-space (マーク) などが使えます。C-x などのプレフィックスキーの入力中に候補を出したいときは、「エディター」ページの「Which-key メニューを表示」を有効にしてください。"
+
+msgctxt "settings"
+msgid "The name of your selected icon theme."
+msgstr "選択したアイコンテーマの名前です。"
+
+msgctxt "settings"
+msgid "The name of your selected theme."
+msgstr "選択したテーマの名前です。"
+
+msgctxt "settings"
+msgid "The number of characters to keep on either side when scrolling with the mouse."
+msgstr "マウスでスクロールするときに左右に残す文字数です。"
+
+msgctxt "settings"
+msgid "The number of lines to keep above/below the cursor when auto-scrolling."
+msgstr "自動スクロール時にカーソルの上下に残す行数です。"
+
+msgctxt "settings"
+msgid "The page shown first when a built-in browser panel or tab opens. It can also be set with the pin button on the browser toolbar."
+msgstr "内蔵ブラウザーのパネルやタブを開いたときに最初に表示するページです。ブラウザーのツールバーのピンボタンからも設定できます。"
+
+msgctxt "settings"
+msgid "The panel shown next to the first one. Choose \"Don't Stack\" to show a single panel, as upstream Zed does."
+msgstr "1 枚目の隣に並べて表示するパネルです。「並べない」にすると、上流の Zed と同じく 1 枚だけを表示します。"
+
+msgctxt "settings"
+msgid "The panel that fills that dock. Choose \"Don't Stack\" to skip building the initial layout."
+msgstr "そのドックを埋めるパネルです。「並べない」にすると、初回のレイアウトを組みません。"
+
+msgctxt "settings"
+msgid "The proxy to use for network requests."
+msgstr "ネットワークリクエストに使うプロキシです。"
+
+msgctxt "settings"
+msgid "The shell program to run."
+msgstr "実行するシェルのプログラムです。"
+
+msgctxt "settings"
+msgid "The shell program to use."
+msgstr "使用するシェルのプログラムです。"
+
+msgctxt "settings"
+msgid "The smallest context window (in tokens) of a model that auto compaction runs for. Models below it are never compacted and only show the token limit warning. Lower it to get auto compaction with the small contexts of local LLMs. Values below 8000 are treated as 8000."
+msgstr "自動圧縮を実行するモデルのコンテキストウィンドウの下限 (トークン数) です。これを下回るモデルでは圧縮を行わず、トークン上限の警告だけを表示します。ローカル LLM の小さいコンテキストでも自動圧縮を効かせたいときに下げてください。8000 未満を指定しても 8000 として扱われます。"
+
+msgctxt "settings"
+msgid "The text rendering mode to use."
+msgstr "使用するテキストの描画モードです。"
+
+msgctxt "settings"
+msgid "The theme to use when mode is set to dark, or when mode is set to system and it is in dark mode."
+msgstr "モードがダークのとき、またはモードがシステムで OS がダークモードのときに使うテーマです。"
+
+msgctxt "settings"
+msgid "The theme to use when mode is set to light, or when mode is set to system and it is in light mode."
+msgstr "モードがライトのとき、またはモードがシステムで OS がライトモードのときに使うテーマです。"
+
+msgctxt "settings"
+msgid "The unit for image file sizes."
+msgstr "画像ファイルのサイズの単位です。"
+
+msgctxt "settings"
+msgid "The width of the active indent guide in pixels, between 1 and 10."
+msgstr "アクティブなインデントガイドの太さ (ピクセル) です。1 から 10 の範囲で指定します。"
+
+msgctxt "settings"
+msgid "The width of the indent guides in pixels, between 1 and 10."
+msgstr "インデントガイドの太さ (ピクセル) です。1 から 10 の範囲で指定します。"
+
+msgctxt "settings"
+msgid "Theme"
+msgstr "テーマ"
+
+msgctxt "settings"
+msgid "Theme Mode"
+msgstr "テーマモード"
+
+msgctxt "settings"
+msgid "Theme Name"
+msgstr "テーマ名"
+
+msgctxt "settings"
+msgid "Thinking Display"
+msgstr "思考の表示"
+
+msgctxt "settings"
+msgid "Thread History in Panel"
+msgstr "パネル内にスレッド履歴を表示"
+
+msgctxt "settings"
+msgid "Threads Sidebar"
+msgstr "スレッドサイドバー"
+
+msgctxt "settings"
+msgid "Threads Sidebar Side"
+msgstr "スレッドサイドバーの位置"
+
+msgctxt "settings"
+msgid "Thumb"
+msgstr "つまみ"
+
+msgctxt "settings"
+msgid "Thumb Border"
+msgstr "つまみの境界線"
+
+msgctxt "settings"
+msgid "Time in milliseconds until timeout error when connecting to a TCP debug adapter."
+msgstr "TCP のデバッグアダプターに接続するときに、タイムアウトエラーとするまでの時間 (ミリ秒) です。"
+
+msgctxt "settings"
+msgid "Time to wait in milliseconds before hiding the hover popover after the mouse moves away."
+msgstr "マウスが離れてからホバーポップアップを隠すまでの待ち時間 (ミリ秒) です。"
+
+msgctxt "settings"
+msgid "Time to wait in milliseconds before showing the informational hover box."
+msgstr "情報ポップアップを表示するまでの待ち時間 (ミリ秒) です。"
+
+msgctxt "settings"
+msgid "Timeout"
+msgstr "タイムアウト"
+
+msgctxt "settings"
+msgid "Timestamp Each Line"
+msgstr "行頭にタイムスタンプを付ける"
+
+msgctxt "settings"
+msgid "Title Bar"
+msgstr "タイトルバー"
+
+msgctxt "settings"
+msgid "Title Override"
+msgstr "タイトルの上書き"
+
+msgctxt "settings"
+msgid "Toggle On Modifiers Press"
+msgstr "修飾キーで切り替え"
+
+msgctxt "settings"
+msgid "Toggle Relative Line Numbers"
+msgstr "相対行番号の切り替え"
+
+msgctxt "settings"
+msgid "Toggle relative line numbers in Vim mode."
+msgstr "Vim モードで相対行番号を切り替えます。"
+
+msgctxt "settings"
+msgid "Toggles inlay hints (hides or shows) when the user presses the modifiers specified."
+msgstr "指定した修飾キーを押したときに、インレイヒントの表示/非表示を切り替えます。"
+
+msgctxt "settings"
+msgid "Tool Permissions"
+msgstr "ツールの権限"
+
+msgctxt "settings"
+msgid "Toolbar"
+msgstr "ツールバー"
+
+msgctxt "settings"
+msgid "Tree View"
+msgstr "ツリー表示"
+
+msgctxt "settings"
+msgid "Trust All Projects By Default"
+msgstr "すべてのプロジェクトを既定で信頼"
+
+msgctxt "settings"
+msgid "UI Font"
+msgstr "UI のフォント"
+
+msgctxt "settings"
+msgid "UI Font Family"
+msgstr "UI フォントファミリー"
+
+msgctxt "settings"
+msgid "UI Font Size"
+msgstr "UI フォントサイズ"
+
+msgctxt "settings"
+msgid "Unnecessary Code Fade"
+msgstr "未使用コードの淡色化"
+
+msgctxt "settings"
+msgid "Untracked Files"
+msgstr "追跡されていないファイルの検出範囲"
+
+msgctxt "settings"
+msgid "Update Debounce"
+msgstr "更新のデバウンス"
+
+msgctxt "settings"
+msgid "Use Auto Surround"
+msgstr "囲み文字を自動的に挿入"
+
+msgctxt "settings"
+msgid "Use Autoclose"
+msgstr "閉じ文字を自動的に挿入"
+
+msgctxt "settings"
+msgid "Use LSP tasks over Zed language extension tasks."
+msgstr "Zed の言語拡張のタスクより、LSP のタスクを優先します。"
+
+msgctxt "settings"
+msgid "Use Modifier To Send"
+msgstr "修飾キーで送信"
+
+msgctxt "settings"
+msgid "Use On Type Format"
+msgstr "入力時フォーマットを使用"
+
+msgctxt "settings"
+msgid "Use Smartcase Find"
+msgstr "smartcase 検索を使用"
+
+msgctxt "settings"
+msgid "Use Smartcase Search"
+msgstr "smartcase 検索を使用"
+
+msgctxt "settings"
+msgid "Use System Clipboard"
+msgstr "システムのクリップボードを使用"
+
+msgctxt "settings"
+msgid "Use System Path Prompts"
+msgstr "システムのファイルダイアログを使用"
+
+msgctxt "settings"
+msgid "Use System Prompts"
+msgstr "システムの確認ダイアログを使用"
+
+msgctxt "settings"
+msgid "Use System Window Tabs"
+msgstr "システムのウィンドウタブを使用"
+
+msgctxt "settings"
+msgid "Use gitignored files when searching."
+msgstr "検索時に gitignore されたファイルも対象にします。"
+
+msgctxt "settings"
+msgid "Use native OS dialogs for 'Open' and 'Save As'."
+msgstr "「開く」と「名前を付けて保存」に OS ネイティブのダイアログを使用します。"
+
+msgctxt "settings"
+msgid "Use native OS dialogs for confirmations."
+msgstr "確認ダイアログに OS ネイティブのダイアログを使用します。"
+
+msgctxt "settings"
+msgid "Use regex search by default in Vim search."
+msgstr "Vim の検索で既定で正規表現を使用します。"
+
+msgctxt "settings"
+msgid "Use regex search by default."
+msgstr "既定で正規表現検索を使用します。"
+
+msgctxt "settings"
+msgid "Variables"
+msgstr "変数"
+
+msgctxt "settings"
+msgid "Version Control"
+msgstr "バージョン管理"
+
+msgctxt "settings"
+msgid "Vertical Scroll Margin"
+msgstr "垂直スクロールの余白"
+
+msgctxt "settings"
+msgid "Vertical Scrollbar"
+msgstr "垂直スクロールバー"
+
+msgctxt "settings"
+msgid "Vertical Split Direction"
+msgstr "垂直分割の方向"
+
+msgctxt "settings"
+msgid "View and manage agent skills installed globally or in project worktrees."
+msgstr "グローバル、またはプロジェクトのワークツリーにインストールされたエージェントのスキルを確認・管理します。"
+
+msgctxt "settings"
+msgid "View, add, and remove agents connected through the Agent Client Protocol."
+msgstr "Agent Client Protocol で接続するエージェントの確認・追加・削除を行います。"
+
+msgctxt "settings"
+msgid "View, add, configure, and remove Model Context Protocol servers."
+msgstr "Model Context Protocol サーバーの確認・追加・設定・削除を行います。"
+
+msgctxt "settings"
+msgid "Vim"
+msgstr "Vim"
+
+msgctxt "settings"
+msgid "Vim Mode"
+msgstr "Vim モード"
+
+msgctxt "settings"
+msgid "Vim/Emacs Modeline Support"
+msgstr "Vim/Emacs の modeline のサポート"
+
+msgctxt "settings"
+msgid "Visibility"
+msgstr "表示"
+
+msgctxt "settings"
+msgid "Visible character used to render space characters when show_whitespaces is enabled (default: \"•\")"
+msgstr "show_whitespaces を有効にしたときに、スペースの描画に使う文字です (既定: \"•\")"
+
+msgctxt "settings"
+msgid "Visible character used to render tab characters when show_whitespaces is enabled (default: \"→\")"
+msgstr "show_whitespaces を有効にしたときに、タブの描画に使う文字です (既定: \"→\")"
+
+msgctxt "settings"
+msgid "Web Page Attachment Limit (Bytes)"
+msgstr "Web ページの添付の上限 (バイト)"
+
+msgctxt "settings"
+msgid "What shell to use when opening a terminal."
+msgstr "ターミナルを開くときに使うシェルです。"
+
+msgctxt "settings"
+msgid "What to do after closing the current tab."
+msgstr "現在のタブを閉じた後の動作です。"
+
+msgctxt "settings"
+msgid "What to do when multibuffer is double-clicked in some of its excerpts."
+msgstr "マルチバッファーの抜粋内でダブルクリックしたときの動作です。"
+
+msgctxt "settings"
+msgid "What to do when the last window is closed."
+msgstr "最後のウィンドウが閉じられたときの動作です。"
+
+msgctxt "settings"
+msgid "What to do when using the 'close active item' action with no tabs."
+msgstr "タブがない状態で「アクティブな項目を閉じる」アクションを使ったときの動作です。"
+
+msgctxt "settings"
+msgid "What to restore from the previous session when opening Zed."
+msgstr "Zed を開いたときに前回のセッションから何を復元するかを設定します。"
+
+msgctxt "settings"
+msgid "What working directory to use when launching the terminal."
+msgstr "ターミナルを起動するときに使う作業ディレクトリです。"
+
+msgctxt "settings"
+msgid "When Closing With No Tabs"
+msgstr "タブがない状態で閉じたとき"
+
+msgctxt "settings"
+msgid "When auto compaction runs. A percentage string like \"90%\" is measured against the context window. A positive integer is the number of used tokens to compact after. A negative integer is the number of tokens remaining in the context window before compacting."
+msgstr "自動圧縮を実行する条件です。\"90%\" のようなパーセント文字列は、コンテキストウィンドウに対する割合として扱われます。正の整数は、使用トークン数がその値を超えたら圧縮することを意味します。負の整数は、コンテキストウィンドウの残りトークン数がその値を下回ったら圧縮することを意味します。"
+
+msgctxt "settings"
+msgid "When enabled, agent edits will also be displayed in single-file buffers for review."
+msgstr "有効にすると、エージェントの編集を単一ファイルのバッファーにも表示してレビューできるようにします。"
+
+msgctxt "settings"
+msgid "When enabled, the :substitute command replaces all matches in a line by default. The 'g' flag then toggles this behavior."
+msgstr ":substitute コマンドが既定で行内のすべての一致を置換するようにします。この場合、'g' フラグは逆に 1 件だけの置換に切り替えます。"
+
+msgctxt "settings"
+msgid "When enabled, use folding ranges from the language server instead of indent-based folding."
+msgstr "有効にすると、インデントに基づく折りたたみの代わりに、言語サーバーの折りたたみ範囲を使用します。"
+
+msgctxt "settings"
+msgid "When enabled, use the language server's document symbols for outlines and breadcrumbs instead of tree-sitter."
+msgstr "有効にすると、アウトラインとパンくずリストに tree-sitter ではなく、言語サーバーのドキュメントシンボルを使用します。"
+
+msgctxt "settings"
+msgid "When false, forcefully disables the horizontal scrollbar."
+msgstr "false にすると水平スクロールバーを強制的に無効にします。"
+
+msgctxt "settings"
+msgid "When false, forcefully disables the vertical scrollbar."
+msgstr "false にすると垂直スクロールバーを強制的に無効にします。"
+
+msgctxt "settings"
+msgid "When fetching LSP completions, determines how long to wait for a response of a particular server (set to 0 to wait indefinitely)."
+msgstr "LSP の補完候補を取得するときに、個々のサーバーの応答をどれだけ待つかを設定します (0 で無期限に待機)。"
+
+msgctxt "settings"
+msgid "When off, rendering follows CommonMark: only two trailing spaces, `\\` or `<br>` break a line. PDF export uses the same setting."
+msgstr "オフにすると CommonMark 準拠になり、行末の半角スペース 2 つ / `\\` / `<br>` だけが改行になります。PDF の書き出しにも同じ設定が効きます。"
+
+msgctxt "settings"
+msgid "When off, these files open in the text editor. Either view can open the other one beside it."
+msgstr "オフにするとテキストエディターで開きます。どちらからでも横に切り替えられます。"
+
+msgctxt "settings"
+msgid "When on, a notification appears when the language server or formatter that an opened file's language needs cannot be found (clangd and clang-format for C, Ruff for Python), and the tool can be installed right there. Tools go only into your user data directory, need no administrator rights and do not affect other users. While connected to a remote host, the host is checked and the tool is installed there, downloaded through this machine's network so it works even when the host has no internet access. To stop suggesting particular tools, list their IDs in `dev_tools.ignored` in settings.json (the notification's \"Don't Show Again\" adds them too)."
+msgstr "オンにすると、開いたファイルの言語に必要な言語サーバーやフォーマッタ (C なら clangd と clang-format、Python なら Ruff) が見つからないときに通知を出し、その場で導入できます。導入先はユーザーのデータディレクトリ内だけで、管理者権限は要らず、他のユーザーにも影響しません。リモート接続中は接続先を調べて接続先に導入し、取得はこの PC のネットワーク経由で行うので、接続先がインターネットに出られなくても入ります。個別に知らせないツールは settings.json の `dev_tools.ignored` に ID を並べます (通知の「今後表示しない」でも追加されます)。"
+
+msgctxt "settings"
+msgid "When on, the built-in browser's connections are restricted by the egress allowlist too. By default it is outside the allowlist, like terminals driven by a person. Changes apply the next time the built-in browser starts."
+msgstr "オンにすると内蔵ブラウザーの通信も外部通信の許可リストで制限されます。既定では人間操作のターミナルと同様に許可リストの対象外です。切り替えは内蔵ブラウザーの次回起動から反映されます。"
+
+msgctxt "settings"
+msgid "When on, this machine makes the outgoing requests of SSH and other remote hosts (language server and node downloads, extension archives, agent binaries) on their behalf, so remote hosts without internet access can still download language servers automatically. Only agent-related downloads are subject to the allowlist and consent prompts; downloads of IDE tooling such as language servers are not restricted. When off, the remote host connects out on its own. Changes apply without reconnecting."
+msgstr "オンにすると、SSH などのリモートホストが行う外部通信 (言語サーバーや node のダウンロード、拡張機能のアーカイブ、エージェントのバイナリ) をこの PC が代行します。インターネットに出られないリモートでも言語サーバーを自動取得できます。許可リストと同意ダイアログの対象になるのはエージェント関連の取得だけで、言語サーバーなど IDE の道具立ての取得は制限されません。オフにするとリモートが自分で外部に接続します。切り替えは再接続なしで反映されます。"
+
+msgctxt "settings"
+msgid "When opening Zed, avoid Restricted Mode by auto-trusting all projects, enabling use of all features without having to give permission to each new project."
+msgstr "Zed を開くときにすべてのプロジェクトを自動的に信頼して制限モードを回避し、プロジェクトごとに許可を与えなくてもすべての機能を使えるようにします。"
+
+msgctxt "settings"
+msgid "When the attachments of one message add up to more than this, the largest are reduced to outlines or references first. Attachments set to be sent in full are never reduced. Values below 4096 are treated as 4096."
+msgstr "1 つのメッセージの添付の合計がこれを超えたら、大きいものから順にアウトラインや参照だけに減らして送ります。「全文で送る」にした添付は減らしません。4096 未満は 4096 として扱われます。"
+
+msgctxt "settings"
+msgid "When to auto save buffer changes."
+msgstr "バッファーの変更を自動保存するタイミングです。"
+
+msgctxt "settings"
+msgid "When to hide the mouse cursor."
+msgstr "マウスカーソルを隠すタイミングです。"
+
+msgctxt "settings"
+msgid "When to play a sound when the agent has either completed its response, or needs user input."
+msgstr "エージェントが応答を終えたとき、またはユーザーの入力が必要なときに、音を鳴らすタイミングを設定します。"
+
+msgctxt "settings"
+msgid "When to populate a new search's query based on the text under the cursor."
+msgstr "新しい検索のクエリをカーソル位置のテキストで埋めるタイミングを設定します。"
+
+msgctxt "settings"
+msgid "When to scan content of linked directories"
+msgstr "リンク先のディレクトリの内容をスキャンするタイミングです"
+
+msgctxt "settings"
+msgid "When to show edit predictions previews in buffer. The eager mode displays them inline, while the subtle mode displays them only when holding a modifier key."
+msgstr "バッファーで編集予測のプレビューを表示するタイミングです。eager モードはインラインで表示し、subtle モードは修飾キーを押している間だけ表示します。"
+
+msgctxt "settings"
+msgid "When to show indent guides in the outline panel."
+msgstr "アウトラインパネルにインデントガイドを表示するタイミングです。"
+
+msgctxt "settings"
+msgid "When to show the minimap in the editor."
+msgstr "エディターにミニマップを表示するタイミングです。"
+
+msgctxt "settings"
+msgid "When to show the minimap thumb."
+msgstr "ミニマップのつまみを表示するタイミングです。"
+
+msgctxt "settings"
+msgid "When to show the row of tabs inside the agent panel. \"Auto\" hides it while the in-panel thread history is showing and the panel is not split, since the history lists the open tabs. Even with \"Never\", it is shown when the panel is too narrow for the history or its strip, because the open tabs would otherwise be out of reach."
+msgstr "エージェントパネル内のタブ列をいつ表示するかを設定します。「自動」はパネル内のスレッド履歴が出ていて分割していないとき (履歴側に開いているタブが並ぶため) 隠します。「表示しない」でも、パネルが狭くて履歴もその帯も出せないときは、開いているタブへ届かなくなるので表示します。"
+
+msgctxt "settings"
+msgid "When to show the scrollbar in the completion menu."
+msgstr "補完メニューにスクロールバーを表示するタイミングです。"
+
+msgctxt "settings"
+msgid "When to show the scrollbar in the editor."
+msgstr "エディターにスクロールバーを表示するタイミングです。"
+
+msgctxt "settings"
+msgid "When to show the scrollbar in the terminal."
+msgstr "ターミナルにスクロールバーを表示するタイミングです。"
+
+msgctxt "settings"
+msgid "Where to dock the Git panel."
+msgstr "Git パネルをドッキングする位置です。"
+
+msgctxt "settings"
+msgid "Where to dock the agent panel."
+msgstr "エージェントパネルをドッキングする位置です。"
+
+msgctxt "settings"
+msgid "Where to dock the browser panel."
+msgstr "ブラウザーパネルをドッキングする位置です。"
+
+msgctxt "settings"
+msgid "Where to dock the collaboration panel."
+msgstr "コラボレーションパネルをドッキングする位置です。"
+
+msgctxt "settings"
+msgid "Where to dock the outline panel."
+msgstr "アウトラインパネルをドッキングする位置です。"
+
+msgctxt "settings"
+msgid "Where to dock the project panel."
+msgstr "プロジェクトパネルをドッキングする位置です。"
+
+msgctxt "settings"
+msgid "Where to dock the terminal panel."
+msgstr "ターミナルパネルをドッキングする位置です。"
+
+msgctxt "settings"
+msgid "Where to render Git blame when it is enabled."
+msgstr "Git blame を有効にしたときの表示位置です。"
+
+msgctxt "settings"
+msgid "Where to show LSP results that can contain multiple locations (Go to Definition, Go to Implementation, Find All References)."
+msgstr "複数の位置を含みうる LSP の結果 (定義へ移動・実装へ移動・すべての参照を検索) をどこに表示するかを設定します。"
+
+msgctxt "settings"
+msgid "Where to show notifications when the agent has completed its response or needs confirmation before running a tool action."
+msgstr "エージェントが応答を終えたとき、またはツールの実行前に確認が必要なときに、通知をどこに表示するかを設定します。"
+
+msgctxt "settings"
+msgid "Where to show the minimap in the editor."
+msgstr "エディターのどこにミニマップを表示するかを設定します。"
+
+msgctxt "settings"
+msgid "Whether alternate scroll mode is active by default (converts mouse scroll to arrow keys in apps like Vim)."
+msgstr "代替スクロールモードを既定で有効にするかどうかを設定します (Vim などのアプリでマウスのスクロールを矢印キーに変換します)。"
+
+msgctxt "settings"
+msgid "Whether and how to display code lenses from language servers."
+msgstr "言語サーバーのコードレンズを表示するかどうか、またどのように表示するかを設定します。"
+
+msgctxt "settings"
+msgid "Whether breakpoints should be reused across Zed sessions."
+msgstr "Zed のセッションをまたいでブレークポイントを引き継ぐかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether clicking the stop button on a running terminal tool should also cancel the agent's generation. Note that this only applies to the stop button, not to ctrl+c inside the terminal."
+msgstr "実行中のターミナルツールの停止ボタンを押したときに、エージェントの生成も中止するかどうかを設定します。これは停止ボタンにのみ適用され、ターミナル内の ctrl+c には適用されません。"
+
+msgctxt "settings"
+msgid "Whether cmd-click (ctrl-click on Linux and Windows) opens hyperlinks even when the terminal application has enabled mouse reporting. When disabled, these clicks are forwarded to the application; links can still be opened with shift-cmd-click."
+msgstr "ターミナルのアプリケーションがマウスレポートを有効にしている場合でも、cmd + クリック (Linux と Windows では ctrl + クリック) でハイパーリンクを開くかどうかを設定します。無効にするとこれらのクリックはアプリケーションへ転送されますが、shift + cmd + クリックでリンクを開けます。"
+
+msgctxt "settings"
+msgid "Whether edit predictions are shown in normal mode. By default, edit predictions are only shown in insert and replace modes."
+msgstr "ノーマルモードで編集予測を表示するかどうかを設定します。既定では挿入モードと置換モードでのみ表示されます。"
+
+msgctxt "settings"
+msgid "Whether git features show changes relative to HEAD (uncommitted changes) or to the default branch (all changes on the current branch)."
+msgstr "git の機能が HEAD との差分 (未コミットの変更) を示すか、既定のブランチとの差分 (現在のブランチのすべての変更) を示すかを設定します。"
+
+msgctxt "settings"
+msgid "Whether indentation of pasted content should be adjusted based on the context."
+msgstr "貼り付けた内容のインデントを、文脈に応じて調整するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether newly opened file diffs show the full file instead of changes only."
+msgstr "新しく開いたファイルの差分で、変更箇所だけでなくファイル全体を表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether or not to automatically check for updates."
+msgstr "更新を自動的に確認するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether or not to debounce inlay hints updates after buffer edits (set to 0 to disable debouncing)."
+msgstr "バッファーの編集後にインレイヒントの更新をデバウンスするかどうかを設定します (0 でデバウンスを無効化)。"
+
+msgctxt "settings"
+msgid "Whether or not to debounce inlay hints updates after buffer scrolls (set to 0 to disable debouncing)."
+msgstr "バッファーのスクロール後にインレイヒントの更新をデバウンスするかどうかを設定します (0 でデバウンスを無効化)。"
+
+msgctxt "settings"
+msgid "Whether or not to ensure there's a single newline at the end of a buffer when saving it."
+msgstr "保存時にバッファーの末尾に改行を 1 つだけ確保するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether or not to remove any trailing whitespace from lines of a buffer before saving it."
+msgstr "保存する前に、バッファーの各行から行末の空白を削除するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether or not to restore unsaved buffers on restart."
+msgstr "再起動時に未保存のバッファーを復元するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether or not to show Git blame data for the currently focused line."
+msgstr "現在フォーカスしている行の Git blame 情報を表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether other hints should be shown."
+msgstr "その他のヒントを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether parameter hints should be shown."
+msgstr "引数のヒントを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether selecting text in the terminal automatically copies to the system clipboard."
+msgstr "ターミナルでテキストを選択したときに、自動的にシステムのクリップボードへコピーするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether tasks are enabled for this language."
+msgstr "この言語でタスクを有効にするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the agent panel should open on startup."
+msgstr "起動時にエージェントパネルを開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the agent panel should use flexible (proportional) sizing when docked to the left or right."
+msgstr "左右にドッキングしたときに、エージェントパネルで可変 (比率) サイズを使うかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the browser panel should open on startup."
+msgstr "起動時にブラウザーパネルを開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the cursor blinks in the editor."
+msgstr "エディターでカーソルを点滅させるかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the editor search results will loop."
+msgstr "エディターの検索結果を末尾から先頭へ循環させるかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the editor will scroll beyond the last line."
+msgstr "エディターで最終行より先までスクロールできるようにします。"
+
+msgctxt "settings"
+msgid "Whether the file finder should skip focus for the active file in search results."
+msgstr "ファイル検索の結果で、アクティブなファイルにはフォーカスを合わせないようにするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the git panel should open on startup."
+msgstr "起動時に git パネルを開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the hover popover sticks when the mouse moves toward it, allowing interaction with its contents."
+msgstr "マウスをポップアップの方へ動かしたときにホバーポップアップを残し、内容を操作できるようにするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the microphone should be muted when joining a channel or a call."
+msgstr "チャンネルや通話に参加するときにマイクをミュートするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the option key behaves as the meta key."
+msgstr "Option キーを Meta キーとして扱うかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the project panel should open on startup."
+msgstr "起動時にプロジェクトパネルを開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the terminal panel should open on startup."
+msgstr "起動時にターミナルパネルを開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the terminal panel should use flexible (proportional) sizing when docked to the left or right."
+msgstr "左右にドッキングしたときに、ターミナルパネルで可変 (比率) サイズを使うかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether the text selection should have rounded corners."
+msgstr "テキストの選択範囲の角を丸くするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to align detail text in code completions context menus left or right."
+msgstr "コード補完のメニューで、詳細テキストを左右どちらに寄せるかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to allow horizontal scrolling in the project panel. When disabled, the view is always locked to the leftmost position and long file names are clipped."
+msgstr "プロジェクトパネルで水平スクロールを許可するかどうかを設定します。無効にすると表示は常に左端に固定され、長いファイル名は切り詰められます。"
+
+msgctxt "settings"
+msgid "Whether to always use cmd-enter (or ctrl-enter on Linux or Windows) to send messages."
+msgstr "メッセージの送信に常に cmd + Enter (Linux と Windows では ctrl + Enter) を使うかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to automatically close JSX tags."
+msgstr "JSX のタグを自動的に閉じるかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to automatically enable case-sensitive search based on the search query."
+msgstr "検索クエリの内容に応じて、大文字と小文字の区別を自動的に有効にするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to automatically open files after pasting or duplicating them."
+msgstr "貼り付けまたは複製したファイルを自動的に開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to automatically open files dropped from external sources."
+msgstr "外部からドロップされたファイルを自動的に開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to automatically open newly created files in the editor."
+msgstr "新しく作成したファイルをエディターで自動的に開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to automatically surround text with characters for you. For example, when you select text and type '(', Zed will automatically surround text with ()."
+msgstr "テキストを自動的に文字で囲むかどうかを設定します。たとえばテキストを選択して '(' を入力すると、Zed がそのテキストを () で囲みます。"
+
+msgctxt "settings"
+msgid "Whether to automatically type closing characters for you. For example, when you type '(', Zed will automatically add a closing ')' at the correct position."
+msgstr "閉じ文字を自動的に入力するかどうかを設定します。たとえば '(' を入力すると、Zed が正しい位置に ')' を自動的に追加します。"
+
+msgctxt "settings"
+msgid "Whether to center the current match in the editor"
+msgstr "現在の一致箇所をエディターの中央に表示するかどうかを設定します"
+
+msgctxt "settings"
+msgid "Whether to change focus to a pane when the mouse hovers over it."
+msgstr "マウスがペインの上に来たときに、そのペインへフォーカスを移すかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to collapse untracked files in the diff panel."
+msgstr "差分パネルで未追跡のファイルを折りたたむかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to colorize brackets in the editor."
+msgstr "エディターで括弧を色分けするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to constrain the agent panel content to a maximum width, centering it when the panel is wider, for optimal readability."
+msgstr "読みやすさのために、エージェントパネルの内容を最大幅に制限し、パネルがそれより広いときは中央に寄せるかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to constrain the markdown preview content to a maximum width, centering it when the pane is wider, for optimal readability."
+msgstr "読みやすさのために、Markdown プレビューの内容を最大幅に制限し、ペインがそれより広いときは中央に寄せるかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to disable all AI features in Zed."
+msgstr "Zed の AI 機能をすべて無効にするかどうかを設定します。一度有効にすると設定ファイルから消すまで元に戻せません。"
+
+msgctxt "settings"
+msgid "Whether to display inline and alongside documentation for items in the completions menu."
+msgstr "補完メニューの候補について、インラインおよび隣接する領域にドキュメントを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to enable agent features such as the agent panel, the inline assistant and commit message generation. Disabled by default."
+msgstr "エージェントパネル・インラインアシスタント・コミットメッセージ生成などのエージェント機能を有効にするかどうかを設定します。既定では無効です。"
+
+msgctxt "settings"
+msgid "Whether to enable drag-and-drop operations in the project panel."
+msgstr "プロジェクトパネルでドラッグ&ドロップ操作を有効にするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to enable word diff highlighting in the editor. When enabled, changed words within modified lines are highlighted to show exactly what changed."
+msgstr "エディターで単語単位の差分ハイライトを有効にするかどうかを設定します。有効にすると、変更された行の中で実際に変わった単語がハイライトされます。"
+
+msgctxt "settings"
+msgid "Whether to fetch LSP completions or not."
+msgstr "LSP の補完候補を取得するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to fold directories automatically and show compact folders when a directory has only one subdirectory inside."
+msgstr "ディレクトリの中にサブディレクトリが 1 つだけあるときに、自動的にまとめてコンパクトに表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to fold directories automatically when a directory contains only one subdirectory."
+msgstr "ディレクトリの中にサブディレクトリが 1 つだけあるときに、自動的にまとめるかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to follow-up empty Go to definition responses from the language server."
+msgstr "言語サーバーからの「定義へ移動」の結果が空だったときに、追加の問い合わせを行うかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to format DAP messages when adding them to debug adapter logger."
+msgstr "デバッグアダプターのロガーに追加するときに、DAP のメッセージを整形するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to have edit cards in the agent panel expanded, showing a Preview of the diff."
+msgstr "エージェントパネルの編集カードを展開し、差分のプレビューを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to have terminal cards in the agent panel expanded, showing the whole command output."
+msgstr "エージェントパネルのターミナルカードを展開し、コマンドの出力全体を表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to hide the gitignore entries in the project panel."
+msgstr "プロジェクトパネルで gitignore の対象項目を隠すかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to hide the hidden entries in the project panel."
+msgstr "プロジェクトパネルで隠し項目を表示しないかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to hide the root entry when only one folder is open in the window."
+msgstr "ウィンドウで 1 つのフォルダーだけを開いているときに、ルート項目を隠すかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to indent lines using tab characters, as opposed to multiple spaces."
+msgstr "複数のスペースではなくタブ文字でインデントするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to keep tabs in preview mode when code navigation is used to navigate away from them. If `enable_preview_file_from_code_navigation` or `enable_preview_multibuffer_from_code_navigation` is also true, the new tab may replace the existing one."
+msgstr "コードナビゲーションでタブから移動したときに、そのタブをプレビューモードのまま維持するかどうかを設定します。`enable_preview_file_from_code_navigation` または `enable_preview_multibuffer_from_code_navigation` も true の場合、新しいタブが既存のタブを置き換えることがあります。"
+
+msgctxt "settings"
+msgid "Whether to keep the text selection after copying it to the clipboard."
+msgstr "クリップボードへコピーした後もテキストの選択を維持するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to log messages between active debug adapters and Zed."
+msgstr "アクティブなデバッグアダプターと Zed の間のメッセージをログに記録するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when code navigation is used to open a multibuffer."
+msgstr "コードナビゲーションでマルチバッファーを開いたときに、プレビューモードのタブで開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when code navigation is used to open a single file."
+msgstr "コードナビゲーションで単一のファイルを開いたときに、プレビューモードのタブで開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when opened from a multibuffer."
+msgstr "マルチバッファーから開いたときに、プレビューモードのタブで開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when opened from the project panel with a single click."
+msgstr "プロジェクトパネルからシングルクリックで開いたときに、プレビューモードのタブで開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when selected from the file finder."
+msgstr "ファイル検索から選んだときに、プレビューモードのタブで開くかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to perform linked edits of associated ranges, if the LS supports it. For example, when editing opening <html> tag, the contents of the closing </html> tag will be edited as well."
+msgstr "言語サーバーが対応している場合に、関連する範囲を連動して編集するかどうかを設定します。たとえば開始タグ <html> を編集すると、対応する終了タグ </html> の内容も一緒に編集されます。"
+
+msgctxt "settings"
+msgid "Whether to play a sound when the BEL character (`\\a`, `0x07`) is printed"
+msgstr "BEL 文字 (`\\a`、`0x07`) が出力されたときに音を鳴らすかどうかを設定します"
+
+msgctxt "settings"
+msgid "Whether to pop the completions menu while typing in an editor without explicitly requesting it."
+msgstr "明示的に要求しなくても、エディターでの入力中に補完メニューを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to pull for language server-powered diagnostics or not."
+msgstr "言語サーバーからプル型で診断を取得するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to reduce non-essential motion, such as loading spinners, by rendering them in a static state."
+msgstr "読み込み中のスピナーなど、必須ではないアニメーションを静止状態で描画して減らすかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to reveal entries in the project panel automatically when a corresponding project entry becomes active."
+msgstr "対応するプロジェクトの項目がアクティブになったときに、プロジェクトパネルでその項目を自動的に表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to reveal when a corresponding outline entry becomes active."
+msgstr "対応するアウトラインの項目がアクティブになったときに、自動的に表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to scroll when clicking near the edge of the visible text area."
+msgstr "表示領域の端の近くをクリックしたときにスクロールするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show a badge on the git panel icon with the count of uncommitted changes."
+msgstr "git パネルのアイコンに、未コミットの変更数のバッジを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show diagnostics inline or not."
+msgstr "診断をインラインで表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show folder icons or chevrons for directories in the git panel."
+msgstr "git パネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show folder icons or chevrons for directories in the outline panel."
+msgstr "アウトラインパネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show folder icons or chevrons for directories in the project panel."
+msgstr "プロジェクトパネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show folder names with bold text in the project panel."
+msgstr "プロジェクトパネルでフォルダー名を太字で表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show tabs and spaces in the editor."
+msgstr "エディターにタブとスペースを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show the addition/deletion change count next to each file in the Git panel."
+msgstr "Git パネルの各ファイルの横に、追加・削除の行数を表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show the agent panel button in the status bar."
+msgstr "ステータスバーにエージェントパネルのボタンを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show the merge conflict indicator in the status bar that offers to resolve conflicts using the agent."
+msgstr "エージェントでコンフリクトを解決できることを示すインジケーターを、ステータスバーに表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show the stage and restore buttons on diff hunks."
+msgstr "差分の変更箇所に、ステージと元に戻すのボタンを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show turn statistics like elapsed time during generation and final turn duration."
+msgstr "生成中の経過時間やターンの所要時間などの統計を表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to show warnings or not by default."
+msgstr "既定で警告を表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to sort file and folder names case-sensitively in the project panel."
+msgstr "プロジェクトパネルで、ファイル名とフォルダー名を大文字と小文字を区別して並べ替えるかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to start a new line with a comment when a previous line is a comment as well."
+msgstr "直前の行がコメントの場合に、新しい行もコメントで始めるかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to stick parent directories at top of the project panel."
+msgstr "親ディレクトリをプロジェクトパネルの上部に固定表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to stick scopes to the top of the editor"
+msgstr "スコープをエディターの上部に固定表示するかどうかを設定します"
+
+msgctxt "settings"
+msgid "Whether to use additional LSP queries to format (and amend) the code after every \"trigger\" symbol input, defined by LSP server capabilities"
+msgstr "LSP サーバーの機能で定義された「トリガー」文字を入力するたびに、追加の LSP 問い合わせでコードを整形・修正するかどうかを設定します"
+
+msgctxt "settings"
+msgid "Whether to use language servers to provide code intelligence."
+msgstr "コードインテリジェンスに言語サーバーを使うかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to zoom the editor font size with the mouse wheel while holding the primary modifier key."
+msgstr "主修飾キーを押しながらマウスホイールを回したときに、エディターのフォントサイズを拡大縮小するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether type hints should be shown."
+msgstr "型のヒントを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether your current project should be shared when joining an empty channel."
+msgstr "空のチャンネルに参加するときに、現在のプロジェクトを共有するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Which diagnostic indicators to show in the scrollbar."
+msgstr "スクロールバーに表示する診断インジケーターの種類です。"
+
+msgctxt "settings"
+msgid "Which files containing diagnostic errors/warnings to mark in the project panel."
+msgstr "診断のエラー・警告を含むファイルのうち、どれをプロジェクトパネルで示すかを設定します。"
+
+msgctxt "settings"
+msgid "Which files containing diagnostic errors/warnings to mark in the tabs."
+msgstr "診断のエラー・警告を含むファイルのうち、どれをタブ上で示すかを設定します。"
+
+msgctxt "settings"
+msgid "Which level to use to filter out diagnostics displayed in the editor."
+msgstr "エディターに表示する診断を絞り込む重大度です。"
+
+msgctxt "settings"
+msgid "Which settings should be activated only in Preview build of Zed."
+msgstr "Zed の Preview ビルドでのみ有効にする設定です。"
+
+msgctxt "settings"
+msgid "Which side of the window the threads sidebar appears on."
+msgstr "スレッドサイドバーをウィンドウのどちら側に表示するかを設定します。"
+
+msgctxt "settings"
+msgid "Which-key Menu"
+msgstr "Which-key メニュー"
+
+msgctxt "settings"
+msgid "Whitespace"
+msgstr "空白文字"
+
+msgctxt "settings"
+msgid "Whole Word"
+msgstr "単語単位で検索"
+
+msgctxt "settings"
+msgid "Width in pixels of the git diff indicators."
+msgstr "Git 差分インジケーターの幅 (ピクセル) です。"
+
+msgctxt "settings"
+msgid "Width of the git diff indicators in the gutter. Default scales with the buffer font size."
+msgstr "ガターに表示する Git 差分インジケーターの幅です。既定ではバッファーのフォントサイズに合わせて拡大縮小します。"
+
+msgctxt "settings"
+msgid "Window"
+msgstr "ウィンドウ"
+
+msgctxt "settings"
+msgid "Window & Layout"
+msgstr "ウィンドウとレイアウト"
+
+msgctxt "settings"
+msgid "Window Decorations"
+msgstr "ウィンドウの装飾"
+
+msgctxt "settings"
+msgid "Word Diff Enabled"
+msgstr "単語単位の差分を有効にする"
+
+msgctxt "settings"
+msgid "Words"
+msgstr "単語"
+
+msgctxt "settings"
+msgid "Words Min Length"
+msgstr "単語補完の最小文字数"
+
+msgctxt "settings"
+msgid "Working Directory"
+msgstr "作業ディレクトリ"
+
+msgctxt "settings"
+msgid "Workspace Restoration"
+msgstr "ワークスペースの復元"
+
+msgctxt "settings"
+msgid "Wrap Guides"
+msgstr "折り返しガイド"
+
+msgctxt "settings"
+msgid "Wrapping"
+msgstr "折り返し"
+
+msgctxt "settings"
+msgid "Zoomed Padding"
+msgstr "ズーム時の余白"
+
+msgctxt "settings"
+msgid "e.g. claude"
+msgstr "例: claude"

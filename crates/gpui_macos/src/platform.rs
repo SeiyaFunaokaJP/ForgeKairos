@@ -272,9 +272,10 @@ impl MacPlatform {
                 menu_item.setSubmenu_(menu);
                 application_menu.addItem_(menu_item);
 
-                // `crates/zed/src/zed/app_menus.rs` のウィンドウメニュー名と対。
-                // 片方だけ変えると macOS の windowsMenu が設定されなくなる
-                if menu_config.name == "Window" || menu_config.name == "ウィンドウ" {
+                // Zed translates menu names before handing them to the platform.
+                if menu_config.name == "Window"
+                    || menu_config.name == i18n::tr_ctx(i18n::context::MENU, "Window")
+                {
                     let app: id = msg_send![APP_CLASS, sharedApplication];
                     app.setWindowsMenu_(menu);
                 }

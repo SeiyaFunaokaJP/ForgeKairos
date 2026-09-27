@@ -1,0 +1,4687 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+
+#. activity indicator: show error message
+msgctxt "action"
+msgid "activity_indicator::ShowErrorMessage"
+msgstr "エラーメッセージを表示"
+
+#. agent: add selection to thread
+msgctxt "action"
+msgid "agent::AddSelectionToThread"
+msgstr "エージェント: 選択範囲をスレッドに追加"
+
+#. agent: allow always
+msgctxt "action"
+msgid "agent::AllowAlways"
+msgstr "エージェント: 常に許可"
+
+#. agent: allow once
+msgctxt "action"
+msgid "agent::AllowOnce"
+msgstr "エージェント: 今回だけ許可"
+
+#. agent: archive selected thread
+msgctxt "action"
+msgid "agent::ArchiveSelectedThread"
+msgstr "エージェント: 選択したスレッドをアーカイブ"
+
+#. agent: copy thread to clipboard
+msgctxt "action"
+msgid "agent::CopyThreadToClipboard"
+msgstr "エージェント: スレッドをクリップボードにコピー"
+
+#. agent: expand message editor
+msgctxt "action"
+msgid "agent::ExpandMessageEditor"
+msgstr "エージェント: メッセージ入力欄を広げる"
+
+#. agent: follow
+msgctxt "action"
+msgid "agent::Follow"
+msgstr "エージェント: エージェントをフォロー"
+
+#. agent: keep
+msgctxt "action"
+msgid "agent::Keep"
+msgstr "エージェント: 変更を採用"
+
+#. agent: keep all
+msgctxt "action"
+msgid "agent::KeepAll"
+msgstr "エージェント: すべての変更を採用"
+
+#. agent: manage profiles
+msgctxt "action"
+msgid "agent::ManageProfiles"
+msgstr "エージェント: プロファイルを管理"
+
+#. agent: manage skills
+msgctxt "action"
+msgid "agent::ManageSkills"
+msgstr "エージェント: スキルを管理"
+
+#. agent: move thread to panel
+msgctxt "action"
+msgid "agent::MoveThreadToPanel"
+msgstr "エージェント: スレッドをパネルに戻す"
+
+#. agent: new external agent thread
+msgctxt "action"
+msgid "agent::NewExternalAgentThread"
+msgstr "エージェント: 外部エージェントの新規スレッド"
+
+#. agent: new terminal thread
+msgctxt "action"
+msgid "agent::NewTerminalThread"
+msgstr "エージェント: 新規ターミナルスレッド"
+
+#. agent: new thread
+msgctxt "action"
+msgid "agent::NewThread"
+msgstr "エージェント: 新規スレッド"
+
+#. agent: open active thread as markdown
+msgctxt "action"
+msgid "agent::OpenActiveThreadAsMarkdown"
+msgstr "エージェント: スレッドを Markdown で開く"
+
+#. agent: open agent diff
+msgctxt "action"
+msgid "agent::OpenAgentDiff"
+msgstr "エージェント: 差分を開く"
+
+#. agent: open settings
+msgctxt "action"
+msgid "agent::OpenSettings"
+msgstr "エージェント: 設定を開く"
+
+#. agent: open thread in split
+msgctxt "action"
+msgid "agent::OpenThreadInSplit"
+msgstr "エージェント: スレッドを右に分割して開く"
+
+#. agent: open thread in tab
+msgctxt "action"
+msgid "agent::OpenThreadInTab"
+msgstr "エージェント: スレッドをタブで開く"
+
+#. agent: reject
+msgctxt "action"
+msgid "agent::Reject"
+msgstr "エージェント: 変更を拒否"
+
+#. agent: reject all
+msgctxt "action"
+msgid "agent::RejectAll"
+msgstr "エージェント: すべての変更を拒否"
+
+#. agent: remove selected thread
+msgctxt "action"
+msgid "agent::RemoveSelectedThread"
+msgstr "エージェント: 選択したスレッドを削除"
+
+#. agent: rename selected thread
+msgctxt "action"
+msgid "agent::RenameSelectedThread"
+msgstr "エージェント: 選択したスレッドの名前を変更"
+
+#. agent: revoke outside sandbox consents
+msgctxt "action"
+msgid "agent::RevokeOutsideSandboxConsents"
+msgstr "エージェント: サンドボックスの外での起動の同意を取り消す"
+
+#. agent: select agent
+msgctxt "action"
+msgid "agent::SelectAgent"
+msgstr "エージェント: エージェントを選択"
+
+#. agent: toggle
+msgctxt "action"
+msgid "agent::Toggle"
+msgstr "エージェント: パネルの表示切り替え"
+
+#. agent: toggle auto approve tool actions
+msgctxt "action"
+msgid "agent::ToggleAutoApproveToolActions"
+msgstr "エージェント: ツールの自動承認を切り替え"
+
+#. agent: toggle fast mode
+msgctxt "action"
+msgid "agent::ToggleFastMode"
+msgstr "エージェント: 高速モードの切り替え"
+
+#. agent: toggle focus
+msgctxt "action"
+msgid "agent::ToggleFocus"
+msgstr "エージェント: パネルのフォーカス切り替え"
+
+#. agent: toggle model selector
+msgctxt "action"
+msgid "agent::ToggleModelSelector"
+msgstr "エージェント: モデルを選択"
+
+#. agent: toggle options menu
+msgctxt "action"
+msgid "agent::ToggleOptionsMenu"
+msgstr "エージェント: オプションメニュー"
+
+#. agent: toggle panel tab bar
+msgctxt "action"
+msgid "agent::TogglePanelTabBar"
+msgstr "エージェント: パネルのタブバーの切り替え"
+
+#. agent: toggle panel thread history
+msgctxt "action"
+msgid "agent::TogglePanelThreadHistory"
+msgstr "エージェント: パネル内のスレッド履歴の切り替え"
+
+#. agent: toggle profile selector
+msgctxt "action"
+msgid "agent::ToggleProfileSelector"
+msgstr "エージェント: プロファイルを選択"
+
+#. agent: toggle search
+msgctxt "action"
+msgid "agent::ToggleSearch"
+msgstr "エージェント: スレッドを検索"
+
+#. agent: toggle thinking mode
+msgctxt "action"
+msgid "agent::ToggleThinkingMode"
+msgstr "エージェント: 思考モードの切り替え"
+
+#. agent: toggle tool permission selector
+msgctxt "action"
+msgid "agent::ToggleToolPermissionSelector"
+msgstr "エージェント: ツールの権限セレクターを開く"
+
+#. assistant: inline assist
+msgctxt "action"
+msgid "assistant::InlineAssist"
+msgstr "エージェント: インラインアシスト"
+
+#. auto update: check
+msgctxt "action"
+msgid "auto_update::Check"
+msgstr "更新を確認"
+
+#. auto update: view release notes
+msgctxt "action"
+msgid "auto_update::ViewReleaseNotes"
+msgstr "リリースノートを表示"
+
+#. auto update: view release notes locally
+msgctxt "action"
+msgid "auto_update::ViewReleaseNotesLocally"
+msgstr "リリースノートをエディターで表示"
+
+#. branch picker: delete branch
+msgctxt "action"
+msgid "branch_picker::DeleteBranch"
+msgstr "Git: ブランチを削除"
+
+#. browser panel: ask copilot
+msgctxt "action"
+msgid "browser_panel::AskCopilot"
+msgstr "ブラウザー: 選択テキストを Copilot に聞く"
+
+#. browser panel: close panel tab
+msgctxt "action"
+msgid "browser_panel::ClosePanelTab"
+msgstr "ブラウザー: パネルのタブを閉じる"
+
+#. browser panel: focus address bar
+msgctxt "action"
+msgid "browser_panel::FocusAddressBar"
+msgstr "ブラウザー: アドレスバーにフォーカス"
+
+#. browser panel: focus next pane group
+msgctxt "action"
+msgid "browser_panel::FocusNextPaneGroup"
+msgstr "ブラウザー: 次のペインにフォーカス"
+
+#. browser panel: go home
+msgctxt "action"
+msgid "browser_panel::GoHome"
+msgstr "ブラウザー: ホームを開く"
+
+#. browser panel: navigate back
+msgctxt "action"
+msgid "browser_panel::NavigateBack"
+msgstr "ブラウザー: 戻る"
+
+#. browser panel: navigate forward
+msgctxt "action"
+msgid "browser_panel::NavigateForward"
+msgstr "ブラウザー: 進む"
+
+#. browser panel: new browser tab
+msgctxt "action"
+msgid "browser_panel::NewBrowserTab"
+msgstr "ブラウザー: 新しいタブ"
+
+#. browser panel: new panel tab
+msgctxt "action"
+msgid "browser_panel::NewPanelTab"
+msgstr "ブラウザー: パネルに新しいタブ"
+
+#. browser panel: open in center
+msgctxt "action"
+msgid "browser_panel::OpenInCenter"
+msgstr "ブラウザー: エディター領域へ移す"
+
+#. browser panel: open in external browser
+msgctxt "action"
+msgid "browser_panel::OpenInExternalBrowser"
+msgstr "ブラウザー: 外部ブラウザーで開く"
+
+#. browser panel: reload
+msgctxt "action"
+msgid "browser_panel::Reload"
+msgstr "ブラウザー: 再読み込み"
+
+#. browser panel: search selection
+msgctxt "action"
+msgid "browser_panel::SearchSelection"
+msgstr "ブラウザー: 選択テキストを Web で検索"
+
+#. browser panel: set as home page
+msgctxt "action"
+msgid "browser_panel::SetAsHomePage"
+msgstr "ブラウザー: このページを起動時に開く"
+
+#. browser panel: split panel right
+msgctxt "action"
+msgid "browser_panel::SplitPanelRight"
+msgstr "ブラウザー: パネルを右に分割"
+
+#. browser panel: submit address
+msgctxt "action"
+msgid "browser_panel::SubmitAddress"
+msgstr "ブラウザー: 入力した URL を開く"
+
+#. browser panel: toggle
+msgctxt "action"
+msgid "browser_panel::Toggle"
+msgstr "ブラウザー: パネルの表示切り替え"
+
+#. browser panel: toggle focus
+msgctxt "action"
+msgid "browser_panel::ToggleFocus"
+msgstr "ブラウザー: パネルのフォーカス切り替え"
+
+#. buffer search: deploy
+msgctxt "action"
+msgid "buffer_search::Deploy"
+msgstr "検索: ファイル内を検索"
+
+#. buffer search: deploy replace
+msgctxt "action"
+msgid "buffer_search::DeployReplace"
+msgstr "検索: ファイル内を置換"
+
+#. buffer search: dismiss
+msgctxt "action"
+msgid "buffer_search::Dismiss"
+msgstr "検索: 検索バーを閉じる"
+
+#. buffer search: focus editor
+msgctxt "action"
+msgid "buffer_search::FocusEditor"
+msgstr "検索: エディターにフォーカス"
+
+#. buffer search: use selection for find
+msgctxt "action"
+msgid "buffer_search::UseSelectionForFind"
+msgstr "検索: 選択範囲を検索語にする"
+
+#. command palette: toggle
+msgctxt "action"
+msgid "command_palette::Toggle"
+msgstr "コマンドパレット"
+
+#. console: watch expression
+msgctxt "action"
+msgid "console::WatchExpression"
+msgstr "デバッグ: 式をウォッチに追加"
+
+#. debug panel: toggle
+msgctxt "action"
+msgid "debug_panel::Toggle"
+msgstr "デバッグ: パネルの表示切り替え"
+
+#. debug panel: toggle focus
+msgctxt "action"
+msgid "debug_panel::ToggleFocus"
+msgstr "デバッグ: パネルのフォーカス切り替え"
+
+#. debugger: clear all breakpoints
+msgctxt "action"
+msgid "debugger::ClearAllBreakpoints"
+msgstr "デバッグ: すべてのブレークポイントを削除"
+
+#. debugger: continue
+msgctxt "action"
+msgid "debugger::Continue"
+msgstr "デバッグ: 続行"
+
+#. debugger: detach
+msgctxt "action"
+msgid "debugger::Detach"
+msgstr "デバッグ: デタッチ"
+
+#. debugger: evaluate selected text
+msgctxt "action"
+msgid "debugger::EvaluateSelectedText"
+msgstr "デバッグ: 選択範囲を評価"
+
+#. debugger: focus breakpoint list
+msgctxt "action"
+msgid "debugger::FocusBreakpointList"
+msgstr "デバッグ: ブレークポイント一覧にフォーカス"
+
+#. debugger: focus console
+msgctxt "action"
+msgid "debugger::FocusConsole"
+msgstr "デバッグ: コンソールにフォーカス"
+
+#. debugger: focus frames
+msgctxt "action"
+msgid "debugger::FocusFrames"
+msgstr "デバッグ: コールスタックにフォーカス"
+
+#. debugger: focus loaded sources
+msgctxt "action"
+msgid "debugger::FocusLoadedSources"
+msgstr "デバッグ: 読み込み済みソースにフォーカス"
+
+#. debugger: focus modules
+msgctxt "action"
+msgid "debugger::FocusModules"
+msgstr "デバッグ: モジュールにフォーカス"
+
+#. debugger: focus terminal
+msgctxt "action"
+msgid "debugger::FocusTerminal"
+msgstr "デバッグ: ターミナルにフォーカス"
+
+#. debugger: focus variables
+msgctxt "action"
+msgid "debugger::FocusVariables"
+msgstr "デバッグ: 変数にフォーカス"
+
+#. debugger: go to selected address
+msgctxt "action"
+msgid "debugger::GoToSelectedAddress"
+msgstr "デバッグ: 選択したアドレスへ移動"
+
+#. debugger: next breakpoint property
+msgctxt "action"
+msgid "debugger::NextBreakpointProperty"
+msgstr "デバッグ: 次のブレークポイント設定項目"
+
+#. debugger: open project debug tasks
+msgctxt "action"
+msgid "debugger::OpenProjectDebugTasks"
+msgstr "デバッグ: プロジェクトのデバッグタスクを開く"
+
+#. debugger: pause
+msgctxt "action"
+msgid "debugger::Pause"
+msgstr "デバッグ: 一時停止"
+
+#. debugger: previous breakpoint property
+msgctxt "action"
+msgid "debugger::PreviousBreakpointProperty"
+msgstr "デバッグ: 前のブレークポイント設定項目"
+
+#. debugger: rerun
+msgctxt "action"
+msgid "debugger::Rerun"
+msgstr "デバッグ: 再実行"
+
+#. debugger: rerun session
+msgctxt "action"
+msgid "debugger::RerunSession"
+msgstr "デバッグ: セッションを再実行"
+
+#. debugger: restart
+msgctxt "action"
+msgid "debugger::Restart"
+msgstr "デバッグ: 再起動"
+
+#. debugger: run to cursor
+msgctxt "action"
+msgid "debugger::RunToCursor"
+msgstr "デバッグ: カーソル位置まで実行"
+
+#. debugger: start
+msgctxt "action"
+msgid "debugger::Start"
+msgstr "デバッグ: 開始"
+
+#. debugger: step back
+msgctxt "action"
+msgid "debugger::StepBack"
+msgstr "デバッグ: ステップバック"
+
+#. debugger: step into
+msgctxt "action"
+msgid "debugger::StepInto"
+msgstr "デバッグ: ステップイン"
+
+#. debugger: step out
+msgctxt "action"
+msgid "debugger::StepOut"
+msgstr "デバッグ: ステップアウト"
+
+#. debugger: step over
+msgctxt "action"
+msgid "debugger::StepOver"
+msgstr "デバッグ: ステップオーバー"
+
+#. debugger: stop
+msgctxt "action"
+msgid "debugger::Stop"
+msgstr "デバッグ: 停止"
+
+#. debugger: toggle enable breakpoint
+msgctxt "action"
+msgid "debugger::ToggleEnableBreakpoint"
+msgstr "デバッグ: ブレークポイントの有効/無効を切り替え"
+
+#. debugger: toggle expand item
+msgctxt "action"
+msgid "debugger::ToggleExpandItem"
+msgstr "デバッグ: 項目の開閉"
+
+#. debugger: toggle ignore breakpoints
+msgctxt "action"
+msgid "debugger::ToggleIgnoreBreakpoints"
+msgstr "デバッグ: ブレークポイントを一時的に無視"
+
+#. debugger: toggle session picker
+msgctxt "action"
+msgid "debugger::ToggleSessionPicker"
+msgstr "デバッグ: セッションを選択"
+
+#. debugger: toggle thread picker
+msgctxt "action"
+msgid "debugger::ToggleThreadPicker"
+msgstr "デバッグ: スレッドを選択"
+
+#. debugger: toggle user frames
+msgctxt "action"
+msgid "debugger::ToggleUserFrames"
+msgstr "デバッグ: 自分のコードのフレームのみ表示"
+
+#. debugger: unset breakpoint
+msgctxt "action"
+msgid "debugger::UnsetBreakpoint"
+msgstr "デバッグ: ブレークポイントを解除"
+
+#. dev: copy debug adapter arguments
+msgctxt "action"
+msgid "dev::CopyDebugAdapterArguments"
+msgstr "開発: デバッグアダプターの引数をコピー"
+
+#. dev: edit prediction context go back
+msgctxt "action"
+msgid "dev::EditPredictionContextGoBack"
+msgstr "開発: 編集予測コンテキストを戻る"
+
+#. dev: edit prediction context go forward
+msgctxt "action"
+msgid "dev::EditPredictionContextGoForward"
+msgstr "開発: 編集予測コンテキストを進む"
+
+#. dev: open debug adapter logs
+msgctxt "action"
+msgid "dev::OpenDebugAdapterLogs"
+msgstr "開発: デバッグアダプターのログを開く"
+
+#. dev: open edit prediction context view
+msgctxt "action"
+msgid "dev::OpenEditPredictionContextView"
+msgstr "開発: 編集予測のコンテキストを表示"
+
+#. diagnostics: deploy
+msgctxt "action"
+msgid "diagnostics::Deploy"
+msgstr "問題: プロジェクトの診断を開く"
+
+#. diagnostics: deploy current file
+msgctxt "action"
+msgid "diagnostics::DeployCurrentFile"
+msgstr "問題: このファイルの診断を開く"
+
+#. diagnostics: toggle diagnostics refresh
+msgctxt "action"
+msgid "diagnostics::ToggleDiagnosticsRefresh"
+msgstr "問題: 自動更新の切り替え"
+
+#. diagnostics: toggle warnings
+msgctxt "action"
+msgid "diagnostics::ToggleWarnings"
+msgstr "問題: 警告の表示切り替え"
+
+#. edit prediction: rate predictions
+msgctxt "action"
+msgid "edit_prediction::RatePredictions"
+msgstr "編集予測: 予測を評価"
+
+#. edit prediction: toggle menu
+msgctxt "action"
+msgid "edit_prediction::ToggleMenu"
+msgstr "編集予測: メニューを表示"
+
+#. editor: accept edit prediction
+msgctxt "action"
+msgid "editor::AcceptEditPrediction"
+msgstr "編集予測を採用"
+
+#. editor: accept next line edit prediction
+msgctxt "action"
+msgid "editor::AcceptNextLineEditPrediction"
+msgstr "編集予測: 次の 1 行を採用"
+
+#. editor: accept next word edit prediction
+msgctxt "action"
+msgid "editor::AcceptNextWordEditPrediction"
+msgstr "編集予測: 次の 1 単語を採用"
+
+#. editor: accept partial copilot suggestion
+msgctxt "action"
+msgid "editor::AcceptPartialCopilotSuggestion"
+msgstr "編集予測: 候補の一部を採用"
+
+#. editor: add selection above
+msgctxt "action"
+msgid "editor::AddSelectionAbove"
+msgstr "選択: 上にカーソルを追加"
+
+#. editor: add selection below
+msgctxt "action"
+msgid "editor::AddSelectionBelow"
+msgstr "選択: 下にカーソルを追加"
+
+#. editor: align selections
+msgctxt "action"
+msgid "editor::AlignSelections"
+msgstr "編集: 選択範囲を揃える"
+
+#. editor: apply all diff hunks
+msgctxt "action"
+msgid "editor::ApplyAllDiffHunks"
+msgstr "すべての差分を適用"
+
+#. editor: apply diff hunk
+msgctxt "action"
+msgid "editor::ApplyDiffHunk"
+msgstr "差分を適用"
+
+#. editor: auto indent
+msgctxt "action"
+msgid "editor::AutoIndent"
+msgstr "編集: 自動インデント"
+
+#. editor: backspace
+msgctxt "action"
+msgid "editor::Backspace"
+msgstr "編集: 前の文字を削除"
+
+#. editor: backtab
+msgctxt "action"
+msgid "editor::Backtab"
+msgstr "編集: インデントを 1 段戻す"
+
+#. editor: blame hover
+msgctxt "action"
+msgid "editor::BlameHover"
+msgstr "Git: 注釈 (blame) をホバー表示"
+
+#. editor: blame previous revision
+msgctxt "action"
+msgid "editor::BlamePreviousRevision"
+msgstr "Git: 前のリビジョンを注釈 (blame)"
+
+#. editor: blame revision
+msgctxt "action"
+msgid "editor::BlameRevision"
+msgstr "Git: このリビジョンを注釈 (blame)"
+
+#. editor: cancel
+msgctxt "action"
+msgid "editor::Cancel"
+msgstr "キャンセル"
+
+#. editor: cancel flycheck
+msgctxt "action"
+msgid "editor::CancelFlycheck"
+msgstr "flycheck を中止"
+
+#. editor: cancel language server work
+msgctxt "action"
+msgid "editor::CancelLanguageServerWork"
+msgstr "言語サーバーの処理を中止"
+
+#. editor: clear flycheck
+msgctxt "action"
+msgid "editor::ClearFlycheck"
+msgstr "flycheck の結果を消去"
+
+#. editor: collapse all diff hunks
+msgctxt "action"
+msgid "editor::CollapseAllDiffHunks"
+msgstr "差分をすべて折りたたむ"
+
+#. editor: confirm completion insert
+msgctxt "action"
+msgid "editor::ConfirmCompletionInsert"
+msgstr "補完候補を挿入して確定"
+
+#. editor: confirm completion replace
+msgctxt "action"
+msgid "editor::ConfirmCompletionReplace"
+msgstr "補完候補で置き換えて確定"
+
+#. editor: confirm rename
+msgctxt "action"
+msgid "editor::ConfirmRename"
+msgstr "シンボルの名前変更を確定"
+
+#. editor: context menu first
+msgctxt "action"
+msgid "editor::ContextMenuFirst"
+msgstr "メニュー: 先頭の項目を選択"
+
+#. editor: context menu last
+msgctxt "action"
+msgid "editor::ContextMenuLast"
+msgstr "メニュー: 末尾の項目を選択"
+
+#. editor: context menu next
+msgctxt "action"
+msgid "editor::ContextMenuNext"
+msgstr "メニュー: 次の項目を選択"
+
+#. editor: context menu previous
+msgctxt "action"
+msgid "editor::ContextMenuPrevious"
+msgstr "メニュー: 前の項目を選択"
+
+#. editor: convert from base64
+msgctxt "action"
+msgid "editor::ConvertFromBase64"
+msgstr "編集: Base64 をデコード"
+
+#. editor: convert indentation to spaces
+msgctxt "action"
+msgid "editor::ConvertIndentationToSpaces"
+msgstr "編集: インデントをスペースに変換"
+
+#. editor: convert indentation to tabs
+msgctxt "action"
+msgid "editor::ConvertIndentationToTabs"
+msgstr "編集: インデントをタブに変換"
+
+#. editor: convert to base64
+msgctxt "action"
+msgid "editor::ConvertToBase64"
+msgstr "編集: Base64 にエンコード"
+
+#. editor: convert to kebab case
+msgctxt "action"
+msgid "editor::ConvertToKebabCase"
+msgstr "編集: ケバブケースに変換"
+
+#. editor: convert to lower camel case
+msgctxt "action"
+msgid "editor::ConvertToLowerCamelCase"
+msgstr "編集: ローワーキャメルケースに変換"
+
+#. editor: convert to lower case
+msgctxt "action"
+msgid "editor::ConvertToLowerCase"
+msgstr "編集: 小文字に変換"
+
+#. editor: convert to opposite case
+msgctxt "action"
+msgid "editor::ConvertToOppositeCase"
+msgstr "編集: 大文字と小文字を反転"
+
+#. editor: convert to rot13
+msgctxt "action"
+msgid "editor::ConvertToRot13"
+msgstr "編集: ROT13 に変換"
+
+#. editor: convert to rot47
+msgctxt "action"
+msgid "editor::ConvertToRot47"
+msgstr "編集: ROT47 に変換"
+
+#. editor: convert to sentence case
+msgctxt "action"
+msgid "editor::ConvertToSentenceCase"
+msgstr "編集: センテンスケースに変換"
+
+#. editor: convert to snake case
+msgctxt "action"
+msgid "editor::ConvertToSnakeCase"
+msgstr "編集: スネークケースに変換"
+
+#. editor: convert to title case
+msgctxt "action"
+msgid "editor::ConvertToTitleCase"
+msgstr "編集: タイトルケースに変換"
+
+#. editor: convert to upper camel case
+msgctxt "action"
+msgid "editor::ConvertToUpperCamelCase"
+msgstr "編集: アッパーキャメルケースに変換"
+
+#. editor: convert to upper case
+msgctxt "action"
+msgid "editor::ConvertToUpperCase"
+msgstr "編集: 大文字に変換"
+
+#. editor: copy
+msgctxt "action"
+msgid "editor::Copy"
+msgstr "編集: コピー"
+
+#. editor: copy and trim
+msgctxt "action"
+msgid "editor::CopyAndTrim"
+msgstr "編集: 余白を削ってコピー"
+
+#. editor: copy file location
+msgctxt "action"
+msgid "editor::CopyFileLocation"
+msgstr "ファイルの場所をコピー"
+
+#. editor: copy file name
+msgctxt "action"
+msgid "editor::CopyFileName"
+msgstr "ファイル名をコピー"
+
+#. editor: copy file name without extension
+msgctxt "action"
+msgid "editor::CopyFileNameWithoutExtension"
+msgstr "拡張子なしのファイル名をコピー"
+
+#. editor: copy highlight json
+msgctxt "action"
+msgid "editor::CopyHighlightJson"
+msgstr "ハイライト情報を JSON でコピー"
+
+#. editor: copy permalink to line
+msgctxt "action"
+msgid "editor::CopyPermalinkToLine"
+msgstr "この行への永続リンクをコピー"
+
+#. editor: cut
+msgctxt "action"
+msgid "editor::Cut"
+msgstr "編集: 切り取り"
+
+#. editor: delete
+msgctxt "action"
+msgid "editor::Delete"
+msgstr "編集: 次の文字を削除"
+
+#. editor: delete line
+msgctxt "action"
+msgid "editor::DeleteLine"
+msgstr "編集: 行を削除"
+
+#. editor: delete to end of line
+msgctxt "action"
+msgid "editor::DeleteToEndOfLine"
+msgstr "編集: 行末まで削除"
+
+#. editor: diff clipboard with selection
+msgctxt "action"
+msgid "editor::DiffClipboardWithSelection"
+msgstr "編集: クリップボードと選択範囲を比較"
+
+#. editor: disable breakpoint
+msgctxt "action"
+msgid "editor::DisableBreakpoint"
+msgstr "デバッグ: ブレークポイントを無効化"
+
+#. editor: display cursor names
+msgctxt "action"
+msgid "editor::DisplayCursorNames"
+msgstr "表示: カーソル名を表示"
+
+#. editor: duplicate line down
+msgctxt "action"
+msgid "editor::DuplicateLineDown"
+msgstr "編集: 行を下に複製"
+
+#. editor: duplicate line up
+msgctxt "action"
+msgid "editor::DuplicateLineUp"
+msgstr "編集: 行を上に複製"
+
+#. editor: duplicate selection
+msgctxt "action"
+msgid "editor::DuplicateSelection"
+msgstr "編集: 選択範囲を複製"
+
+#. editor: edit bookmark
+msgctxt "action"
+msgid "editor::EditBookmark"
+msgstr "ブックマークを編集"
+
+#. editor: edit log breakpoint
+msgctxt "action"
+msgid "editor::EditLogBreakpoint"
+msgstr "ログポイントを編集"
+
+#. editor: enable breakpoint
+msgctxt "action"
+msgid "editor::EnableBreakpoint"
+msgstr "デバッグ: ブレークポイントを有効化"
+
+#. editor: expand all diff hunks
+msgctxt "action"
+msgid "editor::ExpandAllDiffHunks"
+msgstr "差分をすべて展開"
+
+#. editor: expand excerpts
+msgctxt "action"
+msgid "editor::ExpandExcerpts"
+msgstr "抜粋を広げる"
+
+#. editor: expand excerpts down
+msgctxt "action"
+msgid "editor::ExpandExcerptsDown"
+msgstr "抜粋を下に広げる"
+
+#. editor: expand excerpts up
+msgctxt "action"
+msgid "editor::ExpandExcerptsUp"
+msgstr "抜粋を上に広げる"
+
+#. editor: expand macro recursively
+msgctxt "action"
+msgid "editor::ExpandMacroRecursively"
+msgstr "マクロを再帰的に展開"
+
+#. editor: find all references
+msgctxt "action"
+msgid "editor::FindAllReferences"
+msgstr "すべての参照を検索"
+
+#. editor: find next match
+msgctxt "action"
+msgid "editor::FindNextMatch"
+msgstr "検索: 次の一致へ"
+
+#. editor: find previous match
+msgctxt "action"
+msgid "editor::FindPreviousMatch"
+msgstr "検索: 前の一致へ"
+
+#. editor: fold
+msgctxt "action"
+msgid "editor::Fold"
+msgstr "折りたたみ"
+
+#. editor: fold all
+msgctxt "action"
+msgid "editor::FoldAll"
+msgstr "すべて折りたたむ"
+
+#. editor: fold at level 1
+msgctxt "action"
+msgid "editor::FoldAtLevel_1"
+msgstr "折りたたみ: レベル 1 まで折りたたむ"
+
+#. editor: fold at level 2
+msgctxt "action"
+msgid "editor::FoldAtLevel_2"
+msgstr "折りたたみ: レベル 2 まで折りたたむ"
+
+#. editor: fold at level 3
+msgctxt "action"
+msgid "editor::FoldAtLevel_3"
+msgstr "折りたたみ: レベル 3 まで折りたたむ"
+
+#. editor: fold at level 4
+msgctxt "action"
+msgid "editor::FoldAtLevel_4"
+msgstr "折りたたみ: レベル 4 まで折りたたむ"
+
+#. editor: fold at level 5
+msgctxt "action"
+msgid "editor::FoldAtLevel_5"
+msgstr "折りたたみ: レベル 5 まで折りたたむ"
+
+#. editor: fold at level 6
+msgctxt "action"
+msgid "editor::FoldAtLevel_6"
+msgstr "折りたたみ: レベル 6 まで折りたたむ"
+
+#. editor: fold at level 7
+msgctxt "action"
+msgid "editor::FoldAtLevel_7"
+msgstr "折りたたみ: レベル 7 まで折りたたむ"
+
+#. editor: fold at level 8
+msgctxt "action"
+msgid "editor::FoldAtLevel_8"
+msgstr "折りたたみ: レベル 8 まで折りたたむ"
+
+#. editor: fold at level 9
+msgctxt "action"
+msgid "editor::FoldAtLevel_9"
+msgstr "折りたたみ: レベル 9 まで折りたたむ"
+
+#. editor: fold function bodies
+msgctxt "action"
+msgid "editor::FoldFunctionBodies"
+msgstr "関数本体を折りたたむ"
+
+#. editor: fold recursive
+msgctxt "action"
+msgid "editor::FoldRecursive"
+msgstr "再帰的に折りたたむ"
+
+#. editor: fold selected ranges
+msgctxt "action"
+msgid "editor::FoldSelectedRanges"
+msgstr "選択範囲を折りたたむ"
+
+#. editor: format
+msgctxt "action"
+msgid "editor::Format"
+msgstr "フォーマット: ドキュメントをフォーマット"
+
+#. editor: format selections
+msgctxt "action"
+msgid "editor::FormatSelections"
+msgstr "フォーマット: 選択範囲をフォーマット"
+
+#. editor: go to declaration
+msgctxt "action"
+msgid "editor::GoToDeclaration"
+msgstr "宣言へ移動"
+
+#. editor: go to declaration split
+msgctxt "action"
+msgid "editor::GoToDeclarationSplit"
+msgstr "宣言へ移動 (分割して開く)"
+
+#. editor: go to definition
+msgctxt "action"
+msgid "editor::GoToDefinition"
+msgstr "定義へ移動"
+
+#. editor: go to definition split
+msgctxt "action"
+msgid "editor::GoToDefinitionSplit"
+msgstr "定義へ移動 (分割して開く)"
+
+#. editor: go to diagnostic
+msgctxt "action"
+msgid "editor::GoToDiagnostic"
+msgstr "移動: 次の問題へ"
+
+#. editor: go to hunk
+msgctxt "action"
+msgid "editor::GoToHunk"
+msgstr "移動: 次の変更箇所へ"
+
+#. editor: go to implementation
+msgctxt "action"
+msgid "editor::GoToImplementation"
+msgstr "実装へ移動"
+
+#. editor: go to implementation split
+msgctxt "action"
+msgid "editor::GoToImplementationSplit"
+msgstr "実装へ移動 (分割して開く)"
+
+#. editor: go to next bookmark
+msgctxt "action"
+msgid "editor::GoToNextBookmark"
+msgstr "ブックマーク: 次のブックマークへ"
+
+#. editor: go to next change
+msgctxt "action"
+msgid "editor::GoToNextChange"
+msgstr "移動: 次の変更へ"
+
+#. editor: go to next document highlight
+msgctxt "action"
+msgid "editor::GoToNextDocumentHighlight"
+msgstr "移動: 次のシンボル出現箇所へ"
+
+#. editor: go to next reference
+msgctxt "action"
+msgid "editor::GoToNextReference"
+msgstr "移動: 次の参照へ"
+
+#. editor: go to next symbol
+msgctxt "action"
+msgid "editor::GoToNextSymbol"
+msgstr "移動: 次のシンボルへ"
+
+#. editor: go to parent module
+msgctxt "action"
+msgid "editor::GoToParentModule"
+msgstr "移動: 親モジュールへ"
+
+#. editor: go to previous bookmark
+msgctxt "action"
+msgid "editor::GoToPreviousBookmark"
+msgstr "ブックマーク: 前のブックマークへ"
+
+#. editor: go to previous change
+msgctxt "action"
+msgid "editor::GoToPreviousChange"
+msgstr "移動: 前の変更へ"
+
+#. editor: go to previous diagnostic
+msgctxt "action"
+msgid "editor::GoToPreviousDiagnostic"
+msgstr "移動: 前の問題へ"
+
+#. editor: go to previous document highlight
+msgctxt "action"
+msgid "editor::GoToPreviousDocumentHighlight"
+msgstr "移動: 前のシンボル出現箇所へ"
+
+#. editor: go to previous hunk
+msgctxt "action"
+msgid "editor::GoToPreviousHunk"
+msgstr "移動: 前の変更箇所へ"
+
+#. editor: go to previous reference
+msgctxt "action"
+msgid "editor::GoToPreviousReference"
+msgstr "移動: 前の参照へ"
+
+#. editor: go to previous symbol
+msgctxt "action"
+msgid "editor::GoToPreviousSymbol"
+msgstr "移動: 前のシンボルへ"
+
+#. editor: go to type definition
+msgctxt "action"
+msgid "editor::GoToTypeDefinition"
+msgstr "型定義へ移動"
+
+#. editor: go to type definition split
+msgctxt "action"
+msgid "editor::GoToTypeDefinitionSplit"
+msgstr "型定義へ移動 (分割して開く)"
+
+#. editor: half page down
+msgctxt "action"
+msgid "editor::HalfPageDown"
+msgstr "スクロール: 半ページ下へ"
+
+#. editor: half page up
+msgctxt "action"
+msgid "editor::HalfPageUp"
+msgstr "スクロール: 半ページ上へ"
+
+#. editor: hover
+msgctxt "action"
+msgid "editor::Hover"
+msgstr "ホバー情報を表示"
+
+#. editor: indent
+msgctxt "action"
+msgid "editor::Indent"
+msgstr "編集: インデント"
+
+#. editor: insert snippet
+msgctxt "action"
+msgid "editor::InsertSnippet"
+msgstr "編集: スニペットを挿入"
+
+#. editor: insert uuid v4
+msgctxt "action"
+msgid "editor::InsertUuidV4"
+msgstr "編集: UUID v4 を挿入"
+
+#. editor: insert uuid v7
+msgctxt "action"
+msgid "editor::InsertUuidV7"
+msgstr "編集: UUID v7 を挿入"
+
+#. editor: join lines
+msgctxt "action"
+msgid "editor::JoinLines"
+msgstr "編集: 行を結合"
+
+#. editor: kill ring cut
+msgctxt "action"
+msgid "editor::KillRingCut"
+msgstr "編集: キルリングに切り取り"
+
+#. editor: kill ring yank
+msgctxt "action"
+msgid "editor::KillRingYank"
+msgstr "編集: キルリングから貼り付け"
+
+#. editor: line down
+msgctxt "action"
+msgid "editor::LineDown"
+msgstr "スクロール: 1 行下へ"
+
+#. editor: line up
+msgctxt "action"
+msgid "editor::LineUp"
+msgstr "スクロール: 1 行上へ"
+
+#. editor: move down
+msgctxt "action"
+msgid "editor::MoveDown"
+msgstr "移動: 下へ"
+
+#. editor: move left
+msgctxt "action"
+msgid "editor::MoveLeft"
+msgstr "移動: 左へ"
+
+#. editor: move line down
+msgctxt "action"
+msgid "editor::MoveLineDown"
+msgstr "編集: 行を下へ移動"
+
+#. editor: move line up
+msgctxt "action"
+msgid "editor::MoveLineUp"
+msgstr "編集: 行を上へ移動"
+
+#. editor: move right
+msgctxt "action"
+msgid "editor::MoveRight"
+msgstr "移動: 右へ"
+
+#. editor: move to beginning
+msgctxt "action"
+msgid "editor::MoveToBeginning"
+msgstr "移動: 先頭へ"
+
+#. editor: move to enclosing bracket
+msgctxt "action"
+msgid "editor::MoveToEnclosingBracket"
+msgstr "移動: 対応する括弧へ"
+
+#. editor: move to end
+msgctxt "action"
+msgid "editor::MoveToEnd"
+msgstr "移動: 末尾へ"
+
+#. editor: move to end of excerpt
+msgctxt "action"
+msgid "editor::MoveToEndOfExcerpt"
+msgstr "移動: 抜粋の末尾へ"
+
+#. editor: move to end of larger syntax node
+msgctxt "action"
+msgid "editor::MoveToEndOfLargerSyntaxNode"
+msgstr "移動: 外側の構文ノードの末尾へ"
+
+#. editor: move to end of paragraph
+msgctxt "action"
+msgid "editor::MoveToEndOfParagraph"
+msgstr "移動: 段落の末尾へ"
+
+#. editor: move to end of previous excerpt
+msgctxt "action"
+msgid "editor::MoveToEndOfPreviousExcerpt"
+msgstr "移動: 前の抜粋の末尾へ"
+
+#. editor: move to next comment paragraph
+msgctxt "action"
+msgid "editor::MoveToNextCommentParagraph"
+msgstr "移動: 次のコメント段落へ"
+
+#. editor: move to next subword end
+msgctxt "action"
+msgid "editor::MoveToNextSubwordEnd"
+msgstr "移動: 次のサブワードの末尾へ"
+
+#. editor: move to next word end
+msgctxt "action"
+msgid "editor::MoveToNextWordEnd"
+msgstr "移動: 次の単語の末尾へ"
+
+#. editor: move to previous comment paragraph
+msgctxt "action"
+msgid "editor::MoveToPreviousCommentParagraph"
+msgstr "移動: 前のコメント段落へ"
+
+#. editor: move to previous subword start
+msgctxt "action"
+msgid "editor::MoveToPreviousSubwordStart"
+msgstr "移動: 前のサブワードの先頭へ"
+
+#. editor: move to previous word start
+msgctxt "action"
+msgid "editor::MoveToPreviousWordStart"
+msgstr "移動: 前の単語の先頭へ"
+
+#. editor: move to start of excerpt
+msgctxt "action"
+msgid "editor::MoveToStartOfExcerpt"
+msgstr "移動: 抜粋の先頭へ"
+
+#. editor: move to start of larger syntax node
+msgctxt "action"
+msgid "editor::MoveToStartOfLargerSyntaxNode"
+msgstr "移動: 外側の構文ノードの先頭へ"
+
+#. editor: move to start of next excerpt
+msgctxt "action"
+msgid "editor::MoveToStartOfNextExcerpt"
+msgstr "移動: 次の抜粋の先頭へ"
+
+#. editor: move to start of paragraph
+msgctxt "action"
+msgid "editor::MoveToStartOfParagraph"
+msgstr "移動: 段落の先頭へ"
+
+#. editor: move up
+msgctxt "action"
+msgid "editor::MoveUp"
+msgstr "移動: 上へ"
+
+#. editor: newline
+msgctxt "action"
+msgid "editor::Newline"
+msgstr "編集: 改行を挿入"
+
+#. editor: newline above
+msgctxt "action"
+msgid "editor::NewlineAbove"
+msgstr "編集: 上に行を挿入"
+
+#. editor: newline below
+msgctxt "action"
+msgid "editor::NewlineBelow"
+msgstr "編集: 下に行を挿入"
+
+#. editor: next edit prediction
+msgctxt "action"
+msgid "editor::NextEditPrediction"
+msgstr "編集予測: 次の候補"
+
+#. editor: next screen
+msgctxt "action"
+msgid "editor::NextScreen"
+msgstr "スクロール: 次の画面へ"
+
+#. editor: next snippet tabstop
+msgctxt "action"
+msgid "editor::NextSnippetTabstop"
+msgstr "スニペット: 次のタブストップ"
+
+#. editor: open context menu
+msgctxt "action"
+msgid "editor::OpenContextMenu"
+msgstr "コンテキストメニューを開く"
+
+#. editor: open docs
+msgctxt "action"
+msgid "editor::OpenDocs"
+msgstr "ドキュメントを表示"
+
+#. editor: open excerpts
+msgctxt "action"
+msgid "editor::OpenExcerpts"
+msgstr "抜粋を開く"
+
+#. editor: open excerpts split
+msgctxt "action"
+msgid "editor::OpenExcerptsSplit"
+msgstr "抜粋を分割して開く"
+
+#. editor: open git blame commit
+msgctxt "action"
+msgid "editor::OpenGitBlameCommit"
+msgstr "Git: この行のコミットを開く"
+
+#. editor: open permalink to line
+msgctxt "action"
+msgid "editor::OpenPermalinkToLine"
+msgstr "この行への永続リンクを開く"
+
+#. editor: open proposed changes editor
+msgctxt "action"
+msgid "editor::OpenProposedChangesEditor"
+msgstr "提案された変更を開く"
+
+#. editor: open selected filename
+msgctxt "action"
+msgid "editor::OpenSelectedFilename"
+msgstr "選択したファイル名を開く"
+
+#. editor: open selections in multibuffer
+msgctxt "action"
+msgid "editor::OpenSelectionsInMultibuffer"
+msgstr "選択範囲をマルチバッファーで開く"
+
+#. editor: open url
+msgctxt "action"
+msgid "editor::OpenUrl"
+msgstr "URL を開く"
+
+#. editor: organize imports
+msgctxt "action"
+msgid "editor::OrganizeImports"
+msgstr "インポートを整理"
+
+#. editor: outdent
+msgctxt "action"
+msgid "editor::Outdent"
+msgstr "編集: インデント解除"
+
+#. editor: page down
+msgctxt "action"
+msgid "editor::PageDown"
+msgstr "移動: 1 ページ下へ"
+
+#. editor: page up
+msgctxt "action"
+msgid "editor::PageUp"
+msgstr "移動: 1 ページ上へ"
+
+#. editor: paste
+msgctxt "action"
+msgid "editor::Paste"
+msgstr "編集: 貼り付け"
+
+#. editor: previous edit prediction
+msgctxt "action"
+msgid "editor::PreviousEditPrediction"
+msgstr "編集予測: 前の候補"
+
+#. editor: previous snippet tabstop
+msgctxt "action"
+msgid "editor::PreviousSnippetTabstop"
+msgstr "スニペット: 前のタブストップ"
+
+#. editor: redo
+msgctxt "action"
+msgid "editor::Redo"
+msgstr "編集: やり直し"
+
+#. editor: redo selection
+msgctxt "action"
+msgid "editor::RedoSelection"
+msgstr "選択: 選択をやり直し"
+
+#. editor: reload file
+msgctxt "action"
+msgid "editor::ReloadFile"
+msgstr "ファイルを再読み込み"
+
+#. editor: rename
+msgctxt "action"
+msgid "editor::Rename"
+msgstr "シンボルの名前変更"
+
+#. editor: restart language server
+msgctxt "action"
+msgid "editor::RestartLanguageServer"
+msgstr "言語サーバーを再起動"
+
+#. editor: reveal in file manager
+msgctxt "action"
+msgid "editor::RevealInFileManager"
+msgstr "ファイルマネージャーで表示"
+
+#. editor: reverse lines
+msgctxt "action"
+msgid "editor::ReverseLines"
+msgstr "編集: 行を逆順にする"
+
+#. editor: rewrap
+msgctxt "action"
+msgid "editor::Rewrap"
+msgstr "編集: 段落を折り返し直す"
+
+#. editor: rotate selections backward
+msgctxt "action"
+msgid "editor::RotateSelectionsBackward"
+msgstr "選択: 選択範囲の内容を前方へ回転"
+
+#. editor: rotate selections forward
+msgctxt "action"
+msgid "editor::RotateSelectionsForward"
+msgstr "選択: 選択範囲の内容を後方へ回転"
+
+#. editor: run flycheck
+msgctxt "action"
+msgid "editor::RunFlycheck"
+msgstr "flycheck を実行"
+
+#. editor: save location
+msgctxt "action"
+msgid "editor::SaveLocation"
+msgstr "現在位置を記録"
+
+#. editor: scroll cursor bottom
+msgctxt "action"
+msgid "editor::ScrollCursorBottom"
+msgstr "スクロール: カーソルを下端へ"
+
+#. editor: scroll cursor center
+msgctxt "action"
+msgid "editor::ScrollCursorCenter"
+msgstr "スクロール: カーソルを中央へ"
+
+#. editor: scroll cursor center top bottom
+msgctxt "action"
+msgid "editor::ScrollCursorCenterTopBottom"
+msgstr "スクロール: カーソルを中央/上/下へ"
+
+#. editor: scroll cursor top
+msgctxt "action"
+msgid "editor::ScrollCursorTop"
+msgstr "スクロール: カーソルを上端へ"
+
+#. editor: select all
+msgctxt "action"
+msgid "editor::SelectAll"
+msgstr "選択: すべて選択"
+
+#. editor: select all matches
+msgctxt "action"
+msgid "editor::SelectAllMatches"
+msgstr "選択: 一致箇所をすべて選択"
+
+#. editor: select around delimiters
+msgctxt "action"
+msgid "editor::SelectAroundDelimiters"
+msgstr "選択: 区切り文字を含めて選択"
+
+#. editor: select down
+msgctxt "action"
+msgid "editor::SelectDown"
+msgstr "選択: 下へ拡張"
+
+#. editor: select enclosing symbol
+msgctxt "action"
+msgid "editor::SelectEnclosingSymbol"
+msgstr "選択: 囲むシンボルを選択"
+
+#. editor: select inside delimiters
+msgctxt "action"
+msgid "editor::SelectInsideDelimiters"
+msgstr "選択: 区切り文字の内側を選択"
+
+#. editor: select larger syntax node
+msgctxt "action"
+msgid "editor::SelectLargerSyntaxNode"
+msgstr "選択: 選択範囲を拡張"
+
+#. editor: select left
+msgctxt "action"
+msgid "editor::SelectLeft"
+msgstr "選択: 左へ拡張"
+
+#. editor: select line
+msgctxt "action"
+msgid "editor::SelectLine"
+msgstr "選択: 行を選択"
+
+#. editor: select next
+msgctxt "action"
+msgid "editor::SelectNext"
+msgstr "選択: 次の一致を選択に追加"
+
+#. editor: select next syntax node
+msgctxt "action"
+msgid "editor::SelectNextSyntaxNode"
+msgstr "選択: 次の構文ノードを選択"
+
+#. editor: select page down
+msgctxt "action"
+msgid "editor::SelectPageDown"
+msgstr "選択: 1 ページ下へ拡張"
+
+#. editor: select page up
+msgctxt "action"
+msgid "editor::SelectPageUp"
+msgstr "選択: 1 ページ上へ拡張"
+
+#. editor: select previous
+msgctxt "action"
+msgid "editor::SelectPrevious"
+msgstr "選択: 前の一致を選択に追加"
+
+#. editor: select previous syntax node
+msgctxt "action"
+msgid "editor::SelectPreviousSyntaxNode"
+msgstr "選択: 前の構文ノードを選択"
+
+#. editor: select right
+msgctxt "action"
+msgid "editor::SelectRight"
+msgstr "選択: 右へ拡張"
+
+#. editor: select smaller syntax node
+msgctxt "action"
+msgid "editor::SelectSmallerSyntaxNode"
+msgstr "選択: 選択範囲を縮小"
+
+#. editor: select to beginning
+msgctxt "action"
+msgid "editor::SelectToBeginning"
+msgstr "選択: 先頭まで拡張"
+
+#. editor: select to end
+msgctxt "action"
+msgid "editor::SelectToEnd"
+msgstr "選択: 末尾まで拡張"
+
+#. editor: select to end of excerpt
+msgctxt "action"
+msgid "editor::SelectToEndOfExcerpt"
+msgstr "選択: 抜粋の末尾まで拡張"
+
+#. editor: select to end of larger syntax node
+msgctxt "action"
+msgid "editor::SelectToEndOfLargerSyntaxNode"
+msgstr "選択: 外側の構文ノードの末尾まで拡張"
+
+#. editor: select to end of paragraph
+msgctxt "action"
+msgid "editor::SelectToEndOfParagraph"
+msgstr "選択: 段落の末尾まで拡張"
+
+#. editor: select to end of previous excerpt
+msgctxt "action"
+msgid "editor::SelectToEndOfPreviousExcerpt"
+msgstr "選択: 前の抜粋の末尾まで拡張"
+
+#. editor: select to next subword end
+msgctxt "action"
+msgid "editor::SelectToNextSubwordEnd"
+msgstr "選択: 次のサブワードの末尾まで拡張"
+
+#. editor: select to next word end
+msgctxt "action"
+msgid "editor::SelectToNextWordEnd"
+msgstr "選択: 次の単語の末尾まで拡張"
+
+#. editor: select to previous subword start
+msgctxt "action"
+msgid "editor::SelectToPreviousSubwordStart"
+msgstr "選択: 前のサブワードの先頭まで拡張"
+
+#. editor: select to previous word start
+msgctxt "action"
+msgid "editor::SelectToPreviousWordStart"
+msgstr "選択: 前の単語の先頭まで拡張"
+
+#. editor: select to start of excerpt
+msgctxt "action"
+msgid "editor::SelectToStartOfExcerpt"
+msgstr "選択: 抜粋の先頭まで拡張"
+
+#. editor: select to start of larger syntax node
+msgctxt "action"
+msgid "editor::SelectToStartOfLargerSyntaxNode"
+msgstr "選択: 外側の構文ノードの先頭まで拡張"
+
+#. editor: select to start of next excerpt
+msgctxt "action"
+msgid "editor::SelectToStartOfNextExcerpt"
+msgstr "選択: 次の抜粋の先頭まで拡張"
+
+#. editor: select to start of paragraph
+msgctxt "action"
+msgid "editor::SelectToStartOfParagraph"
+msgstr "選択: 段落の先頭まで拡張"
+
+#. editor: select up
+msgctxt "action"
+msgid "editor::SelectUp"
+msgstr "選択: 上へ拡張"
+
+#. editor: send review to agent
+msgctxt "action"
+msgid "editor::SendReviewToAgent"
+msgstr "差分レビュー: エージェントへ送る"
+
+#. editor: set mark
+msgctxt "action"
+msgid "editor::SetMark"
+msgstr "編集: マークを設定"
+
+#. editor: show character palette
+msgctxt "action"
+msgid "editor::ShowCharacterPalette"
+msgstr "編集: 絵文字と記号を表示"
+
+#. editor: show completions
+msgctxt "action"
+msgid "editor::ShowCompletions"
+msgstr "補完候補を表示"
+
+#. editor: show edit prediction
+msgctxt "action"
+msgid "editor::ShowEditPrediction"
+msgstr "編集予測を表示"
+
+#. editor: show signature help
+msgctxt "action"
+msgid "editor::ShowSignatureHelp"
+msgstr "シグネチャヘルプを表示"
+
+#. editor: show word completions
+msgctxt "action"
+msgid "editor::ShowWordCompletions"
+msgstr "単語の補完候補を表示"
+
+#. editor: shuffle lines
+msgctxt "action"
+msgid "editor::ShuffleLines"
+msgstr "編集: 行をシャッフル"
+
+#. editor: signature help next
+msgctxt "action"
+msgid "editor::SignatureHelpNext"
+msgstr "シグネチャヘルプ: 次のシグネチャ"
+
+#. editor: signature help previous
+msgctxt "action"
+msgid "editor::SignatureHelpPrevious"
+msgstr "シグネチャヘルプ: 前のシグネチャ"
+
+#. editor: sort lines by length
+msgctxt "action"
+msgid "editor::SortLinesByLength"
+msgstr "編集: 行を長さ順に並べ替え"
+
+#. editor: sort lines case insensitive
+msgctxt "action"
+msgid "editor::SortLinesCaseInsensitive"
+msgstr "編集: 行を並べ替え (大文字と小文字を区別しない)"
+
+#. editor: sort lines case sensitive
+msgctxt "action"
+msgid "editor::SortLinesCaseSensitive"
+msgstr "編集: 行を並べ替え (大文字と小文字を区別)"
+
+#. editor: spawn nearest task
+msgctxt "action"
+msgid "editor::SpawnNearestTask"
+msgstr "タスク: 最寄りのタスクを実行"
+
+#. editor: split selection into lines
+msgctxt "action"
+msgid "editor::SplitSelectionIntoLines"
+msgstr "選択: 選択範囲を行ごとに分割"
+
+#. editor: stop language server
+msgctxt "action"
+msgid "editor::StopLanguageServer"
+msgstr "言語サーバーを停止"
+
+#. editor: submit diff review comment
+msgctxt "action"
+msgid "editor::SubmitDiffReviewComment"
+msgstr "差分レビュー: コメントを送信"
+
+#. editor: swap selection ends
+msgctxt "action"
+msgid "editor::SwapSelectionEnds"
+msgstr "選択: 選択範囲の端を入れ替え"
+
+#. editor: switch source header
+msgctxt "action"
+msgid "editor::SwitchSourceHeader"
+msgstr "ソース/ヘッダーを切り替え"
+
+#. editor: tab
+msgctxt "action"
+msgid "editor::Tab"
+msgstr "編集: タブを挿入"
+
+#. editor: toggle all diff hunks
+msgctxt "action"
+msgid "editor::ToggleAllDiffHunks"
+msgstr "すべての差分の展開切り替え"
+
+#. editor: toggle auto signature help
+msgctxt "action"
+msgid "editor::ToggleAutoSignatureHelp"
+msgstr "シグネチャヘルプの自動表示を切り替え"
+
+#. editor: toggle block comments
+msgctxt "action"
+msgid "editor::ToggleBlockComments"
+msgstr "編集: ブロックコメントの切り替え"
+
+#. editor: toggle bookmark
+msgctxt "action"
+msgid "editor::ToggleBookmark"
+msgstr "ブックマーク: 切り替え"
+
+#. editor: toggle bookmark with label
+msgctxt "action"
+msgid "editor::ToggleBookmarkWithLabel"
+msgstr "ブックマーク: ラベルを付けて切り替え"
+
+#. editor: toggle breadcrumb
+msgctxt "action"
+msgid "editor::ToggleBreadcrumb"
+msgstr "表示: パンくずリストの切り替え"
+
+#. editor: toggle breakpoint
+msgctxt "action"
+msgid "editor::ToggleBreakpoint"
+msgstr "デバッグ: ブレークポイントの切り替え"
+
+#. editor: toggle case
+msgctxt "action"
+msgid "editor::ToggleCase"
+msgstr "編集: 大文字と小文字を切り替え"
+
+#. editor: toggle code actions
+msgctxt "action"
+msgid "editor::ToggleCodeActions"
+msgstr "コードアクションを表示"
+
+#. editor: toggle code lens
+msgctxt "action"
+msgid "editor::ToggleCodeLens"
+msgstr "表示: コードレンズの切り替え"
+
+#. editor: toggle comments
+msgctxt "action"
+msgid "editor::ToggleComments"
+msgstr "編集: 行コメントの切り替え"
+
+#. editor: toggle diagnostics
+msgctxt "action"
+msgid "editor::ToggleDiagnostics"
+msgstr "表示: 診断の切り替え"
+
+#. editor: toggle edit prediction
+msgctxt "action"
+msgid "editor::ToggleEditPrediction"
+msgstr "編集予測の切り替え"
+
+#. editor: toggle focus
+msgctxt "action"
+msgid "editor::ToggleFocus"
+msgstr "エディターにフォーカス"
+
+#. editor: toggle fold
+msgctxt "action"
+msgid "editor::ToggleFold"
+msgstr "折りたたみの切り替え"
+
+#. editor: toggle fold all
+msgctxt "action"
+msgid "editor::ToggleFoldAll"
+msgstr "すべての折りたたみを切り替え"
+
+#. editor: toggle fold recursive
+msgctxt "action"
+msgid "editor::ToggleFoldRecursive"
+msgstr "折りたたみ: 再帰的に切り替え"
+
+#. editor: toggle git blame inline
+msgctxt "action"
+msgid "editor::ToggleGitBlameInline"
+msgstr "Git: インライン blame の切り替え"
+
+#. editor: toggle indent guides
+msgctxt "action"
+msgid "editor::ToggleIndentGuides"
+msgstr "表示: インデントガイドの切り替え"
+
+#. editor: toggle inlay hints
+msgctxt "action"
+msgid "editor::ToggleInlayHints"
+msgstr "表示: インレイヒントの切り替え"
+
+#. editor: toggle inline diagnostics
+msgctxt "action"
+msgid "editor::ToggleInlineDiagnostics"
+msgstr "表示: インライン診断の切り替え"
+
+#. editor: toggle inline values
+msgctxt "action"
+msgid "editor::ToggleInlineValues"
+msgstr "インライン値の表示切り替え"
+
+#. editor: toggle line numbers
+msgctxt "action"
+msgid "editor::ToggleLineNumbers"
+msgstr "表示: 行番号の切り替え"
+
+#. editor: toggle minimap
+msgctxt "action"
+msgid "editor::ToggleMinimap"
+msgstr "表示: ミニマップの切り替え"
+
+#. editor: toggle relative line numbers
+msgctxt "action"
+msgid "editor::ToggleRelativeLineNumbers"
+msgstr "表示: 相対行番号の切り替え"
+
+#. editor: toggle review comments expanded
+msgctxt "action"
+msgid "editor::ToggleReviewCommentsExpanded"
+msgstr "差分レビュー: コメントの開閉"
+
+#. editor: toggle selected diff hunks
+msgctxt "action"
+msgid "editor::ToggleSelectedDiffHunks"
+msgstr "選択した差分の展開切り替え"
+
+#. editor: toggle selection menu
+msgctxt "action"
+msgid "editor::ToggleSelectionMenu"
+msgstr "選択メニューの表示切り替え"
+
+#. editor: toggle semantic highlights
+msgctxt "action"
+msgid "editor::ToggleSemanticHighlights"
+msgstr "表示: セマンティックハイライトの切り替え"
+
+#. editor: toggle soft wrap
+msgctxt "action"
+msgid "editor::ToggleSoftWrap"
+msgstr "表示: 折り返しの切り替え"
+
+#. editor: toggle split diff
+msgctxt "action"
+msgid "editor::ToggleSplitDiff"
+msgstr "差分の分割表示を切り替え"
+
+#. editor: toggle tab bar
+msgctxt "action"
+msgid "editor::ToggleTabBar"
+msgstr "表示: タブバーの切り替え"
+
+#. editor: transpose
+msgctxt "action"
+msgid "editor::Transpose"
+msgstr "編集: 文字を入れ替え"
+
+#. editor: undo
+msgctxt "action"
+msgid "editor::Undo"
+msgstr "編集: 元に戻す"
+
+#. editor: undo selection
+msgctxt "action"
+msgid "editor::UndoSelection"
+msgstr "選択: 選択を元に戻す"
+
+#. editor: unfold all
+msgctxt "action"
+msgid "editor::UnfoldAll"
+msgstr "すべて展開"
+
+#. editor: unfold lines
+msgctxt "action"
+msgid "editor::UnfoldLines"
+msgstr "展開"
+
+#. editor: unfold recursive
+msgctxt "action"
+msgid "editor::UnfoldRecursive"
+msgstr "再帰的に展開"
+
+#. editor: unique lines case insensitive
+msgctxt "action"
+msgid "editor::UniqueLinesCaseInsensitive"
+msgstr "編集: 重複行を削除 (大文字と小文字を区別しない)"
+
+#. editor: unique lines case sensitive
+msgctxt "action"
+msgid "editor::UniqueLinesCaseSensitive"
+msgstr "編集: 重複行を削除 (大文字と小文字を区別)"
+
+#. editor: unwrap syntax node
+msgctxt "action"
+msgid "editor::UnwrapSyntaxNode"
+msgstr "編集: 構文ノードの囲みを外す"
+
+#. editor: view bookmarks
+msgctxt "action"
+msgid "editor::ViewBookmarks"
+msgstr "ブックマーク: 一覧を表示"
+
+#. editor: wrap selections in tag
+msgctxt "action"
+msgid "editor::WrapSelectionsInTag"
+msgstr "編集: 選択範囲をタグで囲む"
+
+#. encoding selector: toggle
+msgctxt "action"
+msgid "encoding_selector::Toggle"
+msgstr "文字エンコードを選択"
+
+#. feedback: email zed
+msgctxt "action"
+msgid "feedback::EmailZed"
+msgstr "Zed にメールを送る"
+
+#. feedback: file bug report
+msgctxt "action"
+msgid "feedback::FileBugReport"
+msgstr "バグを報告"
+
+#. feedback: request feature
+msgctxt "action"
+msgid "feedback::RequestFeature"
+msgstr "機能をリクエスト"
+
+#. file finder: toggle
+msgctxt "action"
+msgid "file_finder::Toggle"
+msgstr "ファイルへ移動"
+
+#. file transfer: focus next field
+msgctxt "action"
+msgid "file_transfer::FocusNextField"
+msgstr "ファイル転送: 次の入力欄へ"
+
+#. file transfer: focus previous field
+msgctxt "action"
+msgid "file_transfer::FocusPreviousField"
+msgstr "ファイル転送: 前の入力欄へ"
+
+#. git: add to git info exclude
+msgctxt "action"
+msgid "git::AddToGitInfoExclude"
+msgstr "Git: .git/info/exclude に追加"
+
+#. git: add to gitignore
+msgctxt "action"
+msgid "git::AddToGitignore"
+msgstr "Git: .gitignore に追加"
+
+#. git: amend
+msgctxt "action"
+msgid "git::Amend"
+msgstr "Git: 直前のコミットを修正"
+
+#. git: apply patch
+msgctxt "action"
+msgid "git::ApplyPatch"
+msgstr "Git: パッチファイルを適用"
+
+#. git: blame
+msgctxt "action"
+msgid "git::Blame"
+msgstr "Git: 注釈 (blame) を表示"
+
+#. git: branch
+msgctxt "action"
+msgid "git::Branch"
+msgstr "Git: ブランチ一覧"
+
+#. git: checkout branch
+msgctxt "action"
+msgid "git::CheckoutBranch"
+msgstr "Git: ブランチをチェックアウト"
+
+#. git: checkout commit
+msgctxt "action"
+msgid "git::CheckoutCommit"
+msgstr "Git: このコミットをチェックアウト (detached)"
+
+#. git: cherry pick commit
+msgctxt "action"
+msgid "git::CherryPickCommit"
+msgstr "Git: このコミットを現在のブランチに取り込む"
+
+#. git: choose fixup commit
+msgctxt "action"
+msgid "git::ChooseFixupCommit"
+msgstr "Git: 今の変更を入れるコミットを選ぶ (fixup)"
+
+#. git: clone
+msgctxt "action"
+msgid "git::Clone"
+msgstr "Git: リポジトリをクローン"
+
+#. git: commit
+msgctxt "action"
+msgid "git::Commit"
+msgstr "Git: コミット"
+
+#. git: compare refs
+msgctxt "action"
+msgid "git::CompareRefs"
+msgstr "Git: 2 つのブランチ / タグを比較"
+
+#. git: compare with branch
+msgctxt "action"
+msgid "git::CompareWithBranch"
+msgstr "Git: ブランチと比較"
+
+#. git: confirm force push
+msgctxt "action"
+msgid "git::ConfirmForcePush"
+msgstr "Git: 確認してから強制プッシュ (lease 付き)"
+
+#. git: copy branch name
+msgctxt "action"
+msgid "git::CopyBranchName"
+msgstr "Git: ブランチ名をコピー"
+
+#. git: copy tag distance
+msgctxt "action"
+msgid "git::CopyTagDistance"
+msgstr "Git: 直近のタグからの距離をコピー"
+
+#. git: create branch from
+msgctxt "action"
+msgid "git::CreateBranchFrom"
+msgstr "Git: このコミットからブランチを作成"
+
+#. git: create patch
+msgctxt "action"
+msgid "git::CreatePatch"
+msgstr "Git: パッチファイルを作成"
+
+#. git: create pull request
+msgctxt "action"
+msgid "git::CreatePullRequest"
+msgstr "Git: プルリクエストを作成"
+
+#. git: create remote
+msgctxt "action"
+msgid "git::CreateRemote"
+msgstr "Git: リモートを追加"
+
+#. git: create tag at
+msgctxt "action"
+msgid "git::CreateTagAt"
+msgstr "Git: このコミットにタグを付ける"
+
+#. git: create worktree
+msgctxt "action"
+msgid "git::CreateWorktree"
+msgstr "Git: ワークツリーを作成"
+
+#. git: diff
+msgctxt "action"
+msgid "git::Diff"
+msgstr "Git: 差分を表示"
+
+#. git: diff branch
+msgctxt "action"
+msgid "git::DiffBranch"
+msgstr "Git: ブランチとの差分を表示"
+
+#. git: diff head
+msgctxt "action"
+msgid "git::DiffHead"
+msgstr "Git: HEAD との差分を表示"
+
+#. git: drop commit
+msgctxt "action"
+msgid "git::DropCommit"
+msgstr "Git: このコミットを履歴から取り除く"
+
+#. git: expand commit editor
+msgctxt "action"
+msgid "git::ExpandCommitEditor"
+msgstr "Git: コミットエディターを広げる"
+
+#. git: fetch
+msgctxt "action"
+msgid "git::Fetch"
+msgstr "Git: フェッチ"
+
+#. git: fetch from
+msgctxt "action"
+msgid "git::FetchFrom"
+msgstr "Git: 取得元を指定してフェッチ"
+
+#. git: file history
+msgctxt "action"
+msgid "git::FileHistory"
+msgstr "Git: ファイルの履歴"
+
+#. git: fixup commit
+msgctxt "action"
+msgid "git::FixupCommit"
+msgstr "Git: 今の変更をこのコミットに入れる (fixup)"
+
+#. git: force push
+msgctxt "action"
+msgid "git::ForcePush"
+msgstr "Git: 強制プッシュ"
+
+#. git: force push without lease
+msgctxt "action"
+msgid "git::ForcePushWithoutLease"
+msgstr "Git: 強制プッシュ (lease なし)"
+
+#. git: generate commit message
+msgctxt "action"
+msgid "git::GenerateCommitMessage"
+msgstr "Git: コミットメッセージを生成"
+
+#. git: init
+msgctxt "action"
+msgid "git::Init"
+msgstr "Git: リポジトリを初期化"
+
+#. git: merge
+msgctxt "action"
+msgid "git::Merge"
+msgstr "Git: ブランチをマージ"
+
+#. git: open file at head
+msgctxt "action"
+msgid "git::OpenFileAtHead"
+msgstr "Git: HEAD のファイルを開く"
+
+#. git: open file diff
+msgctxt "action"
+msgid "git::OpenFileDiff"
+msgstr "Git: ファイルの差分を開く"
+
+#. git: open merge request box
+msgctxt "action"
+msgid "git::OpenMergeRequestBox"
+msgstr "Git: MR の箱を開く"
+
+#. git: open modified files
+msgctxt "action"
+msgid "git::OpenModifiedFiles"
+msgstr "Git: 変更されたファイルを開く"
+
+#. git: open worktree in new window
+msgctxt "action"
+msgid "git::OpenWorktreeInNewWindow"
+msgstr "Git: ワークツリーを新しいウィンドウで開く"
+
+#. git: pack refs
+msgctxt "action"
+msgid "git::PackRefs"
+msgstr "Git: ref をまとめて速くする (pack-refs)"
+
+#. git: pull
+msgctxt "action"
+msgid "git::Pull"
+msgstr "Git: プル"
+
+#. git: pull rebase
+msgctxt "action"
+msgid "git::PullRebase"
+msgstr "Git: リベースしてプル"
+
+#. git: push
+msgctxt "action"
+msgid "git::Push"
+msgstr "Git: プッシュ"
+
+#. git: push to
+msgctxt "action"
+msgid "git::PushTo"
+msgstr "Git: プッシュ先を指定してプッシュ"
+
+#. git: remove remote
+msgctxt "action"
+msgid "git::RemoveRemote"
+msgstr "Git: リモートを削除"
+
+#. git: rename branch
+msgctxt "action"
+msgid "git::RenameBranch"
+msgstr "Git: ブランチ名を変更"
+
+#. git: reset to commit
+msgctxt "action"
+msgid "git::ResetToCommit"
+msgstr "Git: このコミットまで戻す"
+
+#. git: reset to remote
+msgctxt "action"
+msgid "git::ResetToRemote"
+msgstr "Git: リモートの状態に強制的に合わせる"
+
+#. git: restore
+msgctxt "action"
+msgid "git::Restore"
+msgstr "Git: 変更を元に戻す"
+
+#. git: restore and next
+msgctxt "action"
+msgid "git::RestoreAndNext"
+msgstr "Git: 変更を元に戻して次へ"
+
+#. git: restore file
+msgctxt "action"
+msgid "git::RestoreFile"
+msgstr "Git: ファイルの変更を元に戻す"
+
+#. git: restore tracked files
+msgctxt "action"
+msgid "git::RestoreTrackedFiles"
+msgstr "Git: 追跡中ファイルの変更を元に戻す"
+
+#. git: revert commit
+msgctxt "action"
+msgid "git::RevertCommit"
+msgstr "Git: このコミットを打ち消す"
+
+#. git: reword commit
+msgctxt "action"
+msgid "git::RewordCommit"
+msgstr "Git: コミットのメッセージを書き換える"
+
+#. git: select repo
+msgctxt "action"
+msgid "git::SelectRepo"
+msgstr "Git: リポジトリを選択"
+
+#. git: show guide
+msgctxt "action"
+msgid "git::ShowGuide"
+msgstr "Git: 操作ガイドを開く"
+
+#. git: signoff
+msgctxt "action"
+msgid "git::Signoff"
+msgstr "Git: Signed-off-by を付ける"
+
+#. git: skip hooks
+msgctxt "action"
+msgid "git::SkipHooks"
+msgstr "Git: フックをスキップ"
+
+#. git: stage all
+msgctxt "action"
+msgid "git::StageAll"
+msgstr "Git: すべてステージ"
+
+#. git: stage and next
+msgctxt "action"
+msgid "git::StageAndNext"
+msgstr "Git: ステージして次へ"
+
+#. git: stage file
+msgctxt "action"
+msgid "git::StageFile"
+msgstr "Git: ファイルをステージ"
+
+#. git: stage range
+msgctxt "action"
+msgid "git::StageRange"
+msgstr "Git: 選択範囲をステージ"
+
+#. git: stage section
+msgctxt "action"
+msgid "git::StageSection"
+msgstr "Git: このセクションをステージ"
+
+#. git: start amend
+msgctxt "action"
+msgid "git::StartAmend"
+msgstr "Git: 直前のコミットの修正 (amend) を始める"
+
+#. git: stash all
+msgctxt "action"
+msgid "git::StashAll"
+msgstr "Git: すべてスタッシュ"
+
+#. git: stash apply
+msgctxt "action"
+msgid "git::StashApply"
+msgstr "Git: スタッシュを適用"
+
+#. git: stash pop
+msgctxt "action"
+msgid "git::StashPop"
+msgstr "Git: スタッシュを取り出す"
+
+#. git: stash staged
+msgctxt "action"
+msgid "git::StashStaged"
+msgstr "Git: ステージ済みをスタッシュ"
+
+#. git: stash tracked
+msgctxt "action"
+msgid "git::StashTracked"
+msgstr "Git: 追跡中ファイルをスタッシュ"
+
+#. git: switch
+msgctxt "action"
+msgid "git::Switch"
+msgstr "Git: ブランチを切り替え"
+
+#. git: switch worktree
+msgctxt "action"
+msgid "git::SwitchWorktree"
+msgstr "Git: ワークツリーを切り替え"
+
+#. git: toggle merge request box
+msgctxt "action"
+msgid "git::ToggleMergeRequestBox"
+msgstr "Git: MR の箱を開閉"
+
+#. git: toggle staged
+msgctxt "action"
+msgid "git::ToggleStaged"
+msgstr "Git: ステージ状態を切り替え"
+
+#. git: trash untracked files
+msgctxt "action"
+msgid "git::TrashUntrackedFiles"
+msgstr "Git: 未追跡ファイルをゴミ箱へ移動"
+
+#. git: uncommit
+msgctxt "action"
+msgid "git::Uncommit"
+msgstr "Git: 直前のコミットを取り消し"
+
+#. git: unstage all
+msgctxt "action"
+msgid "git::UnstageAll"
+msgstr "Git: すべてアンステージ"
+
+#. git: unstage and next
+msgctxt "action"
+msgid "git::UnstageAndNext"
+msgstr "Git: アンステージして次へ"
+
+#. git: unstage file
+msgctxt "action"
+msgid "git::UnstageFile"
+msgstr "Git: ファイルをアンステージ"
+
+#. git: unstage section
+msgctxt "action"
+msgid "git::UnstageSection"
+msgstr "Git: このセクションをアンステージ"
+
+#. git: view commit
+msgctxt "action"
+msgid "git::ViewCommit"
+msgstr "Git: コミットを表示"
+
+#. git: view staged changes
+msgctxt "action"
+msgid "git::ViewStagedChanges"
+msgstr "Git: ステージ済みの変更を表示"
+
+#. git: view stash
+msgctxt "action"
+msgid "git::ViewStash"
+msgstr "Git: スタッシュを表示"
+
+#. git: view uncommitted changes
+msgctxt "action"
+msgid "git::ViewUncommittedChanges"
+msgstr "Git: 未コミットの変更を表示"
+
+#. git: view unstaged changes
+msgctxt "action"
+msgid "git::ViewUnstagedChanges"
+msgstr "Git: 未ステージの変更を表示"
+
+#. git graph: edit selected commits
+msgctxt "action"
+msgid "git_graph::EditSelectedCommits"
+msgstr "Git: 選択したコミットを並べ替え / まとめる / 捨てる"
+
+#. git graph: open
+msgctxt "action"
+msgid "git_graph::Open"
+msgstr "Git: コミットグラフを開く"
+
+#. git panel: activate changes tab
+msgctxt "action"
+msgid "git_panel::ActivateChangesTab"
+msgstr "Git: 変更タブを表示"
+
+#. git panel: activate history tab
+msgctxt "action"
+msgid "git_panel::ActivateHistoryTab"
+msgstr "Git: 履歴タブを表示"
+
+#. git panel: toggle
+msgctxt "action"
+msgid "git_panel::Toggle"
+msgstr "Git: パネルの表示切り替え"
+
+#. git panel: toggle fill co authors
+msgctxt "action"
+msgid "git_panel::ToggleFillCoAuthors"
+msgstr "Git: Co-authored-by を自動入力"
+
+#. git panel: toggle focus
+msgctxt "action"
+msgid "git_panel::ToggleFocus"
+msgstr "Git: パネルのフォーカス切り替え"
+
+#. git panel: toggle tree view
+msgctxt "action"
+msgid "git_panel::ToggleTreeView"
+msgstr "Git: ツリー表示の切り替え"
+
+#. go to line: toggle
+msgctxt "action"
+msgid "go_to_line::Toggle"
+msgstr "行または列へ移動"
+
+#. icon theme selector: toggle
+msgctxt "action"
+msgid "icon_theme_selector::Toggle"
+msgstr "アイコンテーマを選択"
+
+#. ide assist: end tour
+msgctxt "action"
+msgid "ide_assist::EndTour"
+msgstr "ツアー: 終了"
+
+#. ide assist: next tour step
+msgctxt "action"
+msgid "ide_assist::NextTourStep"
+msgstr "ツアー: 次へ"
+
+#. ide assist: previous tour step
+msgctxt "action"
+msgid "ide_assist::PreviousTourStep"
+msgstr "ツアー: 前へ"
+
+#. ide server: copy mcp configuration
+msgctxt "action"
+msgid "ide_server::CopyMcpConfiguration"
+msgstr "IDE サーバー: MCP 設定をコピー"
+
+#. ide server: reveal lock file
+msgctxt "action"
+msgid "ide_server::RevealLockFile"
+msgstr "IDE サーバー: ロックファイルの場所を開く"
+
+#. ide server: send selection to claude code
+msgctxt "action"
+msgid "ide_server::SendSelectionToClaudeCode"
+msgstr "IDE サーバー: 選択範囲を Claude Code に送る"
+
+#. ide server: toggle ide server
+msgctxt "action"
+msgid "ide_server::ToggleIdeServer"
+msgstr "IDE サーバー: 有効・無効を切り替える"
+
+#. image viewer: fit to view
+msgctxt "action"
+msgid "image_viewer::FitToView"
+msgstr "画像: 画面に合わせる"
+
+#. image viewer: reset zoom
+msgctxt "action"
+msgid "image_viewer::ResetZoom"
+msgstr "画像: ズームをリセット"
+
+#. image viewer: zoom in
+msgctxt "action"
+msgid "image_viewer::ZoomIn"
+msgstr "画像: 拡大"
+
+#. image viewer: zoom out
+msgctxt "action"
+msgid "image_viewer::ZoomOut"
+msgstr "画像: 縮小"
+
+#. image viewer: zoom to actual size
+msgctxt "action"
+msgid "image_viewer::ZoomToActualSize"
+msgstr "画像: 実際のサイズ"
+
+#. journal: new journal entry
+msgctxt "action"
+msgid "journal::NewJournalEntry"
+msgstr "新規ジャーナルエントリ"
+
+#. keymap editor: copy action
+msgctxt "action"
+msgid "keymap_editor::CopyAction"
+msgstr "キーマップ: アクション名をコピー"
+
+#. keymap editor: copy context
+msgctxt "action"
+msgid "keymap_editor::CopyContext"
+msgstr "キーマップ: コンテキストをコピー"
+
+#. keymap editor: create binding
+msgctxt "action"
+msgid "keymap_editor::CreateBinding"
+msgstr "キーマップ: キーバインドを追加"
+
+#. keymap editor: delete binding
+msgctxt "action"
+msgid "keymap_editor::DeleteBinding"
+msgstr "キーマップ: キーバインドを削除"
+
+#. keymap editor: edit binding
+msgctxt "action"
+msgid "keymap_editor::EditBinding"
+msgstr "キーマップ: キーバインドを編集"
+
+#. keymap editor: open create keybinding modal
+msgctxt "action"
+msgid "keymap_editor::OpenCreateKeybindingModal"
+msgstr "キーマップ: キーバインド追加ダイアログを開く"
+
+#. keymap editor: show matching keybinds
+msgctxt "action"
+msgid "keymap_editor::ShowMatchingKeybinds"
+msgstr "キーマップ: 一致するキーバインドを表示"
+
+#. keymap editor: toggle conflict filter
+msgctxt "action"
+msgid "keymap_editor::ToggleConflictFilter"
+msgstr "キーマップ: 競合のみ表示を切り替え"
+
+#. keymap editor: toggle exact keystroke matching
+msgctxt "action"
+msgid "keymap_editor::ToggleExactKeystrokeMatching"
+msgstr "キーマップ: キーストロークの完全一致を切り替え"
+
+#. keymap editor: toggle keystroke search
+msgctxt "action"
+msgid "keymap_editor::ToggleKeystrokeSearch"
+msgstr "キーマップ: キーストローク検索を切り替え"
+
+#. keymap editor: toggle no action bindings
+msgctxt "action"
+msgid "keymap_editor::ToggleNoActionBindings"
+msgstr "キーマップ: 無効化された割り当ての表示を切り替え"
+
+#. keystroke input: clear keystrokes
+msgctxt "action"
+msgid "keystroke_input::ClearKeystrokes"
+msgstr "キー入力: 記録を消去"
+
+#. keystroke input: start recording
+msgctxt "action"
+msgid "keystroke_input::StartRecording"
+msgstr "キー入力: 記録を開始"
+
+#. keystroke input: stop recording
+msgctxt "action"
+msgid "keystroke_input::StopRecording"
+msgstr "キー入力: 記録を停止"
+
+#. language selector: toggle
+msgctxt "action"
+msgid "language_selector::Toggle"
+msgstr "言語モードを選択"
+
+#. line ending selector: toggle
+msgctxt "action"
+msgid "line_ending_selector::Toggle"
+msgstr "改行コードを選択"
+
+#. lsp tool: review paused worktree code
+msgctxt "action"
+msgid "lsp_tool::ReviewPausedWorktreeCode"
+msgstr "止めているフォルダーのコードを確認"
+
+#. markdown: close and return to editor
+msgctxt "action"
+msgid "markdown::CloseAndReturnToEditor"
+msgstr "Markdown プレビュー: 閉じてエディターに戻る"
+
+#. markdown: copy
+msgctxt "action"
+msgid "markdown::Copy"
+msgstr "Markdown: コピー"
+
+#. markdown: copy as markdown
+msgctxt "action"
+msgid "markdown::CopyAsMarkdown"
+msgstr "Markdown: Markdown としてコピー"
+
+#. markdown: edit mermaid
+msgctxt "action"
+msgid "markdown::EditMermaid"
+msgstr "Markdown: Mermaid 図を編集…"
+
+#. markdown: edit table
+msgctxt "action"
+msgid "markdown::EditTable"
+msgstr "Markdown: 表を編集…"
+
+#. markdown: export to pdf
+msgctxt "action"
+msgid "markdown::ExportToPdf"
+msgstr "Markdown: PDF に書き出す"
+
+#. markdown: fold all headings
+msgctxt "action"
+msgid "markdown::FoldAllHeadings"
+msgstr "Markdown: 見出しをすべて畳む"
+
+#. markdown: fold headings
+msgctxt "action"
+msgid "markdown::FoldHeadings"
+msgstr "Markdown: 指定した見出しレベルで畳む"
+
+#. markdown: fold headings picker
+msgctxt "action"
+msgid "markdown::FoldHeadingsPicker"
+msgstr "Markdown: 見出しを畳む (レベルを選ぶ)"
+
+#. markdown: insert details
+msgctxt "action"
+msgid "markdown::InsertDetails"
+msgstr "Markdown: 折り畳み (details) を挿入"
+
+#. markdown: insert horizontal rule
+msgctxt "action"
+msgid "markdown::InsertHorizontalRule"
+msgstr "Markdown: 水平線を挿入"
+
+#. markdown: insert image
+msgctxt "action"
+msgid "markdown::InsertImage"
+msgstr "Markdown: 画像を挿入 / 編集…"
+
+#. markdown: insert link
+msgctxt "action"
+msgid "markdown::InsertLink"
+msgstr "Markdown: リンクを挿入"
+
+#. markdown: insert mermaid diagram
+msgctxt "action"
+msgid "markdown::InsertMermaidDiagram"
+msgstr "Markdown: Mermaid 図を挿入"
+
+#. markdown: insert mermaid diagram picker
+msgctxt "action"
+msgid "markdown::InsertMermaidDiagramPicker"
+msgstr "Markdown: Mermaid 図を挿入 (種類を選ぶ)"
+
+#. markdown: newline invert hard break
+msgctxt "action"
+msgid "markdown::NewlineInvertHardBreak"
+msgstr "Markdown: 改行 (行末スペース補完を反転)"
+
+#. markdown: open following preview
+msgctxt "action"
+msgid "markdown::OpenFollowingPreview"
+msgstr "Markdown: 追従プレビューを開く"
+
+#. markdown: open preview
+msgctxt "action"
+msgid "markdown::OpenPreview"
+msgstr "Markdown: プレビューを開く"
+
+#. markdown: open preview to the side
+msgctxt "action"
+msgid "markdown::OpenPreviewToTheSide"
+msgstr "Markdown: プレビューを横に開く"
+
+#. markdown: remove marker
+msgctxt "action"
+msgid "markdown::RemoveMarker"
+msgstr "Markdown: マーカーを外す"
+
+#. markdown: remove text color
+msgctxt "action"
+msgid "markdown::RemoveTextColor"
+msgstr "Markdown: 文字色を外す"
+
+#. markdown: reset text size
+msgctxt "action"
+msgid "markdown::ResetTextSize"
+msgstr "Markdown: 段落の文字サイズを標準に戻す"
+
+#. markdown: scroll down
+msgctxt "action"
+msgid "markdown::ScrollDown"
+msgstr "Markdown プレビュー: 下へスクロール"
+
+#. markdown: scroll down by item
+msgctxt "action"
+msgid "markdown::ScrollDownByItem"
+msgstr "Markdown プレビュー: 1 要素下へスクロール"
+
+#. markdown: scroll page down
+msgctxt "action"
+msgid "markdown::ScrollPageDown"
+msgstr "Markdown プレビュー: 1 ページ下へスクロール"
+
+#. markdown: scroll page up
+msgctxt "action"
+msgid "markdown::ScrollPageUp"
+msgstr "Markdown プレビュー: 1 ページ上へスクロール"
+
+#. markdown: scroll to bottom
+msgctxt "action"
+msgid "markdown::ScrollToBottom"
+msgstr "Markdown プレビュー: 末尾へスクロール"
+
+#. markdown: scroll to top
+msgctxt "action"
+msgid "markdown::ScrollToTop"
+msgstr "Markdown プレビュー: 先頭へスクロール"
+
+#. markdown: scroll up
+msgctxt "action"
+msgid "markdown::ScrollUp"
+msgstr "Markdown プレビュー: 上へスクロール"
+
+#. markdown: scroll up by item
+msgctxt "action"
+msgid "markdown::ScrollUpByItem"
+msgstr "Markdown プレビュー: 1 要素上へスクロール"
+
+#. markdown: set marker
+msgctxt "action"
+msgid "markdown::SetMarker"
+msgstr "Markdown: マーカーを引く"
+
+#. markdown: set text color
+msgctxt "action"
+msgid "markdown::SetTextColor"
+msgstr "Markdown: 文字色を付ける"
+
+#. markdown: set text size
+msgctxt "action"
+msgid "markdown::SetTextSize"
+msgstr "Markdown: 段落の文字サイズを変える"
+
+#. markdown: toggle block quote
+msgctxt "action"
+msgid "markdown::ToggleBlockQuote"
+msgstr "Markdown: 引用の切り替え"
+
+#. markdown: toggle bold
+msgctxt "action"
+msgid "markdown::ToggleBold"
+msgstr "Markdown: 太字の切り替え"
+
+#. markdown: toggle bullet list
+msgctxt "action"
+msgid "markdown::ToggleBulletList"
+msgstr "Markdown: 箇条書きリストの切り替え"
+
+#. markdown: toggle heading1
+msgctxt "action"
+msgid "markdown::ToggleHeading1"
+msgstr "Markdown: 見出し 1 の切り替え"
+
+#. markdown: toggle heading2
+msgctxt "action"
+msgid "markdown::ToggleHeading2"
+msgstr "Markdown: 見出し 2 の切り替え"
+
+#. markdown: toggle heading3
+msgctxt "action"
+msgid "markdown::ToggleHeading3"
+msgstr "Markdown: 見出し 3 の切り替え"
+
+#. markdown: toggle inline code
+msgctxt "action"
+msgid "markdown::ToggleInlineCode"
+msgstr "Markdown: インラインコードの切り替え"
+
+#. markdown: toggle italic
+msgctxt "action"
+msgid "markdown::ToggleItalic"
+msgstr "Markdown: 斜体の切り替え"
+
+#. markdown: toggle marker
+msgctxt "action"
+msgid "markdown::ToggleMarker"
+msgstr "Markdown: マーカー (黄) の切り替え"
+
+#. markdown: toggle numbered list
+msgctxt "action"
+msgid "markdown::ToggleNumberedList"
+msgstr "Markdown: 番号付きリストの切り替え"
+
+#. markdown: toggle strikethrough
+msgctxt "action"
+msgid "markdown::ToggleStrikethrough"
+msgstr "Markdown: 取り消し線の切り替え"
+
+#. markdown: toggle task list
+msgctxt "action"
+msgid "markdown::ToggleTaskList"
+msgstr "Markdown: タスクリストの切り替え"
+
+#. markdown: unfold all headings
+msgctxt "action"
+msgid "markdown::UnfoldAllHeadings"
+msgstr "Markdown: 見出しをすべて展開"
+
+#. markdown: wrap in code block
+msgctxt "action"
+msgid "markdown::WrapInCodeBlock"
+msgstr "Markdown: コードブロックで囲む"
+
+#. multi workspace: move project to new window
+msgctxt "action"
+msgid "multi_workspace::MoveProjectToNewWindow"
+msgstr "プロジェクトを新しいウィンドウへ移動"
+
+#. multi workspace: next project
+msgctxt "action"
+msgid "multi_workspace::NextProject"
+msgstr "次のプロジェクトへ"
+
+#. multi workspace: previous project
+msgctxt "action"
+msgid "multi_workspace::PreviousProject"
+msgstr "前のプロジェクトへ"
+
+#. multi workspace: toggle workspace sidebar
+msgctxt "action"
+msgid "multi_workspace::ToggleWorkspaceSidebar"
+msgstr "表示: ワークスペースサイドバーの切り替え"
+
+#. new process modal: activate attach tab
+msgctxt "action"
+msgid "new_process_modal::ActivateAttachTab"
+msgstr "デバッグ: 新規プロセス - アタッチタブ"
+
+#. new process modal: activate debug tab
+msgctxt "action"
+msgid "new_process_modal::ActivateDebugTab"
+msgstr "デバッグ: 新規プロセス - デバッグタブ"
+
+#. new process modal: activate launch tab
+msgctxt "action"
+msgid "new_process_modal::ActivateLaunchTab"
+msgstr "デバッグ: 新規プロセス - 起動タブ"
+
+#. new process modal: activate task tab
+msgctxt "action"
+msgid "new_process_modal::ActivateTaskTab"
+msgstr "デバッグ: 新規プロセス - タスクタブ"
+
+#. outline: toggle
+msgctxt "action"
+msgid "outline::Toggle"
+msgstr "アウトライン: シンボルへ移動"
+
+#. outline panel: collapse all entries
+msgctxt "action"
+msgid "outline_panel::CollapseAllEntries"
+msgstr "アウトラインパネル: すべて折りたたむ"
+
+#. outline panel: expand all entries
+msgctxt "action"
+msgid "outline_panel::ExpandAllEntries"
+msgstr "アウトラインパネル: すべて展開"
+
+#. outline panel: reveal in file manager
+msgctxt "action"
+msgid "outline_panel::RevealInFileManager"
+msgstr "アウトラインパネル: ファイルマネージャーで表示"
+
+#. outline panel: toggle
+msgctxt "action"
+msgid "outline_panel::Toggle"
+msgstr "アウトラインパネル: 表示切り替え"
+
+#. outline panel: toggle active editor pin
+msgctxt "action"
+msgid "outline_panel::ToggleActiveEditorPin"
+msgstr "アウトラインパネル: エディターの固定切り替え"
+
+#. outline panel: toggle focus
+msgctxt "action"
+msgid "outline_panel::ToggleFocus"
+msgstr "アウトラインパネル: フォーカス切り替え"
+
+#. pane: activate last item
+msgctxt "action"
+msgid "pane::ActivateLastItem"
+msgstr "タブ: 最後のタブ"
+
+#. pane: activate next item
+msgctxt "action"
+msgid "pane::ActivateNextItem"
+msgstr "タブ: 次のタブ"
+
+#. pane: activate previous item
+msgctxt "action"
+msgid "pane::ActivatePreviousItem"
+msgstr "タブ: 前のタブ"
+
+#. pane: alternate file
+msgctxt "action"
+msgid "pane::AlternateFile"
+msgstr "ファイル: 対応するファイルへ切り替え"
+
+#. pane: close active item
+msgctxt "action"
+msgid "pane::CloseActiveItem"
+msgstr "タブ: タブを閉じる"
+
+#. pane: close all items
+msgctxt "action"
+msgid "pane::CloseAllItems"
+msgstr "タブ: すべてのタブを閉じる"
+
+#. pane: close clean items
+msgctxt "action"
+msgid "pane::CloseCleanItems"
+msgstr "タブ: 未編集のタブを閉じる"
+
+#. pane: close items to the left
+msgctxt "action"
+msgid "pane::CloseItemsToTheLeft"
+msgstr "タブ: 左側のタブを閉じる"
+
+#. pane: close items to the right
+msgctxt "action"
+msgid "pane::CloseItemsToTheRight"
+msgstr "タブ: 右側のタブを閉じる"
+
+#. pane: close multibuffer items
+msgctxt "action"
+msgid "pane::CloseMultibufferItems"
+msgstr "タブ: マルチバッファーのタブを閉じる"
+
+#. pane: deploy search
+msgctxt "action"
+msgid "pane::DeploySearch"
+msgstr "検索: プロジェクト内検索を開く"
+
+#. pane: go back
+msgctxt "action"
+msgid "pane::GoBack"
+msgstr "移動: 戻る"
+
+#. pane: go forward
+msgctxt "action"
+msgid "pane::GoForward"
+msgstr "移動: 進む"
+
+#. pane: join all
+msgctxt "action"
+msgid "pane::JoinAll"
+msgstr "ペイン: すべて結合"
+
+#. pane: join into next
+msgctxt "action"
+msgid "pane::JoinIntoNext"
+msgstr "ペイン: 次のペインへ結合"
+
+#. pane: reopen closed item
+msgctxt "action"
+msgid "pane::ReopenClosedItem"
+msgstr "タブ: 閉じたタブを開き直す"
+
+#. pane: reveal in project panel
+msgctxt "action"
+msgid "pane::RevealInProjectPanel"
+msgstr "プロジェクトパネルで表示"
+
+#. pane: split and move down
+msgctxt "action"
+msgid "pane::SplitAndMoveDown"
+msgstr "ペイン: 下へ分割して移動"
+
+#. pane: split and move left
+msgctxt "action"
+msgid "pane::SplitAndMoveLeft"
+msgstr "ペイン: 左へ分割して移動"
+
+#. pane: split and move right
+msgctxt "action"
+msgid "pane::SplitAndMoveRight"
+msgstr "ペイン: 右へ分割して移動"
+
+#. pane: split and move up
+msgctxt "action"
+msgid "pane::SplitAndMoveUp"
+msgstr "ペイン: 上へ分割して移動"
+
+#. pane: swap item left
+msgctxt "action"
+msgid "pane::SwapItemLeft"
+msgstr "タブ: 左へ移動"
+
+#. pane: swap item right
+msgctxt "action"
+msgid "pane::SwapItemRight"
+msgstr "タブ: 右へ移動"
+
+#. pane: toggle pin tab
+msgctxt "action"
+msgid "pane::TogglePinTab"
+msgstr "タブ: ピン留めの切り替え"
+
+#. pane: toggle preview tab
+msgctxt "action"
+msgid "pane::TogglePreviewTab"
+msgstr "タブ: プレビュータブの切り替え"
+
+#. pane: unpin all tabs
+msgctxt "action"
+msgid "pane::UnpinAllTabs"
+msgstr "タブ: すべてのピン留めを解除"
+
+#. picker: confirm completion
+msgctxt "action"
+msgid "picker::ConfirmCompletion"
+msgstr "ピッカー: 補完を確定"
+
+#. picker: multi select next
+msgctxt "action"
+msgid "picker::MultiSelectNext"
+msgstr "ピッカー: 選択して次へ"
+
+#. picker: set preview below
+msgctxt "action"
+msgid "picker::SetPreviewBelow"
+msgstr "ピッカー: プレビューを下に表示"
+
+#. picker: set preview hidden
+msgctxt "action"
+msgid "picker::SetPreviewHidden"
+msgstr "ピッカー: プレビューを隠す"
+
+#. picker: set preview right
+msgctxt "action"
+msgid "picker::SetPreviewRight"
+msgstr "ピッカー: プレビューを右に表示"
+
+#. picker: toggle actions menu
+msgctxt "action"
+msgid "picker::ToggleActionsMenu"
+msgstr "ピッカー: 操作メニューを開く"
+
+#. picker: toggle multi select
+msgctxt "action"
+msgid "picker::ToggleMultiSelect"
+msgstr "ピッカー: 複数選択モードを切り替え"
+
+#. picker: toggle preview
+msgctxt "action"
+msgid "picker::TogglePreview"
+msgstr "ピッカー: プレビューの表示切り替え"
+
+#. project panel: collapse all entries
+msgctxt "action"
+msgid "project_panel::CollapseAllEntries"
+msgstr "プロジェクトパネル: すべて折りたたむ"
+
+#. project panel: compare marked files
+msgctxt "action"
+msgid "project_panel::CompareMarkedFiles"
+msgstr "プロジェクトパネル: マークしたファイルを比較"
+
+#. project panel: copy
+msgctxt "action"
+msgid "project_panel::Copy"
+msgstr "プロジェクトパネル: コピー"
+
+#. project panel: cut
+msgctxt "action"
+msgid "project_panel::Cut"
+msgstr "プロジェクトパネル: 切り取り"
+
+#. project panel: delete
+msgctxt "action"
+msgid "project_panel::Delete"
+msgstr "プロジェクトパネル: 完全に削除"
+
+#. project panel: duplicate
+msgctxt "action"
+msgid "project_panel::Duplicate"
+msgstr "プロジェクトパネル: 複製"
+
+#. project panel: expand all entries
+msgctxt "action"
+msgid "project_panel::ExpandAllEntries"
+msgstr "プロジェクトパネル: すべて展開"
+
+#. project panel: new directory
+msgctxt "action"
+msgid "project_panel::NewDirectory"
+msgstr "プロジェクトパネル: 新規フォルダー"
+
+#. project panel: new file
+msgctxt "action"
+msgid "project_panel::NewFile"
+msgstr "プロジェクトパネル: 新規ファイル"
+
+#. project panel: new search in directory
+msgctxt "action"
+msgid "project_panel::NewSearchInDirectory"
+msgstr "プロジェクトパネル: このフォルダー内を検索"
+
+#. project panel: open markdown preview
+msgctxt "action"
+msgid "project_panel::OpenMarkdownPreview"
+msgstr "プロジェクトパネル: Markdown プレビューを開く"
+
+#. project panel: open permanent
+msgctxt "action"
+msgid "project_panel::OpenPermanent"
+msgstr "プロジェクトパネル: 固定タブで開く"
+
+#. project panel: open split horizontal
+msgctxt "action"
+msgid "project_panel::OpenSplitHorizontal"
+msgstr "プロジェクトパネル: 水平分割で開く"
+
+#. project panel: open split vertical
+msgctxt "action"
+msgid "project_panel::OpenSplitVertical"
+msgstr "プロジェクトパネル: 垂直分割で開く"
+
+#. project panel: paste
+msgctxt "action"
+msgid "project_panel::Paste"
+msgstr "プロジェクトパネル: 貼り付け"
+
+#. project panel: refresh
+msgctxt "action"
+msgid "project_panel::Refresh"
+msgstr "プロジェクトパネル: 最新の情報に更新"
+
+#. project panel: remove from project
+msgctxt "action"
+msgid "project_panel::RemoveFromProject"
+msgstr "プロジェクトパネル: プロジェクトから削除"
+
+#. project panel: rename
+msgctxt "action"
+msgid "project_panel::Rename"
+msgstr "プロジェクトパネル: 名前の変更"
+
+#. project panel: reveal in file manager
+msgctxt "action"
+msgid "project_panel::RevealInFileManager"
+msgstr "プロジェクトパネル: ファイルマネージャーで表示"
+
+#. project panel: select next diagnostic
+msgctxt "action"
+msgid "project_panel::SelectNextDiagnostic"
+msgstr "プロジェクトパネル: 次の問題へ"
+
+#. project panel: select next git entry
+msgctxt "action"
+msgid "project_panel::SelectNextGitEntry"
+msgstr "プロジェクトパネル: 次の Git 変更へ"
+
+#. project panel: select prev diagnostic
+msgctxt "action"
+msgid "project_panel::SelectPrevDiagnostic"
+msgstr "プロジェクトパネル: 前の問題へ"
+
+#. project panel: select prev git entry
+msgctxt "action"
+msgid "project_panel::SelectPrevGitEntry"
+msgstr "プロジェクトパネル: 前の Git 変更へ"
+
+#. project panel: toggle
+msgctxt "action"
+msgid "project_panel::Toggle"
+msgstr "プロジェクトパネル: 表示切り替え"
+
+#. project panel: toggle focus
+msgctxt "action"
+msgid "project_panel::ToggleFocus"
+msgstr "プロジェクトパネル: フォーカス切り替え"
+
+#. project panel: toggle hide git ignore
+msgctxt "action"
+msgid "project_panel::ToggleHideGitIgnore"
+msgstr "プロジェクトパネル: Git 無視ファイルの表示切り替え"
+
+#. project panel: toggle hide hidden
+msgctxt "action"
+msgid "project_panel::ToggleHideHidden"
+msgstr "プロジェクトパネル: 隠しファイルの表示切り替え"
+
+#. project panel: trash
+msgctxt "action"
+msgid "project_panel::Trash"
+msgstr "プロジェクトパネル: ゴミ箱へ移動"
+
+#. project search: open text finder
+msgctxt "action"
+msgid "project_search::OpenTextFinder"
+msgstr "検索: テキストファインダーを開く"
+
+#. project search: search in new
+msgctxt "action"
+msgid "project_search::SearchInNew"
+msgstr "検索: 新しいタブで検索"
+
+#. project search: toggle all search results
+msgctxt "action"
+msgid "project_search::ToggleAllSearchResults"
+msgstr "検索: 検索結果の展開切り替え"
+
+#. project search: toggle filters
+msgctxt "action"
+msgid "project_search::ToggleFilters"
+msgstr "検索: フィルターの表示切り替え"
+
+#. project search: toggle focus
+msgctxt "action"
+msgid "project_search::ToggleFocus"
+msgstr "検索: プロジェクト内検索にフォーカス"
+
+#. projects: initialize dev container
+msgctxt "action"
+msgid "projects::InitializeDevContainer"
+msgstr "開発コンテナーを初期化"
+
+#. projects: open dev container
+msgctxt "action"
+msgid "projects::OpenDevContainer"
+msgstr "開発コンテナーを開く"
+
+#. projects: open folder in wsl
+msgctxt "action"
+msgid "projects::OpenFolderInWsl"
+msgstr "WSL のフォルダーを開く"
+
+#. projects: open recent
+msgctxt "action"
+msgid "projects::OpenRecent"
+msgstr "最近のプロジェクトを開く"
+
+#. projects: open remote
+msgctxt "action"
+msgid "projects::OpenRemote"
+msgstr "リモートプロジェクトを開く"
+
+#. projects: open wsl
+msgctxt "action"
+msgid "projects::OpenWsl"
+msgstr "WSL のプロジェクトを開く"
+
+#. recent projects: add to workspace
+msgctxt "action"
+msgid "recent_projects::AddToWorkspace"
+msgstr "ワークスペースに追加"
+
+#. recent projects: remove selected
+msgctxt "action"
+msgid "recent_projects::RemoveSelected"
+msgstr "最近のプロジェクト: 一覧から削除"
+
+#. recent projects: toggle actions menu
+msgctxt "action"
+msgid "recent_projects::ToggleActionsMenu"
+msgstr "最近のプロジェクト: 操作メニューを開く"
+
+#. repl: clear current output
+msgctxt "action"
+msgid "repl::ClearCurrentOutput"
+msgstr "REPL: 現在の出力を消去"
+
+#. repl: clear outputs
+msgctxt "action"
+msgid "repl::ClearOutputs"
+msgstr "REPL: 出力を消去"
+
+#. repl: interrupt
+msgctxt "action"
+msgid "repl::Interrupt"
+msgstr "REPL: 中断"
+
+#. repl: refresh kernelspecs
+msgctxt "action"
+msgid "repl::RefreshKernelspecs"
+msgstr "REPL: カーネル一覧を更新"
+
+#. repl: restart
+msgctxt "action"
+msgid "repl::Restart"
+msgstr "REPL: 再起動"
+
+#. repl: run
+msgctxt "action"
+msgid "repl::Run"
+msgstr "REPL: 実行"
+
+#. repl: run in place
+msgctxt "action"
+msgid "repl::RunInPlace"
+msgstr "REPL: その場で実行"
+
+#. repl: sessions
+msgctxt "action"
+msgid "repl::Sessions"
+msgstr "REPL: セッション一覧"
+
+#. repl: shutdown
+msgctxt "action"
+msgid "repl::Shutdown"
+msgstr "REPL: 終了"
+
+#. search: cycle mode
+msgctxt "action"
+msgid "search::CycleMode"
+msgstr "検索: 検索モードを切り替え"
+
+#. search: focus search
+msgctxt "action"
+msgid "search::FocusSearch"
+msgstr "検索: 検索ボックスにフォーカス"
+
+#. search: new search in directory
+msgctxt "action"
+msgid "search::NewSearchInDirectory"
+msgstr "検索: このフォルダー内を検索"
+
+#. search: next history query
+msgctxt "action"
+msgid "search::NextHistoryQuery"
+msgstr "検索: 次の検索履歴"
+
+#. search: previous history query
+msgctxt "action"
+msgid "search::PreviousHistoryQuery"
+msgstr "検索: 前の検索履歴"
+
+#. search: replace all
+msgctxt "action"
+msgid "search::ReplaceAll"
+msgstr "検索: すべて置換"
+
+#. search: replace next
+msgctxt "action"
+msgid "search::ReplaceNext"
+msgstr "検索: 次を置換"
+
+#. search: select all matches
+msgctxt "action"
+msgid "search::SelectAllMatches"
+msgstr "検索: すべての一致を選択"
+
+#. search: select next match
+msgctxt "action"
+msgid "search::SelectNextMatch"
+msgstr "検索: 次の一致へ"
+
+#. search: select previous match
+msgctxt "action"
+msgid "search::SelectPreviousMatch"
+msgstr "検索: 前の一致へ"
+
+#. search: toggle case sensitive
+msgctxt "action"
+msgid "search::ToggleCaseSensitive"
+msgstr "検索: 大文字と小文字を区別"
+
+#. search: toggle include ignored
+msgctxt "action"
+msgid "search::ToggleIncludeIgnored"
+msgstr "検索: 無視ファイルを含める"
+
+#. search: toggle regex
+msgctxt "action"
+msgid "search::ToggleRegex"
+msgstr "検索: 正規表現を使用"
+
+#. search: toggle replace
+msgctxt "action"
+msgid "search::ToggleReplace"
+msgstr "検索: 置換の表示切り替え"
+
+#. search: toggle selection
+msgctxt "action"
+msgid "search::ToggleSelection"
+msgstr "検索: 選択範囲内を検索"
+
+#. search: toggle whole word
+msgctxt "action"
+msgid "search::ToggleWholeWord"
+msgstr "検索: 単語単位で検索"
+
+#. settings editor: collapse nav entry
+msgctxt "action"
+msgid "settings_editor::CollapseNavEntry"
+msgstr "設定: ナビゲーション項目を折りたたむ"
+
+#. settings editor: expand nav entry
+msgctxt "action"
+msgid "settings_editor::ExpandNavEntry"
+msgstr "設定: ナビゲーション項目を展開"
+
+#. settings editor: focus file
+msgctxt "action"
+msgid "settings_editor::FocusFile"
+msgstr "設定: 指定した設定ファイルへ"
+
+#. settings editor: focus first nav entry
+msgctxt "action"
+msgid "settings_editor::FocusFirstNavEntry"
+msgstr "設定: 最初のナビゲーション項目へ"
+
+#. settings editor: focus last nav entry
+msgctxt "action"
+msgid "settings_editor::FocusLastNavEntry"
+msgstr "設定: 最後のナビゲーション項目へ"
+
+#. settings editor: focus next file
+msgctxt "action"
+msgid "settings_editor::FocusNextFile"
+msgstr "設定: 次の設定ファイルへ"
+
+#. settings editor: focus next nav entry
+msgctxt "action"
+msgid "settings_editor::FocusNextNavEntry"
+msgstr "設定: 次のナビゲーション項目を開く"
+
+#. settings editor: focus next root nav entry
+msgctxt "action"
+msgid "settings_editor::FocusNextRootNavEntry"
+msgstr "設定: 次のトップレベル項目へ"
+
+#. settings editor: focus previous file
+msgctxt "action"
+msgid "settings_editor::FocusPreviousFile"
+msgstr "設定: 前の設定ファイルへ"
+
+#. settings editor: focus previous nav entry
+msgctxt "action"
+msgid "settings_editor::FocusPreviousNavEntry"
+msgstr "設定: 前のナビゲーション項目を開く"
+
+#. settings editor: focus previous root nav entry
+msgctxt "action"
+msgid "settings_editor::FocusPreviousRootNavEntry"
+msgstr "設定: 前のトップレベル項目へ"
+
+#. settings editor: minimize
+msgctxt "action"
+msgid "settings_editor::Minimize"
+msgstr "設定: ウィンドウを最小化"
+
+#. settings editor: open current file
+msgctxt "action"
+msgid "settings_editor::OpenCurrentFile"
+msgstr "設定: 現在の設定ファイルを開く"
+
+#. settings editor: toggle focus nav
+msgctxt "action"
+msgid "settings_editor::ToggleFocusNav"
+msgstr "設定: ナビゲーションとコンテンツのフォーカスを切り替え"
+
+#. skill creator: cancel
+msgctxt "action"
+msgid "skill_creator::Cancel"
+msgstr "スキル作成: キャンセル"
+
+#. skill creator: focus next field
+msgctxt "action"
+msgid "skill_creator::FocusNextField"
+msgstr "スキル作成: 次の入力欄へ"
+
+#. skill creator: focus previous field
+msgctxt "action"
+msgid "skill_creator::FocusPreviousField"
+msgstr "スキル作成: 前の入力欄へ"
+
+#. skill creator: save skill
+msgctxt "action"
+msgid "skill_creator::SaveSkill"
+msgstr "スキル作成: スキルを保存"
+
+#. snippets: configure snippets
+msgctxt "action"
+msgid "snippets::ConfigureSnippets"
+msgstr "スニペットを設定"
+
+#. snippets: open folder
+msgctxt "action"
+msgid "snippets::OpenFolder"
+msgstr "スニペットフォルダーを開く"
+
+#. svg: open following preview
+msgctxt "action"
+msgid "svg::OpenFollowingPreview"
+msgstr "SVG: 追従プレビューを開く"
+
+#. svg: open preview
+msgctxt "action"
+msgid "svg::OpenPreview"
+msgstr "SVG: プレビューを開く"
+
+#. svg: open preview to the side
+msgctxt "action"
+msgid "svg::OpenPreviewToTheSide"
+msgstr "SVG: プレビューを横に開く"
+
+#. tab switcher: close selected item
+msgctxt "action"
+msgid "tab_switcher::CloseSelectedItem"
+msgstr "選択したタブを閉じる"
+
+#. tab switcher: toggle
+msgctxt "action"
+msgid "tab_switcher::Toggle"
+msgstr "タブを切り替え"
+
+#. tab switcher: toggle all
+msgctxt "action"
+msgid "tab_switcher::ToggleAll"
+msgstr "すべてのタブを切り替え"
+
+#. tabular data: append column
+msgctxt "action"
+msgid "tabular_data::AppendColumn"
+msgstr "表 (CSV / TSV): 末尾に列を追加"
+
+#. tabular data: append row
+msgctxt "action"
+msgid "tabular_data::AppendRow"
+msgstr "表 (CSV / TSV): 末尾に行を追加"
+
+#. tabular data: cancel editing
+msgctxt "action"
+msgid "tabular_data::CancelEditing"
+msgstr "表 (CSV / TSV): 編集を取り消す"
+
+#. tabular data: clear all filters
+msgctxt "action"
+msgid "tabular_data::ClearAllFilters"
+msgstr "表 (CSV / TSV): 絞り込みをすべて解除"
+
+#. tabular data: clear cell colors
+msgctxt "action"
+msgid "tabular_data::ClearCellColors"
+msgstr "表 (CSV / TSV): セルの色をクリア"
+
+#. tabular data: clear cells
+msgctxt "action"
+msgid "tabular_data::ClearCells"
+msgstr "表 (CSV / TSV): セルの内容を消去"
+
+#. tabular data: commit and move down
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveDown"
+msgstr "表 (CSV / TSV): 確定して下のセルへ"
+
+#. tabular data: commit and move left
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveLeft"
+msgstr "表 (CSV / TSV): 確定して左のセルへ"
+
+#. tabular data: commit and move right
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveRight"
+msgstr "表 (CSV / TSV): 確定して右のセルへ"
+
+#. tabular data: commit and move up
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveUp"
+msgstr "表 (CSV / TSV): 確定して上のセルへ"
+
+#. tabular data: commit editing
+msgctxt "action"
+msgid "tabular_data::CommitEditing"
+msgstr "表 (CSV / TSV): 編集を確定"
+
+#. tabular data: copy cells
+msgctxt "action"
+msgid "tabular_data::CopyCells"
+msgstr "表 (CSV / TSV): セルをコピー"
+
+#. tabular data: cut cells
+msgctxt "action"
+msgid "tabular_data::CutCells"
+msgstr "表 (CSV / TSV): セルを切り取り"
+
+#. tabular data: delete columns
+msgctxt "action"
+msgid "tabular_data::DeleteColumns"
+msgstr "表 (CSV / TSV): 列を削除"
+
+#. tabular data: delete rows
+msgctxt "action"
+msgid "tabular_data::DeleteRows"
+msgstr "表 (CSV / TSV): 行を削除"
+
+#. tabular data: delete rows or columns
+msgctxt "action"
+msgid "tabular_data::DeleteRowsOrColumns"
+msgstr "表 (CSV / TSV): 選択した行または列を削除"
+
+#. tabular data: diff selected cells
+msgctxt "action"
+msgid "tabular_data::DiffSelectedCells"
+msgstr "表 (CSV / TSV): 選択したセルを比較"
+
+#. tabular data: diff with file
+msgctxt "action"
+msgid "tabular_data::DiffWithFile"
+msgstr "表 (CSV / TSV): ファイルと比較"
+
+#. tabular data: diff with head
+msgctxt "action"
+msgid "tabular_data::DiffWithHead"
+msgstr "表 (CSV / TSV): HEAD と比較"
+
+#. tabular data: fill down
+msgctxt "action"
+msgid "tabular_data::FillDown"
+msgstr "表 (CSV / TSV): 下方向へコピー (フィル)"
+
+#. tabular data: fill right
+msgctxt "action"
+msgid "tabular_data::FillRight"
+msgstr "表 (CSV / TSV): 右方向へコピー (フィル)"
+
+#. tabular data: insert column left
+msgctxt "action"
+msgid "tabular_data::InsertColumnLeft"
+msgstr "表 (CSV / TSV): 左に列を挿入"
+
+#. tabular data: insert column right
+msgctxt "action"
+msgid "tabular_data::InsertColumnRight"
+msgstr "表 (CSV / TSV): 右に列を挿入"
+
+#. tabular data: insert line break
+msgctxt "action"
+msgid "tabular_data::InsertLineBreak"
+msgstr "表 (CSV / TSV): セル内で改行"
+
+#. tabular data: insert row above
+msgctxt "action"
+msgid "tabular_data::InsertRowAbove"
+msgstr "表 (CSV / TSV): 上に行を挿入"
+
+#. tabular data: insert row below
+msgctxt "action"
+msgid "tabular_data::InsertRowBelow"
+msgstr "表 (CSV / TSV): 下に行を挿入"
+
+#. tabular data: insert rows or columns
+msgctxt "action"
+msgid "tabular_data::InsertRowsOrColumns"
+msgstr "表 (CSV / TSV): 選択に合わせて行または列を挿入"
+
+#. tabular data: open as text
+msgctxt "action"
+msgid "tabular_data::OpenAsText"
+msgstr "CSV / TSV: テキストを横に開く"
+
+#. tabular data: open preview
+msgctxt "action"
+msgid "tabular_data::OpenPreview"
+msgstr "CSV / TSV: 表として開く"
+
+#. tabular data: open preview to the side
+msgctxt "action"
+msgid "tabular_data::OpenPreviewToTheSide"
+msgstr "CSV / TSV: 表を横に開く"
+
+#. tabular data: paste cells
+msgctxt "action"
+msgid "tabular_data::PasteCells"
+msgstr "表 (CSV / TSV): セルを貼り付け"
+
+#. tabular data: recompute diff
+msgctxt "action"
+msgid "tabular_data::RecomputeDiff"
+msgstr "表 (CSV / TSV): 差分表を取り直す"
+
+#. tabular data: select all cells
+msgctxt "action"
+msgid "tabular_data::SelectAllCells"
+msgstr "表 (CSV / TSV): すべてのセルを選択"
+
+#. tabular data: select column
+msgctxt "action"
+msgid "tabular_data::SelectColumn"
+msgstr "表 (CSV / TSV): 列を選択"
+
+#. tabular data: select row
+msgctxt "action"
+msgid "tabular_data::SelectRow"
+msgstr "表 (CSV / TSV): 行を選択"
+
+#. tabular data: start editing
+msgctxt "action"
+msgid "tabular_data::StartEditing"
+msgstr "表 (CSV / TSV): セルを編集"
+
+#. tabular data: toggle filter menu
+msgctxt "action"
+msgid "tabular_data::ToggleFilterMenu"
+msgstr "表 (CSV / TSV): 絞り込みメニューを開く"
+
+#. tabular data: toggle header row
+msgctxt "action"
+msgid "tabular_data::ToggleHeaderRow"
+msgstr "表 (CSV / TSV): 見出し行の切り替え"
+
+#. task: rerun
+msgctxt "action"
+msgid "task::Rerun"
+msgstr "タスク: 直前のタスクを再実行"
+
+#. task: spawn
+msgctxt "action"
+msgid "task::Spawn"
+msgstr "タスク: タスクを実行"
+
+#. terminal: cancel macro
+msgctxt "action"
+msgid "terminal::CancelMacro"
+msgstr "ターミナル: マクロを中止"
+
+#. terminal: clear
+msgctxt "action"
+msgid "terminal::Clear"
+msgstr "ターミナル: 画面を消去"
+
+#. terminal: copy
+msgctxt "action"
+msgid "terminal::Copy"
+msgstr "ターミナル: コピー"
+
+#. terminal: edit macros
+msgctxt "action"
+msgid "terminal::EditMacros"
+msgstr "ターミナル: マクロの編集…"
+
+#. terminal: install claude code
+msgctxt "action"
+msgid "terminal::InstallClaudeCode"
+msgstr "ターミナル: Claude Code をインストール (公式コマンド)"
+
+#. terminal: launch claude code
+msgctxt "action"
+msgid "terminal::LaunchClaudeCode"
+msgstr "ターミナル: Claude Code を起動"
+
+#. terminal: launch claude code outside sandbox
+msgctxt "action"
+msgid "terminal::LaunchClaudeCodeOutsideSandbox"
+msgstr "ターミナル: Claude Code をサンドボックスの外で起動"
+
+#. terminal: open file transfer
+msgctxt "action"
+msgid "terminal::OpenFileTransfer"
+msgstr "ターミナル: ファイル転送…"
+
+#. terminal: open session log
+msgctxt "action"
+msgid "terminal::OpenSessionLog"
+msgstr "ターミナル: ログファイルの場所を開く"
+
+#. terminal: paste
+msgctxt "action"
+msgid "terminal::Paste"
+msgstr "ターミナル: 貼り付け"
+
+#. terminal: quick connect
+msgctxt "action"
+msgid "terminal::QuickConnect"
+msgstr "ターミナル: クイック接続…"
+
+#. terminal: rename terminal
+msgctxt "action"
+msgid "terminal::RenameTerminal"
+msgstr "ターミナル: 名前の変更"
+
+#. terminal: rerun task
+msgctxt "action"
+msgid "terminal::RerunTask"
+msgstr "ターミナル: タスクを再実行"
+
+#. terminal: restart terminal
+msgctxt "action"
+msgid "terminal::RestartTerminal"
+msgstr "ターミナル: 再起動"
+
+#. terminal: run macro
+msgctxt "action"
+msgid "terminal::RunMacro"
+msgstr "ターミナル: マクロを実行…"
+
+#. terminal: scroll line down
+msgctxt "action"
+msgid "terminal::ScrollLineDown"
+msgstr "ターミナル: 1 行下へスクロール"
+
+#. terminal: scroll line up
+msgctxt "action"
+msgid "terminal::ScrollLineUp"
+msgstr "ターミナル: 1 行上へスクロール"
+
+#. terminal: scroll page down
+msgctxt "action"
+msgid "terminal::ScrollPageDown"
+msgstr "ターミナル: 1 ページ下へスクロール"
+
+#. terminal: scroll page up
+msgctxt "action"
+msgid "terminal::ScrollPageUp"
+msgstr "ターミナル: 1 ページ上へスクロール"
+
+#. terminal: scroll to bottom
+msgctxt "action"
+msgid "terminal::ScrollToBottom"
+msgstr "ターミナル: 末尾までスクロール"
+
+#. terminal: scroll to top
+msgctxt "action"
+msgid "terminal::ScrollToTop"
+msgstr "ターミナル: 先頭までスクロール"
+
+#. terminal: select all
+msgctxt "action"
+msgid "terminal::SelectAll"
+msgstr "ターミナル: すべて選択"
+
+#. terminal: show character palette
+msgctxt "action"
+msgid "terminal::ShowCharacterPalette"
+msgstr "ターミナル: 絵文字と記号を表示"
+
+#. terminal: split grid
+msgctxt "action"
+msgid "terminal::SplitGrid"
+msgstr "ターミナル: グリッドに分割"
+
+#. terminal: start session log
+msgctxt "action"
+msgid "terminal::StartSessionLog"
+msgstr "ターミナル: ログの記録を開始 (保存先を選ぶ)…"
+
+#. terminal: stop session log
+msgctxt "action"
+msgid "terminal::StopSessionLog"
+msgstr "ターミナル: ログの記録を停止"
+
+#. terminal: tail session log
+msgctxt "action"
+msgid "terminal::TailSessionLog"
+msgstr "ターミナル: ログをエディターで開く"
+
+#. terminal: toggle broadcast input
+msgctxt "action"
+msgid "terminal::ToggleBroadcastInput"
+msgstr "ターミナル: 全ペインに同時入力"
+
+#. terminal: toggle session log
+msgctxt "action"
+msgid "terminal::ToggleSessionLog"
+msgstr "ターミナル: ログの記録を開始/停止"
+
+#. terminal: toggle vi mode
+msgctxt "action"
+msgid "terminal::ToggleViMode"
+msgstr "ターミナル: Vim モードの切り替え"
+
+#. terminal panel: toggle
+msgctxt "action"
+msgid "terminal_panel::Toggle"
+msgstr "ターミナル: 表示切り替え"
+
+#. terminal panel: toggle focus
+msgctxt "action"
+msgid "terminal_panel::ToggleFocus"
+msgstr "ターミナル: フォーカス切り替え"
+
+#. text finder: toggle
+msgctxt "action"
+msgid "text_finder::Toggle"
+msgstr "テキストへ移動"
+
+#. theme selector: reload
+msgctxt "action"
+msgid "theme_selector::Reload"
+msgstr "テーマを再読み込み"
+
+#. theme selector: toggle
+msgctxt "action"
+msgid "theme_selector::Toggle"
+msgstr "テーマを選択"
+
+#. toolchain: add toolchain
+msgctxt "action"
+msgid "toolchain::AddToolchain"
+msgstr "ツールチェーンを追加"
+
+#. toolchain: select
+msgctxt "action"
+msgid "toolchain::Select"
+msgstr "ツールチェーンを選択"
+
+#. variable list: add watch
+msgctxt "action"
+msgid "variable_list::AddWatch"
+msgstr "デバッグ: 変数をウォッチに追加"
+
+#. variable list: collapse selected entry
+msgctxt "action"
+msgid "variable_list::CollapseSelectedEntry"
+msgstr "デバッグ: 選択項目を折りたたむ"
+
+#. variable list: copy variable name
+msgctxt "action"
+msgid "variable_list::CopyVariableName"
+msgstr "デバッグ: 変数名をコピー"
+
+#. variable list: copy variable value
+msgctxt "action"
+msgid "variable_list::CopyVariableValue"
+msgstr "デバッグ: 変数の値をコピー"
+
+#. variable list: edit variable
+msgctxt "action"
+msgid "variable_list::EditVariable"
+msgstr "デバッグ: 変数を編集"
+
+#. variable list: expand selected entry
+msgctxt "action"
+msgid "variable_list::ExpandSelectedEntry"
+msgstr "デバッグ: 選択項目を展開"
+
+#. variable list: go to memory
+msgctxt "action"
+msgid "variable_list::GoToMemory"
+msgstr "デバッグ: メモリを表示"
+
+#. variable list: remove watch
+msgctxt "action"
+msgid "variable_list::RemoveWatch"
+msgstr "デバッグ: ウォッチを削除"
+
+#. vim: open default keymap
+msgctxt "action"
+msgid "vim::OpenDefaultKeymap"
+msgstr "Vim: 既定のキーマップを開く"
+
+#. window: merge all windows
+msgctxt "action"
+msgid "window::MergeAllWindows"
+msgstr "ウィンドウ: すべてのウィンドウを統合"
+
+#. window: move tab to new window
+msgctxt "action"
+msgid "window::MoveTabToNewWindow"
+msgstr "ウィンドウ: システムタブを新しいウィンドウへ移動"
+
+#. workspace: activate last pane
+msgctxt "action"
+msgid "workspace::ActivateLastPane"
+msgstr "ペイン: 最後のペインへ"
+
+#. workspace: activate next pane
+msgctxt "action"
+msgid "workspace::ActivateNextPane"
+msgstr "ペイン: 次のペインへ"
+
+#. workspace: activate next window
+msgctxt "action"
+msgid "workspace::ActivateNextWindow"
+msgstr "ウィンドウ: 次のウィンドウ"
+
+#. workspace: activate pane down
+msgctxt "action"
+msgid "workspace::ActivatePaneDown"
+msgstr "ペイン: 下のペインへ"
+
+#. workspace: activate pane left
+msgctxt "action"
+msgid "workspace::ActivatePaneLeft"
+msgstr "ペイン: 左のペインへ"
+
+#. workspace: activate pane right
+msgctxt "action"
+msgid "workspace::ActivatePaneRight"
+msgstr "ペイン: 右のペインへ"
+
+#. workspace: activate pane up
+msgctxt "action"
+msgid "workspace::ActivatePaneUp"
+msgstr "ペイン: 上のペインへ"
+
+#. workspace: activate previous pane
+msgctxt "action"
+msgid "workspace::ActivatePreviousPane"
+msgstr "ペイン: 前のペインへ"
+
+#. workspace: activate previous window
+msgctxt "action"
+msgid "workspace::ActivatePreviousWindow"
+msgstr "ウィンドウ: 前のウィンドウ"
+
+#. workspace: add folder to project
+msgctxt "action"
+msgid "workspace::AddFolderToProject"
+msgstr "プロジェクトにフォルダーを追加"
+
+#. workspace: change project folder
+msgctxt "action"
+msgid "workspace::ChangeProjectFolder"
+msgstr "フォルダーを変更"
+
+#. workspace: clear all notifications
+msgctxt "action"
+msgid "workspace::ClearAllNotifications"
+msgstr "通知をすべて消去"
+
+#. workspace: clear bookmarks
+msgctxt "action"
+msgid "workspace::ClearBookmarks"
+msgstr "ブックマーク: すべて消去"
+
+#. workspace: clear navigation history
+msgctxt "action"
+msgid "workspace::ClearNavigationHistory"
+msgstr "移動: 履歴を消去"
+
+#. workspace: clear trusted worktrees
+msgctxt "action"
+msgid "workspace::ClearTrustedWorktrees"
+msgstr "信頼済みワークツリーを消去"
+
+#. workspace: close active dock
+msgctxt "action"
+msgid "workspace::CloseActiveDock"
+msgstr "表示: アクティブなドックを閉じる"
+
+#. workspace: close all docks
+msgctxt "action"
+msgid "workspace::CloseAllDocks"
+msgstr "表示: すべてのドックを閉じる"
+
+#. workspace: close all items and panes
+msgctxt "action"
+msgid "workspace::CloseAllItemsAndPanes"
+msgstr "タブ: すべてのタブとペインを閉じる"
+
+#. workspace: close inactive tabs and panes
+msgctxt "action"
+msgid "workspace::CloseInactiveTabsAndPanes"
+msgstr "タブ: 非アクティブなタブとペインを閉じる"
+
+#. workspace: close item in all panes
+msgctxt "action"
+msgid "workspace::CloseItemInAllPanes"
+msgstr "タブ: すべてのペインでこの項目を閉じる"
+
+#. workspace: close project
+msgctxt "action"
+msgid "workspace::CloseProject"
+msgstr "プロジェクトを閉じる"
+
+#. workspace: close window
+msgctxt "action"
+msgid "workspace::CloseWindow"
+msgstr "ウィンドウ: ウィンドウを閉じる"
+
+#. workspace: copy path
+msgctxt "action"
+msgid "workspace::CopyPath"
+msgstr "パスをコピー"
+
+#. workspace: copy relative path
+msgctxt "action"
+msgid "workspace::CopyRelativePath"
+msgstr "相対パスをコピー"
+
+#. workspace: decrease active dock size
+msgctxt "action"
+msgid "workspace::DecreaseActiveDockSize"
+msgstr "表示: ドックを狭める"
+
+#. workspace: feedback
+msgctxt "action"
+msgid "workspace::Feedback"
+msgstr "フィードバックを送る"
+
+#. workspace: focus center pane
+msgctxt "action"
+msgid "workspace::FocusCenterPane"
+msgstr "ペイン: 中央ペインにフォーカス"
+
+#. workspace: format and save
+msgctxt "action"
+msgid "workspace::FormatAndSave"
+msgstr "ファイル: フォーマットして保存"
+
+#. workspace: increase active dock size
+msgctxt "action"
+msgid "workspace::IncreaseActiveDockSize"
+msgstr "表示: ドックを広げる"
+
+#. workspace: move focused panel to next position
+msgctxt "action"
+msgid "workspace::MoveFocusedPanelToNextPosition"
+msgstr "表示: パネルを次の位置へ移動"
+
+#. workspace: move item to new window
+msgctxt "action"
+msgid "workspace::MoveItemToNewWindow"
+msgstr "タブ: 新しいウィンドウへ移動"
+
+#. workspace: move pane down
+msgctxt "action"
+msgid "workspace::MovePaneDown"
+msgstr "ペイン: 下へ移動"
+
+#. workspace: move pane left
+msgctxt "action"
+msgid "workspace::MovePaneLeft"
+msgstr "ペイン: 左へ移動"
+
+#. workspace: move pane right
+msgctxt "action"
+msgid "workspace::MovePaneRight"
+msgstr "ペイン: 右へ移動"
+
+#. workspace: move pane up
+msgctxt "action"
+msgid "workspace::MovePaneUp"
+msgstr "ペイン: 上へ移動"
+
+#. workspace: new center terminal
+msgctxt "action"
+msgid "workspace::NewCenterTerminal"
+msgstr "ターミナル: 中央ペインに新規ターミナル"
+
+#. workspace: new file
+msgctxt "action"
+msgid "workspace::NewFile"
+msgstr "ファイル: 新規ファイル"
+
+#. workspace: new file split horizontal
+msgctxt "action"
+msgid "workspace::NewFileSplitHorizontal"
+msgstr "ファイル: 新規ファイル (水平分割)"
+
+#. workspace: new file split vertical
+msgctxt "action"
+msgid "workspace::NewFileSplitVertical"
+msgstr "ファイル: 新規ファイル (垂直分割)"
+
+#. workspace: new search
+msgctxt "action"
+msgid "workspace::NewSearch"
+msgstr "検索: プロジェクト内検索"
+
+#. workspace: new terminal
+msgctxt "action"
+msgid "workspace::NewTerminal"
+msgstr "ターミナル: 新規ターミナル"
+
+#. workspace: new window
+msgctxt "action"
+msgid "workspace::NewWindow"
+msgstr "ウィンドウ: 新規ウィンドウ"
+
+#. workspace: open
+msgctxt "action"
+msgid "workspace::Open"
+msgstr "ファイル: フォルダーまたはファイルを開く"
+
+#. workspace: open files
+msgctxt "action"
+msgid "workspace::OpenFiles"
+msgstr "ファイル: ファイルを開く"
+
+#. workspace: open in terminal
+msgctxt "action"
+msgid "workspace::OpenInTerminal"
+msgstr "ターミナル: ここでターミナルを開く"
+
+#. workspace: open terminal
+msgctxt "action"
+msgid "workspace::OpenTerminal"
+msgstr "ターミナル: ターミナルを開く"
+
+#. workspace: open with system
+msgctxt "action"
+msgid "workspace::OpenWithSystem"
+msgstr "ファイル: 既定のアプリで開く"
+
+#. workspace: reload
+msgctxt "action"
+msgid "workspace::Reload"
+msgstr "ウィンドウ: 再読み込み"
+
+#. workspace: reload active item
+msgctxt "action"
+msgid "workspace::ReloadActiveItem"
+msgstr "ファイル: このファイルを再読み込み"
+
+#. workspace: reopen last picker
+msgctxt "action"
+msgid "workspace::ReopenLastPicker"
+msgstr "最後のピッカーを再表示"
+
+#. workspace: reset active dock size
+msgctxt "action"
+msgid "workspace::ResetActiveDockSize"
+msgstr "表示: ドックのサイズをリセット"
+
+#. workspace: reset pane sizes
+msgctxt "action"
+msgid "workspace::ResetPaneSizes"
+msgstr "ペイン: サイズをリセット"
+
+#. workspace: save
+msgctxt "action"
+msgid "workspace::Save"
+msgstr "ファイル: 保存"
+
+#. workspace: save all
+msgctxt "action"
+msgid "workspace::SaveAll"
+msgstr "ファイル: すべて保存"
+
+#. workspace: save as
+msgctxt "action"
+msgid "workspace::SaveAs"
+msgstr "ファイル: 名前を付けて保存"
+
+#. workspace: save without format
+msgctxt "action"
+msgid "workspace::SaveWithoutFormat"
+msgstr "ファイル: フォーマットせずに保存"
+
+#. workspace: shutdown debug adapters
+msgctxt "action"
+msgid "workspace::ShutdownDebugAdapters"
+msgstr "デバッグ: デバッグアダプターを終了"
+
+#. workspace: suppress notification
+msgctxt "action"
+msgid "workspace::SuppressNotification"
+msgstr "この通知を今後表示しない"
+
+#. workspace: swap pane down
+msgctxt "action"
+msgid "workspace::SwapPaneDown"
+msgstr "ペイン: 下のペインと入れ替え"
+
+#. workspace: swap pane left
+msgctxt "action"
+msgid "workspace::SwapPaneLeft"
+msgstr "ペイン: 左のペインと入れ替え"
+
+#. workspace: swap pane right
+msgctxt "action"
+msgid "workspace::SwapPaneRight"
+msgstr "ペイン: 右のペインと入れ替え"
+
+#. workspace: swap pane up
+msgctxt "action"
+msgid "workspace::SwapPaneUp"
+msgstr "ペイン: 上のペインと入れ替え"
+
+#. workspace: toggle all docks
+msgctxt "action"
+msgid "workspace::ToggleAllDocks"
+msgstr "表示: すべてのドックの表示切り替え"
+
+#. workspace: toggle bottom dock
+msgctxt "action"
+msgid "workspace::ToggleBottomDock"
+msgstr "表示: 下ドックの表示切り替え"
+
+#. workspace: toggle centered layout
+msgctxt "action"
+msgid "workspace::ToggleCenteredLayout"
+msgstr "表示: 中央寄せレイアウトの切り替え"
+
+#. workspace: toggle edit prediction
+msgctxt "action"
+msgid "workspace::ToggleEditPrediction"
+msgstr "編集予測の切り替え"
+
+#. workspace: toggle editor zoom
+msgctxt "action"
+msgid "workspace::ToggleEditorZoom"
+msgstr "表示: エディターのズーム切り替え"
+
+#. workspace: toggle helix mode
+msgctxt "action"
+msgid "workspace::ToggleHelixMode"
+msgstr "Helix モードの切り替え"
+
+#. workspace: toggle left dock
+msgctxt "action"
+msgid "workspace::ToggleLeftDock"
+msgstr "表示: 左ドックの表示切り替え"
+
+#. workspace: toggle read only file
+msgctxt "action"
+msgid "workspace::ToggleReadOnlyFile"
+msgstr "ファイル: 読み取り専用の切り替え"
+
+#. workspace: toggle right dock
+msgctxt "action"
+msgid "workspace::ToggleRightDock"
+msgstr "表示: 右ドックの表示切り替え"
+
+#. workspace: toggle vim mode
+msgctxt "action"
+msgid "workspace::ToggleVimMode"
+msgstr "Vim モードの切り替え"
+
+#. workspace: toggle worktree security
+msgctxt "action"
+msgid "workspace::ToggleWorktreeSecurity"
+msgstr "ワークツリーの信頼設定を切り替え"
+
+#. workspace: toggle zoom
+msgctxt "action"
+msgid "workspace::ToggleZoom"
+msgstr "表示: パネルのズーム切り替え"
+
+#. workspace: use agentic layout
+msgctxt "action"
+msgid "workspace::UseAgenticLayout"
+msgstr "表示: エージェントレイアウト"
+
+#. workspace: use classic layout
+msgctxt "action"
+msgid "workspace::UseClassicLayout"
+msgstr "表示: クラシックレイアウト"
+
+#. workspace: zoom in
+msgctxt "action"
+msgid "workspace::ZoomIn"
+msgstr "表示: 拡大"
+
+#. workspace: zoom out
+msgctxt "action"
+msgid "workspace::ZoomOut"
+msgstr "表示: 縮小"
+
+#. zed: about
+msgctxt "action"
+msgid "zed::About"
+msgstr "Zed について"
+
+#. zed: change keybinding
+msgctxt "action"
+msgid "zed::ChangeKeybinding"
+msgstr "環境設定: キーバインドを変更"
+
+#. zed: copy installed extensions into clipboard
+msgctxt "action"
+msgid "zed::CopyInstalledExtensionsIntoClipboard"
+msgstr "インストール済み拡張機能をクリップボードにコピー"
+
+#. zed: copy system specs into clipboard
+msgctxt "action"
+msgid "zed::CopySystemSpecsIntoClipboard"
+msgstr "システム情報をクリップボードにコピー"
+
+#. zed: decrease buffer font size
+msgctxt "action"
+msgid "zed::DecreaseBufferFontSize"
+msgstr "エディター: フォントサイズを縮小"
+
+#. zed: decrease ui font size
+msgctxt "action"
+msgid "zed::DecreaseUiFontSize"
+msgstr "表示: UI フォントサイズを縮小"
+
+#. zed: extensions
+msgctxt "action"
+msgid "zed::Extensions"
+msgstr "拡張機能"
+
+#. zed: hide
+msgctxt "action"
+msgid "zed::Hide"
+msgstr "ウィンドウ: 非表示"
+
+#. zed: hide others
+msgctxt "action"
+msgid "zed::HideOthers"
+msgstr "ウィンドウ: ほかを非表示"
+
+#. zed: import cursor settings
+msgctxt "action"
+msgid "zed::ImportCursorSettings"
+msgstr "Cursor の設定をインポート"
+
+#. zed: import vs code settings
+msgctxt "action"
+msgid "zed::ImportVsCodeSettings"
+msgstr "VS Code の設定をインポート"
+
+#. zed: increase buffer font size
+msgctxt "action"
+msgid "zed::IncreaseBufferFontSize"
+msgstr "エディター: フォントサイズを拡大"
+
+#. zed: increase ui font size
+msgctxt "action"
+msgid "zed::IncreaseUiFontSize"
+msgstr "表示: UI フォントサイズを拡大"
+
+#. zed: install dev extension
+msgctxt "action"
+msgid "zed::InstallDevExtension"
+msgstr "開発中の拡張機能をインストール"
+
+#. zed: minimize
+msgctxt "action"
+msgid "zed::Minimize"
+msgstr "ウィンドウ: 最小化"
+
+#. zed: open account settings
+msgctxt "action"
+msgid "zed::OpenAccountSettings"
+msgstr "環境設定: アカウント設定を開く"
+
+#. zed: open debug tasks
+msgctxt "action"
+msgid "zed::OpenDebugTasks"
+msgstr "タスク: デバッグタスクを開く"
+
+#. zed: open default keymap
+msgctxt "action"
+msgid "zed::OpenDefaultKeymap"
+msgstr "環境設定: 既定のキーマップを開く"
+
+#. zed: open default settings
+msgctxt "action"
+msgid "zed::OpenDefaultSettings"
+msgstr "環境設定: 既定の設定を開く"
+
+#. zed: open docs
+msgctxt "action"
+msgid "zed::OpenDocs"
+msgstr "ドキュメントを開く"
+
+#. zed: open keymap
+msgctxt "action"
+msgid "zed::OpenKeymap"
+msgstr "環境設定: キーマップを開く"
+
+#. zed: open keymap file
+msgctxt "action"
+msgid "zed::OpenKeymapFile"
+msgstr "環境設定: keymap.json を開く"
+
+#. zed: open licenses
+msgctxt "action"
+msgid "zed::OpenLicenses"
+msgstr "ライセンスを開く"
+
+#. zed: open log
+msgctxt "action"
+msgid "zed::OpenLog"
+msgstr "ログを開く"
+
+#. zed: open onboarding
+msgctxt "action"
+msgid "zed::OpenOnboarding"
+msgstr "初期設定を開く"
+
+#. zed: open performance profiler
+msgctxt "action"
+msgid "zed::OpenPerformanceProfiler"
+msgstr "パフォーマンスプロファイラーを開く"
+
+#. zed: open project settings
+msgctxt "action"
+msgid "zed::OpenProjectSettings"
+msgstr "環境設定: プロジェクト設定を開く"
+
+#. zed: open project settings file
+msgctxt "action"
+msgid "zed::OpenProjectSettingsFile"
+msgstr "環境設定: プロジェクトの settings.json を開く"
+
+#. zed: open project tasks
+msgctxt "action"
+msgid "zed::OpenProjectTasks"
+msgstr "タスク: プロジェクトのタスクを開く"
+
+#. zed: open server settings
+msgctxt "action"
+msgid "zed::OpenServerSettings"
+msgstr "環境設定: サーバー設定を開く"
+
+#. zed: open settings
+msgctxt "action"
+msgid "zed::OpenSettings"
+msgstr "環境設定: 設定を開く"
+
+#. zed: open settings file
+msgctxt "action"
+msgid "zed::OpenSettingsFile"
+msgstr "環境設定: settings.json を開く"
+
+#. zed: open settings page
+msgctxt "action"
+msgid "zed::OpenSettingsPage"
+msgstr "環境設定: 設定ページを開く"
+
+#. zed: open status page
+msgctxt "action"
+msgid "zed::OpenStatusPage"
+msgstr "ステータスページを開く"
+
+#. zed: open tasks
+msgctxt "action"
+msgid "zed::OpenTasks"
+msgstr "タスク: tasks.json を開く"
+
+#. zed: open telemetry log
+msgctxt "action"
+msgid "zed::OpenTelemetryLog"
+msgstr "テレメトリログを開く"
+
+#. zed: open zed repo
+msgctxt "action"
+msgid "zed::OpenZedRepo"
+msgstr "Zed のリポジトリを開く"
+
+#. zed: quit
+msgctxt "action"
+msgid "zed::Quit"
+msgstr "Zed を終了"
+
+#. zed: reload extensions
+msgctxt "action"
+msgid "zed::ReloadExtensions"
+msgstr "拡張機能を再読み込み"
+
+#. zed: reset all zoom
+msgctxt "action"
+msgid "zed::ResetAllZoom"
+msgstr "表示: すべてのズームをリセット"
+
+#. zed: reset buffer font size
+msgctxt "action"
+msgid "zed::ResetBufferFontSize"
+msgstr "エディター: フォントサイズをリセット"
+
+#. zed: reset ui font size
+msgctxt "action"
+msgid "zed::ResetUiFontSize"
+msgstr "表示: UI フォントサイズをリセット"
+
+#. zed: reveal log in file manager
+msgctxt "action"
+msgid "zed::RevealLogInFileManager"
+msgstr "ログをファイルマネージャーで表示"
+
+#. zed: show all
+msgctxt "action"
+msgid "zed::ShowAll"
+msgstr "ウィンドウ: すべて表示"
+
+#. zed: show welcome
+msgctxt "action"
+msgid "zed::ShowWelcome"
+msgstr "ようこそページを開く"
+
+#. zed: toggle base keymap selector
+msgctxt "action"
+msgid "zed::ToggleBaseKeymapSelector"
+msgstr "環境設定: ベースキーマップを選択"
+
+#. zed: toggle full screen
+msgctxt "action"
+msgid "zed::ToggleFullScreen"
+msgstr "表示: 全画面表示の切り替え"
+
+#. zed: zoom
+msgctxt "action"
+msgid "zed::Zoom"
+msgstr "ウィンドウ: ズーム"
+
+#. zeta: focus predictions
+msgctxt "action"
+msgid "zeta::FocusPredictions"
+msgstr "編集予測: 予測にフォーカス"
+
+#. zeta: next edit
+msgctxt "action"
+msgid "zeta::NextEdit"
+msgstr "編集予測: 次の編集へ"
+
+#. zeta: preview prediction
+msgctxt "action"
+msgid "zeta::PreviewPrediction"
+msgstr "編集予測: 予測をプレビュー"
+
+#. zeta: previous edit
+msgctxt "action"
+msgid "zeta::PreviousEdit"
+msgstr "編集予測: 前の編集へ"
+
+#. zeta: thumbs down active prediction
+msgctxt "action"
+msgid "zeta::ThumbsDownActivePrediction"
+msgstr "編集予測: 予測を低評価"
+
+#. zeta: thumbs up active prediction
+msgctxt "action"
+msgid "zeta::ThumbsUpActivePrediction"
+msgstr "編集予測: 予測を高評価"

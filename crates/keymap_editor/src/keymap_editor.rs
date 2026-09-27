@@ -4158,6 +4158,9 @@ mod tests {
         }
     }
 ]"#;
+        let _locale = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
         let (_fs, keymap_editor, mut cx) = setup_keymap_editor(cx, keymap_content).await;
         let cx = &mut cx;
 
@@ -4165,7 +4168,7 @@ mod tests {
         assert_ne!(
             japanese_label,
             command_palette::humanize_action_name("zed::OpenKeymap"),
-            "this test needs an action that ja_labels translates"
+            "this test needs a translation installed for zed::OpenKeymap"
         );
         keymap_editor.read_with(cx, |editor, _| {
             let row = *visible_rows_for_action(editor, "zed::OpenKeymap")
@@ -4196,6 +4199,50 @@ mod tests {
                 "query {query:?} should match the binding by either spelling"
             );
         }
+    }
+
+    /// Upstream (`de178dd`) behavior: with no catalog installed the action column
+    /// shows the plain English `humanize_action_name` name, and only that spelling
+    /// matches the query.
+    #[gpui::test]
+    async fn test_action_query_without_catalog_matches_upstream(cx: &mut TestAppContext) {
+        let keymap_content = r#"[
+    {
+        "bindings": {
+            "alt-cmd-shift-c": "zed::OpenKeymap"
+        }
+    }
+]"#;
+        let (_fs, keymap_editor, mut cx) = setup_keymap_editor(cx, keymap_content).await;
+        let cx = &mut cx;
+
+        let english_name = command_palette::localized_action_name("zed::OpenKeymap");
+        assert_eq!(
+            english_name,
+            command_palette::humanize_action_name("zed::OpenKeymap"),
+        );
+        keymap_editor.read_with(cx, |editor, _| {
+            let row = *visible_rows_for_action(editor, "zed::OpenKeymap")
+                .first()
+                .expect("expected the binding to be listed");
+            let candidate_id = editor.matches[row].candidate_id;
+            assert_eq!(
+                editor.keybindings[candidate_id].action().display_name(),
+                &SharedString::from(english_name.clone()),
+                "the action column should show the English name with no catalog installed"
+            );
+        });
+
+        keymap_editor.update_in(cx, |editor, window, cx| {
+            editor.filter_editor.update(cx, |filter_editor, cx| {
+                filter_editor.set_text("open keymap", window, cx);
+            });
+        });
+        cx.run_until_parked();
+        let rows = keymap_editor.read_with(cx, |editor, _| {
+            visible_rows_for_action(editor, "zed::OpenKeymap")
+        });
+        assert_eq!(rows.len(), 1, "the English spelling should still match");
     }
 
     #[gpui::test]

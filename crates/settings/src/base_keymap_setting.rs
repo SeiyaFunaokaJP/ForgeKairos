@@ -181,8 +181,9 @@ mod tests {
     fn the_telemetry_display_stays_in_english() {
         // `Display` is what `base_keymap_picker.rs` and `main.rs` report to
         // telemetry (ADR §5.11); translating it would change the values Zed
-        // Industries already collects, so only `OPTIONS` (this UI's labels)
-        // and `BaseKeymapContent::VARIANTS` (the settings UI's) are Japanese.
+        // Industries already collects, so only `OPTIONS` (this UI's labels) is
+        // Japanese. `BaseKeymapContent::VARIANTS` (the settings UI's) is English
+        // and translated from `locales/ja/_settings.po` when the dropdown is drawn.
         assert_eq!(BaseKeymap::Zed.to_string(), "Zed");
         assert_eq!(BaseKeymap::Emacs.to_string(), "Emacs (beta)");
         assert_eq!(BaseKeymap::Cursor.to_string(), "Cursor (beta)");

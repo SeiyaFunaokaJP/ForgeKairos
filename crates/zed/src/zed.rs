@@ -1,5 +1,6 @@
 mod app_menus;
 pub mod edit_prediction_registry;
+mod localized_menus;
 #[cfg(target_os = "macos")]
 pub(crate) mod mac_only_instance;
 mod migrate;
@@ -20,6 +21,7 @@ use agent_ui::AgentDiffToolbar;
 use anyhow::Context as _;
 pub use app_menus::*;
 use assets::Assets;
+pub use localized_menus::*;
 
 use breadcrumbs::Breadcrumbs;
 use browser_panel::BrowserPanel;
@@ -2451,7 +2453,7 @@ fn reload_keymaps(cx: &mut App, mut user_key_bindings: Vec<KeyBinding>) {
     cx.bind_keys(filter_disabled_ai_bindings(user_key_bindings, cx));
 
     let menus = app_menus(cx);
-    cx.set_menus(menus);
+    cx.set_menus(localize_menus(menus));
     // On Windows, this is set in the `update_jump_list` method of the `HistoryManager`.
     #[cfg(not(target_os = "windows"))]
     cx.set_dock_menu(vec![gpui::MenuItem::action(
@@ -6163,15 +6165,39 @@ mod tests {
         });
     }
 
-    /// コマンドパレットの日本語ラベル表 (`command_palette::ja_labels`) のキーが
-    /// 実在するアクション名かどうかを確かめる (F1-3)。
-    /// 表自体は `command_palette` にあるが、全アクションが登録されるのは `zed` を
-    /// リンクしたときだけなので検証はこちら側に置く。
+    /// `locales/ja/_actions.po` (`msgctxt "action"`) の msgid がすべて実在するアクション名
+    /// かどうかを確かめる (F1-3。PO に移す前の `command_palette::ja_labels` の綴り検証を引き継ぐ)。
+    /// PO 自体はリポジトリ直下にあるが、全アクションが登録されるのは `zed` をリンクした
+    /// ときだけなので検証はこちら側に置く。
     #[gpui::test]
-    async fn test_ja_labels_reference_registered_actions(cx: &mut gpui::TestAppContext) {
+    async fn test_actions_po_references_registered_actions(cx: &mut gpui::TestAppContext) {
         // `#[action(no_register)]` のアクションはグローバル登録されないので
         // `all_action_names()` に出てこない。名前自体は実在するので除外する
         const UNREGISTERED: &[&str] = &["zed::ChangeKeybinding", "search::NewSearchInDirectory"];
+
+        let (actions_po, errors) = i18n_catalog::parse_po(
+            "_actions.po",
+            include_str!("../../../locales/ja/_actions.po"),
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        let msgids = actions_po
+            .entries
+            .iter()
+            .filter(|entry| entry.context.as_deref() == Some("action"))
+            .map(|entry| entry.msgid.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            msgids.len() >= 900,
+            "expected roughly the original ~918-entry table, got {}",
+            msgids.len()
+        );
+        let mut seen = std::collections::HashSet::new();
+        for msgid in &msgids {
+            assert!(
+                seen.insert(*msgid),
+                "duplicate msgid in locales/ja/_actions.po: {msgid}"
+            );
+        }
 
         init_keymap_test(cx);
         cx.update(|cx| {
@@ -6180,15 +6206,16 @@ mod tests {
                 .iter()
                 .copied()
                 .collect::<std::collections::HashSet<_>>();
-            let unknown = command_palette::labeled_action_names()
+            let unknown = msgids
+                .iter()
                 .filter(|action_name| {
-                    !registered.contains(action_name) && !UNREGISTERED.contains(action_name)
+                    !registered.contains(*action_name) && !UNREGISTERED.contains(action_name)
                 })
                 .collect::<Vec<_>>();
             assert_eq!(
                 unknown,
-                Vec::<&str>::new(),
-                "ja_labels.rs のキーが実在しないアクションを指している"
+                Vec::<&&str>::new(),
+                "locales/ja/_actions.po の msgid が実在しないアクションを指している"
             );
         });
     }

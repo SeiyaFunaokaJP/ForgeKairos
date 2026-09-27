@@ -3731,7 +3731,7 @@ fn image_fallback_element(
         .child(Label::new(label).color(Color::Warning).underline())
         .tooltip(Tooltip::text(
             // 元の "Open `zed: log`" はパレットのコマンド名を指していたが、
-            // パレットが日本語化されたので日本語ラベル (ja_labels.rs の "zed::OpenLog") を案内する
+            // パレットが日本語化されたので日本語ラベル (locales/ja/_actions.po の "zed::OpenLog") を案内する
             "画像を読み込めませんでした。詳細はコマンドパレットの「ログを開く」で確認してください。",
         ))
         .when(open_image_url_on_click, |this| {

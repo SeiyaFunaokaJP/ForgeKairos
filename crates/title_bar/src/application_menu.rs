@@ -10,6 +10,8 @@ use ui::{ContextMenu, PopoverMenu, PopoverMenuHandle, Tooltip, prelude::*};
 
 use crate::title_bar_settings::TitleBarSettings;
 
+mod localized;
+
 actions!(
     app_menu,
     [
@@ -46,6 +48,7 @@ struct MenuEntry {
 pub struct ApplicationMenu {
     entries: SmallVec<[MenuEntry; 8]>,
     pending_menu_open: Option<String>,
+    menus_i18n_generation: u64,
     _settings_subscription: Subscription,
 }
 
@@ -64,6 +67,7 @@ impl ApplicationMenu {
                 })
                 .collect(),
             pending_menu_open: None,
+            menus_i18n_generation: i18n::generation(),
             _settings_subscription: settings_subscription,
         }
     }
@@ -231,7 +235,7 @@ impl ApplicationMenu {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) {
-        self.pending_menu_open = Some(action.0.clone());
+        self.pending_menu_open = Some(localized::shown_menu_name(&action.0));
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -296,6 +300,7 @@ pub(crate) fn show_menus(cx: &mut App) -> bool {
 
 impl Render for ApplicationMenu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.reload_menus_if_language_changed(cx);
         let all_menus_shown = self.all_menus_shown(cx);
 
         if let Some(pending_menu_open) = self.pending_menu_open.take()

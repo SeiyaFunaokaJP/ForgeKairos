@@ -1,4 +1,6 @@
 mod components;
+#[cfg(test)]
+mod i18n_tests;
 mod page_data;
 pub mod pages;
 
@@ -333,8 +335,8 @@ impl SettingFieldRenderer {
                     field,
                     settings_file.clone(),
                     metadata,
-                    item.title,
-                    item.description,
+                    tr_table(item.title),
+                    tr_table(item.description),
                     window,
                     cx,
                 );
@@ -562,6 +564,7 @@ fn init_renderers(cx: &mut App) {
         .add_basic_renderer::<settings::DockPosition>(render_dropdown)
         .add_basic_renderer::<settings::SidebarDockPosition>(render_dropdown)
         .add_basic_renderer::<settings::PanelTabBar>(render_dropdown)
+        .add_basic_renderer::<settings::DefaultDockPanel>(render_dropdown)
         .add_basic_renderer::<settings::GitGutterSetting>(render_dropdown)
         .add_basic_renderer::<settings::GitHunkStyleSetting>(render_dropdown)
         .add_basic_renderer::<settings::StatusUntrackedFilesSetting>(render_dropdown)
@@ -660,6 +663,7 @@ fn init_renderers(cx: &mut App) {
         .add_basic_renderer::<settings::AudioInputDeviceName>(render_input_audio_device_dropdown)
         .add_basic_renderer::<settings::AudioOutputDeviceName>(render_output_audio_device_dropdown)
         .add_basic_renderer::<settings::TerminalBell>(render_dropdown)
+        .add_basic_renderer::<settings::UiLanguageName>(pages::ui_language::render_ui_language_dropdown)
         // please semicolon stay on next line
         ;
 }
@@ -1024,6 +1028,8 @@ struct SearchIndex {
     documents: Vec<SearchDocument>,
     fuzzy_match_candidates: Vec<StringMatchCandidate>,
     key_lut: Vec<SearchKeyLUTEntry>,
+    /// The translation catalog the words were taken from.
+    i18n_generation: u64,
 }
 
 struct SearchKeyLUTEntry {
@@ -1200,7 +1206,8 @@ impl SettingsPageItem {
 
         match self {
             SettingsPageItem::SectionHeader(header) => {
-                SettingsSectionHeader::new(SharedString::new_static(header)).into_any_element()
+                SettingsSectionHeader::new(SharedString::new_static(tr_table(header)))
+                    .into_any_element()
             }
             SettingsPageItem::SettingItem(setting_item) => {
                 let (field_with_padding, _) =
@@ -1228,12 +1235,12 @@ impl SettingsPageItem {
                                 .relative()
                                 .w_full()
                                 .max_w_1_2()
-                                .child(Label::new(sub_page_link.title.clone()))
+                                .child(Label::new(shown_link_title(sub_page_link)))
                                 .when_some(
                                     sub_page_link.description.as_ref(),
                                     |this, description| {
                                         this.child(
-                                            Label::new(description.clone())
+                                            Label::new(tr_shared(description))
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
@@ -1242,7 +1249,7 @@ impl SettingsPageItem {
                         )
                         .child(
                             Button::new(("sub-page".into(), sub_page_link.title.clone()), "設定")
-                                .aria_label(format!("{} を設定", sub_page_link.title))
+                                .aria_label(format!("{} を設定", shown_link_title(sub_page_link)))
                                 .tab_index(0_isize)
                                 .end_icon(
                                     Icon::new(IconName::ChevronRight)
@@ -1367,12 +1374,12 @@ impl SettingsPageItem {
                                 .relative()
                                 .w_full()
                                 .max_w_1_2()
-                                .child(Label::new(action_link.title.clone()))
+                                .child(Label::new(tr_shared(&action_link.title)))
                                 .when_some(
                                     action_link.description.as_ref(),
                                     |this, description| {
                                         this.child(
-                                            Label::new(description.clone())
+                                            Label::new(tr_shared(description))
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
@@ -1382,7 +1389,7 @@ impl SettingsPageItem {
                         .child(
                             Button::new(
                                 ("action-link".into(), action_link.title.clone()),
-                                action_link.button_text.clone(),
+                                tr_shared(&action_link.button_text),
                             )
                             .tab_index(0_isize)
                             .end_icon(
@@ -1439,7 +1446,7 @@ fn render_settings_item_layout(
                     h_flex()
                         .w_full()
                         .gap_1()
-                        .child(Label::new(SharedString::new_static(title)))
+                        .child(Label::new(SharedString::new_static(tr_table(title))))
                         .when_some(reset_fn, |this, reset_to_default| {
                             this.child(
                                 IconButton::new("reset-to-default-btn", IconName::Undo)
@@ -1461,7 +1468,7 @@ fn render_settings_item_layout(
                         }),
                 )
                 .child(
-                    Label::new(SharedString::new_static(description))
+                    Label::new(SharedString::new_static(tr_table(description)))
                         .size(LabelSize::Small)
                         .color(Color::Muted)
                         .render_code_spans(),
@@ -1683,6 +1690,9 @@ enum SubPageType {
     /// The page listing decisions about project-defined launches, which have
     /// to be read from the approval service when it opens.
     LaunchApprovals,
+    /// A page opened with `push_dynamic_sub_page`, whose title is not from the
+    /// table and so is not translated again.
+    Dynamic,
     #[default]
     Other,
 }
@@ -1722,6 +1732,41 @@ impl PartialEq for ActionLink {
     fn eq(&self, other: &Self) -> bool {
         self.title == other.title
     }
+}
+
+/// Translates a string of the settings table (a title, description, header or
+/// placeholder) for display.
+fn tr_table(text: &str) -> &str {
+    i18n::tr_ctx(i18n::context::SETTINGS, text)
+}
+
+/// Translates a table string held as a `SharedString`, such as a sub page
+/// title, for display.
+fn tr_shared(text: &SharedString) -> SharedString {
+    let translation = tr_table(text);
+    if translation == text.as_ref() {
+        text.clone()
+    } else {
+        SharedString::from(translation.to_string())
+    }
+}
+
+/// The title a sub page link shows. Language pages are named after the
+/// language ("Go" is not the menu's 移動) and dynamic pages are given a title
+/// that is already in the UI language or is data such as a provider's name, so
+/// only the table's own titles are translated.
+fn shown_link_title(link: &SubPageLink) -> SharedString {
+    match link.r#type {
+        SubPageType::Language | SubPageType::Dynamic => link.title.clone(),
+        _ => tr_shared(&link.title),
+    }
+}
+
+/// A table string and, when it differs, its translation, so that search finds
+/// a setting by its English name as well as by the name on screen.
+fn with_translation(text: &str) -> impl Iterator<Item = &str> {
+    let translation = tr_table(text);
+    std::iter::once(text).chain((translation != text).then_some(translation))
 }
 
 fn all_language_names(cx: &App) -> Vec<SharedString> {
@@ -2412,9 +2457,13 @@ impl SettingsWindow {
     }
 
     fn build_search_index(&mut self) {
+        // Read before the words are translated, so an index built across a catalog
+        // swap is marked stale rather than current.
+        let i18n_generation = i18n::generation();
         fn split_into_words(parts: &[&str]) -> Vec<String> {
             parts
                 .iter()
+                .flat_map(|s| with_translation(s))
                 .flat_map(|s| {
                     s.split(|c: char| !c.is_alphanumeric())
                         .filter(|w| !w.is_empty())
@@ -2432,7 +2481,7 @@ impl SettingsWindow {
             key_index: usize,
             input: &str,
         ) {
-            for word in input.split_ascii_whitespace() {
+            for word in with_translation(input).flat_map(str::split_ascii_whitespace) {
                 fuzzy_match_candidates.push(StringMatchCandidate::new(key_index, word));
             }
         }
@@ -2524,6 +2573,7 @@ impl SettingsWindow {
             documents,
             key_lut,
             fuzzy_match_candidates,
+            i18n_generation,
         }));
     }
 
@@ -2573,6 +2623,25 @@ impl SettingsWindow {
         self.content_handles.clear();
         self.build_ui(window, cx);
         self.build_search_index();
+    }
+
+    /// The table strings are translated when drawn, but the search index holds
+    /// the words of the language it was built in; start over when the catalog
+    /// has been replaced since.
+    fn rebuild_pages_if_language_changed(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<SettingsWindow>,
+    ) {
+        if self
+            .search_index
+            .as_ref()
+            .is_some_and(|search_index| search_index.i18n_generation != i18n::generation())
+        {
+            self.rebuild_pages(window, cx);
+            // `build_ui` searched with the index it replaced.
+            self.update_matches(cx);
+        }
     }
 
     #[track_caller]
@@ -2695,7 +2764,10 @@ impl SettingsWindow {
             .enumerate()
             .filter(|(_, (_, entry))| !entry.is_root)
             .map(|(logical_index, (index, entry))| {
-                let title_lower = entry.title.to_lowercase();
+                let title_lower = with_translation(entry.title)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .to_lowercase();
                 let matching_words = query_words
                     .iter()
                     .filter(|query_word| {
@@ -2722,7 +2794,10 @@ impl SettingsWindow {
             .enumerate()
             .find(|(_, (_, item))| match item {
                 SettingsPageItem::SectionHeader(title) => {
-                    let title_lower = title.to_lowercase();
+                    let title_lower = with_translation(title)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .to_lowercase();
                     query_words.iter().all(|query_word| {
                         title_lower
                             .split_whitespace()
@@ -3227,7 +3302,7 @@ impl SettingsWindow {
                                     .map(|(entry_index, entry)| {
                                         TreeViewItem::new(
                                             ("settings-ui-navbar-entry", entry_index),
-                                            entry.title,
+                                            tr_table(entry.title),
                                         )
                                         .track_focus(&entry.focus_handle)
                                         .root_item(entry.is_root)
@@ -3545,15 +3620,15 @@ impl SettingsWindow {
             .child(Label::new("/").color(Color::Muted))
             .children(
                 itertools::intersperse(
-                    std::iter::once(self.current_page().title.into()).chain(
+                    std::iter::once(tr_table(self.current_page().title).into()).chain(
                         self.sub_page_stack
                             .iter()
                             .enumerate()
                             .flat_map(|(index, page)| {
                                 (index == 0)
-                                    .then(|| page.section_header.clone())
+                                    .then(|| tr_shared(&page.section_header))
                                     .into_iter()
-                                    .chain(std::iter::once(page.link.title.clone()))
+                                    .chain(std::iter::once(shown_link_title(&page.link)))
                             }),
                     ),
                     "/".into(),
@@ -3607,7 +3682,7 @@ impl SettingsWindow {
                 .navbar_entries
                 .iter()
                 .find(|entry| entry.is_root && entry.page_index == self.current_page_index())
-                .map(|entry| entry.title);
+                .map(|entry| tr_table(entry.title));
 
             let list_content = list(
                 self.list_state.clone(),
@@ -3730,7 +3805,7 @@ impl SettingsWindow {
                 .navbar_entries
                 .iter()
                 .find(|entry| entry.is_root && entry.page_index == self.current_page_index())
-                .map(|entry| entry.title);
+                .map(|entry| tr_table(entry.title));
 
             page_content
                 .when(self.sub_page_stack.is_empty(), |this| {
@@ -3778,7 +3853,7 @@ impl SettingsWindow {
             let is_skills_page =
                 current_sub_page.link.json_path == Some(AGENT_SKILLS_SETTINGS_PATH);
             let is_llm_providers_page = current_sub_page.link.json_path == Some("llm_providers")
-                && current_sub_page.link.title.as_ref() == "LLM プロバイダー";
+                && current_sub_page.link.title.as_ref() == "LLM Providers";
             let is_external_agents_page = current_sub_page.link.json_path == Some("agent_servers");
             let is_mcp_servers_page = current_sub_page.link.json_path == Some("context_servers");
 
@@ -4385,7 +4460,7 @@ impl SettingsWindow {
         self.regex_validation_error = None;
         let sub_page_link = SubPageLink {
             title: title.into(),
-            r#type: SubPageType::default(),
+            r#type: SubPageType::Dynamic,
             description: None,
             search_aliases: &[],
             json_path,
@@ -4442,7 +4517,7 @@ impl SettingsWindow {
         self.skill_creator_page = Some((page.clone(), subscription));
 
         let sub_page_link = SubPageLink {
-            title: "スキルを作成".into(),
+            title: "Create Skill".into(),
             r#type: SubPageType::SkillCreator,
             description: None,
             search_aliases: &[],
@@ -4452,7 +4527,7 @@ impl SettingsWindow {
             render: pages::render_skill_creator_page,
         };
 
-        self.push_sub_page(sub_page_link, "エージェントの設定".into(), window, cx);
+        self.push_sub_page(sub_page_link, "Agent Configuration".into(), window, cx);
 
         let creating_from_url = !matches!(open_mode, pages::SkillCreatorOpenMode::Url { .. });
         page.update(cx, |page, cx| {
@@ -4510,7 +4585,7 @@ impl SettingsWindow {
                             .take(item_index)
                             .rev()
                             .find_map(|item| item.header_text().map(SharedString::new_static))
-                            .unwrap_or_else(|| "設定".into());
+                            .unwrap_or_else(|| "Settings".into());
 
                         self.push_sub_page(sub_page_link.clone(), section_header, window, cx);
                         return true;
@@ -4649,6 +4724,7 @@ impl SettingsWindow {
 
 impl Render for SettingsWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.rebuild_pages_if_language_changed(window, cx);
         let ui_font = theme_settings::setup_ui_font(window, cx);
 
         client_side_decorations(
@@ -5132,7 +5208,7 @@ fn render_text_field<T: From<String> + Into<String> + AsRef<str> + Clone>(
         .when_some(initial_text, |editor, text| editor.with_initial_text(text))
         .when_some(
             metadata.and_then(|metadata| metadata.placeholder),
-            |editor, placeholder| editor.with_placeholder(placeholder),
+            |editor, placeholder| editor.with_placeholder(tr_table(placeholder)),
         )
         .when(
             metadata.is_some_and(|metadata| metadata.display_confirm_button),
@@ -6065,7 +6141,7 @@ pub mod test {
             agent_enabled_index, 1,
             "the toggle belongs at the very top of the page, right after its header"
         );
-        assert_eq!(section_of(ai_page, agent_enabled_index), "全般");
+        assert_eq!(section_of(ai_page, agent_enabled_index), "General");
 
         let agent_enabled_writers = pages
             .iter()
@@ -6083,13 +6159,13 @@ pub mod test {
         );
 
         assert!(
-            sub_page_titles(ai_page).contains(&"承諾済みの外部 AI プロバイダー"),
+            sub_page_titles(ai_page).contains(&"Acknowledged External AI Providers"),
             "the consent list moved onto the AI page"
         );
 
         let network_page = pages
             .iter()
-            .find(|page| page.title == "ネットワーク")
+            .find(|page| page.title == "Network")
             .expect("the network page should exist");
         let (allowlist_index, _) = network_page
             .items
@@ -6100,14 +6176,14 @@ pub mod test {
                     if link.r#type == SubPageType::NetworkAllowlist)
             })
             .expect("the allowlist moved back onto the network page");
-        assert_eq!(section_of(network_page, allowlist_index), "外部通信の統制");
+        assert_eq!(section_of(network_page, allowlist_index), "Egress Control");
 
         assert!(
             !pages
                 .iter()
                 .any(|page| sub_page_titles(page).contains(&"プロバイダーの選択")),
             "the separate edit prediction enablement sub-page is gone; the AI page's \
-             「プロバイダーの設定」 now shows the dropdown in every state"
+             \"Configure Providers\" now shows the dropdown in every state"
         );
     }
 
@@ -6153,7 +6229,7 @@ pub mod test {
         assert_eq!(page.title, "AI");
         assert!(
             matches!(item, SettingsPageItem::SubPageLink(link)
-                if link.title.as_ref() == "プロバイダーの設定"),
+                if link.title.as_ref() == "Configure Providers"),
             "the deep link should land on the edit prediction provider sub-page"
         );
     }
@@ -6658,7 +6734,7 @@ pub mod test {
                 1,
                 "Skills sub-page should stay open when switching scope"
             );
-            assert_eq!(settings_window.sub_page_stack[0].link.title, "スキル");
+            assert_eq!(settings_window.sub_page_stack[0].link.title, "Skills");
             assert_eq!(
                 displayed_skill_names(settings_window, cx),
                 ["project-skill"]
@@ -6755,7 +6831,7 @@ pub mod test {
                 .collect();
             assert_eq!(
                 titles,
-                ["スキル", "スキルを作成"],
+                ["Skills", "Create Skill"],
                 "skill creator should be pushed on top of the skills page"
             );
             assert!(
@@ -6848,7 +6924,7 @@ pub mod test {
                     .collect();
                 assert_eq!(
                     titles,
-                    ["スキル", "スキルを作成"],
+                    ["Skills", "Create Skill"],
                     "skill creator should be pushed on top of the skills page"
                 );
             })

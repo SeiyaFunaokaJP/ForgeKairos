@@ -296,6 +296,7 @@ fn main() {
         files_not_created_on_launch(file_errors);
         return;
     }
+    i18n_settings::init_early();
 
     // ADR-F49 decisions 11 and 14: tell the sandbox where this Zed really keeps
     // its data and configuration, now that `--user-data-dir` has been applied.
@@ -515,6 +516,8 @@ fn main() {
         }
         settings::init(cx);
         zlog_settings::init(cx);
+        i18n_settings::init(cx);
+        zed::refresh_localized_menus_on_language_change(cx);
         zed::watch_settings_files(fs.clone(), cx);
         handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
 
@@ -909,7 +912,7 @@ fn main() {
         watch_languages(fs.clone(), app_state.languages.clone(), cx);
 
         let menus = app_menus(cx);
-        cx.set_menus(menus);
+        cx.set_menus(zed::localize_menus(menus));
 
         if let Some(mut crash_handler) = crash_handler {
             let crash_handler2 = block_on(poll_once(&mut crash_handler));

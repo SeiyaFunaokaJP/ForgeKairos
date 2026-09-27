@@ -306,16 +306,11 @@ pub struct OllamaEditPredictionSettingsContent {
 pub enum EditPredictionDataCollectionChoice {
     /// Use the preference previously set via the status-bar toggle, or false
     /// if no preference has been stored.
-    // The strum labels are what the settings GUI dropdown displays; the JSON
-    // values stay snake_case English via serde.
     #[default]
-    #[strum(serialize = "既定 (過去の切替に従う)")]
     Default,
     /// Allow Zed to collect training data from open-source projects.
-    #[strum(serialize = "はい")]
     Yes,
     /// Never allow training data collection.
-    #[strum(serialize = "いいえ")]
     No,
 }
 

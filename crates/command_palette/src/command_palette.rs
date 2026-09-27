@@ -1,4 +1,3 @@
-mod ja_labels;
 mod persistence;
 
 use std::{
@@ -744,7 +743,7 @@ impl PickerDelegate for CommandPaletteDelegate {
 /// **表示専用**。fuzzy 検索の候補文字列も要る場合は
 /// [`localized_action_name_and_search_text`] を使うこと。
 pub fn localized_action_name(action_name: &str) -> String {
-    match ja_labels::label_for_action(action_name) {
+    match i18n::tr_ctx_opt(i18n::context::ACTION, action_name) {
         Some(label) => label.to_string(),
         None => humanize_action_name(action_name),
     }
@@ -758,19 +757,10 @@ pub fn localized_action_name(action_name: &str) -> String {
 /// ラベルのハイライトに使える (英語エイリアス部分に当たったマッチはハイライトされない)。
 pub fn localized_action_name_and_search_text(action_name: &str) -> (String, String) {
     let humanized = humanize_action_name(action_name);
-    match ja_labels::label_for_action(action_name) {
+    match i18n::tr_ctx_opt(i18n::context::ACTION, action_name) {
         Some(label) => (label.to_string(), format!("{label} {humanized}")),
         None => (humanized.clone(), humanized),
     }
-}
-
-/// 日本語ラベルを登録してあるアクション名の一覧。
-///
-/// `crates/zed` の `test_ja_labels_reference_registered_actions` が
-/// `App::all_action_names()` と突き合わせて綴り間違い・削除済みアクションを検出する
-/// (アクションの登録は `zed` でしか揃わないため検証はあちら側にある)。
-pub fn labeled_action_names() -> impl Iterator<Item = &'static str> {
-    ja_labels::labeled_action_names()
 }
 
 pub fn humanize_action_name(name: &str) -> String {
@@ -861,6 +851,34 @@ mod tests {
     use settings::KeymapFile;
     use workspace::{AppState, MultiWorkspace, Workspace};
 
+    fn actions_catalog() -> &'static i18n_catalog::PoCatalog {
+        i18n_catalog::test_support::bundled_catalog("ja")
+    }
+
+    /// Installs the bundled Japanese catalog for the current thread until the
+    /// returned guard is dropped. Tests that want the Japanese labels call this;
+    /// tests that want the upstream English behavior simply do not.
+    #[must_use]
+    fn install_actions_catalog() -> i18n::test_support::LocaleOverride {
+        i18n::test_support::LocaleOverride::new(Some(actions_catalog()))
+    }
+
+    /// Every `(msgctxt, msgid, msgstr)` of `locales/ja/_actions.po`.
+    fn actions_po_entries() -> Vec<(Option<String>, String, String)> {
+        let (file, errors) = i18n_catalog::parse_po(
+            "_actions.po",
+            include_str!("../../../locales/ja/_actions.po"),
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        file.entries
+            .into_iter()
+            .map(|entry| {
+                let msgstr = entry.msgstr.into_iter().next().unwrap_or_default();
+                (entry.context, entry.msgid, msgstr)
+            })
+            .collect()
+    }
+
     #[test]
     fn test_humanize_action_name() {
         assert_eq!(
@@ -892,6 +910,7 @@ mod tests {
 
     #[test]
     fn test_japanese_label_with_english_alias() {
+        let _locale = install_actions_catalog();
         let command = Command::for_action(Box::new(editor::actions::GoToDefinition::default()));
         assert_eq!(command.name, "定義へ移動");
         assert_eq!(command.search_text, "定義へ移動 editor: go to definition");
@@ -901,12 +920,55 @@ mod tests {
     }
 
     #[test]
+    fn test_no_catalog_keeps_upstream_english_name() {
+        // With no catalog installed (the default the test suite runs under), the
+        // display name and search text must match plain upstream (no translation).
+        let command = Command::for_action(Box::new(editor::actions::GoToDefinition::default()));
+        assert_eq!(command.name, "editor: go to definition");
+        assert_eq!(command.search_text, "editor: go to definition");
+    }
+
+    #[test]
     fn test_unmapped_action_keeps_humanized_name() {
-        // `menu` 名前空間は ja_labels.rs の対象外なので、対応表に載らないアクションの代表として使う
+        let _locale = install_actions_catalog();
+        // `menu` 名前空間は _actions.po の対象外なので、対応表に載らないアクションの代表として使う
         let command = Command::for_action(Box::new(menu::SelectNext));
         assert_eq!(command.name, "menu: select next");
         assert_eq!(command.search_text, command.name);
-        assert_eq!(ja_labels::label_for_action("menu::SelectNext"), None);
+        assert_eq!(i18n::tr_ctx_opt("action", "menu::SelectNext"), None);
+    }
+
+    /// `ja_labels::LABEL_TABLE` as it was at a97e20b, before the labels moved to
+    /// `locales/ja/_actions.po`: one `action name<TAB>label` per line.
+    const JA_LABELS_BEFORE: &str = include_str!("../test_data/ja_labels_before.tsv");
+
+    #[test]
+    fn test_actions_po_matches_pre_migration_ja_labels_table() {
+        let _locale = install_actions_catalog();
+        let before = JA_LABELS_BEFORE
+            .lines()
+            .map(|line| {
+                line.split_once('\t')
+                    .unwrap_or_else(|| panic!("fixture line without a tab: {line:?}"))
+            })
+            .collect::<Vec<_>>();
+        let mismatches = before
+            .iter()
+            .filter(|(action_name, label)| localized_action_name(action_name) != *label)
+            .map(|(action_name, label)| {
+                format!(
+                    "{action_name} shows {:?}, expected {label:?}",
+                    localized_action_name(action_name)
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+
+        assert!(
+            actions_po_entries()
+                .iter()
+                .all(|(context, ..)| context.as_deref() == Some(i18n::context::ACTION))
+        );
     }
 
     #[test]
@@ -947,6 +1009,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_command_palette(cx: &mut TestAppContext) {
+        let _locale = install_actions_catalog();
         let app_state = init_test(cx);
         let db = cx.update(|cx| persistence::CommandPaletteDB::global(cx));
         db.clear_all().await.unwrap();
@@ -1023,6 +1086,47 @@ mod tests {
         });
     }
 
+    /// Upstream (`de178dd`) behavior: with no catalog installed the palette must show
+    /// and match on the plain English `humanize_action_name` text, unchanged.
+    #[gpui::test]
+    async fn test_command_palette_without_catalog_matches_upstream(cx: &mut TestAppContext) {
+        let app_state = init_test(cx);
+        let db = cx.update(|cx| persistence::CommandPaletteDB::global(cx));
+        db.clear_all().await.unwrap();
+        let project = Project::test(app_state.fs.clone(), [], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+
+        let editor = cx.new_window_entity(|window, cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_text("abc", window, cx);
+            editor
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.add_item_to_active_pane(Box::new(editor.clone()), None, true, window, cx);
+            editor.update(cx, |editor, cx| window.focus(&editor.focus_handle(cx), cx))
+        });
+
+        cx.simulate_keystrokes("cmd-shift-p");
+
+        let palette = workspace.update(cx, |workspace, cx| {
+            workspace
+                .active_modal::<CommandPalette>(cx)
+                .unwrap()
+                .read(cx)
+                .picker
+                .clone()
+        });
+
+        cx.simulate_input("bcksp");
+
+        palette.read_with(cx, |palette, _| {
+            assert_eq!(palette.delegate.matches[0].string, "editor: backspace");
+        });
+    }
+
     #[gpui::test]
     async fn test_selected_command_none_when_no_matches(cx: &mut TestAppContext) {
         let app_state = init_test(cx);
@@ -1051,6 +1155,7 @@ mod tests {
     }
     #[gpui::test]
     async fn test_normalized_matches(cx: &mut TestAppContext) {
+        let _locale = install_actions_catalog();
         let app_state = init_test(cx);
         let project = Project::test(app_state.fs.clone(), [], cx).await;
         let (multi_workspace, cx) =
@@ -1086,6 +1191,44 @@ mod tests {
                 palette.delegate.matches[0].string,
                 "編集: 前の文字を削除 editor: backspace"
             );
+        });
+    }
+
+    /// Upstream (`de178dd`) behavior: without a catalog, normalization still matches on
+    /// the plain English name.
+    #[gpui::test]
+    async fn test_normalized_matches_without_catalog_matches_upstream(cx: &mut TestAppContext) {
+        let app_state = init_test(cx);
+        let project = Project::test(app_state.fs.clone(), [], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+
+        let editor = cx.new_window_entity(|window, cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_text("abc", window, cx);
+            editor
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.add_item_to_active_pane(Box::new(editor.clone()), None, true, window, cx);
+            editor.update(cx, |editor, cx| window.focus(&editor.focus_handle(cx), cx))
+        });
+
+        cx.simulate_keystrokes("cmd-shift-p");
+
+        let palette = workspace.update(cx, |workspace, cx| {
+            workspace
+                .active_modal::<CommandPalette>(cx)
+                .unwrap()
+                .read(cx)
+                .picker
+                .clone()
+        });
+
+        cx.simulate_input("Editor::    Backspace");
+        palette.read_with(cx, |palette, _| {
+            assert_eq!(palette.delegate.matches[0].string, "editor: backspace");
         });
     }
 

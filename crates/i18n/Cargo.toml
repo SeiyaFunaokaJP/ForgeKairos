@@ -1,0 +1,19 @@
+[package]
+name = "i18n"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-or-later"
+description = "Translation contract: the current catalog, lookups and the t! family of macros"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/i18n.rs"
+doctest = true
+
+[dependencies]
+i18n_macros.workspace = true
+log.workspace = true
+parking_lot.workspace = true

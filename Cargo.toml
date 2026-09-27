@@ -105,6 +105,10 @@ members = [
     "crates/http_client",
     "crates/http_client_tls",
     "crates/http_proxy",
+    "crates/i18n",
+    "crates/i18n_catalog",
+    "crates/i18n_macros",
+    "crates/i18n_settings",
     "crates/icons",
     "crates/ide_assist",
     "crates/ide_query",
@@ -261,6 +265,7 @@ members = [
     #
 
     "tooling/compliance",
+    "tooling/i18n",
     "tooling/perf",
     "tooling/xtask",
 ]
@@ -384,6 +389,10 @@ html_to_markdown = { path = "crates/html_to_markdown" }
 http_client = { path = "crates/http_client" }
 http_client_tls = { path = "crates/http_client_tls" }
 http_proxy = { path = "crates/http_proxy" }
+i18n = { path = "crates/i18n" }
+i18n_catalog = { path = "crates/i18n_catalog" }
+i18n_macros = { path = "crates/i18n_macros" }
+i18n_settings = { path = "crates/i18n_settings" }
 icons = { path = "crates/icons" }
 ide_assist = { path = "crates/ide_assist" }
 ide_query = { path = "crates/ide_query" }

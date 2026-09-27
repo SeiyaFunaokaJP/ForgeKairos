@@ -359,7 +359,19 @@ pub struct SettingsContent {
     ///
     /// Default: []
     pub acknowledged_external_ai_providers: Option<Vec<String>>,
+
+    /// The language of the UI: "system" to follow the operating system, or a BCP 47
+    /// tag such as "en", "ja" or "pt-BR" (zed-jp-enhance).
+    ///
+    /// Default: "system"
+    pub ui_language: Option<UiLanguageName>,
 }
+
+/// A value of `ui_language`, its own type so the settings UI can offer the
+/// languages found at run time instead of a text field.
+#[derive(Clone, Default, Debug, Serialize, Deserialize, JsonSchema, MergeFrom, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct UiLanguageName(pub String);
 
 /// Configuration for developer-oriented instrumentation tools that collect
 /// diagnostic data about a running Zed instance.
@@ -557,9 +569,9 @@ impl strum::VariantNames for BaseKeymapContent {
         "Sublime Text",
         "Atom",
         "TextMate",
-        "Emacs (ベータ)",
-        "Cursor (ベータ)",
-        "なし",
+        "Emacs",
+        "Cursor",
+        "None",
     ];
 }
 
@@ -1689,12 +1701,11 @@ mod tests {
             labels.len(),
             <BaseKeymapContent as strum::VariantArray>::VARIANTS.len()
         );
-        // The beta keymaps are spelled the same here as in
-        // `BaseKeymap::OPTIONS`, which is the onboarding picker's copy of the
-        // same list; two settings screens naming one keymap differently is how
-        // a user ends up thinking they are two.
-        assert!(labels.contains(&"Emacs (ベータ)"), "{labels:?}");
-        assert!(labels.contains(&"Cursor (ベータ)"), "{labels:?}");
+        // The labels are upstream's English; the settings UI translates them
+        // when it draws the dropdown (`settings_ui`'s i18n tests check the
+        // beta keymaps read the same as in `BaseKeymap::OPTIONS`).
+        assert!(labels.contains(&"Emacs"), "{labels:?}");
+        assert!(labels.contains(&"Cursor"), "{labels:?}");
         assert_eq!(
             labels
                 .iter()
@@ -1702,6 +1713,69 @@ mod tests {
                 .len(),
             labels.len(),
             "two keymaps sharing a label would be two rows the user cannot tell apart"
+        );
+    }
+
+    /// The dropdown labels of these enums moved from Japanese strum names to
+    /// English ones that the settings UI translates. `settings.json` holds the
+    /// serde names, which have to stay what they were before (a97e20b).
+    #[test]
+    fn dropdown_label_changes_leave_the_json_values_alone() {
+        fn json_values<T>() -> Vec<String>
+        where
+            T: strum::VariantArray + Serialize + serde::de::DeserializeOwned + PartialEq + Copy,
+        {
+            T::VARIANTS
+                .iter()
+                .map(|variant| {
+                    let json =
+                        serde_json::to_string(variant).expect("the variant should serialize");
+                    let parsed: T =
+                        serde_json::from_str(&json).expect("the value should parse back");
+                    assert!(parsed == *variant, "{json} did not round-trip");
+                    json
+                })
+                .collect()
+        }
+
+        assert_eq!(
+            json_values::<PanelTabBar>(),
+            [r#""auto""#, r#""always""#, r#""never""#]
+        );
+        assert_eq!(
+            json_values::<StatusUntrackedFilesSetting>(),
+            [r#""all""#, r#""normal""#, r#""no""#]
+        );
+        assert_eq!(
+            json_values::<DefaultDockPanel>(),
+            [
+                r#""none""#,
+                r#""agent""#,
+                r#""browser""#,
+                r#""terminal""#,
+                r#""project""#,
+                r#""git""#,
+                r#""outline""#,
+                r#""debug""#,
+            ]
+        );
+        assert_eq!(
+            json_values::<EditPredictionDataCollectionChoice>(),
+            [r#""default""#, r#""yes""#, r#""no""#]
+        );
+        assert_eq!(
+            json_values::<BaseKeymapContent>(),
+            [
+                r#""Zed""#,
+                r#""VSCode""#,
+                r#""JetBrains""#,
+                r#""SublimeText""#,
+                r#""Atom""#,
+                r#""TextMate""#,
+                r#""Emacs""#,
+                r#""Cursor""#,
+                r#""None""#,
+            ]
         );
     }
 
