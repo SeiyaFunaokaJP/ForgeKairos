@@ -1,3 +1,4 @@
+use crate::git_terms::{PanelOperation, help_tooltip, panel_operation_help};
 use crate::{
     diff_multibuffer::DiffMultibuffer,
     git_panel::{GitPanel, GitPanelAddon, GitStatusEntry},
@@ -112,7 +113,12 @@ impl DiffHunkDelegate for StagedDiffDelegate {
             .child(
                 Button::new(("unstage", row as u64), "アンステージ")
                     .alpha(if status.is_pending() { 0.66 } else { 1.0 })
-                    .tooltip(Tooltip::text("変更箇所をアンステージ"))
+                    .tooltip(help_tooltip(
+                        "変更箇所をアンステージ",
+                        panel_operation_help(PanelOperation::UnstageHunk).sentence(),
+                        None,
+                        None,
+                    ))
                     .on_click({
                         let editor = editor.clone();
                         move |_event, window, cx| {
@@ -688,7 +694,12 @@ impl Render for StagedDiffToolbar {
                         this.child(
                             Button::new("unstage", "アンステージ")
                                 .disabled(!button_states.unstage)
-                                .tooltip(Tooltip::text("選択した変更箇所をアンステージ"))
+                                .tooltip(help_tooltip(
+                                    "選択した変更箇所をアンステージ",
+                                    panel_operation_help(PanelOperation::UnstageHunk).sentence(),
+                                    None,
+                                    None,
+                                ))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.unstage_selected_staged_hunks(false, window, cx)
                                 })),
@@ -698,10 +709,11 @@ impl Render for StagedDiffToolbar {
                         this.child(
                             Button::new("unstage", "アンステージ")
                                 .disabled(!button_states.unstage)
-                                .tooltip(Tooltip::for_action_title_in(
+                                .tooltip(help_tooltip(
                                     "アンステージして次の変更箇所へ移動",
-                                    &UnstageAndNext,
-                                    &focus_handle,
+                                    panel_operation_help(PanelOperation::UnstageHunk).sentence(),
+                                    Some(Box::new(UnstageAndNext)),
+                                    Some(focus_handle.clone()),
                                 ))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.unstage_selected_staged_hunks(true, window, cx)
@@ -714,20 +726,22 @@ impl Render for StagedDiffToolbar {
                 Button::new("unstage-all", "すべてアンステージ")
                     .width(rems_from_px(152_f32))
                     .disabled(!button_states.unstage_all)
-                    .tooltip(Tooltip::for_action_title_in(
+                    .tooltip(help_tooltip(
                         "すべての変更をアンステージ",
-                        &UnstageAll,
-                        &focus_handle,
+                        panel_operation_help(PanelOperation::UnstageAll).sentence(),
+                        Some(Box::new(UnstageAll)),
+                        Some(focus_handle.clone()),
                     ))
                     .on_click(cx.listener(|this, _, window, cx| this.unstage_all(window, cx))),
             )
             .child(Divider::vertical())
             .child(
                 Button::new("commit", "コミット")
-                    .tooltip(Tooltip::for_action_title_in(
+                    .tooltip(help_tooltip(
                         "コミット",
-                        &Commit,
-                        &focus_handle,
+                        panel_operation_help(PanelOperation::Commit).sentence(),
+                        Some(Box::new(Commit)),
+                        Some(focus_handle.clone()),
                     ))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.dispatch_action(&Commit, window, cx);

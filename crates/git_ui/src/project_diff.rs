@@ -1,3 +1,4 @@
+use crate::git_terms::{PanelOperation, help_tooltip, panel_operation_help};
 use crate::{
     branch_diff::BranchDiff,
     diff_multibuffer::DiffMultibuffer,
@@ -863,10 +864,12 @@ impl Render for ProjectDiffToolbar {
                     .when(button_states.selection, |this| {
                         this.child(
                             Button::new("stage", "ステージ状態を切り替え")
-                                .tooltip(Tooltip::for_action_title_in(
+                                .tooltip(help_tooltip(
                                     "ステージ状態を切り替え",
-                                    &ToggleStaged,
-                                    &focus_handle,
+                                    panel_operation_help(PanelOperation::ToggleHunkStaged)
+                                        .sentence(),
+                                    Some(Box::new(ToggleStaged)),
+                                    Some(focus_handle.clone()),
                                 ))
                                 .disabled(!button_states.stage && !button_states.unstage)
                                 .on_click(cx.listener(|this, _, window, cx| {
@@ -878,10 +881,11 @@ impl Render for ProjectDiffToolbar {
                         this.child(
                             Button::new("stage", "ステージ")
                                 .disabled(!button_states.stage)
-                                .tooltip(Tooltip::for_action_title_in(
+                                .tooltip(help_tooltip(
                                     "ステージして次の変更箇所へ移動",
-                                    &StageAndNext,
-                                    &focus_handle,
+                                    panel_operation_help(PanelOperation::StageHunk).sentence(),
+                                    Some(Box::new(StageAndNext)),
+                                    Some(focus_handle.clone()),
                                 ))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.dispatch_action(&StageAndNext, window, cx)
@@ -890,10 +894,11 @@ impl Render for ProjectDiffToolbar {
                         .child(
                             Button::new("unstage", "アンステージ")
                                 .disabled(!button_states.unstage)
-                                .tooltip(Tooltip::for_action_title_in(
+                                .tooltip(help_tooltip(
                                     "アンステージして次の変更箇所へ移動",
-                                    &UnstageAndNext,
-                                    &focus_handle,
+                                    panel_operation_help(PanelOperation::UnstageHunk).sentence(),
+                                    Some(Box::new(UnstageAndNext)),
+                                    Some(focus_handle.clone()),
                                 ))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.dispatch_action(&UnstageAndNext, window, cx)
@@ -908,10 +913,11 @@ impl Render for ProjectDiffToolbar {
                     this.child(
                         Button::new("unstage-all", "すべてアンステージ")
                             .width(stage_all_button_width)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(help_tooltip(
                                 "すべての変更をアンステージ",
-                                &UnstageAll,
-                                &focus_handle,
+                                panel_operation_help(PanelOperation::UnstageAll).sentence(),
+                                Some(Box::new(UnstageAll)),
+                                Some(focus_handle.clone()),
                             ))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.unstage_all(window, cx)),
@@ -926,10 +932,11 @@ impl Render for ProjectDiffToolbar {
                         Button::new("stage-all", "すべてステージ")
                             .width(stage_all_button_width)
                             .disabled(!button_states.stage_all)
-                            .tooltip(Tooltip::for_action_title_in(
+                            .tooltip(help_tooltip(
                                 "すべての変更をステージ",
-                                &StageAll,
-                                &focus_handle,
+                                panel_operation_help(PanelOperation::StageAll).sentence(),
+                                Some(Box::new(StageAll)),
+                                Some(focus_handle.clone()),
                             ))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.stage_all(window, cx)),
@@ -940,10 +947,11 @@ impl Render for ProjectDiffToolbar {
             .child(Divider::vertical())
             .child(
                 Button::new("commit", "コミット")
-                    .tooltip(Tooltip::for_action_title_in(
+                    .tooltip(help_tooltip(
                         "コミット",
-                        &Commit,
-                        &focus_handle,
+                        panel_operation_help(PanelOperation::Commit).sentence(),
+                        Some(Box::new(Commit)),
+                        Some(focus_handle.clone()),
                     ))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.dispatch_action(&Commit, window, cx);

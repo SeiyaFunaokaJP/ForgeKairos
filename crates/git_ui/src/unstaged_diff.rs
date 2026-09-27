@@ -1,3 +1,4 @@
+use crate::git_terms::{PanelOperation, help_tooltip, panel_operation_help};
 use crate::{
     diff_multibuffer::DiffMultibuffer,
     git_panel::{GitPanel, GitPanelAddon, GitStatusEntry},
@@ -142,7 +143,12 @@ impl DiffHunkDelegate for UnstagedDiffDelegate {
             .child(
                 Button::new(("stage", row as u64), "ステージ")
                     .alpha(if status.is_pending() { 0.66 } else { 1.0 })
-                    .tooltip(Tooltip::text("変更箇所をステージ"))
+                    .tooltip(help_tooltip(
+                        "変更箇所をステージ",
+                        panel_operation_help(PanelOperation::StageHunk).sentence(),
+                        None,
+                        None,
+                    ))
                     .on_click({
                         let editor = editor.clone();
                         move |_event, window, cx| {
@@ -159,7 +165,12 @@ impl DiffHunkDelegate for UnstagedDiffDelegate {
             )
             .child(
                 Button::new(("restore", row as u64), "元に戻す")
-                    .tooltip(Tooltip::text("変更箇所を元に戻す"))
+                    .tooltip(help_tooltip(
+                        "変更箇所を元に戻す",
+                        panel_operation_help(PanelOperation::RestoreHunk).sentence(),
+                        None,
+                        None,
+                    ))
                     .on_click({
                         let editor = editor.clone();
                         let hunk_range = hunk_range_for_restore;
@@ -794,7 +805,12 @@ impl Render for UnstagedDiffToolbar {
                         this.child(
                             Button::new("stage", "ステージ")
                                 .disabled(!button_states.stage)
-                                .tooltip(Tooltip::text("選択した変更箇所をステージ"))
+                                .tooltip(help_tooltip(
+                                    "選択した変更箇所をステージ",
+                                    panel_operation_help(PanelOperation::StageHunk).sentence(),
+                                    None,
+                                    None,
+                                ))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.stage_selected_unstaged_hunks(false, window, cx)
                                 })),
@@ -804,10 +820,11 @@ impl Render for UnstagedDiffToolbar {
                         this.child(
                             Button::new("stage", "ステージ")
                                 .disabled(!button_states.stage)
-                                .tooltip(Tooltip::for_action_title_in(
+                                .tooltip(help_tooltip(
                                     "ステージして次の変更箇所へ移動",
-                                    &StageAndNext,
-                                    &focus_handle,
+                                    panel_operation_help(PanelOperation::StageHunk).sentence(),
+                                    Some(Box::new(StageAndNext)),
+                                    Some(focus_handle.clone()),
                                 ))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.stage_selected_unstaged_hunks(true, window, cx)
@@ -817,7 +834,12 @@ impl Render for UnstagedDiffToolbar {
                     .child(
                         Button::new("restore", "元に戻す")
                             .disabled(!button_states.restore)
-                            .tooltip(Tooltip::text("選択した変更箇所を元に戻す"))
+                            .tooltip(help_tooltip(
+                                "選択した変更箇所を元に戻す",
+                                panel_operation_help(PanelOperation::RestoreHunk).sentence(),
+                                None,
+                                None,
+                            ))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.restore_selected_unstaged_hunks(false, window, cx)
                             })),
@@ -828,10 +850,11 @@ impl Render for UnstagedDiffToolbar {
                 Button::new("stage-all", "すべてステージ")
                     .width(rems_from_px(152_f32))
                     .disabled(!button_states.stage_all)
-                    .tooltip(Tooltip::for_action_title_in(
+                    .tooltip(help_tooltip(
                         "すべての変更をステージ",
-                        &StageAll,
-                        &focus_handle,
+                        panel_operation_help(PanelOperation::StageAll).sentence(),
+                        Some(Box::new(StageAll)),
+                        Some(focus_handle.clone()),
                     ))
                     .on_click(cx.listener(|this, _, window, cx| this.stage_all(window, cx))),
             )
@@ -840,7 +863,12 @@ impl Render for UnstagedDiffToolbar {
                 Button::new("restore-all", "すべて元に戻す")
                     .width(rems_from_px(152_f32))
                     .disabled(!button_states.restore_all)
-                    .tooltip(Tooltip::text("すべての変更を元に戻す"))
+                    .tooltip(help_tooltip(
+                        "すべての変更を元に戻す",
+                        panel_operation_help(PanelOperation::RestoreAllUnstaged).sentence(),
+                        None,
+                        None,
+                    ))
                     .on_click(cx.listener(|this, _, window, cx| this.restore_all(window, cx))),
             )
     }

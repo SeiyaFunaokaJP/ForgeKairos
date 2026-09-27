@@ -1,3 +1,4 @@
+use crate::git_terms::{PanelOperation, help_tooltip, panel_operation_help};
 use agent_settings::AgentSettings;
 use collections::{HashMap, HashSet};
 use editor::{
@@ -338,6 +339,10 @@ fn render_conflict_buttons(
         .child(
             Button::new("head", format!("{} を使用", conflict.ours_branch_name))
                 .label_size(LabelSize::Small)
+                .tooltip({
+                    let help = panel_operation_help(PanelOperation::UseOurs);
+                    help_tooltip(help.title, help.sentence(), None, None)
+                })
                 .on_click({
                     let editor = editor.clone();
                     let conflict = conflict.clone();
@@ -357,6 +362,10 @@ fn render_conflict_buttons(
         .child(
             Button::new("origin", format!("{} を使用", conflict.theirs_branch_name))
                 .label_size(LabelSize::Small)
+                .tooltip({
+                    let help = panel_operation_help(PanelOperation::UseTheirs);
+                    help_tooltip(help.title, help.sentence(), None, None)
+                })
                 .on_click({
                     let editor = editor.clone();
                     let conflict = conflict.clone();
@@ -376,6 +385,10 @@ fn render_conflict_buttons(
         .child(
             Button::new("both", "両方を使用")
                 .label_size(LabelSize::Small)
+                .tooltip({
+                    let help = panel_operation_help(PanelOperation::UseBoth);
+                    help_tooltip(help.title, help.sentence(), None, None)
+                })
                 .on_click({
                     let editor = editor.clone();
                     let conflict = conflict.clone();

@@ -8,6 +8,10 @@ use crate::commit_modal::CommitModal;
 use crate::commit_tooltip::{CommitAvatar, CommitTooltip};
 use crate::commit_view::CommitView;
 use crate::git_panel_settings::GitPanelScrollbarAccessor;
+use crate::git_terms::{
+    self, PanelOperation, help_action_entry, help_aside, help_tooltip, panel_aside_side,
+    panel_operation_help,
+};
 use crate::project_diff::{DeployBranchDiff, Diff, ProjectDiff};
 use crate::remote_output::{self, RemoteAction, SuccessMessage};
 use crate::rewrite_range_modal;
@@ -91,9 +95,9 @@ use theme_settings::ThemeSettings;
 use time::OffsetDateTime;
 use ui::{
     ButtonLike, Callout, CalloutBorderPosition, Checkbox, Chip, ContextMenu, ContextMenuEntry,
-    CopyButton, Divider, DocumentationSide, ElevationIndex, IndentGuideColors, KeyBinding,
-    PopoverMenu, PopoverMenuHandle, ProjectEmptyState, ScrollAxes, Scrollbars, SplitButton, Tab,
-    TintColor, Tooltip, WithScrollbar, prelude::*,
+    CopyButton, Divider, ElevationIndex, IndentGuideColors, KeyBinding, PopoverMenu,
+    PopoverMenuHandle, ProjectEmptyState, ScrollAxes, Scrollbars, SplitButton, Tab, TintColor,
+    Tooltip, WithScrollbar, prelude::*,
 };
 use util::paths::PathStyle;
 use util::{ResultExt, TryFutureExt, markdown::MarkdownInlineCode, maybe, rel_path::RelPath};
@@ -308,7 +312,8 @@ impl Render for StashMessageModal {
     }
 }
 
-fn git_panel_context_menu(
+#[derive(Clone, Copy, Debug)]
+struct ChangesMenuState {
     has_tracked_changes: bool,
     has_staged_changes: bool,
     has_unstaged_changes: bool,
@@ -316,83 +321,280 @@ fn git_panel_context_menu(
     has_stash_items: bool,
     group_by: GitPanelGroupBy,
     include_copy_paths: bool,
+}
+
+/// An item of the panel's menus, laid out apart from the menu so that a test can read it.
+enum PanelMenuItem {
+    Separator,
+    Entry {
+        label: &'static str,
+        operation: PanelOperation,
+        action: Box<dyn Action>,
+        refusal: Option<&'static str>,
+    },
+}
+
+fn panel_menu_entry(
+    label: &'static str,
+    operation: PanelOperation,
+    action: &dyn Action,
+    refusal: Option<&'static str>,
+) -> PanelMenuItem {
+    PanelMenuItem::Entry {
+        label,
+        operation,
+        action: action.boxed_clone(),
+        refusal,
+    }
+}
+
+fn refused_unless(allowed: bool, refusal: &'static str) -> Option<&'static str> {
+    (!allowed).then_some(refusal)
+}
+
+fn changes_menu_items(state: ChangesMenuState) -> Vec<PanelMenuItem> {
+    let mut items = vec![
+        panel_menu_entry(
+            "すべてステージ",
+            PanelOperation::StageAll,
+            &StageAll,
+            refused_unless(
+                state.has_unstaged_changes,
+                git_terms::NOTHING_TO_STAGE_REFUSAL,
+            ),
+        ),
+        panel_menu_entry(
+            "すべてアンステージ",
+            PanelOperation::UnstageAll,
+            &UnstageAll,
+            refused_unless(
+                state.has_staged_changes,
+                git_terms::NOTHING_TO_UNSTAGE_REFUSAL,
+            ),
+        ),
+        panel_menu_entry(
+            "すべての変更を元に戻す",
+            PanelOperation::DiscardTrackedChanges,
+            &RestoreTrackedFiles,
+            refused_unless(
+                state.has_tracked_changes,
+                git_terms::NO_TRACKED_CHANGES_REFUSAL,
+            ),
+        ),
+        PanelMenuItem::Separator,
+        panel_menu_entry(
+            "すべてスタッシュ",
+            PanelOperation::StashAll,
+            &StashAll,
+            refused_unless(
+                state.has_new_changes || state.has_tracked_changes,
+                git_terms::NOTHING_TO_STASH_REFUSAL,
+            ),
+        ),
+    ];
+    // Offer the stash variant that matches how the list is currently grouped,
+    // so the menu mirrors the sections the user can actually see.
+    match state.group_by {
+        GitPanelGroupBy::Status => items.push(panel_menu_entry(
+            "追跡中をスタッシュ",
+            PanelOperation::StashTracked,
+            &StashTracked,
+            refused_unless(
+                state.has_tracked_changes,
+                git_terms::NO_TRACKED_CHANGES_REFUSAL,
+            ),
+        )),
+        GitPanelGroupBy::Staging => items.push(panel_menu_entry(
+            "ステージ済みをスタッシュ",
+            PanelOperation::StashStaged,
+            &StashStaged,
+            refused_unless(
+                state.has_staged_changes,
+                git_terms::NOTHING_TO_UNSTAGE_REFUSAL,
+            ),
+        )),
+        GitPanelGroupBy::None => {}
+    }
+    items.extend([
+        panel_menu_entry(
+            "スタッシュをポップ",
+            PanelOperation::StashPop,
+            &StashPop,
+            refused_unless(state.has_stash_items, git_terms::NO_STASH_REFUSAL),
+        ),
+        panel_menu_entry(
+            "スタッシュを表示",
+            PanelOperation::ViewStash,
+            &zed_actions::git::ViewStash,
+            None,
+        ),
+    ]);
+    if state.include_copy_paths {
+        items.extend([
+            PanelMenuItem::Separator,
+            panel_menu_entry("パスをコピー", PanelOperation::CopyPath, &CopyPath, None),
+            panel_menu_entry(
+                "相対パスをコピー",
+                PanelOperation::CopyRelativePath,
+                &CopyRelativePath,
+                None,
+            ),
+        ]);
+    }
+    items.extend([
+        PanelMenuItem::Separator,
+        panel_menu_entry(
+            "追跡中の変更を破棄",
+            PanelOperation::DiscardTrackedChanges,
+            &RestoreTrackedFiles,
+            refused_unless(
+                state.has_tracked_changes,
+                git_terms::NO_TRACKED_CHANGES_REFUSAL,
+            ),
+        ),
+        panel_menu_entry(
+            "未追跡ファイルをゴミ箱へ移動",
+            PanelOperation::TrashUntrackedFiles,
+            &TrashUntrackedFiles,
+            refused_unless(state.has_new_changes, git_terms::NO_UNTRACKED_FILES_REFUSAL),
+        ),
+        PanelMenuItem::Separator,
+        panel_menu_entry(
+            "パッチファイルを作成…",
+            PanelOperation::CreatePatch,
+            &git::CreatePatch,
+            None,
+        ),
+        panel_menu_entry(
+            "パッチファイルを適用…",
+            PanelOperation::ApplyPatch,
+            &git::ApplyPatch,
+            None,
+        ),
+        PanelMenuItem::Separator,
+        panel_menu_entry(
+            "リポジトリを初期化",
+            PanelOperation::InitRepository,
+            &git::Init,
+            None,
+        ),
+        PanelMenuItem::Separator,
+        panel_menu_entry(
+            "Git の操作ガイド",
+            PanelOperation::ShowGuide,
+            &git::ShowGuide,
+            None,
+        ),
+    ]);
+    items
+}
+
+fn entry_menu_items(stages: bool, is_created: bool, is_deleted: bool) -> Vec<PanelMenuItem> {
+    let (stage_label, stage_operation) = if stages {
+        ("ファイルをステージ", PanelOperation::StageFile)
+    } else {
+        ("ファイルをアンステージ", PanelOperation::UnstageFile)
+    };
+    let (restore_label, restore_operation) = if is_created {
+        ("ファイルをゴミ箱へ移動", PanelOperation::TrashNewFile)
+    } else if is_deleted {
+        ("ファイルを元に戻す", PanelOperation::RestoreDeletedFile)
+    } else {
+        ("変更を破棄", PanelOperation::DiscardFileChanges)
+    };
+    let mut items = vec![
+        panel_menu_entry(stage_label, stage_operation, &ToggleStaged, None),
+        panel_menu_entry(
+            restore_label,
+            restore_operation,
+            &git::RestoreFile::default(),
+            None,
+        ),
+        PanelMenuItem::Separator,
+        panel_menu_entry(
+            "未ステージの変更",
+            PanelOperation::ViewUnstagedChanges,
+            &ViewUnstagedChanges,
+            None,
+        ),
+        panel_menu_entry(
+            "ステージ済みの変更",
+            PanelOperation::ViewStagedChanges,
+            &ViewStagedChanges,
+            None,
+        ),
+        PanelMenuItem::Separator,
+        panel_menu_entry("パスをコピー", PanelOperation::CopyPath, &CopyPath, None),
+        panel_menu_entry(
+            "相対パスをコピー",
+            PanelOperation::CopyRelativePath,
+            &CopyRelativePath,
+            None,
+        ),
+        PanelMenuItem::Separator,
+        panel_menu_entry(
+            ".gitignore に追加",
+            PanelOperation::AddToGitignore,
+            &git::AddToGitignore,
+            refused_unless(is_created, git_terms::ONLY_FOR_UNTRACKED_REFUSAL),
+        ),
+        panel_menu_entry(
+            ".git/info/exclude に追加",
+            PanelOperation::AddToGitInfoExclude,
+            &git::AddToGitInfoExclude,
+            refused_unless(is_created, git_terms::ONLY_FOR_UNTRACKED_REFUSAL),
+        ),
+        PanelMenuItem::Separator,
+        panel_menu_entry("差分を開く", PanelOperation::OpenDiff, &menu::Confirm, None),
+        panel_menu_entry(
+            "ファイルの差分を開く",
+            PanelOperation::OpenFileDiff,
+            &menu::SecondaryConfirm,
+            None,
+        ),
+        panel_menu_entry("ファイルを表示", PanelOperation::ViewFile, &ViewFile, None),
+    ];
+    if !is_created {
+        items.extend([
+            PanelMenuItem::Separator,
+            panel_menu_entry(
+                "ファイルの履歴を表示",
+                PanelOperation::FileHistory,
+                &git::FileHistory,
+                None,
+            ),
+        ]);
+    }
+    items
+}
+
+fn build_panel_menu(
+    items: Vec<PanelMenuItem>,
     focus_handle: FocusHandle,
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<ContextMenu> {
-    ContextMenu::build(window, cx, |context_menu, _, _| {
-        context_menu
-            .context(focus_handle.clone())
-            .action_disabled_when(
-                !has_unstaged_changes,
-                "すべてステージ",
-                StageAll.boxed_clone(),
-            )
-            .action_disabled_when(
-                !has_staged_changes,
-                "すべてアンステージ",
-                UnstageAll.boxed_clone(),
-            )
-            .action_disabled_when(
-                !has_tracked_changes,
-                "すべての変更を元に戻す",
-                RestoreTrackedFiles.boxed_clone(),
-            )
-            .separator()
-            .action_disabled_when(
-                !(has_new_changes || has_tracked_changes),
-                "すべてスタッシュ",
-                StashAll.boxed_clone(),
-            )
-            // Offer the stash variant that matches how the list is currently grouped,
-            // so the menu mirrors the sections the user can actually see.
-            .when(group_by == GitPanelGroupBy::Status, |context_menu| {
-                context_menu.action_disabled_when(
-                    !has_tracked_changes,
-                    "追跡中をスタッシュ",
-                    StashTracked.boxed_clone(),
-                )
-            })
-            .when(group_by == GitPanelGroupBy::Staging, |context_menu| {
-                context_menu.action_disabled_when(
-                    !has_staged_changes,
-                    "ステージ済みをスタッシュ",
-                    StashStaged.boxed_clone(),
-                )
-            })
-            .action_disabled_when(
-                !has_stash_items,
-                "スタッシュをポップ",
-                StashPop.boxed_clone(),
-            )
-            .action(
-                "スタッシュを表示",
-                zed_actions::git::ViewStash.boxed_clone(),
-            )
-            .when(include_copy_paths, |context_menu| {
-                context_menu
-                    .separator()
-                    .action("パスをコピー", CopyPath.boxed_clone())
-                    .action("相対パスをコピー", CopyRelativePath.boxed_clone())
-            })
-            .separator()
-            .action_disabled_when(
-                !has_tracked_changes,
-                "追跡中の変更を破棄",
-                RestoreTrackedFiles.boxed_clone(),
-            )
-            .action_disabled_when(
-                !has_new_changes,
-                "未追跡ファイルをゴミ箱へ移動",
-                TrashUntrackedFiles.boxed_clone(),
-            )
-            .separator()
-            .action("パッチファイルを作成…", git::CreatePatch.boxed_clone())
-            .action("パッチファイルを適用…", git::ApplyPatch.boxed_clone())
-            .separator()
-            .action("リポジトリを初期化", git::Init.boxed_clone())
-            .separator()
-            .action("Git の操作ガイド", git::ShowGuide.boxed_clone())
+    ContextMenu::build(window, cx, move |context_menu, _, cx| {
+        let side = panel_aside_side(cx);
+        items.into_iter().fold(
+            context_menu.context(focus_handle.clone()),
+            |context_menu, item| match item {
+                PanelMenuItem::Separator => context_menu.separator(),
+                PanelMenuItem::Entry {
+                    label,
+                    operation,
+                    action,
+                    refusal,
+                } => context_menu.item(help_action_entry(
+                    label,
+                    action,
+                    Some(focus_handle.clone()),
+                    panel_operation_help(operation),
+                    refusal.map(SharedString::from),
+                    side,
+                )),
+            },
+        )
     })
 }
 
@@ -407,8 +609,10 @@ fn git_panel_view_options_menu(
         tree_view: GitPanelSettings::get_global(cx).tree_view,
     }));
 
-    ContextMenu::build_persistent(window, cx, move |context_menu, _, _| {
+    ContextMenu::build_persistent(window, cx, move |context_menu, _, cx| {
         let state = view_options_menu_state.get();
+        let side = panel_aside_side(cx);
+        let aside = |operation| help_aside(panel_operation_help(operation), None);
 
         context_menu
             .context(focus_handle.clone())
@@ -417,6 +621,7 @@ fn git_panel_view_options_menu(
                 let view_options_menu_state = view_options_menu_state.clone();
                 ContextMenuEntry::new("リスト")
                     .toggle(IconPosition::End, !state.tree_view)
+                    .documentation_aside(side, aside(PanelOperation::ListView))
                     .handler(move |window, cx| {
                         if state.tree_view {
                             view_options_menu_state.set(GitPanelViewOptionsMenuState {
@@ -431,6 +636,7 @@ fn git_panel_view_options_menu(
                 let view_options_menu_state = view_options_menu_state.clone();
                 ContextMenuEntry::new("ツリー")
                     .toggle(IconPosition::End, state.tree_view)
+                    .documentation_aside(side, aside(PanelOperation::TreeView))
                     .handler(move |window, cx| {
                         if !state.tree_view {
                             view_options_menu_state.set(GitPanelViewOptionsMenuState {
@@ -448,6 +654,7 @@ fn git_panel_view_options_menu(
                         let view_options_menu_state = view_options_menu_state.clone();
                         ContextMenuEntry::new("パス")
                             .toggle(IconPosition::End, state.sort_by == GitPanelSortBy::Path)
+                            .documentation_aside(side, aside(PanelOperation::SortByPath))
                             .handler(move |window, cx| {
                                 if !state.tree_view {
                                     view_options_menu_state.set(GitPanelViewOptionsMenuState {
@@ -462,6 +669,7 @@ fn git_panel_view_options_menu(
                         let view_options_menu_state = view_options_menu_state.clone();
                         ContextMenuEntry::new("名前")
                             .toggle(IconPosition::End, state.sort_by == GitPanelSortBy::Name)
+                            .documentation_aside(side, aside(PanelOperation::SortByName))
                             .handler(move |window, cx| {
                                 if !state.tree_view {
                                     view_options_menu_state.set(GitPanelViewOptionsMenuState {
@@ -479,6 +687,7 @@ fn git_panel_view_options_menu(
                 let view_options_menu_state = view_options_menu_state.clone();
                 ContextMenuEntry::new("なし")
                     .toggle(IconPosition::End, state.group_by == GitPanelGroupBy::None)
+                    .documentation_aside(side, aside(PanelOperation::GroupByNone))
                     .handler(move |window, cx| {
                         if state.group_by != GitPanelGroupBy::None {
                             view_options_menu_state.set(GitPanelViewOptionsMenuState {
@@ -493,6 +702,7 @@ fn git_panel_view_options_menu(
                 let view_options_menu_state = view_options_menu_state.clone();
                 ContextMenuEntry::new("追跡中と未追跡")
                     .toggle(IconPosition::End, state.group_by == GitPanelGroupBy::Status)
+                    .documentation_aside(side, aside(PanelOperation::GroupByStatus))
                     .handler(move |window, cx| {
                         if state.group_by != GitPanelGroupBy::Status {
                             view_options_menu_state.set(GitPanelViewOptionsMenuState {
@@ -510,6 +720,7 @@ fn git_panel_view_options_menu(
                         IconPosition::End,
                         state.group_by == GitPanelGroupBy::Staging,
                     )
+                    .documentation_aside(side, aside(PanelOperation::GroupByStaging))
                     .handler(move |window, cx| {
                         if state.group_by != GitPanelGroupBy::Staging {
                             view_options_menu_state.set(GitPanelViewOptionsMenuState {
@@ -678,14 +889,6 @@ impl StageIntent {
             StageIntent::Stage => ToggleState::Unselected,
             StageIntent::Unstage => ToggleState::Selected,
             StageIntent::Toggle => entry_state(),
-        }
-    }
-
-    fn label(self, stage_status: impl FnOnce() -> StageStatus) -> &'static str {
-        if self.resolve_with(stage_status) {
-            "ステージ"
-        } else {
-            "アンステージ"
         }
     }
 }
@@ -6688,7 +6891,12 @@ impl GitPanel {
             .trigger_with_tooltip(
                 IconButton::new("view-options-menu-trigger", IconName::Filter)
                     .icon_size(IconSize::Small),
-                Tooltip::text("表示オプション"),
+                help_tooltip(
+                    "表示オプション",
+                    panel_operation_help(PanelOperation::ViewOptions).sentence(),
+                    None,
+                    None,
+                ),
             )
             .menu(move |window, cx| {
                 Some(git_panel_view_options_menu(
@@ -6806,7 +7014,12 @@ impl GitPanel {
                                 .map(|(name, email)| format!(" {} <{}>", name, email))
                                 .join("\n")
                         );
-                        Tooltip::simple(title, cx)
+                        Tooltip::with_meta(
+                            title,
+                            None,
+                            panel_operation_help(PanelOperation::CoAuthors).sentence(),
+                            cx,
+                        )
                     })
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.add_coauthors = !this.add_coauthors;
@@ -6840,35 +7053,39 @@ impl GitPanel {
                 let skip_hooks = self.skip_hooks_enabled;
 
                 move |window, cx| {
-                    Some(ContextMenu::build(window, cx, |context_menu, _, _| {
+                    Some(ContextMenu::build(window, cx, |context_menu, _, cx| {
+                        let side = panel_aside_side(cx);
+                        let aside = |operation| help_aside(panel_operation_help(operation), None);
                         context_menu
                             .when_some(keybinding_target.clone(), |el, keybinding_target| {
                                 el.context(keybinding_target)
                             })
                             .when(has_previous_commit, |this| {
-                                this.toggleable_entry(
-                                    "直前のコミットを修正",
-                                    amend,
-                                    IconPosition::Start,
-                                    Some(Box::new(Amend)),
-                                    {
-                                        let git_panel = git_panel.downgrade();
-                                        move |_, cx| {
-                                            git_panel
-                                                .update(cx, |git_panel, cx| {
-                                                    git_panel.toggle_amend_pending(cx);
-                                                })
-                                                .ok();
-                                        }
-                                    },
+                                this.item(
+                                    ContextMenuEntry::new("直前のコミットを修正")
+                                        .toggleable(IconPosition::Start, amend)
+                                        .action(Box::new(Amend))
+                                        .handler({
+                                            let git_panel = git_panel.downgrade();
+                                            move |_, cx| {
+                                                git_panel
+                                                    .update(cx, |git_panel, cx| {
+                                                        git_panel.toggle_amend_pending(cx);
+                                                    })
+                                                    .ok();
+                                            }
+                                        })
+                                        .documentation_aside(side, aside(PanelOperation::Amend)),
                                 )
                             })
-                            .toggleable_entry(
-                                "サインオフ",
-                                signoff,
-                                IconPosition::Start,
-                                Some(Box::new(Signoff)),
-                                move |window, cx| window.dispatch_action(Box::new(Signoff), cx),
+                            .item(
+                                ContextMenuEntry::new("サインオフ")
+                                    .toggleable(IconPosition::Start, signoff)
+                                    .action(Box::new(Signoff))
+                                    .handler(move |window, cx| {
+                                        window.dispatch_action(Box::new(Signoff), cx)
+                                    })
+                                    .documentation_aside(side, aside(PanelOperation::Signoff)),
                             )
                             .item(
                                 ContextMenuEntry::new("フックをスキップ")
@@ -6877,9 +7094,7 @@ impl GitPanel {
                                     .handler(move |window, cx| {
                                         window.dispatch_action(Box::new(SkipHooks), cx)
                                     })
-                                    .documentation_aside(DocumentationSide::Left, |_| {
-                                        Label::new("git commit --no-verify").into_any_element()
-                                    }),
+                                    .documentation_aside(side, aside(PanelOperation::SkipHooks)),
                             )
                     }))
                 }
@@ -6992,14 +7207,16 @@ impl GitPanel {
             ))
             .with_handle(self.changes_actions_menu_handle.clone())
             .menu(move |window, cx| {
-                Some(git_panel_context_menu(
-                    has_tracked_changes,
-                    has_staged_changes,
-                    has_unstaged_changes,
-                    has_new_changes,
-                    has_stash_items,
-                    group_by,
-                    false,
+                Some(build_panel_menu(
+                    changes_menu_items(ChangesMenuState {
+                        has_tracked_changes,
+                        has_staged_changes,
+                        has_unstaged_changes,
+                        has_new_changes,
+                        has_stash_items,
+                        group_by,
+                        include_copy_paths: false,
+                    }),
                     focus_handle.clone(),
                     window,
                     cx,
@@ -7013,12 +7230,12 @@ impl GitPanel {
     }
 
     fn render_git_changes_actions_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        // tooltip は git のコマンドそのものなので未翻訳。
-        let (text, action, stage, tooltip) = if self.primary_changes_action_stages() {
+        let (text, action, stage, operation, command) = if self.primary_changes_action_stages() {
             (
                 "すべてステージ",
                 StageAll.boxed_clone(),
                 true,
+                PanelOperation::StageAll,
                 "git add --all",
             )
         } else {
@@ -7026,6 +7243,7 @@ impl GitPanel {
                 "すべてアンステージ",
                 UnstageAll.boxed_clone(),
                 false,
+                PanelOperation::UnstageAll,
                 "git reset",
             )
         };
@@ -7035,10 +7253,11 @@ impl GitPanel {
                 .layer(ElevationIndex::ModalSurface)
                 .size(ButtonSize::Compact)
                 .child(Label::new(text).size(LabelSize::Small).mr_0p5())
-                .tooltip(Tooltip::for_action_title_in(
-                    tooltip,
-                    action.as_ref(),
-                    &self.focus_handle,
+                .tooltip(help_tooltip(
+                    text,
+                    panel_operation_help(operation).sentence_with_command(command),
+                    Some(action.boxed_clone()),
+                    Some(self.focus_handle.clone()),
                 ))
                 .disabled(self.entry_count == 0)
                 .on_click({
@@ -7106,10 +7325,11 @@ impl GitPanel {
                                     },
                                 ),
                         )
-                        .tooltip(Tooltip::for_action_title_in(
+                        .tooltip(help_tooltip(
                             "差分を表示",
-                            &Diff,
-                            &self.focus_handle,
+                            panel_operation_help(PanelOperation::ShowDiff).sentence(),
+                            Some(Diff.boxed_clone()),
+                            Some(self.focus_handle.clone()),
                         ))
                         .on_click(|_, _, cx| {
                             cx.defer(|cx| {
@@ -7387,11 +7607,18 @@ impl GitPanel {
                                 Tooltip::with_meta_in(
                                     tooltip,
                                     Some(&git::Commit),
-                                    format!(
-                                        "git commit{}{}{}",
-                                        if amend { " --amend" } else { "" },
-                                        if signoff { " --signoff" } else { "" },
-                                        if no_verify { " --no-verify" } else { "" }
+                                    panel_operation_help(if amend {
+                                        PanelOperation::Amend
+                                    } else {
+                                        PanelOperation::Commit
+                                    })
+                                    .sentence_with_command(
+                                        &format!(
+                                            "git commit{}{}{}",
+                                            if amend { " --amend" } else { "" },
+                                            if signoff { " --signoff" } else { "" },
+                                            if no_verify { " --no-verify" } else { "" }
+                                        ),
                                     ),
                                     &handle.clone(),
                                     cx,
@@ -7502,7 +7729,6 @@ impl GitPanel {
                     h_flex()
                         .gap_0p5()
                         .when(commit.has_parent, |this| {
-                            let has_unstaged = self.has_unstaged_changes();
                             this.child(
                                 IconButton::new("undo", IconName::Undo)
                                     .icon_size(IconSize::Small)
@@ -7510,11 +7736,8 @@ impl GitPanel {
                                         Tooltip::with_meta(
                                             "コミットを取り消す",
                                             Some(&git::Uncommit),
-                                            if has_unstaged {
-                                                "git reset HEAD^ --soft"
-                                            } else {
-                                                "git reset HEAD^"
-                                            },
+                                            panel_operation_help(PanelOperation::Uncommit)
+                                                .sentence_with_command("git reset HEAD^ --soft"),
                                             cx,
                                         )
                                     })
@@ -7743,6 +7966,7 @@ impl GitPanel {
             self.focus_handle.clone(),
             Some(repository.downgrade()),
             self.workspace.clone(),
+            |menu| menu,
             window,
             cx,
         );
@@ -8323,9 +8547,21 @@ impl GitPanel {
         };
         let step_button =
             |id: &'static str, label: &'static str, step: SequencerStep, cx: &mut Context<Self>| {
-                Button::new(id, label).on_click(cx.listener(move |this, _, window, cx| {
-                    this.run_sequencer_step(kind, step, window, cx);
-                }))
+                let operation = match step {
+                    SequencerStep::Continue => PanelOperation::SequencerContinue,
+                    SequencerStep::Skip => PanelOperation::SequencerSkip,
+                    SequencerStep::Abort => PanelOperation::SequencerAbort,
+                };
+                Button::new(id, label)
+                    .tooltip(help_tooltip(
+                        label,
+                        panel_operation_help(operation).sentence(),
+                        None,
+                        None,
+                    ))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.run_sequencer_step(kind, step, window, cx);
+                    }))
             };
         Some(
             div().debug_selector(|| "git-sequencer".into()).child(
@@ -8692,8 +8928,13 @@ impl GitPanel {
                             .label_size(LabelSize::Small)
                             .layer(ElevationIndex::ModalSurface)
                             .style(ButtonStyle::Filled)
-                            .tooltip(Tooltip::text(
-                                format!("git config --global --add safe.directory {}", directory.display())
+                            .tooltip(help_tooltip(
+                                "ディレクトリを信頼",
+                                panel_operation_help(PanelOperation::TrustDirectory).sentence_with_command(
+                                    &format!("git config --global --add safe.directory {}", directory.display()),
+                                ),
+                                None,
+                                None,
                             ))
                             .on_click(
                                 cx.listener(|this, _, window, cx| {
@@ -8723,10 +8964,12 @@ impl GitPanel {
                     Button::new("initialize_repository", "リポジトリを初期化")
                         .label_size(LabelSize::Small)
                         .style(ButtonStyle::Outlined)
-                        .tooltip(Tooltip::for_action_title_in(
-                            "git init",
-                            &git::Init,
-                            &self.focus_handle,
+                        .tooltip(help_tooltip(
+                            "リポジトリを初期化",
+                            panel_operation_help(PanelOperation::InitRepository)
+                                .sentence_with_command("git init"),
+                            Some(git::Init.boxed_clone()),
+                            Some(self.focus_handle.clone()),
                         ))
                         .on_click(move |_, _, cx| {
                             cx.defer(move |cx| {
@@ -9056,17 +9299,29 @@ impl GitPanel {
                             .ok();
                     });
                 let tooltip_label = if all_conflicts_resolved {
-                    Some("すべてのコンフリクトを解決済みにしました")
+                    Some(("すべてのコンフリクトを解決済みにしました", None))
                 } else {
                     match stage_intent {
-                        StageIntent::Stage => Some("すべてステージ"),
-                        StageIntent::Unstage => Some("すべてアンステージ"),
+                        StageIntent::Stage => {
+                            Some(("すべてステージ", Some(PanelOperation::StageSection)))
+                        }
+                        StageIntent::Unstage => {
+                            Some(("すべてアンステージ", Some(PanelOperation::UnstageSection)))
+                        }
                         StageIntent::Toggle => None,
                     }
                 };
-                if let Some(label) = tooltip_label {
+                if let Some((label, operation)) = tooltip_label {
                     checkbox
-                        .tooltip(move |_window, cx| Tooltip::simple(label, cx))
+                        .tooltip(move |_window, cx| match operation {
+                            Some(operation) => Tooltip::with_meta(
+                                label,
+                                None,
+                                panel_operation_help(operation).sentence(),
+                                cx,
+                            ),
+                            None => Tooltip::simple(label, cx),
+                        })
                         .into_any_element()
                 } else {
                     checkbox.into_any_element()
@@ -9159,54 +9414,16 @@ impl GitPanel {
         // Resolve against the pending-op-aware status (like the checkboxes do)
         // so the menu label can't lag behind a just-clicked checkbox.
         let repo = self.active_repository.as_ref().map(|repo| repo.read(cx));
-        let stage_title = if stage_intent.resolve_with(|| match repo {
+        let stages = stage_intent.resolve_with(|| match repo {
             Some(repo) => GitPanel::stage_status_for_entry(entry, repo),
             None => entry.status.staging(),
-        }) {
-            "ファイルをステージ"
-        } else {
-            "ファイルをアンステージ"
-        };
-        let restore_title = if entry.status.is_created() {
-            "ファイルをゴミ箱へ移動"
-        } else if entry.status.is_deleted() {
-            "ファイルを元に戻す"
-        } else {
-            "変更を破棄"
-        };
-        let context_menu = ContextMenu::build(window, cx, |context_menu, _, _| {
-            let is_created = entry.status.is_created();
-            context_menu
-                .context(self.focus_handle.clone())
-                .action(stage_title, ToggleStaged.boxed_clone())
-                .action(restore_title, git::RestoreFile::default().boxed_clone())
-                .separator()
-                .action("未ステージの変更", ViewUnstagedChanges.boxed_clone())
-                .action("ステージ済みの変更", ViewStagedChanges.boxed_clone())
-                .separator()
-                .action("パスをコピー", CopyPath.boxed_clone())
-                .action("相対パスをコピー", CopyRelativePath.boxed_clone())
-                .separator()
-                .action_disabled_when(
-                    !is_created,
-                    ".gitignore に追加",
-                    git::AddToGitignore.boxed_clone(),
-                )
-                .action_disabled_when(
-                    !is_created,
-                    ".git/info/exclude に追加",
-                    git::AddToGitInfoExclude.boxed_clone(),
-                )
-                .separator()
-                .action("差分を開く", menu::Confirm.boxed_clone())
-                .action("ファイルの差分を開く", menu::SecondaryConfirm.boxed_clone())
-                .action("ファイルを表示", ViewFile.boxed_clone())
-                .when(!is_created, |context_menu| {
-                    context_menu
-                        .separator()
-                        .action("ファイルの履歴を表示", Box::new(git::FileHistory))
-                })
         });
+        let context_menu = build_panel_menu(
+            entry_menu_items(stages, entry.status.is_created(), entry.status.is_deleted()),
+            self.focus_handle.clone(),
+            window,
+            cx,
+        );
         self.selected_entry = Some(ix);
         self.set_context_menu(context_menu, position, None, window, cx);
     }
@@ -9224,14 +9441,16 @@ impl GitPanel {
         let has_new_changes = self.new_count > 0;
         let has_stash_items = self.stash_entries.entries.len() > 0;
 
-        let context_menu = git_panel_context_menu(
-            has_tracked_changes,
-            has_staged_changes,
-            has_unstaged_changes,
-            has_new_changes,
-            has_stash_items,
-            GitPanelSettings::get_global(cx).group_by,
-            include_copy_paths,
+        let context_menu = build_panel_menu(
+            changes_menu_items(ChangesMenuState {
+                has_tracked_changes,
+                has_staged_changes,
+                has_unstaged_changes,
+                has_new_changes,
+                has_stash_items,
+                group_by: GitPanelSettings::get_global(cx).group_by,
+                include_copy_paths,
+            }),
             self.focus_handle.clone(),
             window,
             cx,
@@ -9500,8 +9719,18 @@ impl GitPanel {
                                 if resolved_conflict {
                                     Tooltip::simple("コンフリクトを解決済みにしました", cx)
                                 } else {
-                                    let action = stage_intent.label(|| stage_status);
-                                    Tooltip::for_action(action, &ToggleStaged, cx)
+                                    let stages = stage_intent.resolve_with(|| stage_status);
+                                    let (action, operation) = if stages {
+                                        ("ステージ", PanelOperation::StageFile)
+                                    } else {
+                                        ("アンステージ", PanelOperation::UnstageFile)
+                                    };
+                                    Tooltip::with_meta(
+                                        action,
+                                        Some(&ToggleStaged),
+                                        panel_operation_help(operation).sentence(),
+                                        cx,
+                                    )
                                 }
                             }),
                     ),
@@ -9708,8 +9937,18 @@ impl GitPanel {
                                 if resolved_conflict {
                                     Tooltip::simple("コンフリクトを解決済みにしました", cx)
                                 } else {
-                                    let action = stage_intent.label(|| stage_status);
-                                    Tooltip::simple(format!("フォルダーを{action}"), cx)
+                                    let stages = stage_intent.resolve_with(|| stage_status);
+                                    let (action, operation) = if stages {
+                                        ("ステージ", PanelOperation::StageFolder)
+                                    } else {
+                                        ("アンステージ", PanelOperation::UnstageFolder)
+                                    };
+                                    Tooltip::with_meta(
+                                        format!("フォルダーを{action}"),
+                                        None,
+                                        panel_operation_help(operation).sentence(),
+                                        cx,
+                                    )
                                 }
                             }),
                     ),
@@ -10591,7 +10830,12 @@ impl RenderOnce for PanelRepoFooter {
             })
             .trigger_with_tooltip(
                 branch_selector_button,
-                Tooltip::for_action_title("ブランチを切り替え", &zed_actions::git::Switch),
+                help_tooltip(
+                    "ブランチを切り替え",
+                    panel_operation_help(PanelOperation::SwitchBranch).sentence(),
+                    Some(zed_actions::git::Switch.boxed_clone()),
+                    None,
+                ),
             )
             .anchor(Anchor::BottomLeft)
             .offset(gpui::Point {
@@ -18053,5 +18297,296 @@ mod tests {
             assert!(!panel.amend_needs_force_push(cx));
         });
         assert!(rendered("git-panel-amend-force-push-note", &panel, &mut cx).is_none());
+    }
+
+    /// What a panel menu shows for one entry: the label, why it is greyed out, and what the side
+    /// note says.
+    fn described_entries(
+        items: Vec<PanelMenuItem>,
+    ) -> Vec<(&'static str, Box<dyn Action>, Option<&'static str>, String)> {
+        items
+            .into_iter()
+            .filter_map(|item| match item {
+                PanelMenuItem::Separator => None,
+                PanelMenuItem::Entry {
+                    label,
+                    operation,
+                    action,
+                    refusal,
+                } => Some((
+                    label,
+                    action,
+                    refusal,
+                    panel_operation_help(operation).sentence(),
+                )),
+            })
+            .collect()
+    }
+
+    /// Where the separators fall among a menu's items, so that a lost or doubled one shows.
+    fn separator_positions(items: &[PanelMenuItem]) -> Vec<usize> {
+        items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| matches!(item, PanelMenuItem::Separator))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    fn assert_entries(
+        items: Vec<PanelMenuItem>,
+        expected: &[(&str, &dyn Action, Option<&str>, &str)],
+    ) {
+        let entries = described_entries(items);
+        assert_eq!(
+            entries.iter().map(|entry| entry.0).collect::<Vec<_>>(),
+            expected.iter().map(|entry| entry.0).collect::<Vec<_>>()
+        );
+        for ((label, action, refusal, sentence), expected) in entries.iter().zip(expected) {
+            let (_, expected_action, expected_refusal, in_sentence) = *expected;
+            assert!(
+                action.partial_eq(expected_action),
+                "{label}: runs {}",
+                action.name()
+            );
+            assert_eq!(*refusal, expected_refusal, "{label}");
+            assert!(sentence.contains(in_sentence), "{label}: {sentence}");
+        }
+    }
+
+    /// Every item of the changes menu ("…" and the panel's right click) is explained in its own
+    /// words, and every greyed-out one says why.
+    #[test]
+    fn test_changes_menu_explains_every_item() {
+        let everything = ChangesMenuState {
+            has_tracked_changes: true,
+            has_staged_changes: true,
+            has_unstaged_changes: true,
+            has_new_changes: true,
+            has_stash_items: true,
+            group_by: GitPanelGroupBy::Status,
+            include_copy_paths: true,
+        };
+        assert_entries(
+            changes_menu_items(everything),
+            &[
+                ("すべてステージ", &StageAll, None, "次のコミットに入れる印"),
+                ("すべてアンステージ", &UnstageAll, None, "印を全部外"),
+                (
+                    "すべての変更を元に戻す",
+                    &RestoreTrackedFiles,
+                    None,
+                    "元に戻せません",
+                ),
+                ("すべてスタッシュ", &StashAll, None, "棚 (stash)"),
+                ("追跡中をスタッシュ", &StashTracked, None, "追跡中"),
+                ("スタッシュをポップ", &StashPop, None, "棚からは消"),
+                (
+                    "スタッシュを表示",
+                    &zed_actions::git::ViewStash,
+                    None,
+                    "一覧",
+                ),
+                ("パスをコピー", &CopyPath, None, "フルパス"),
+                ("相対パスをコピー", &CopyRelativePath, None, "相対パス"),
+                (
+                    "追跡中の変更を破棄",
+                    &RestoreTrackedFiles,
+                    None,
+                    "ステージした変更がある",
+                ),
+                (
+                    "未追跡ファイルをゴミ箱へ移動",
+                    &TrashUntrackedFiles,
+                    None,
+                    "ゴミ箱",
+                ),
+                ("パッチファイルを作成…", &git::CreatePatch, None, "書き出"),
+                ("パッチファイルを適用…", &git::ApplyPatch, None, "当て"),
+                ("リポジトリを初期化", &git::Init, None, ".git フォルダー"),
+                ("Git の操作ガイド", &git::ShowGuide, None, "用語"),
+            ],
+        );
+
+        assert_eq!(
+            separator_positions(&changes_menu_items(everything)),
+            [3, 8, 11, 14, 17, 19]
+        );
+
+        let nothing = ChangesMenuState {
+            has_tracked_changes: false,
+            has_staged_changes: false,
+            has_unstaged_changes: false,
+            has_new_changes: false,
+            has_stash_items: false,
+            group_by: GitPanelGroupBy::Staging,
+            include_copy_paths: false,
+        };
+        assert_entries(
+            changes_menu_items(nothing),
+            &[
+                (
+                    "すべてステージ",
+                    &StageAll,
+                    Some("ステージする変更がありません"),
+                    "次のコミットに入れる印",
+                ),
+                (
+                    "すべてアンステージ",
+                    &UnstageAll,
+                    Some("ステージ済みの変更がありません"),
+                    "印を全部外",
+                ),
+                (
+                    "すべての変更を元に戻す",
+                    &RestoreTrackedFiles,
+                    Some("追跡中のファイルに変更がありません"),
+                    "元に戻せません",
+                ),
+                (
+                    "すべてスタッシュ",
+                    &StashAll,
+                    Some("退避する変更がありません"),
+                    "棚 (stash)",
+                ),
+                (
+                    "ステージ済みをスタッシュ",
+                    &StashStaged,
+                    Some("ステージ済みの変更がありません"),
+                    "ステージした変更だけ",
+                ),
+                (
+                    "スタッシュをポップ",
+                    &StashPop,
+                    Some("棚 (stash) に退避した変更がありません"),
+                    "棚からは消",
+                ),
+                (
+                    "スタッシュを表示",
+                    &zed_actions::git::ViewStash,
+                    None,
+                    "一覧",
+                ),
+                (
+                    "追跡中の変更を破棄",
+                    &RestoreTrackedFiles,
+                    Some("追跡中のファイルに変更がありません"),
+                    "ステージした変更がある",
+                ),
+                (
+                    "未追跡ファイルをゴミ箱へ移動",
+                    &TrashUntrackedFiles,
+                    Some("未追跡のファイルがありません"),
+                    "ゴミ箱",
+                ),
+                ("パッチファイルを作成…", &git::CreatePatch, None, "書き出"),
+                ("パッチファイルを適用…", &git::ApplyPatch, None, "当て"),
+                ("リポジトリを初期化", &git::Init, None, ".git フォルダー"),
+                ("Git の操作ガイド", &git::ShowGuide, None, "用語"),
+            ],
+        );
+
+        assert_eq!(
+            separator_positions(&changes_menu_items(nothing)),
+            [3, 8, 11, 14, 16]
+        );
+
+        let ungrouped = changes_menu_items(ChangesMenuState {
+            group_by: GitPanelGroupBy::None,
+            ..everything
+        });
+        let labels = described_entries(ungrouped)
+            .into_iter()
+            .map(|entry| entry.0)
+            .collect::<Vec<_>>();
+        assert!(!labels.contains(&"追跡中をスタッシュ"), "{labels:?}");
+        assert!(!labels.contains(&"ステージ済みをスタッシュ"), "{labels:?}");
+    }
+
+    /// A file's right-click menu explains each item, and says the ignore lists are only for new
+    /// files when it greys them out.
+    #[test]
+    fn test_entry_menu_explains_every_item() {
+        let only_untracked =
+            Some("まだ Git が管理していない新しいファイル (未追跡) だけに使えます");
+        assert_entries(
+            entry_menu_items(false, false, false),
+            &[
+                ("ファイルをアンステージ", &ToggleStaged, None, "印を外し"),
+                (
+                    "変更を破棄",
+                    &git::RestoreFile::default(),
+                    None,
+                    "元に戻せません",
+                ),
+                (
+                    "未ステージの変更",
+                    &ViewUnstagedChanges,
+                    None,
+                    "次のコミットに入らない",
+                ),
+                (
+                    "ステージ済みの変更",
+                    &ViewStagedChanges,
+                    None,
+                    "次のコミットに入る",
+                ),
+                ("パスをコピー", &CopyPath, None, "フルパス"),
+                ("相対パスをコピー", &CopyRelativePath, None, "相対パス"),
+                (
+                    ".gitignore に追加",
+                    &git::AddToGitignore,
+                    only_untracked,
+                    "他の人にも効き",
+                ),
+                (
+                    ".git/info/exclude に追加",
+                    &git::AddToGitInfoExclude,
+                    only_untracked,
+                    "手元だけ",
+                ),
+                ("差分を開く", &menu::Confirm, None, "差分"),
+                (
+                    "ファイルの差分を開く",
+                    &menu::SecondaryConfirm,
+                    None,
+                    "このファイルだけ",
+                ),
+                ("ファイルを表示", &ViewFile, None, "ファイルそのもの"),
+                (
+                    "ファイルの履歴を表示",
+                    &git::FileHistory,
+                    None,
+                    "コミットの一覧",
+                ),
+            ],
+        );
+
+        assert_eq!(
+            separator_positions(&entry_menu_items(false, false, false)),
+            [2, 5, 8, 11, 15]
+        );
+        assert_eq!(
+            separator_positions(&entry_menu_items(true, true, false)),
+            [2, 5, 8, 11]
+        );
+
+        let new_file = described_entries(entry_menu_items(true, true, false));
+        let labels = new_file.iter().map(|entry| entry.0).collect::<Vec<_>>();
+        assert_eq!(
+            labels[..2],
+            ["ファイルをステージ", "ファイルをゴミ箱へ移動"]
+        );
+        assert!(new_file[0].3.contains("次のコミットに入れる印"));
+        assert!(new_file[1].3.contains("ゴミ箱"));
+        assert!(
+            new_file.iter().all(|(_, _, refusal, _)| refusal.is_none()),
+            "{labels:?}"
+        );
+        assert!(!labels.contains(&"ファイルの履歴を表示"), "{labels:?}");
+
+        let deleted_file = described_entries(entry_menu_items(true, false, true));
+        assert_eq!(deleted_file[1].0, "ファイルを元に戻す");
+        assert!(deleted_file[1].3.contains("削除したファイル"));
     }
 }

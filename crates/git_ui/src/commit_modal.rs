@@ -3,6 +3,7 @@ use crate::git_panel::{
     GitPanel, commit_message_editor, commit_title_exceeds_limit, git_commit_editor_style,
 };
 use crate::git_panel_settings::GitPanelSettings;
+use crate::git_terms::{PanelOperation, help_aside, help_tooltip, panel_operation_help};
 use git::{Amend, Commit, GenerateCommitMessage, Signoff, SkipHooks};
 use project::DisableAiSettings;
 use settings::Settings;
@@ -289,41 +290,46 @@ impl CommitModal {
                     let has_previous_commit = git_panel.head_commit(cx).is_some();
 
                     Some(ContextMenu::build(window, cx, |context_menu, _, _| {
+                        // The modal sits in the middle of the window, so the notes fit on the
+                        // left of a menu that opens leftwards from the commit button.
+                        let side = DocumentationSide::Left;
+                        let aside = |operation| help_aside(panel_operation_help(operation), None);
                         context_menu
                             .when_some(keybinding_target.clone(), |el, keybinding_target| {
                                 el.context(keybinding_target)
                             })
                             .when(has_previous_commit, |this| {
-                                this.toggleable_entry(
-                                    "直前のコミットを修正",
-                                    amend_enabled,
-                                    IconPosition::Start,
-                                    Some(Box::new(Amend)),
-                                    {
-                                        let git_panel = git_panel_entity.downgrade();
-                                        move |_, cx| {
-                                            git_panel
-                                                .update(cx, |git_panel, cx| {
-                                                    git_panel.toggle_amend_pending(cx);
-                                                })
-                                                .ok();
-                                        }
-                                    },
+                                this.item(
+                                    ContextMenuEntry::new("直前のコミットを修正")
+                                        .toggleable(IconPosition::Start, amend_enabled)
+                                        .action(Box::new(Amend))
+                                        .handler({
+                                            let git_panel = git_panel_entity.downgrade();
+                                            move |_, cx| {
+                                                git_panel
+                                                    .update(cx, |git_panel, cx| {
+                                                        git_panel.toggle_amend_pending(cx);
+                                                    })
+                                                    .ok();
+                                            }
+                                        })
+                                        .documentation_aside(side, aside(PanelOperation::Amend)),
                                 )
                             })
-                            .toggleable_entry(
-                                "Signed-off-by を付ける",
-                                signoff_enabled,
-                                IconPosition::Start,
-                                Some(Box::new(Signoff)),
-                                {
-                                    let git_panel = git_panel_entity.clone();
-                                    move |window, cx| {
-                                        git_panel.update(cx, |git_panel, cx| {
-                                            git_panel.toggle_signoff_enabled(&Signoff, window, cx);
-                                        })
-                                    }
-                                },
+                            .item(
+                                ContextMenuEntry::new("Signed-off-by を付ける")
+                                    .toggleable(IconPosition::Start, signoff_enabled)
+                                    .action(Box::new(Signoff))
+                                    .handler({
+                                        let git_panel = git_panel_entity.clone();
+                                        move |window, cx| {
+                                            git_panel.update(cx, |git_panel, cx| {
+                                                git_panel
+                                                    .toggle_signoff_enabled(&Signoff, window, cx);
+                                            })
+                                        }
+                                    })
+                                    .documentation_aside(side, aside(PanelOperation::Signoff)),
                             )
                             .item(
                                 ContextMenuEntry::new("フックをスキップ")
@@ -332,9 +338,7 @@ impl CommitModal {
                                     .handler(move |window, cx| {
                                         window.dispatch_action(Box::new(SkipHooks), cx)
                                     })
-                                    .documentation_aside(DocumentationSide::Left, |_| {
-                                        Label::new("git commit --no-verify").into_any_element()
-                                    }),
+                                    .documentation_aside(side, aside(PanelOperation::SkipHooks)),
                             )
                     }))
                 }
@@ -408,7 +412,12 @@ impl CommitModal {
             .with_handle(self.branch_list_handle.clone())
             .trigger_with_tooltip(
                 branch_picker_button,
-                Tooltip::for_action_title("ブランチを切り替え", &zed_actions::git::Branch),
+                help_tooltip(
+                    "ブランチを切り替え",
+                    panel_operation_help(PanelOperation::SwitchBranch).sentence(),
+                    Some(Box::new(zed_actions::git::Branch)),
+                    None,
+                ),
             )
             .anchor(Anchor::BottomLeft)
             .offset(gpui::Point {

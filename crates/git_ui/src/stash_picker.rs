@@ -1,3 +1,4 @@
+use crate::git_terms::{PanelOperation, panel_operation_help};
 use fuzzy::StringMatchCandidate;
 
 use git::stash::StashEntry;
@@ -546,7 +547,13 @@ impl PickerDelegate for StashListDelegate {
             IconButton::new(("view-stash", ix), IconName::Eye)
                 .icon_size(IconSize::Small)
                 .tooltip(move |_, cx| {
-                    Tooltip::for_action_in("スタッシュを表示", &ShowStashItem, &focus_handle, cx)
+                    Tooltip::with_meta_in(
+                        "スタッシュを表示",
+                        Some(&ShowStashItem),
+                        panel_operation_help(PanelOperation::ViewStashEntry).sentence(),
+                        &focus_handle,
+                        cx,
+                    )
                 })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.delegate.show_stash_at(ix, window, cx);
@@ -558,9 +565,10 @@ impl PickerDelegate for StashListDelegate {
             IconButton::new(("pop-stash", ix), IconName::MaximizeAlt)
                 .icon_size(IconSize::Small)
                 .tooltip(move |_, cx| {
-                    Tooltip::for_action_in(
+                    Tooltip::with_meta_in(
                         "スタッシュを取り出す",
-                        &menu::SecondaryConfirm,
+                        Some(&menu::SecondaryConfirm),
+                        panel_operation_help(PanelOperation::PopStashEntry).sentence(),
                         &focus_handle,
                         cx,
                     )
@@ -575,7 +583,13 @@ impl PickerDelegate for StashListDelegate {
             IconButton::new(("drop-stash", ix), IconName::Trash)
                 .icon_size(IconSize::Small)
                 .tooltip(move |_, cx| {
-                    Tooltip::for_action_in("スタッシュを破棄", &DropStashItem, &focus_handle, cx)
+                    Tooltip::with_meta_in(
+                        "スタッシュを破棄",
+                        Some(&DropStashItem),
+                        panel_operation_help(PanelOperation::DropStashEntry).sentence(),
+                        &focus_handle,
+                        cx,
+                    )
                 })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.delegate.drop_stash_at(ix, window, cx);

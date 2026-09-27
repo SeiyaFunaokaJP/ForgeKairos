@@ -1,3 +1,4 @@
+use crate::git_terms::{PanelOperation, help_aside, panel_aside_side, panel_operation_help};
 use anyhow::Context as _;
 use editor::Editor;
 use fuzzy_nucleo::StringMatchCandidate;
@@ -19,8 +20,9 @@ use settings::Settings;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use ui::{
-    Banner, ContextMenu, Divider, HighlightedLabel, Indicator, KeyBinding, ListItem,
-    ListItemSpacing, ListSubHeader, PopoverMenu, PopoverMenuHandle, Severity, Tooltip, prelude::*,
+    Banner, ContextMenu, ContextMenuEntry, Divider, HighlightedLabel, Indicator, KeyBinding,
+    ListItem, ListItemSpacing, ListSubHeader, PopoverMenu, PopoverMenuHandle, Severity, Tooltip,
+    prelude::*,
 };
 use ui_input::ErasedEditor;
 use util::ResultExt;
@@ -630,8 +632,9 @@ fn branch_filter_menu(
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<ContextMenu> {
-    ContextMenu::build(window, cx, |mut menu, _, _| {
+    ContextMenu::build(window, cx, |mut menu, _, cx| {
         menu = menu.context(focus_handle.clone());
+        let side = panel_aside_side(cx);
 
         let filter_actions: [(BranchFilter, Box<dyn Action>); 3] = [
             (BranchFilter::All, ShowAllBranches.boxed_clone()),
@@ -642,15 +645,20 @@ fn branch_filter_menu(
         for (filter, action) in filter_actions {
             let handler_focus = focus_handle.clone();
             let dispatched = action.boxed_clone();
-            menu = menu.toggleable_entry(
-                filter.label(),
-                filter == branch_filter,
-                IconPosition::End,
-                Some(action),
-                move |window, cx| {
-                    window.focus(&handler_focus, cx);
-                    window.dispatch_action(dispatched.boxed_clone(), cx);
-                },
+            let operation = match filter {
+                BranchFilter::All => PanelOperation::ShowAllBranches,
+                BranchFilter::Local => PanelOperation::ShowLocalBranches,
+                BranchFilter::Remote => PanelOperation::ShowRemoteBranches,
+            };
+            menu = menu.item(
+                ContextMenuEntry::new(filter.label())
+                    .toggleable(IconPosition::End, filter == branch_filter)
+                    .action(action)
+                    .handler(move |window, cx| {
+                        window.focus(&handler_focus, cx);
+                        window.dispatch_action(dispatched.boxed_clone(), cx);
+                    })
+                    .documentation_aside(side, help_aside(panel_operation_help(operation), None)),
             );
         }
         menu
@@ -900,9 +908,10 @@ impl Render for DeleteBranchTooltip {
             })
             .unwrap_or(false);
         if force_delete {
-            Tooltip::for_action_in(
+            Tooltip::with_meta_in(
                 "ブランチを強制削除",
-                &branch_picker::ForceDeleteBranch,
+                Some(&branch_picker::ForceDeleteBranch),
+                panel_operation_help(PanelOperation::ForceDeleteBranch).sentence(),
                 &self.focus_handle,
                 cx,
             )
@@ -911,7 +920,10 @@ impl Render for DeleteBranchTooltip {
             Tooltip::with_meta_in(
                 "ブランチを削除",
                 Some(&branch_picker::DeleteBranch),
-                "alt キーを押しながら強制削除",
+                format!(
+                    "{} alt キーを押しながら強制削除",
+                    panel_operation_help(PanelOperation::DeleteBranch).sentence()
+                ),
                 &self.focus_handle,
                 cx,
             )
@@ -1067,9 +1079,10 @@ impl BranchListDelegate {
     fn branch_filter_tooltip(&self) -> impl Fn(&mut Window, &mut App) -> gpui::AnyView + 'static {
         let focus_handle = self.focus_handle.clone();
         move |_, cx| {
-            Tooltip::for_action_in(
+            Tooltip::with_meta_in(
                 "ブランチを絞り込み",
-                &branch_picker::ToggleFilterMenu,
+                Some(&branch_picker::ToggleFilterMenu),
+                panel_operation_help(PanelOperation::FilterBranches).sentence(),
                 &focus_handle,
                 cx,
             )
@@ -1811,9 +1824,10 @@ impl PickerDelegate for BranchListDelegate {
             IconButton::new("create_from_default", IconName::GitBranchPlus)
                 .icon_size(IconSize::Small)
                 .tooltip(move |_, cx| {
-                    Tooltip::for_action_in(
+                    Tooltip::with_meta_in(
                         tooltip_label.clone(),
-                        &menu::SecondaryConfirm,
+                        Some(&menu::SecondaryConfirm),
+                        panel_operation_help(PanelOperation::CreateBranchFromDefault).sentence(),
                         &focus_handle,
                         cx,
                     )

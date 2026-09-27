@@ -962,6 +962,9 @@ fn render_remote_button(
 
 mod remote_button {
     use crate::git_panel::RemoteOperationKind;
+    use crate::git_terms::{
+        PanelOperation, help_action_entry, panel_aside_side, panel_operation_help,
+    };
     use gpui::{Action, Anchor, AnyView, ClickEvent, FocusHandle};
     use ui::{
         ButtonLike, CommonAnimationExt, ContextMenu, ElevationIndex, PopoverMenu,
@@ -989,6 +992,7 @@ mod remote_button {
             move |_window, cx| {
                 git_action_tooltip(
                     "リモートから更新をフェッチします",
+                    PanelOperation::Fetch,
                     &git::Fetch,
                     "git fetch",
                     keybinding_target.clone(),
@@ -1020,6 +1024,7 @@ mod remote_button {
             move |_window, cx| {
                 git_action_tooltip(
                     "コミット済みの変更をリモートにプッシュします",
+                    PanelOperation::Push,
                     &git::Push,
                     "git push",
                     keybinding_target.clone(),
@@ -1052,6 +1057,7 @@ mod remote_button {
             move |_window, cx| {
                 git_action_tooltip(
                     "プル",
+                    PanelOperation::Pull,
                     &git::Pull,
                     "git pull",
                     keybinding_target.clone(),
@@ -1082,6 +1088,7 @@ mod remote_button {
             move |_window, cx| {
                 git_action_tooltip(
                     "ブランチをリモートに発行します",
+                    PanelOperation::Publish,
                     &git::Push,
                     "git push --set-upstream",
                     keybinding_target.clone(),
@@ -1112,6 +1119,7 @@ mod remote_button {
             move |_window, cx| {
                 git_action_tooltip(
                     "ブランチをリモートに再発行します",
+                    PanelOperation::Republish,
                     &git::Push,
                     "git push --set-upstream",
                     keybinding_target.clone(),
@@ -1131,13 +1139,14 @@ mod remote_button {
 
     fn git_action_tooltip(
         label: impl Into<SharedString>,
+        operation: PanelOperation,
         action: &dyn Action,
-        command: impl Into<SharedString>,
+        command: &str,
         focus_handle: Option<FocusHandle>,
         cx: &mut App,
     ) -> AnyView {
         let label = label.into();
-        let command = command.into();
+        let command = panel_operation_help(operation).sentence_with_command(command);
 
         if let Some(handle) = focus_handle {
             Tooltip::with_meta_in(label, Some(action), command, &handle, cx)
@@ -1160,38 +1169,27 @@ mod remote_button {
             ))
             .with_handle(menu_handle)
             .menu(move |window, cx| {
-                Some(ContextMenu::build(window, cx, |context_menu, _, _| {
-                    context_menu
-                        .when_some(keybinding_target.clone(), |el, keybinding_target| {
-                            el.context(keybinding_target)
-                        })
-                        .action("フェッチ", git::Fetch.boxed_clone())
-                        .action("取得元を指定してフェッチ", git::FetchFrom.boxed_clone())
-                        .action("プル", git::Pull.boxed_clone())
-                        .action("リベースしてプル", git::PullRebase.boxed_clone())
-                        .separator()
-                        .action("プッシュ", git::Push.boxed_clone())
-                        .action("プッシュ先を指定してプッシュ", git::PushTo.boxed_clone())
-                        .action("強制プッシュ", git::ForcePush.boxed_clone())
-                        .action(
-                            "強制プッシュ (lease なし)…",
-                            git::ForcePushWithoutLease.boxed_clone(),
-                        )
-                        .separator()
-                        .action("ブランチをマージ…", git::Merge.boxed_clone())
-                        .action(
-                            "リモートの状態に強制的に合わせる…",
-                            git::ResetToRemote.boxed_clone(),
-                        )
-                        .separator()
-                        .action(
-                            "リモートを追加…",
-                            zed_actions::git::CreateRemote.boxed_clone(),
-                        )
-                        .action("リモートを削除…", git::RemoveRemote.boxed_clone())
-                        .separator()
-                        .action("パッチファイルを作成…", git::CreatePatch.boxed_clone())
-                        .action("パッチファイルを適用…", git::ApplyPatch.boxed_clone())
+                Some(ContextMenu::build(window, cx, |context_menu, _, cx| {
+                    let side = panel_aside_side(cx);
+                    remote_menu_items().into_iter().fold(
+                        context_menu
+                            .when_some(keybinding_target.clone(), |el, keybinding_target| {
+                                el.context(keybinding_target)
+                            }),
+                        |context_menu, item| match item {
+                            None => context_menu.separator(),
+                            Some((label, operation, action)) => {
+                                context_menu.item(help_action_entry(
+                                    label,
+                                    action,
+                                    keybinding_target.clone(),
+                                    panel_operation_help(operation),
+                                    None,
+                                    side,
+                                ))
+                            }
+                        },
+                    )
                 }))
             })
             .anchor(Anchor::TopRight)
@@ -1199,6 +1197,76 @@ mod remote_button {
                 x: px(0.),
                 y: px(2.),
             })
+    }
+
+    /// The remote menu's items, `None` for a separator, laid out apart from the menu so that a
+    /// test can read them.
+    pub(super) fn remote_menu_items() -> Vec<Option<(&'static str, PanelOperation, Box<dyn Action>)>>
+    {
+        vec![
+            Some(("フェッチ", PanelOperation::Fetch, git::Fetch.boxed_clone())),
+            Some((
+                "取得元を指定してフェッチ",
+                PanelOperation::FetchFrom,
+                git::FetchFrom.boxed_clone(),
+            )),
+            Some(("プル", PanelOperation::Pull, git::Pull.boxed_clone())),
+            Some((
+                "リベースしてプル",
+                PanelOperation::PullRebase,
+                git::PullRebase.boxed_clone(),
+            )),
+            None,
+            Some(("プッシュ", PanelOperation::Push, git::Push.boxed_clone())),
+            Some((
+                "プッシュ先を指定してプッシュ",
+                PanelOperation::PushTo,
+                git::PushTo.boxed_clone(),
+            )),
+            Some((
+                "強制プッシュ",
+                PanelOperation::ForcePush,
+                git::ForcePush.boxed_clone(),
+            )),
+            Some((
+                "強制プッシュ (lease なし)…",
+                PanelOperation::ForcePushWithoutLease,
+                git::ForcePushWithoutLease.boxed_clone(),
+            )),
+            None,
+            Some((
+                "ブランチをマージ…",
+                PanelOperation::Merge,
+                git::Merge.boxed_clone(),
+            )),
+            Some((
+                "リモートの状態に強制的に合わせる…",
+                PanelOperation::ResetToRemote,
+                git::ResetToRemote.boxed_clone(),
+            )),
+            None,
+            Some((
+                "リモートを追加…",
+                PanelOperation::AddRemote,
+                zed_actions::git::CreateRemote.boxed_clone(),
+            )),
+            Some((
+                "リモートを削除…",
+                PanelOperation::RemoveRemote,
+                git::RemoveRemote.boxed_clone(),
+            )),
+            None,
+            Some((
+                "パッチファイルを作成…",
+                PanelOperation::CreatePatch,
+                git::CreatePatch.boxed_clone(),
+            )),
+            Some((
+                "パッチファイルを適用…",
+                PanelOperation::ApplyPatch,
+                git::ApplyPatch.boxed_clone(),
+            )),
+        ]
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1649,5 +1717,101 @@ mod view_commit_tests {
 
         assert!(!initial_modal_state);
         assert!(final_modal_state);
+    }
+}
+
+#[cfg(test)]
+mod remote_menu_tests {
+    use crate::git_terms::panel_operation_help;
+    use gpui::Action;
+
+    /// Every item of the fetch / pull / push menu is explained in its own words, and the ones
+    /// that overwrite or throw work away warn about it.
+    #[test]
+    fn test_remote_menu_explains_every_item() {
+        let expected: [(&str, &dyn Action, &str, Option<&str>); 14] = [
+            ("フェッチ", &git::Fetch, "取ってくるだけ", None),
+            (
+                "取得元を指定してフェッチ",
+                &git::FetchFrom,
+                "1 つを選んで",
+                None,
+            ),
+            (
+                "プル",
+                &git::Pull,
+                "今のブランチに取り込み",
+                Some("コンフリクト"),
+            ),
+            (
+                "リベースしてプル",
+                &git::PullRebase,
+                "付け直し",
+                Some("SHA"),
+            ),
+            ("プッシュ", &git::Push, "リモートへ送り", None),
+            ("プッシュ先を指定してプッシュ", &git::PushTo, "送り先", None),
+            ("強制プッシュ", &git::ForcePush, "上書き", Some("消えます")),
+            (
+                "強制プッシュ (lease なし)…",
+                &git::ForcePushWithoutLease,
+                "確かめずに",
+                Some("相手の変更を消す"),
+            ),
+            (
+                "ブランチをマージ…",
+                &git::Merge,
+                "合流",
+                Some("コンフリクト"),
+            ),
+            (
+                "リモートの状態に強制的に合わせる…",
+                &git::ResetToRemote,
+                "同じ内容",
+                Some("元に戻せません"),
+            ),
+            (
+                "リモートを追加…",
+                &zed_actions::git::CreateRemote,
+                "URL",
+                None,
+            ),
+            ("リモートを削除…", &git::RemoveRemote, "外し", None),
+            ("パッチファイルを作成…", &git::CreatePatch, "書き出", None),
+            ("パッチファイルを適用…", &git::ApplyPatch, "当て", None),
+        ];
+        let separator_positions = super::remote_button::remote_menu_items()
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| item.is_none())
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        assert_eq!(separator_positions, [4, 9, 12, 15]);
+        let items = super::remote_button::remote_menu_items()
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            items.iter().map(|item| item.0).collect::<Vec<_>>(),
+            expected.iter().map(|item| item.0).collect::<Vec<_>>()
+        );
+        for ((label, operation, action), (_, expected_action, in_explanation, in_caution)) in
+            items.iter().zip(expected)
+        {
+            let help = panel_operation_help(*operation);
+            assert!(action.partial_eq(expected_action), "{label}");
+            assert!(
+                help.explanation.contains(in_explanation),
+                "{label}: {help:?}"
+            );
+            match in_caution {
+                Some(in_caution) => assert!(
+                    help.caution
+                        .is_some_and(|caution| caution.contains(in_caution)),
+                    "{label}: {help:?}"
+                ),
+                None => assert_eq!(help.caution, None, "{label}"),
+            }
+        }
     }
 }

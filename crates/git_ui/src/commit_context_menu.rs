@@ -60,6 +60,8 @@ pub(crate) enum CommitContextMenuSource {
     GitPanel,
 }
 
+/// `extra_entries` adds what only the caller knows about the commit, after the entries that
+/// change the repository.
 pub(crate) fn commit_context_menu(
     commit: CommitContextMenuData,
     source: CommitContextMenuSource,
@@ -67,6 +69,7 @@ pub(crate) fn commit_context_menu(
     focus_handle: FocusHandle,
     repository: Option<WeakEntity<Repository>>,
     workspace: WeakEntity<Workspace>,
+    extra_entries: impl FnOnce(ContextMenu) -> ContextMenu + 'static,
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<ContextMenu> {
@@ -178,6 +181,7 @@ pub(crate) fn commit_context_menu(
                     commit_rewrite_entries(menu, sha, repository, workspace, facts)
                 })
             })
+            .map(extra_entries)
             .map(|mut menu| {
                 menu = menu.separator().header("カスタムコマンド");
 

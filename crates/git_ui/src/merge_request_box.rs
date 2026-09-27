@@ -32,11 +32,8 @@ use util::ResultExt as _;
 use workspace::Workspace;
 
 /// How many commits of the development branch the box reads. A range longer than this almost
-/// always means the base is wrong, and the box says so instead of listing thousands of rows.
+/// always means the base is wrong, and the box says so instead of counting thousands of commits.
 const MAX_RANGE_COMMITS: usize = 2000;
-
-/// How many unplaced commits are listed at once; the count above the list stays exact.
-const MAX_LISTED_UNPLACED: usize = 200;
 
 /// How long the box waits after the last change before writing itself to the database, so that
 /// typing the message is not a write per keystroke.
@@ -128,25 +125,13 @@ fn parse_development_range(stdout: &str) -> DevelopmentRange {
     DevelopmentRange { commits, truncated }
 }
 
-/// A commit handed to the box: dragged from the graph, picked from the multi-selection menu, or
-/// taken from the unplaced list.
+/// A commit handed to the box: dragged from the graph or picked from its menus and buttons.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct MergeRequestCandidate {
     pub sha: Oid,
     pub subject: SharedString,
     pub message: SharedString,
     pub is_merge: bool,
-}
-
-impl From<&RangeCommit> for MergeRequestCandidate {
-    fn from(commit: &RangeCommit) -> Self {
-        Self {
-            sha: commit.sha,
-            subject: commit.subject.clone(),
-            message: commit.message.clone(),
-            is_merge: commit.is_merge,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -183,6 +168,15 @@ impl AddOutcome {
         }
         (!parts.is_empty()).then(|| parts.join("").into())
     }
+}
+
+/// What the graph's menus offer for some rows while the box is open.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct MergeRequestMenuChoices {
+    /// Not in the box yet. Whether a row is a merge is the graph's to say.
+    pub(crate) addable: Vec<Oid>,
+    pub(crate) excludable: Vec<Oid>,
+    pub(crate) restorable: Vec<Oid>,
 }
 
 /// How a row of the graph is marked while the box is open.
@@ -243,6 +237,20 @@ impl MergeRequestBoxState {
 
     fn is_outside_range(&self, sha: &Oid) -> bool {
         self.range.is_some() && !self.range_positions.contains_key(sha)
+    }
+
+    /// Only what the development range counts can be set aside: a merge is never counted, and a
+    /// commit from elsewhere was never missing from the box.
+    fn can_exclude(&self, sha: &Oid) -> bool {
+        let Some(range) = &self.range else {
+            return false;
+        };
+        !self.excluded.contains(sha)
+            && self
+                .range_positions
+                .get(sha)
+                .and_then(|position| range.commits.get(*position))
+                .is_some_and(|commit| !commit.is_merge)
     }
 
     fn add(&mut self, candidates: impl IntoIterator<Item = MergeRequestCandidate>) -> AddOutcome {
@@ -1312,14 +1320,62 @@ impl MergeRequestBox {
         self.after_state_change(window, cx);
     }
 
-    fn exclude(&mut self, sha: Oid, window: &mut Window, cx: &mut Context<Self>) {
-        self.state.exclude(&sha);
+    /// Which of `shas` the graph's menus may put in the box, set aside, or bring back.
+    pub(crate) fn menu_choices(&self, shas: &[Oid]) -> MergeRequestMenuChoices {
+        MergeRequestMenuChoices {
+            addable: shas
+                .iter()
+                .copied()
+                .filter(|sha| !self.state.is_placed(sha))
+                .collect(),
+            excludable: shas
+                .iter()
+                .copied()
+                .filter(|sha| self.state.can_exclude(sha))
+                .collect(),
+            restorable: shas
+                .iter()
+                .copied()
+                .filter(|sha| self.state.excluded.contains(sha))
+                .collect(),
+        }
+    }
+
+    pub(crate) fn exclude_commits(
+        &mut self,
+        shas: &[Oid],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // The range can change between opening the graph's menu and picking the entry.
+        for sha in shas {
+            if self.state.can_exclude(sha) {
+                self.state.exclude(sha);
+            }
+        }
+        self.box_notice = None;
         self.after_state_change(window, cx);
     }
 
-    fn restore(&mut self, sha: Oid, window: &mut Window, cx: &mut Context<Self>) {
-        self.state.restore(&sha);
+    pub(crate) fn restore_commits(
+        &mut self,
+        shas: &[Oid],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        for sha in shas {
+            self.state.restore(sha);
+        }
         self.after_state_change(window, cx);
+    }
+
+    fn select_first_unplaced(&mut self, cx: &mut Context<Self>) {
+        let Some(sha) = self.state.unplaced().first().map(|commit| commit.sha) else {
+            return;
+        };
+        self.graph
+            .update(cx, |graph, cx| graph.select_commit_by_sha(sha, cx))
+            .ok();
     }
 
     fn pick_development_branch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -2240,6 +2296,7 @@ impl MergeRequestBox {
                 let outside = self.state.is_outside_range(&sha);
                 h_flex()
                     .id(SharedString::from(format!("merge-request-box-card-{sha}")))
+                    .debug_selector(|| format!("merge-request-box-card-{sha}"))
                     .w_full()
                     .gap_1()
                     .px_1()
@@ -2312,6 +2369,7 @@ impl MergeRequestBox {
         let has_commits = range.commits.iter().any(|commit| !commit.is_merge);
 
         v_flex()
+            .debug_selector(|| "merge-request-box-range".into())
             .w_full()
             .gap_1()
             .when(range.truncated, |this| {
@@ -2349,27 +2407,45 @@ impl MergeRequestBox {
                         .color(Color::Success),
                     )
                 } else {
+                    // The graph marks each unplaced row itself, so the box only counts them and
+                    // says where they are.
                     this.child(
-                        Label::new(format!("未配置 {} 件 (古い順)", unplaced.len()))
-                            .size(LabelSize::Small)
-                            .color(Color::Warning),
+                        h_flex()
+                            .w_full()
+                            .gap_1()
+                            .child(
+                                div().flex_1().min_w_0().child(
+                                    Label::new(format!("未配置 {} 件", unplaced.len()))
+                                        .size(LabelSize::Small)
+                                        .color(Color::Warning),
+                                ),
+                            )
+                            .child(
+                                div()
+                                    .flex_none()
+                                    .debug_selector(|| "merge-request-box-first-unplaced".into())
+                                    .child(
+                                        Button::new(
+                                            "merge-request-box-first-unplaced",
+                                            "最初の未配置へ",
+                                        )
+                                        .label_size(LabelSize::XSmall)
+                                        .tooltip(Tooltip::text(
+                                            "グラフでいちばん古い未配置のコミットを選びます",
+                                        ))
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.select_first_unplaced(cx);
+                                        })),
+                                    ),
+                            ),
                     )
-                    .children(
-                        unplaced
-                            .iter()
-                            .take(MAX_LISTED_UNPLACED)
-                            .map(|commit| self.render_unplaced_row(commit, cx)),
-                    )
-                    .when(unplaced.len() > MAX_LISTED_UNPLACED, |this| {
-                        this.child(
-                            Label::new(format!(
-                                "ほか {} 件 (箱に入れるか除外すると続きが出ます)",
-                                unplaced.len() - MAX_LISTED_UNPLACED
-                            ))
-                            .size(LabelSize::XSmall)
-                            .color(Color::Muted),
+                    .child(
+                        Label::new(
+                            "グラフで小さな ● が付いた行です。箱へドラッグするか、右クリックの「MR から除外する」で脇に置いてください。",
                         )
-                    })
+                        .size(LabelSize::XSmall)
+                        .color(Color::Muted),
+                    )
                 }
             })
             .when(merge_count > 0, |this| {
@@ -2412,7 +2488,7 @@ impl MergeRequestBox {
                             .label_size(LabelSize::XSmall)
                             .tooltip(Tooltip::text("除外をやめて未配置に戻す"))
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                this.restore(sha, window, cx);
+                                this.restore_commits(&[sha], window, cx);
                             })),
                         )
                     }))
@@ -2444,36 +2520,9 @@ impl MergeRequestBox {
             )
     }
 
-    fn render_unplaced_row(&self, commit: &RangeCommit, cx: &Context<Self>) -> AnyElement {
-        let sha = commit.sha;
-        let candidate = MergeRequestCandidate::from(commit);
-        self.render_commit_row(commit, cx)
-            .child(
-                Button::new(
-                    SharedString::from(format!("merge-request-box-add-{sha}")),
-                    "+ 箱へ",
-                )
-                .label_size(LabelSize::XSmall)
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.add_candidates(vec![candidate.clone()], window, cx);
-                })),
-            )
-            .child(
-                Button::new(
-                    SharedString::from(format!("merge-request-box-exclude-{sha}")),
-                    "除外",
-                )
-                .label_size(LabelSize::XSmall)
-                .tooltip(Tooltip::text("MR に入れないと決めたコミットとして脇に置く"))
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.exclude(sha, window, cx);
-                })),
-            )
-            .into_any_element()
-    }
-
     fn render_labelled_editor(
         &self,
+        selector: &'static str,
         label: &'static str,
         editor: Entity<Editor>,
         cx: &App,
@@ -2484,6 +2533,7 @@ impl MergeRequestBox {
             .child(Label::new(label).size(LabelSize::Small))
             .child(
                 div()
+                    .debug_selector(|| selector.into())
                     .w_full()
                     .px_1p5()
                     .py_1()
@@ -2578,8 +2628,94 @@ impl Render for MergeRequestBox {
         let recreate = self.recreate;
         let entity = cx.weak_entity();
 
+        // Directly inside the scrolling body, every part would be a flex item shrunk to fit it, and
+        // a full box's cards would be drawn over what follows the frame.
+        let content = v_flex()
+            .w_full()
+            .p_2()
+            .gap_2()
+            .children(self.render_stranded(cx))
+            .children(self.render_pending(cx))
+            .child(self.render_ref_picker(
+                "merge-request-box-development-branch",
+                "開発ブランチ",
+                self.development_branch.clone(),
+                "コミットの出どころ。入れ忘れの確認と最後の比較に使います",
+                |this, window, cx| this.pick_development_branch(window, cx),
+                cx,
+            ))
+            .child(self.render_ref_picker(
+                "merge-request-box-base",
+                "基点",
+                self.base.clone(),
+                "MR の向け先。MR ブランチはここから作ります",
+                |this, window, cx| this.pick_base(window, cx),
+                cx,
+            ))
+            .children(stale_base.map(|warning| {
+                Label::new(warning)
+                    .size(LabelSize::Small)
+                    .color(Color::Warning)
+            }))
+            .child(self.render_placed(cx))
+            .children(Self::render_notice(&self.box_notice))
+            .child(self.render_range(cx))
+            .child(self.render_labelled_editor(
+                "merge-request-box-message",
+                "メッセージ",
+                self.message_editor.clone(),
+                cx,
+            ))
+            .child(self.render_labelled_editor(
+                "merge-request-box-branch-name",
+                "MR ブランチ名",
+                self.branch_name_editor.clone(),
+                cx,
+            ))
+            .when(exists, |this| {
+                this.child(
+                    Checkbox::new(
+                        "merge-request-box-recreate",
+                        if recreate {
+                            ToggleState::Selected
+                        } else {
+                            ToggleState::Unselected
+                        },
+                    )
+                    .label(format!(
+                        "既存の {branch_name} を作り直す (強制プッシュが必要になります)"
+                    ))
+                    .label_size(LabelSize::Small)
+                    .on_click(move |state, _, cx| {
+                        let selected = *state == ToggleState::Selected;
+                        entity
+                            .update(cx, |this, cx| {
+                                this.recreate = selected;
+                                this.create_notice = None;
+                                cx.notify();
+                            })
+                            .ok();
+                    }),
+                )
+            })
+            .children(Self::render_notice(&self.create_notice))
+            .child(
+                h_flex().w_full().justify_end().child(
+                    Button::new("merge-request-box-create", "作成して比較")
+                        .style(ButtonStyle::Filled)
+                        .disabled(!can_create)
+                        .tooltip(Tooltip::text(
+                            "箱のコミットを基点の上で 1 つにまとめた MR ブランチを作り、開発ブランチと比べます",
+                        ))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.create(window, cx);
+                        })),
+                ),
+            );
+
         v_flex()
             .key_context("MergeRequestBox")
+            .debug_selector(|| "merge-request-box".into())
             .track_focus(&self.focus_handle)
             .size_full()
             .on_action(cx.listener(Self::confirm))
@@ -2614,90 +2750,14 @@ impl Render for MergeRequestBox {
                     ),
             )
             .child(
-                v_flex()
+                div()
                     .id("merge-request-box-body")
+                    .debug_selector(|| "merge-request-box-body".into())
                     .flex_1()
                     .min_h_0()
                     .w_full()
                     .overflow_y_scroll()
-                    .p_2()
-                    .gap_2()
-                    .children(self.render_stranded(cx))
-                    .children(self.render_pending(cx))
-                    .child(self.render_ref_picker(
-                        "merge-request-box-development-branch",
-                        "開発ブランチ",
-                        self.development_branch.clone(),
-                        "コミットの出どころ。入れ忘れの確認と最後の比較に使います",
-                        |this, window, cx| this.pick_development_branch(window, cx),
-                        cx,
-                    ))
-                    .child(self.render_ref_picker(
-                        "merge-request-box-base",
-                        "基点",
-                        self.base.clone(),
-                        "MR の向け先。MR ブランチはここから作ります",
-                        |this, window, cx| this.pick_base(window, cx),
-                        cx,
-                    ))
-                    .children(stale_base.map(|warning| {
-                        Label::new(warning)
-                            .size(LabelSize::Small)
-                            .color(Color::Warning)
-                    }))
-                    .child(self.render_placed(cx))
-                    .children(Self::render_notice(&self.box_notice))
-                    .child(self.render_range(cx))
-                    .child(self.render_labelled_editor(
-                        "メッセージ",
-                        self.message_editor.clone(),
-                        cx,
-                    ))
-                    .child(self.render_labelled_editor(
-                        "MR ブランチ名",
-                        self.branch_name_editor.clone(),
-                        cx,
-                    ))
-                    .when(exists, |this| {
-                        this.child(
-                            Checkbox::new(
-                                "merge-request-box-recreate",
-                                if recreate {
-                                    ToggleState::Selected
-                                } else {
-                                    ToggleState::Unselected
-                                },
-                            )
-                            .label(format!(
-                                "既存の {branch_name} を作り直す (強制プッシュが必要になります)"
-                            ))
-                            .label_size(LabelSize::Small)
-                            .on_click(move |state, _, cx| {
-                                let selected = *state == ToggleState::Selected;
-                                entity
-                                    .update(cx, |this, cx| {
-                                        this.recreate = selected;
-                                        this.create_notice = None;
-                                        cx.notify();
-                                    })
-                                    .ok();
-                            }),
-                        )
-                    })
-                    .children(Self::render_notice(&self.create_notice))
-                    .child(
-                        h_flex().w_full().justify_end().child(
-                            Button::new("merge-request-box-create", "作成して比較")
-                                .style(ButtonStyle::Filled)
-                                .disabled(!can_create)
-                                .tooltip(Tooltip::text(
-                                    "箱のコミットを基点の上で 1 つにまとめた MR ブランチを作り、開発ブランチと比べます",
-                                ))
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.create(window, cx);
-                                })),
-                        ),
-                    ),
+                    .child(content),
             )
     }
 }
@@ -2843,6 +2903,15 @@ mod tests {
         }
     }
 
+    fn range_candidate(commit: &RangeCommit) -> MergeRequestCandidate {
+        MergeRequestCandidate {
+            sha: commit.sha,
+            subject: commit.subject.clone(),
+            message: commit.message.clone(),
+            is_merge: commit.is_merge,
+        }
+    }
+
     fn candidate(byte: u8) -> MergeRequestCandidate {
         MergeRequestCandidate {
             sha: oid(byte),
@@ -2881,10 +2950,7 @@ mod tests {
     #[test]
     fn test_outside_commits_take_what_git_says() {
         let mut state = state_with_range();
-        state.add([
-            MergeRequestCandidate::from(&range_commit(1, false)),
-            candidate(9),
-        ]);
+        state.add([range_candidate(&range_commit(1, false)), candidate(9)]);
         assert_eq!(state.outside_range_shas(), vec![oid(9)]);
         assert_eq!(
             outside_commit_args(&[oid(9)]),
@@ -2922,7 +2988,7 @@ mod tests {
     #[test]
     fn test_cleared_range_marks_and_lists_nothing() {
         let mut state = state_with_range();
-        state.add([MergeRequestCandidate::from(&range_commit(1, false))]);
+        state.add([range_candidate(&range_commit(1, false))]);
         state.exclude(&oid(2));
         state.clear_range();
         assert!(state.unplaced().is_empty());
@@ -2931,6 +2997,10 @@ mod tests {
         assert_eq!(state.outside_range_shas(), vec![oid(1)]);
         assert_eq!(placed(&state), vec![oid(1)], "the box keeps what is in it");
         assert_eq!(state.row_marks().mark(&oid(3)), None);
+        assert!(
+            !state.can_exclude(&oid(3)),
+            "without a range there is nothing a commit could be missing from"
+        );
     }
 
     /// The same path on this machine and on a server keeps two boxes; a local path's key is what
@@ -3056,8 +3126,16 @@ mod tests {
         state.add([candidate(1)]);
         assert!(state.excluded_shas().is_empty());
 
+        assert!(state.can_exclude(&oid(3)), "unplaced");
+        assert!(state.can_exclude(&oid(1)), "placed, from the range");
+        assert!(!state.can_exclude(&oid(4)), "a merge is never counted");
+        state.add([candidate(9)]);
+        assert!(!state.can_exclude(&oid(9)), "never missing from the box");
+        state.remove(&oid(9));
+
         state.add([candidate(2), candidate(3)]);
         state.exclude(&oid(5));
+        assert!(!state.can_exclude(&oid(5)), "already excluded");
         assert!(state.unplaced().is_empty());
         assert_eq!(state.placed_in_range_count(), 3);
 
@@ -3565,7 +3643,7 @@ mod tests {
         assert_eq!(mark_of(&graph, oid(3), &cx), Some(RowMark::Unplaced));
 
         merge_request_box.update_in(&mut cx, |merge_request_box, window, cx| {
-            merge_request_box.exclude(oid(3), window, cx);
+            merge_request_box.exclude_commits(&[oid(3)], window, cx);
         });
         cx.run_until_parked();
         assert_eq!(mark_of(&graph, oid(3), &cx), Some(RowMark::Excluded));
@@ -3591,6 +3669,156 @@ mod tests {
             .read_with(&cx, |graph, _| graph.visible_merge_request_box())
             .expect("the menu should have opened the box");
         assert_eq!(placed_in(&merge_request_box, &cx), vec![oid(3), oid(1)]);
+    }
+
+    /// However many commits are in the box, the dashed frame holds them all and the rest of the
+    /// box stays below it: a short window scrolls the box instead of squeezing its parts.
+    #[gpui::test]
+    async fn test_full_box_scrolls_instead_of_overflowing(cx: &mut TestAppContext) {
+        let (_fs, _workspace, graph, mut cx) = setup("dev-full", cx).await;
+        let merge_request_box = open_box(&graph, &mut cx);
+        let bytes: Vec<u8> = (100..140).collect();
+        merge_request_box.update_in(&mut cx, |merge_request_box, window, cx| {
+            merge_request_box.add_candidates(
+                bytes.iter().map(|byte| candidate(*byte)).collect(),
+                window,
+                cx,
+            );
+        });
+        let last_card: &'static str = format!("merge-request-box-card-{}", oid(139)).leak();
+
+        let measure = |height: f32, cx: &mut VisualTestContext| {
+            cx.simulate_resize(gpui::size(px(1600.), px(height)));
+            cx.run_until_parked();
+            let mut bounds = |selector: &'static str| {
+                cx.debug_bounds(selector)
+                    .unwrap_or_else(|| panic!("{selector} should be on screen"))
+            };
+            (
+                bounds("merge-request-box"),
+                bounds("merge-request-box-body"),
+                bounds("merge-request-box-drop"),
+                bounds(last_card),
+                bounds("merge-request-box-range"),
+                bounds("merge-request-box-message"),
+            )
+        };
+
+        let (_, _, tall_drop, _, _, tall_message) = measure(4000., &mut cx);
+        let (column, body, drop, card, range, message) = measure(500., &mut cx);
+        assert!(
+            card.bottom() <= drop.bottom(),
+            "the last card ({:?}) is drawn past the frame ({:?})",
+            card.bottom(),
+            drop.bottom()
+        );
+        assert!(
+            drop.bottom() <= range.top(),
+            "the frame ({:?}) runs into the unplaced count ({:?})",
+            drop.bottom(),
+            range.top()
+        );
+        assert_eq!(
+            drop.size.height, tall_drop.size.height,
+            "a short window squeezes the frame"
+        );
+        assert_eq!(
+            message.size.height, tall_message.size.height,
+            "a short window squeezes the message editor"
+        );
+        assert!(
+            range.top() > body.bottom(),
+            "with this much in the box, the rest is below the fold and the body scrolls"
+        );
+        assert!(body.bottom() <= column.bottom());
+    }
+
+    /// Picks the `from_end`th of the MR entries counted from the last one, which come right
+    /// before the custom commands' "詳細" in a row's menu and right before "SHA をコピー" in the
+    /// multi-selection menu.
+    fn confirm_merge_request_entry(
+        graph: &Entity<GitGraph>,
+        row: Option<usize>,
+        from_end: usize,
+        cx: &mut VisualTestContext,
+    ) {
+        let menu = graph
+            .update_in(cx, |graph, window, cx| {
+                graph.open_row_menu_for_test(row, window, cx)
+            })
+            .expect("the menu should open");
+        menu.update_in(cx, |menu, window, cx| {
+            menu.select_last(window, cx);
+            for _ in 0..from_end {
+                menu.select_previous(&menu::SelectPrevious, window, cx);
+            }
+            menu.confirm(&menu::Confirm, window, cx);
+        });
+        cx.run_until_parked();
+    }
+
+    /// With the list of unplaced commits gone from the box, the graph's own menus set rows aside
+    /// and bring them back, and the box points at the first row still to decide on.
+    #[gpui::test]
+    async fn test_graph_menus_exclude_and_restore(cx: &mut TestAppContext) {
+        let (_fs, _workspace, graph, mut cx) = setup("dev-exclude", cx).await;
+        let merge_request_box = open_box(&graph, &mut cx);
+        // Rows are newest first: oid(1) is row 0 and oid(3) row 2.
+        confirm_merge_request_entry(&graph, Some(2), 1, &mut cx);
+        assert_eq!(mark_of(&graph, oid(3), &cx), Some(RowMark::Excluded));
+
+        cx.simulate_resize(gpui::size(px(1600.), px(1200.)));
+        cx.run_until_parked();
+        let first_unplaced = cx
+            .debug_bounds("merge-request-box-first-unplaced")
+            .expect("the box should point at what is left");
+        cx.simulate_click(first_unplaced.center(), Modifiers::none());
+        cx.run_until_parked();
+        assert_eq!(
+            graph.read_with(&cx, |graph, _| graph.selected_row_for_test()),
+            Some(1),
+            "oid(2) is now the oldest unplaced commit"
+        );
+
+        confirm_merge_request_entry(&graph, Some(2), 1, &mut cx);
+        assert_eq!(mark_of(&graph, oid(3), &cx), Some(RowMark::Unplaced));
+
+        merge_request_box.update_in(&mut cx, |merge_request_box, window, cx| {
+            merge_request_box.add_candidates(vec![candidate(1)], window, cx);
+        });
+        graph.update(&mut cx, |graph, _| graph.select_rows_for_test(&[0, 1, 3]));
+        confirm_merge_request_entry(&graph, None, 1, &mut cx);
+        assert_eq!(
+            merge_request_box.read_with(&cx, |merge_request_box, _| merge_request_box
+                .state
+                .excluded_shas()),
+            vec![oid(2), oid(1)],
+            "the placed and the unplaced row, not the base below the range"
+        );
+        assert_eq!(
+            mark_of(&graph, oid(4), &cx),
+            None,
+            "the base below the range was never missing from the box"
+        );
+        assert!(placed_in(&merge_request_box, &cx).is_empty());
+
+        confirm_merge_request_entry(&graph, None, 1, &mut cx);
+        assert_eq!(mark_of(&graph, oid(1), &cx), Some(RowMark::Unplaced));
+        assert_eq!(mark_of(&graph, oid(2), &cx), Some(RowMark::Unplaced));
+
+        // With the unplaced list gone, a row's own menu puts it in the box, just above the entry
+        // that sets it aside.
+        confirm_merge_request_entry(&graph, Some(0), 2, &mut cx);
+        assert_eq!(mark_of(&graph, oid(1), &cx), Some(RowMark::Placed));
+        assert_eq!(placed_in(&merge_request_box, &cx), vec![oid(1)]);
+        assert!(
+            merge_request_box
+                .read_with(&cx, |merge_request_box, _| merge_request_box
+                    .menu_choices(&[oid(1)])
+                    .addable)
+                .is_empty(),
+            "a row already in the box is not offered again"
+        );
     }
 
     /// `git::ToggleMergeRequestBox` with no graph open opens one, with the box in it; again, it
@@ -3662,10 +3890,10 @@ mod tests {
                 .unplaced()
                 .into_iter()
                 .filter(|commit| commit.sha != oid(3))
-                .map(MergeRequestCandidate::from)
+                .map(range_candidate)
                 .collect();
             merge_request_box.add_candidates(candidates, window, cx);
-            merge_request_box.exclude(oid(3), window, cx);
+            merge_request_box.exclude_commits(&[oid(3)], window, cx);
         });
         cx.executor().advance_clock(SAVE_DELAY * 2);
         cx.run_until_parked();
@@ -3788,8 +4016,8 @@ mod tests {
         merge_request_box.update_in(&mut cx, |merge_request_box, window, cx| {
             merge_request_box.add_candidates(
                 vec![
-                    MergeRequestCandidate::from(&range_commit(1, false)),
-                    MergeRequestCandidate::from(&range_commit(2, false)),
+                    range_candidate(&range_commit(1, false)),
+                    range_candidate(&range_commit(2, false)),
                 ],
                 window,
                 cx,

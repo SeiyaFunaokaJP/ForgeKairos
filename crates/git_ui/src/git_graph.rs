@@ -3651,6 +3651,8 @@ impl GitGraph {
         let Some(commit) = self.graph_data.commits.get(index) else {
             return;
         };
+        let merge_request_entries =
+            self.merge_request_menu_entries(&[commit.data.sha], commit.data.parents.len() <= 1, cx);
         let repository = self
             .get_repository(cx)
             .map(|repository| repository.downgrade());
@@ -3670,6 +3672,7 @@ impl GitGraph {
             self.focus_handle.clone(),
             repository,
             self.workspace.clone(),
+            merge_request_entries,
             window,
             cx,
         );
@@ -6357,6 +6360,13 @@ impl GitGraph {
     ) {
         let rows: BTreeSet<usize> = self.selected_rows().into_iter().collect();
         let count = rows.len();
+        let selected_shas: Vec<Oid> = rows
+            .iter()
+            .filter_map(|row| self.graph_data.commits.get(*row))
+            .map(|commit| commit.data.sha)
+            .collect();
+        // This menu has its own entries for putting the selection in the box.
+        let merge_request_entries = self.merge_request_menu_entries(&selected_shas, false, cx);
         let rewrite_facts = action_bar::RangeRewriteFacts {
             contiguous: is_contiguous_commit_range(&self.graph_data.commits, &rows),
             on_current_branch: self.selection_is_on_current_branch(cx),
@@ -6458,7 +6468,7 @@ impl GitGraph {
                         ),
                 );
             }
-            menu.separator().entry(
+            menu.map(merge_request_entries).separator().entry(
                 format!("SHA をコピー ({count} 件)"),
                 None,
                 move |_window, cx| {
@@ -6755,16 +6765,122 @@ impl GitGraph {
             .filter_map(|row| self.graph_data.commits.get(row))
             .map(|commit| commit.data.sha)
             .collect();
+        self.add_commits_to_merge_request_box(&shas, window, cx);
+    }
+
+    fn add_commits_to_merge_request_box(
+        &mut self,
+        shas: &[Oid],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if shas.is_empty() {
             return;
         }
-        let candidates = self.merge_request_candidates(&shas, cx);
+        let candidates = self.merge_request_candidates(shas, cx);
         let Some(merge_request_box) = self.open_merge_request_box(window, cx) else {
             return;
         };
         merge_request_box.update(cx, |merge_request_box, cx| {
             merge_request_box.add_candidates(candidates, window, cx);
         });
+    }
+
+    /// "MR の箱に入れる", "MR から除外する" and "MR の除外をやめる" for the rows a menu is about.
+    /// The box has a say only while it is open, and only about the development branch's own
+    /// commits when it comes to setting them aside. `offer_add` is false for a merge, which the
+    /// box never takes.
+    fn merge_request_menu_entries(
+        &self,
+        shas: &[Oid],
+        offer_add: bool,
+        cx: &Context<Self>,
+    ) -> impl FnOnce(ContextMenu) -> ContextMenu + 'static {
+        let choices = self.visible_merge_request_box().map(|merge_request_box| {
+            let mut choices = merge_request_box.read(cx).menu_choices(shas);
+            if !offer_add {
+                choices.addable.clear();
+            }
+            (merge_request_box, choices)
+        });
+        let graph = cx.weak_entity();
+        let several = shas.len() > 1;
+        move |mut menu| {
+            let Some((merge_request_box, choices)) = choices else {
+                return menu;
+            };
+            if choices.addable.is_empty()
+                && choices.excludable.is_empty()
+                && choices.restorable.is_empty()
+            {
+                return menu;
+            }
+            menu = menu.separator();
+            if !choices.addable.is_empty() {
+                let label = if several {
+                    format!("{} 件を MR の箱に入れる", choices.addable.len())
+                } else {
+                    "MR の箱に入れる".to_string()
+                };
+                let addable = choices.addable;
+                menu = menu.item(
+                    ContextMenuEntry::new(label)
+                        .handler(move |window, cx| {
+                            graph
+                                .update(cx, |graph, cx| {
+                                    graph.add_commits_to_merge_request_box(&addable, window, cx)
+                                })
+                                .log_err();
+                        })
+                        .documentation_aside(
+                            DocumentationSide::Right,
+                            help_aside(git_terms::MERGE_REQUEST_BOX_HELP, None),
+                        ),
+                );
+            }
+            if !choices.excludable.is_empty() {
+                let label = if several {
+                    format!("{} 件を MR から除外する", choices.excludable.len())
+                } else {
+                    "MR から除外する".to_string()
+                };
+                let merge_request_box = merge_request_box.clone();
+                let excludable = choices.excludable;
+                menu = menu.item(
+                    ContextMenuEntry::new(label)
+                        .handler(move |window, cx| {
+                            merge_request_box.update(cx, |merge_request_box, cx| {
+                                merge_request_box.exclude_commits(&excludable, window, cx);
+                            });
+                        })
+                        .documentation_aside(
+                            DocumentationSide::Right,
+                            help_aside(git_terms::MERGE_REQUEST_EXCLUDE_HELP, None),
+                        ),
+                );
+            }
+            if !choices.restorable.is_empty() {
+                let label = if several {
+                    format!("{} 件の MR の除外をやめる", choices.restorable.len())
+                } else {
+                    "MR の除外をやめる".to_string()
+                };
+                let restorable = choices.restorable;
+                menu = menu.item(
+                    ContextMenuEntry::new(label)
+                        .handler(move |window, cx| {
+                            merge_request_box.update(cx, |merge_request_box, cx| {
+                                merge_request_box.restore_commits(&restorable, window, cx);
+                            });
+                        })
+                        .documentation_aside(
+                            DocumentationSide::Right,
+                            help_aside(git_terms::MERGE_REQUEST_RESTORE_HELP, None),
+                        ),
+                );
+            }
+            menu
+        }
     }
 
     /// What the box needs to know about commits dragged out of the graph: subjects and messages
@@ -6850,6 +6966,29 @@ impl GitGraph {
     pub(crate) fn select_rows_for_test(&mut self, rows: &[usize]) {
         self.multi_selection = rows.iter().copied().collect();
         self.selected_entry_idx = rows.first().copied();
+    }
+
+    /// The menu a right click on row `index` opens, or the multi-selection menu for `None`.
+    #[cfg(test)]
+    pub(crate) fn open_row_menu_for_test(
+        &mut self,
+        index: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Entity<ContextMenu>> {
+        let position = point(px(20.), px(20.));
+        match index {
+            Some(index) => self.deploy_entry_context_menu(position, index, None, window, cx),
+            None => self.deploy_multi_selection_menu(position, window, cx),
+        }
+        self.context_menu
+            .as_ref()
+            .map(|context_menu| context_menu.menu.clone())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn selected_row_for_test(&self) -> Option<usize> {
+        self.selected_entry_idx
     }
 
     /// Where the commit details go otherwise, sharing their resize handle: at 1280px there is no
