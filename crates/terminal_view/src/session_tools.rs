@@ -1606,6 +1606,19 @@ impl StepKind {
         }
     }
 
+    /// The stripe down the left edge of a card of this kind, so the flow
+    /// reads by kind before any label does.
+    fn stripe_color(&self) -> Color {
+        match self {
+            StepKind::Send => Color::Accent,
+            StepKind::WaitFor | StepKind::Sleep => Color::Info,
+            StepKind::If => Color::Warning,
+            StepKind::Repeat => Color::Created,
+            StepKind::SetVariable => Color::Modified,
+            StepKind::Clear => Color::Muted,
+        }
+    }
+
     /// Whether the row shows the text field (期待文字 / 送信する文字列 /
     /// 判定する文字列 / 入れる値).
     fn has_text(&self) -> bool {
@@ -2540,10 +2553,6 @@ impl StepRow {
 /// How much of a step's text a folded card shows.
 const SUMMARY_LENGTH: usize = 60;
 
-/// Up to this many cards (children included), a macro opens with every card
-/// unfolded; past it, folded, so the flow fits on screen before the details do.
-const UNFOLDED_CARD_LIMIT: usize = 8;
-
 /// 「3 回」 for the count field of a 繰り返し, as its folded card and the
 /// heading of its lane put it.
 fn repeat_times_label(count: &str) -> String {
@@ -2552,19 +2561,6 @@ fn repeat_times_label(count: &str) -> String {
         Ok(count) => format!("{count} 回"),
         Err(_) => "回数が未入力".to_string(),
     }
-}
-
-/// Cards drawn for `rows`, their children included.
-fn card_count(rows: &[StepRow]) -> usize {
-    rows.iter()
-        .map(|row| {
-            1 + row
-                .live_lists()
-                .iter()
-                .map(|list| card_count(row.list(*list)))
-                .sum::<usize>()
-        })
-        .sum()
 }
 
 /// Folds or unfolds every card of `rows`, including the children of lists a
@@ -2950,8 +2946,7 @@ impl MacroEditor {
             .iter()
             .map(|step| StepRow::new(step, window, cx))
             .collect();
-        let expanded = card_count(&self.steps) <= UNFOLDED_CARD_LIMIT;
-        set_expanded(&mut self.steps, expanded);
+        set_expanded(&mut self.steps, false);
         self.error = None;
         self.pending_delete = None;
         self.pending_folder_delete = None;
@@ -4563,19 +4558,21 @@ impl MacroEditor {
             return div().into_any_element();
         };
         let child_count = row.list(list).len();
+        let colors = cx.theme().colors();
+        let selector = format!("macro-lane-{}", lane_key(&Some((path.clone(), list))));
         let frame = v_flex()
             .w_full()
             .min_w_0()
-            .gap_0p5()
-            .p_1()
             .rounded_sm()
             .border_1()
-            .border_color(cx.theme().colors().border_variant);
+            .border_color(colors.border)
+            .debug_selector(move || selector);
         // Deeper levels stay in the row tree and are written back untouched;
         // only the form stops drawing them, because the indentation (and the
         // step numbers) stop being readable.
         if path.depth() >= MAX_EDITABLE_STEP_DEPTH {
             return frame
+                .p_1()
                 .child(
                     Label::new(format!(
                         "{heading}: {child_count} ステップ (これより深い入れ子は JSON で編集してください)"
@@ -4585,19 +4582,29 @@ impl MacroEditor {
                 )
                 .into_any_element();
         }
-        frame
+        let heading = div()
+            .w_full()
+            .px_1()
+            .py_0p5()
+            .rounded_t_sm()
+            .border_b_1()
+            .border_color(colors.border)
+            .bg(colors.surface_background)
             .child(
                 Label::new(heading)
                     .size(LabelSize::Small)
-                    .color(Color::Muted),
-            )
-            .child(self.render_lane(
+                    .color(Color::Muted)
+                    .truncate(),
+            );
+        frame
+            .child(heading)
+            .child(div().w_full().p_1().child(self.render_lane(
                 Some((path.clone(), list)),
                 (width - LANE_CHROME).max(px(0.)),
                 reach,
                 window,
                 cx,
-            ))
+            )))
             .into_any_element()
     }
 
@@ -4644,8 +4651,10 @@ impl MacroEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let colors = cx.theme().colors();
+        // A shade past the card borders, so the line reads as joining the
+        // cards rather than as more of their outline.
         let (line, drop_background, drop_border) = (
-            colors.border,
+            colors.text_muted,
             colors.drop_target_background,
             colors.drop_target_border,
         );
@@ -4656,7 +4665,7 @@ impl MacroEditor {
         let dropped = point.clone();
         let offered = point.clone();
         let view = cx.weak_entity();
-        let connector = || div().w(px(1.)).h(px(6.)).bg(line);
+        let connector = || div().w(px(2.)).h(px(6.)).bg(line);
         v_flex()
             .id((id_prefix, point.index))
             .w_full()
@@ -4758,7 +4767,7 @@ impl MacroEditor {
             format!("変数: {listed}")
         };
         let colors = cx.theme().colors();
-        let (border, background) = (colors.border_variant, colors.surface_background);
+        let (border, background) = (colors.border, colors.surface_background);
         v_flex()
             .w_full()
             .gap_1()
@@ -5079,6 +5088,14 @@ impl MacroEditor {
         let lane_gap = px(8.);
         let min_lane_width = rems(MIN_LANE_WIDTH).to_pixels(window.rem_size());
         let side_by_side = inner_width >= min_lane_width * 2. + lane_gap;
+        // A 分岐 with steps on one side only gives the empty side just enough
+        // for its heading and 「+」, and the rest to the side that has cards.
+        let narrow_lane_width = rems(NARROW_LANE_WIDTH).to_pixels(window.rem_size());
+        let narrow_side = match (row.children.is_empty(), row.else_children.is_empty()) {
+            (true, false) if kind == StepKind::If => Some(StepList::Main),
+            (false, true) if kind == StepKind::If => Some(StepList::Else),
+            _ => None,
+        };
         let lanes = match kind {
             StepKind::Repeat => vec![self.render_child_list(
                 path,
@@ -5093,17 +5110,19 @@ impl MacroEditor {
                 cx,
             )],
             StepKind::If => {
-                let lane_width = if side_by_side {
-                    ((inner_width - lane_gap) / 2.).max(px(0.))
-                } else {
-                    inner_width
+                let wide_width = (inner_width - lane_gap - narrow_lane_width).max(px(0.));
+                let [then_width, else_width] = match (side_by_side, narrow_side) {
+                    (false, _) => [inner_width; 2],
+                    (true, None) => [((inner_width - lane_gap) / 2.).max(px(0.)); 2],
+                    (true, Some(StepList::Main)) => [narrow_lane_width, wide_width],
+                    (true, Some(_)) => [wide_width, narrow_lane_width],
                 };
                 vec![
                     self.render_child_list(
                         path,
                         StepList::Main,
                         "そのとき".to_string(),
-                        lane_width,
+                        then_width,
                         reach,
                         window,
                         cx,
@@ -5112,7 +5131,7 @@ impl MacroEditor {
                         path,
                         StepList::Else,
                         "それ以外".to_string(),
-                        lane_width,
+                        else_width,
                         reach,
                         window,
                         cx,
@@ -5132,15 +5151,22 @@ impl MacroEditor {
         };
         let lanes = (!lanes.is_empty()).then(|| {
             if lanes.len() > 1 && side_by_side {
+                let narrow_index = match narrow_side {
+                    Some(StepList::Main) => Some(0),
+                    Some(StepList::Else) => Some(1),
+                    _ => None,
+                };
                 h_flex()
                     .w_full()
                     .items_start()
                     .gap(lane_gap)
-                    .children(
-                        lanes
-                            .into_iter()
-                            .map(|lane| div().flex_1().min_w_0().child(lane)),
-                    )
+                    .children(lanes.into_iter().enumerate().map(|(index, lane)| {
+                        if Some(index) == narrow_index {
+                            div().flex_none().w(narrow_lane_width).child(lane)
+                        } else {
+                            div().flex_1().min_w_0().child(lane)
+                        }
+                    }))
                     .into_any_element()
             } else {
                 v_flex()
@@ -5558,25 +5584,66 @@ impl MacroEditor {
                 }))
         });
 
-        v_flex()
+        let colors = cx.theme().colors();
+        let stripe = if unknown_kind.is_some() {
+            Color::Error
+        } else {
+            kind.stripe_color()
+        };
+        let has_content = body.is_some() || lanes.is_some();
+        h_flex()
             .w_full()
             .min_w_0()
-            .gap_1()
-            .p_1p5()
+            .items_stretch()
             .rounded_md()
             .border_1()
-            .border_color(cx.theme().colors().border_variant)
-            .bg(cx.theme().colors().surface_background)
+            .border_color(colors.border)
+            .bg(colors.editor_background)
             .debug_selector(move || selector)
-            .child(header)
-            .children(body)
-            .children(lanes)
+            .child(
+                div()
+                    .flex_none()
+                    .w(CARD_STRIPE_WIDTH)
+                    .rounded_l_md()
+                    .bg(stripe.color(cx)),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .w_full()
+                            .px_1p5()
+                            .py_1()
+                            .rounded_tr_md()
+                            .bg(colors.element_background)
+                            .when(has_content, |this| {
+                                this.border_b_1().border_color(colors.border)
+                            })
+                            .when(!has_content, |this| this.rounded_br_md())
+                            .child(header),
+                    )
+                    .when(has_content, |this| {
+                        this.child(
+                            v_flex()
+                                .w_full()
+                                .gap_1()
+                                .p_1p5()
+                                .children(body)
+                                .children(lanes),
+                        )
+                    }),
+            )
             .into_any_element()
     }
 }
 
-/// A card's border and padding on both sides, which its lanes do not get.
-const CARD_CHROME: Pixels = px(14.);
+/// The kind-colored stripe down a card's left edge.
+const CARD_STRIPE_WIDTH: Pixels = px(3.);
+
+/// A card's border, stripe and padding, which its lanes do not get.
+const CARD_CHROME: Pixels = px(2. + 3. + 12.);
 
 /// A lane's border and padding on both sides, which its cards do not get.
 const LANE_CHROME: Pixels = px(10.);
@@ -5584,6 +5651,24 @@ const LANE_CHROME: Pixels = px(10.);
 /// The narrowest a lane is drawn; a 分岐 whose card cannot give both of its
 /// sides this much stacks them instead of putting them side by side.
 const MIN_LANE_WIDTH: f32 = 16.;
+
+/// The width (in rems) of the empty side of a 分岐 whose other side has steps:
+/// room for its heading and its 「+」.
+const NARROW_LANE_WIDTH: f32 = 8.;
+
+/// What the macro editor's modal leaves of the window beside it.
+const MODAL_MARGIN_WIDTH: Pixels = px(48.);
+
+/// How far down the window the workspace's modal layer puts the top of a
+/// modal (its `top_20`), which the modal's height has to leave out to end
+/// inside the window.
+const MODAL_LAYER_TOP: f32 = 5.;
+
+/// What the macro editor's modal leaves of the window under it.
+const MODAL_MARGIN_BOTTOM: Pixels = px(16.);
+
+/// The widest (in rems) the macro editor's modal is drawn.
+const MODAL_MAX_WIDTH: f32 = 120.;
 
 /// Below this viewport width (in rems) the editor opens with the saved-macro
 /// tree hidden, so the form keeps a width worth editing in.
@@ -5689,14 +5774,15 @@ impl Render for MacroEditor {
         let reach = self.variable_reach(&defined, cx);
         let viewport = window.viewport_size();
         let rem_size = window.rem_size();
-        // The modal takes what the window can give it, up to a size past
-        // which a wider form only spreads the same cards thinner.
-        let modal_width = (viewport.width - px(64.))
-            .min(rems(72.).to_pixels(rem_size))
+        // The modal takes nearly the whole window, as an editor tab would;
+        // only a very wide one is capped, past which a wider form only
+        // spreads the same cards thinner.
+        let modal_width = (viewport.width - MODAL_MARGIN_WIDTH)
+            .min(rems(MODAL_MAX_WIDTH).to_pixels(rem_size))
             .max(px(0.));
-        let modal_height = (viewport.height - px(96.))
-            .min(rems(52.).to_pixels(rem_size))
-            .max(px(0.));
+        let modal_height =
+            (viewport.height - rems(MODAL_LAYER_TOP).to_pixels(rem_size) - MODAL_MARGIN_BOTTOM)
+                .max(px(0.));
         // What the cards of the macro's own list get: the modal less its
         // padding, the tree beside the form when it is shown, and the room
         // the form keeps for its scrollbar.
@@ -5793,7 +5879,7 @@ impl Render for MacroEditor {
                                     .gap_1()
                                     .pr_3()
                                     .border_r_1()
-                                    .border_color(cx.theme().colors().border_variant)
+                                    .border_color(cx.theme().colors().border)
                                     .child(
                                         h_flex()
                                             .w_full()
@@ -9760,7 +9846,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn a_macro_opens_unfolded_up_to_eight_cards(cx: &mut TestAppContext) {
+    async fn a_macro_opens_with_every_card_folded(cx: &mut TestAppContext) {
         let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
         let cx = &mut VisualTestContext::from_window(*window, cx);
         let store = new_store(&fs, cx);
@@ -9768,20 +9854,164 @@ mod tests {
 
         let editor = open_editor(&workspace, &store, cx);
         editor.update_in(cx, |editor, window, cx| {
-            // Eight cards counting the steps inside the 繰り返し.
-            editor.load_macro(Some(repeat_of(8)), window, cx);
-            assert_eq!(card_count(&editor.steps), 8);
-            assert_eq!(every_card_expanded(&editor.steps), vec![true; 8]);
+            // However few cards there are, the steps inside the 繰り返し too.
+            editor.load_macro(Some(repeat_of(2)), window, cx);
+            assert_eq!(every_card_expanded(&editor.steps), vec![false; 2]);
 
             editor.load_macro(Some(repeat_of(9)), window, cx);
-            assert_eq!(card_count(&editor.steps), 9);
             assert_eq!(every_card_expanded(&editor.steps), vec![false; 9]);
 
             editor.set_all_expanded(true, cx);
             assert_eq!(every_card_expanded(&editor.steps), vec![true; 9]);
             editor.set_all_expanded(false, cx);
             assert_eq!(every_card_expanded(&editor.steps), vec![false; 9]);
+
+            let one_step = |text: &str| TerminalMacro {
+                name: "1 枚".to_string(),
+                steps: vec![sent(text)],
+                ..TerminalMacro::default()
+            };
+            editor.load_macro(Some(one_step("")), window, cx);
+            assert_eq!(every_card_expanded(&editor.steps), vec![false]);
+            editor.load_macro(Some(one_step("show version")), window, cx);
+            assert_eq!(every_card_expanded(&editor.steps), vec![false]);
+
+            // A card put in after opening is there to be typed into.
+            editor.add_step(StepKind::Sleep, window, cx);
+            assert_eq!(every_card_expanded(&editor.steps), vec![false, true]);
         });
+    }
+
+    #[gpui::test]
+    async fn a_branch_with_one_empty_side_gives_its_width_to_the_other(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let branch = |then_steps: Vec<MacroStep>, else_steps: Vec<MacroStep>| TerminalMacro {
+            name: "分岐".to_string(),
+            steps: vec![MacroStep::If {
+                pattern: "router#".to_string(),
+                regex: false,
+                scope: MatchScope::Screen,
+                capture: None,
+                then_steps,
+                else_steps,
+            }],
+            ..TerminalMacro::default()
+        };
+        let narrow = cx.update(|window, _| rems(NARROW_LANE_WIDTH).to_pixels(window.rem_size()));
+        let editor = open_editor(&workspace, &store, cx);
+        for (then_steps, else_steps, empty_lane, full_lane, empty_insert) in [
+            (
+                vec![sent("a")],
+                Vec::new(),
+                "macro-lane-1-else",
+                "macro-lane-1-main",
+                "macro-insert-1-else-0",
+            ),
+            (
+                Vec::new(),
+                vec![sent("b")],
+                "macro-lane-1-main",
+                "macro-lane-1-else",
+                "macro-insert-1-main-0",
+            ),
+        ] {
+            editor.update_in(cx, |editor, window, cx| {
+                editor.load_macro(Some(branch(then_steps, else_steps)), window, cx);
+            });
+            cx.run_until_parked();
+            let empty = cx
+                .debug_bounds(empty_lane)
+                .expect("the empty side should have been drawn");
+            let full = cx
+                .debug_bounds(full_lane)
+                .expect("the side with a step should have been drawn");
+            assert!(
+                (empty.top() - full.top()).abs() < px(1.),
+                "the sides should be beside each other: {empty:?} {full:?}"
+            );
+            assert!(
+                (empty.size.width - narrow).abs() <= px(1.),
+                "the empty side is {:?} wide, not the narrow {narrow:?}",
+                empty.size.width
+            );
+            assert!(
+                full.size.width > empty.size.width * 2.,
+                "the side with a step should take the rest: {full:?} {empty:?}"
+            );
+            let insert = cx
+                .debug_bounds(empty_insert)
+                .expect("the empty side keeps its 「+」");
+            assert!(
+                insert.size.width > px(0.)
+                    && insert.left() >= empty.left()
+                    && insert.right() <= empty.right()
+                    && insert.top() >= empty.top()
+                    && insert.bottom() <= empty.bottom(),
+                "the 「+」 {insert:?} should be inside the empty side {empty:?}"
+            );
+        }
+
+        for (then_steps, else_steps) in
+            [(vec![sent("a")], vec![sent("b")]), (Vec::new(), Vec::new())]
+        {
+            editor.update_in(cx, |editor, window, cx| {
+                editor.load_macro(Some(branch(then_steps, else_steps)), window, cx);
+            });
+            cx.run_until_parked();
+            let then_lane = cx
+                .debug_bounds("macro-lane-1-main")
+                .expect("「そのとき」 should have been drawn");
+            let else_lane = cx
+                .debug_bounds("macro-lane-1-else")
+                .expect("「それ以外」 should have been drawn");
+            assert!((then_lane.top() - else_lane.top()).abs() < px(1.));
+            assert!(
+                (then_lane.size.width - else_lane.size.width).abs() <= px(1.),
+                "sides that are both empty or both not share the width: {then_lane:?} {else_lane:?}"
+            );
+            assert!(then_lane.size.width > narrow * 2.);
+        }
+
+        // A 分岐 inside the side that was given the width is laid out by that
+        // width: here it only fits side by side in the wide side, not in half.
+        let width = cx.update(|window, _| rems(55.).to_pixels(window.rem_size()));
+        cx.simulate_resize(size(width, px(900.)));
+        editor.update_in(cx, |editor, window, cx| {
+            editor.show_macro_list = false;
+            let inner = MacroStep::If {
+                pattern: "#".to_string(),
+                regex: false,
+                scope: MatchScope::Screen,
+                capture: None,
+                then_steps: vec![sent("c")],
+                else_steps: vec![sent("d")],
+            };
+            editor.load_macro(Some(branch(vec![inner], Vec::new())), window, cx);
+        });
+        cx.run_until_parked();
+        let outer = cx
+            .debug_bounds("macro-lane-1-main")
+            .expect("the outer 「そのとき」 should have been drawn");
+        let then_lane = cx
+            .debug_bounds("macro-lane-1-1-main")
+            .expect("the inner 「そのとき」 should have been drawn");
+        let else_lane = cx
+            .debug_bounds("macro-lane-1-1-else")
+            .expect("the inner 「それ以外」 should have been drawn");
+        let min_lane = cx.update(|window, _| rems(MIN_LANE_WIDTH).to_pixels(window.rem_size()));
+        assert!(
+            outer.size.width / 2. < min_lane * 2.,
+            "the window should be too narrow for the inner lanes in half the outer {outer:?}"
+        );
+        assert!(
+            (then_lane.top() - else_lane.top()).abs() < px(1.)
+                && then_lane.right() <= else_lane.left(),
+            "the inner lanes {then_lane:?} {else_lane:?} should be side by side"
+        );
     }
 
     #[gpui::test]
@@ -9812,6 +10042,7 @@ mod tests {
                 window,
                 cx,
             );
+            editor.set_all_expanded(true, cx);
         });
         cx.run_until_parked();
         assert!(
@@ -9915,10 +10146,16 @@ mod tests {
         let modal = cx
             .debug_bounds("macro-editor")
             .expect("the editor should have been drawn");
+        let layer_top = cx.update(|window, _| rems(5.).to_pixels(window.rem_size()));
         assert!(
-            modal.size.width <= width - px(64.) && modal.size.height <= px(700. - 96.),
-            "the modal is {:?}, which does not leave the window its margin",
+            (modal.size.width - (width - px(48.))).abs() <= px(1.)
+                && (modal.size.height - (px(700. - 16.) - layer_top)).abs() <= px(1.),
+            "the modal is {:?}, which is not the window less its margin",
             modal.size
+        );
+        assert!(
+            modal.left() >= px(0.) && modal.right() <= width && modal.bottom() <= px(700.),
+            "the modal {modal:?} runs off the window"
         );
 
         let toggle = cx
@@ -9931,6 +10168,24 @@ mod tests {
             "the button brings the list back"
         );
         assert!(cx.debug_bounds("macro-form-header").is_some());
+
+        // A very wide window does not spread the form past a width worth reading.
+        let (wide, cap) = cx.update(|window, _| {
+            (
+                rems(MODAL_MAX_WIDTH + 30.).to_pixels(window.rem_size()),
+                rems(MODAL_MAX_WIDTH).to_pixels(window.rem_size()),
+            )
+        });
+        cx.simulate_resize(size(wide, px(700.)));
+        cx.run_until_parked();
+        let modal = cx
+            .debug_bounds("macro-editor")
+            .expect("the editor should have been drawn");
+        assert!(
+            (modal.size.width - cap).abs() <= px(1.),
+            "the modal is {:?} wide in a {wide:?} window, not capped at {cap:?}",
+            modal.size.width
+        );
     }
 
     #[gpui::test]
