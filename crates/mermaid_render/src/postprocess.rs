@@ -28,13 +28,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use anyhow::{Context as _, Result};
-use quick_xml::Reader;
 use quick_xml::events::Event;
 use quick_xml::events::attributes::Attribute;
+use quick_xml::{Reader, XmlVersion};
 
 use crate::{DiagramGeometry, MermaidTheme};
 
-/// [`Attribute::unescape_value`] for a value `merman` may have cut short.
+/// [`Attribute::normalized_value`] for a value `merman` may have cut short.
 ///
 /// `merman` strips `!important` out of a `style` attribute after it has escaped
 /// the attribute, by splitting the escaped text on `;` and joining the pieces
@@ -44,7 +44,7 @@ use crate::{DiagramGeometry, MermaidTheme};
 /// `quick_xml` refuses the whole attribute. A missing semicolon must not cost
 /// the diagram, so it is put back.
 pub(crate) fn unescape_attribute_value<'a>(attribute: &Attribute<'a>) -> Result<Cow<'a, str>> {
-    match attribute.unescape_value() {
+    match attribute.normalized_value(XmlVersion::Implicit1_0) {
         Ok(value) => Ok(value),
         Err(error) => {
             let escaped = std::str::from_utf8(attribute.value.as_ref())?;
@@ -60,8 +60,13 @@ pub(crate) fn unescape_attribute_value<'a>(attribute: &Attribute<'a>) -> Result<
             if !incomplete_entity {
                 return Err(error.into());
             }
-            let completed = format!("{escaped};");
-            let Ok(repaired) = quick_xml::escape::unescape(&completed) else {
+            // Read through the same normalization as the value that parsed, so
+            // a repaired value does not keep line breaks an intact one loses.
+            let completed = Attribute {
+                key: attribute.key,
+                value: Cow::Owned(format!("{escaped};").into_bytes()),
+            };
+            let Ok(repaired) = completed.normalized_value(XmlVersion::Implicit1_0) else {
                 return Err(error.into());
             };
             Ok(Cow::Owned(repaired.into_owned()))
@@ -113,7 +118,7 @@ fn extract_svg_id(svg: &str) -> String {
                 .try_get_attribute("id")
                 .ok()
                 .flatten()
-                .and_then(|a| a.unescape_value().ok())
+                .and_then(|a| a.normalized_value(XmlVersion::Implicit1_0).ok())
                 .map(|v| v.into_owned())
                 .unwrap_or_default();
         }

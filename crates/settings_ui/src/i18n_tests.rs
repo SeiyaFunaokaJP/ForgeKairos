@@ -33,11 +33,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     // Added by upstream v1.19.2. The folder indicators replace the folder icon
     // switches, whose rows left the table.
     (
-        "p0.i10[reveal_if_open].title",
+        "p0.i11[reveal_if_open].title",
         "開いているファイルはそのペインで表示",
     ),
     (
-        "p0.i10[reveal_if_open].description",
+        "p0.i11[reveal_if_open].description",
         "有効にすると、既に開いているバッファーを優先して表示します。",
     ),
     ("p3.i140[language_detection].title", "言語の自動検出"),
@@ -56,44 +56,125 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "プロジェクト内検索で、Enter を押さなくても入力に合わせて検索を始めます。",
     ),
     (
-        "p6.i61[close_panel_on_toggle].title",
+        "p6.i64[close_panel_on_toggle].title",
         "切り替え時にパネルを閉じる",
     ),
     (
-        "p6.i61[close_panel_on_toggle].description",
+        "p6.i64[close_panel_on_toggle].description",
         "フォーカスのあるパネルで ToggleFocus アクションを実行したときに、フォーカスをエディターに戻す代わりに、パネルを閉じるかどうかを設定します。",
     ),
     (
-        "p7.i6[project_panel.folder_indicator].title",
+        "p7.i7[project_panel.folder_indicator].title",
         "フォルダーの表示",
     ),
     (
-        "p7.i6[project_panel.folder_indicator].description",
+        "p7.i7[project_panel.folder_indicator].description",
         "プロジェクトパネルのディレクトリに何を表示するかを設定します。",
     ),
     (
-        "p7.i39[outline_panel.folder_indicator].title",
+        "p7.i40[outline_panel.folder_indicator].title",
         "フォルダーの表示",
     ),
     (
-        "p7.i39[outline_panel.folder_indicator].description",
+        "p7.i40[outline_panel.folder_indicator].description",
         "アウトラインパネルのディレクトリに何を表示するかを設定します。",
     ),
     (
-        "p7.i45[outline_panel.multi_buffer_hide_symbols].title",
+        "p7.i46[outline_panel.multi_buffer_hide_symbols].title",
         "マルチバッファーではシンボルを隠す",
     ),
     (
-        "p7.i45[outline_panel.multi_buffer_hide_symbols].description",
+        "p7.i46[outline_panel.multi_buffer_hide_symbols].description",
         "マルチバッファーを表示しているときに、アウトラインパネルのシンボル・抜粋・検索結果を隠すかどうかを設定します。",
     ),
     (
-        "p7.i58[git_panel.folder_indicator].title",
+        "p7.i59[git_panel.folder_indicator].title",
         "フォルダーの表示",
     ),
     (
-        "p7.i58[git_panel.folder_indicator].description",
+        "p7.i59[git_panel.folder_indicator].description",
         "Git パネルのディレクトリに何を表示するかを設定します。",
+    ),
+    // Added by upstream v1.20.2.
+    ("p0.i4[on_new_window].title", "新しいウィンドウを開いたとき"),
+    (
+        "p0.i4[on_new_window].description",
+        "新しいウィンドウを開いたときに表示する内容です。",
+    ),
+    (
+        "p1.i30[cursor_animation.enabled].title",
+        "カーソルのアニメーション",
+    ),
+    (
+        "p1.i30[cursor_animation.enabled].description",
+        "エディター内でカーソルが移動するときに、滑らかにアニメーションさせるかどうかを設定します。",
+    ),
+    (
+        "p3.i148[markdown_preview.open_markdown_files_in_preview].title",
+        "Markdown ファイルをプレビューで開く",
+    ),
+    (
+        "p3.i148[markdown_preview.open_markdown_files_in_preview].description",
+        "Markdown ファイルを自動的にプレビューで開くかどうかを設定します。",
+    ),
+    ("p5.i10.header", "コマンドパレット"),
+    (
+        "p5.i11[command_palette.use_command_history].title",
+        "コマンドの履歴を使う",
+    ),
+    (
+        "p5.i11[command_palette.use_command_history].description",
+        "コマンドパレットの並べ替えに、コマンドの使用履歴による順位を使うかどうかを設定します。",
+    ),
+    (
+        "p6.i6[status_bar.pending_keystrokes_indicator].title",
+        "入力中のキーストロークのインジケーター",
+    ),
+    (
+        "p6.i6[status_bar.pending_keystrokes_indicator].description",
+        "複数ストロークのキーバインドの入力中に、カウントダウン付きのインジケーターを表示します。Which-key メニューが有効なときは、そのキーバインドのプレビューのポップオーバーは無効になります。",
+    ),
+    ("p6.i55[window_title_format].title", "タイトルの書式"),
+    (
+        "p6.i55[window_title_format].description",
+        "ウィンドウのタイトルのテンプレートです。使える変数は `${projectName}`、`${fileName}`、`${filePath}`、`${relativePath}`、`${fileStem}`、`${remoteName}`、`${remoteHost}`、`${appName}`、`${branch}`、`${separator}` です。`${separator}` は隣の変数が空のときは省かれますが、文字どおりに書いたテキストは残ります。共同作業のインジケーターがある場合は、展開したテンプレートの後ろに付きます。テンプレートを展開した結果が空のときは、既定のテンプレートを使います。",
+    ),
+    (
+        "p6.i55[window_title_format].placeholder",
+        "${projectName}${separator}${fileName}",
+    ),
+    (
+        "p6.i56[window_title_separator].title",
+        "タイトルの区切り文字",
+    ),
+    (
+        "p6.i56[window_title_separator].description",
+        "ウィンドウのタイトルの書式で `${separator}` に入る文字列です。前後の空白も値に含めてください。",
+    ),
+    ("p6.i56[window_title_separator].placeholder", " — "),
+    (
+        "p7.i3[project_panel.title_tooltip_delay$].title",
+        "プロジェクトパネルの項目名のツールチップの遅延",
+    ),
+    (
+        "p7.i3[project_panel.title_tooltip_delay$].description",
+        "プロジェクトパネルの項目名のツールチップが表示されるまでの遅延 (ミリ秒) です。",
+    ),
+    (
+        "p7.i3.v1.f0[project_panel.title_tooltip_delay].title",
+        "カスタムの遅延",
+    ),
+    (
+        "p7.i3.v1.f0[project_panel.title_tooltip_delay].description",
+        "プロジェクトパネルの項目名のツールチップの遅延 (ミリ秒) です。",
+    ),
+    (
+        "language.i67[markdown_preview.open_markdown_files_in_preview].title",
+        "Markdown ファイルをプレビューで開く",
+    ),
+    (
+        "language.i67[markdown_preview.open_markdown_files_in_preview].description",
+        "Markdown ファイルを自動的にプレビューで開くかどうかを設定します。",
     ),
 ];
 
@@ -581,6 +662,7 @@ fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
         MultiCursorModifier,
         NotifyWhenAgentWaiting,
         OnLastWindowClosed,
+        OnNewWindow,
         OpenResultsIn,
         PaneSplitDirectionHorizontal,
         PaneSplitDirectionVertical,
@@ -589,6 +671,7 @@ fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
         ProjectPanelEntrySpacing,
         ProjectPanelSortMode,
         ProjectPanelSortOrder,
+        ProjectPanelTitleTooltipDelayDiscriminants,
         ReduceMotionMode,
         RelativeLineNumbers,
         RestoreOnStartupBehavior,

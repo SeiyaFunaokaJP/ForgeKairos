@@ -921,8 +921,9 @@ impl Render for DeleteBranchTooltip {
                 "ブランチを削除",
                 Some(&branch_picker::DeleteBranch),
                 format!(
-                    "{} alt キーを押しながら強制削除",
-                    panel_operation_help(PanelOperation::DeleteBranch).sentence()
+                    "{} {}",
+                    panel_operation_help(PanelOperation::DeleteBranch).sentence(),
+                    i18n::t!("Hold {} to force delete", ui::alt_key_name!())
                 ),
                 &self.focus_handle,
                 cx,

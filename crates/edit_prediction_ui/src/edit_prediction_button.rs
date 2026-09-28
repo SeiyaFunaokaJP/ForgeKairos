@@ -833,7 +833,11 @@ impl EditPredictionButton {
                     ContextMenuEntry::new("Subtle")
                         .toggleable(IconPosition::Start, subtle_mode)
                         .documentation_aside(DocumentationSide::Left, move |_| {
-                            Label::new("修飾キー (既定では alt) を押している間だけ、予測をインラインで表示します。").into_any_element()
+                            Label::new(i18n::t!(
+                                "Display predictions inline only when holding a modifier key ({} by default).",
+                                ui::alt_key_name!()
+                            ))
+                            .into_any_element()
                         })
                         .handler({
                             let fs = fs.clone();

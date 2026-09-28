@@ -1770,7 +1770,6 @@ mod fixup_tests {
     use std::{
         path::{Path, PathBuf},
         process::Command,
-        sync::Arc,
     };
 
     use collections::HashSet;
@@ -1864,8 +1863,7 @@ mod fixup_tests {
         work_dir: &Path,
         cx: &mut TestAppContext,
     ) -> (Entity<Project>, Entity<Repository>) {
-        let project =
-            Project::test(Arc::new(RealFs::new(None, cx.executor())), [work_dir], cx).await;
+        let project = Project::test(RealFs::new(None, cx.executor()), [work_dir], cx).await;
         let tree = project.read_with(cx, |project, cx| {
             project
                 .worktrees(cx)
@@ -2176,12 +2174,9 @@ mod fixup_tests {
         work_dir: &Path,
         cx: &mut TestAppContext,
     ) -> (Entity<Project>, Entity<Repository>) {
-        let project = Project::test_with_worktree_trust(
-            Arc::new(RealFs::new(None, cx.executor())),
-            [work_dir],
-            cx,
-        )
-        .await;
+        let project =
+            Project::test_with_worktree_trust(RealFs::new(None, cx.executor()), [work_dir], cx)
+                .await;
         let tree = project.read_with(cx, |project, cx| {
             project
                 .worktrees(cx)

@@ -502,7 +502,7 @@ fn linux_location_is_equal_or_descendant(
     location: &HostFilesystemLocation,
     ancestor: &HostFilesystemLocation,
 ) -> bool {
-    use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+    use std::os::fd::{AsFd as _, AsRawFd as _, FromRawFd as _, OwnedFd};
 
     if location == ancestor {
         return true;
@@ -526,15 +526,15 @@ fn linux_location_is_equal_or_descendant(
             OwnedFd::from_raw_fd(fd)
         };
 
-        let Some(parent_identity) = linux_fd_identity(parent.as_raw_fd()) else {
+        let Some(parent_identity) = linux_fd_identity(parent.as_fd()) else {
             log::warn!("failed to fstat parent fd while checking protected path overlap");
             return false;
         };
-        let Some(current_identity) = linux_fd_identity(current.as_raw_fd()) else {
+        let Some(current_identity) = linux_fd_identity(current.as_fd()) else {
             log::warn!("failed to fstat current fd while checking protected path overlap");
             return false;
         };
-        let Some(ancestor_identity) = linux_fd_identity(ancestor.linux_fd().as_raw_fd()) else {
+        let Some(ancestor_identity) = linux_fd_identity(ancestor.linux_fd().as_fd()) else {
             log::warn!("failed to fstat protected fd while checking protected path overlap");
             return false;
         };
@@ -2100,7 +2100,7 @@ pub(crate) const WSL_PROBE_RESULT_PREFIX: &str = "zed-wsl-probe:";
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(crate) const WSL_HELPER_MODE_FLAG: &str = "--wsl";
 /// ADR-F49: runs the same binary as the IDE bridge (see [`ide_bridge`]).
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+/// Not gated by OS: [`remote_ide_bridge_argv`] builds it on every client.
 pub(crate) const IDE_BRIDGE_FLAG: &str = "--ide-bridge";
 /// Handle a possible re-exec of this binary as the in-sandbox launcher (bind
 /// validator + restricted-network bridge) that bwrap runs before the real

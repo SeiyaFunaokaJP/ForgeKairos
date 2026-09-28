@@ -7,14 +7,14 @@ use std::{
 
 use gpui::{DefiniteLength, FontWeight, Hsla, SharedString, TextAlign, px, relative};
 use html5ever::{
-    Attribute, LocalName, ParseOpts, QualName, TokenizerResult, local_name, parse_document,
-    tendril::{StrTendril, TendrilSink},
+    Attribute, LocalName, QualName, TokenizerResult, local_name,
+    tendril::StrTendril,
     tokenizer::{
         BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
         states::RawKind,
     },
 };
-use markup5ever_rcdom::{Handle, Node, NodeData, RcDom};
+use markup5ever_rcdom::{Handle, Node, NodeData};
 use pulldown_cmark::{Alignment, HeadingLevel, Options};
 use stacksafe::stacksafe;
 
@@ -490,10 +490,7 @@ pub(crate) fn parse_html_block(
 ) -> Option<ParsedHtmlBlock> {
     let bytes = cleanup_html(source);
     let mut cursor = std::io::Cursor::new(bytes);
-    let dom = parse_document(RcDom::default(), ParseOpts::default())
-        .from_utf8()
-        .read_from(&mut cursor)
-        .ok()?;
+    let dom = super::parse_html(&mut cursor).ok()?;
 
     let mut children = Vec::new();
     parse_html_node(

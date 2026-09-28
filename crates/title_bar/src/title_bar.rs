@@ -1332,8 +1332,8 @@ impl TitleBar {
                         )
                         .separator()
                     })
-                    .map(|this| {
-                        let mut this = this.header("組織");
+                    .when(is_signed_in, |this| {
+                        let mut this = this.header(i18n::t!("Organization"));
 
                         for (organization, plan) in &organizations {
                             let organization = organization.clone();

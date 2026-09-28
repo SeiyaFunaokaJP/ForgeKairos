@@ -122,6 +122,7 @@ impl ExtensionLanguageServerProxy for LanguageServerRegistryProxy {
 
     fn update_language_server_status(
         &self,
+        source: Option<gpui::EntityId>,
         language_server_id: LanguageServerName,
         status: BinaryStatus,
     ) {
@@ -130,8 +131,16 @@ impl ExtensionLanguageServerProxy for LanguageServerRegistryProxy {
             language_server_id,
             status
         );
-        self.language_registry
-            .update_lsp_binary_status(language_server_id, status);
+        if let Some(source) = source {
+            self.language_registry.update_lsp_binary_status_for_entity(
+                source,
+                language_server_id,
+                status,
+            );
+        } else {
+            self.language_registry
+                .update_lsp_binary_status(language_server_id, status);
+        }
     }
 }
 
@@ -169,6 +178,7 @@ impl DynLspInstaller for ExtensionLspAdapter {
             let server_name = self.language_server_id.clone();
             let status_delegate = delegate.clone();
             let ret = maybe!(async move {
+                let language_server_status_source = delegate.status_source_id();
                 let delegate = Arc::new(WorktreeDelegateAdapter(delegate.clone())) as _;
                 let command = self
                     .extension
@@ -176,6 +186,7 @@ impl DynLspInstaller for ExtensionLspAdapter {
                         self.language_server_id.clone(),
                         self.language_name.clone(),
                         delegate,
+                        language_server_status_source,
                     )
                     .await?;
 
@@ -325,6 +336,7 @@ impl LspAdapter for ExtensionLspAdapter {
         delegate: &Arc<dyn LspAdapterDelegate>,
         _: &mut AsyncApp,
     ) -> Result<Option<serde_json::Value>> {
+        let language_server_status_source = delegate.status_source_id();
         let delegate = Arc::new(WorktreeDelegateAdapter(delegate.clone())) as _;
         let json_options = self
             .extension
@@ -332,6 +344,7 @@ impl LspAdapter for ExtensionLspAdapter {
                 self.language_server_id.clone(),
                 self.language_name.clone(),
                 delegate,
+                language_server_status_source,
             )
             .await?;
         Ok(if let Some(json_options) = json_options {
@@ -350,10 +363,15 @@ impl LspAdapter for ExtensionLspAdapter {
         _: Option<Uri>,
         _cx: &mut AsyncApp,
     ) -> Result<Value> {
+        let language_server_status_source = delegate.status_source_id();
         let delegate = Arc::new(WorktreeDelegateAdapter(delegate.clone())) as _;
         let json_options: Option<String> = self
             .extension
-            .language_server_workspace_configuration(self.language_server_id.clone(), delegate)
+            .language_server_workspace_configuration(
+                self.language_server_id.clone(),
+                delegate,
+                language_server_status_source,
+            )
             .await?;
         Ok(if let Some(json_options) = json_options {
             serde_json::from_str(&json_options).with_context(|| {
@@ -370,12 +388,14 @@ impl LspAdapter for ExtensionLspAdapter {
         _cached_binary: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
         _cx: &mut AsyncApp,
     ) -> Option<serde_json::Value> {
+        let language_server_status_source = delegate.status_source_id();
         let delegate = Arc::new(WorktreeDelegateAdapter(delegate.clone())) as _;
         let json_schema: Option<String> = self
             .extension
             .language_server_initialization_options_schema(
                 self.language_server_id.clone(),
                 delegate,
+                language_server_status_source,
             )
             .await
             .ok()
@@ -389,12 +409,14 @@ impl LspAdapter for ExtensionLspAdapter {
         _cached_binary: OwnedMutexGuard<Option<(bool, LanguageServerBinary)>>,
         _cx: &mut AsyncApp,
     ) -> Option<serde_json::Value> {
+        let language_server_status_source = delegate.status_source_id();
         let delegate = Arc::new(WorktreeDelegateAdapter(delegate.clone())) as _;
         let json_schema: Option<String> = self
             .extension
             .language_server_workspace_configuration_schema(
                 self.language_server_id.clone(),
                 delegate,
+                language_server_status_source,
             )
             .await
             .ok()
@@ -407,6 +429,7 @@ impl LspAdapter for ExtensionLspAdapter {
         target_language_server_id: LanguageServerName,
         delegate: &Arc<dyn LspAdapterDelegate>,
     ) -> Result<Option<serde_json::Value>> {
+        let language_server_status_source = delegate.status_source_id();
         let delegate = Arc::new(WorktreeDelegateAdapter(delegate.clone())) as _;
         let json_options: Option<String> = self
             .extension
@@ -414,6 +437,7 @@ impl LspAdapter for ExtensionLspAdapter {
                 self.language_server_id.clone(),
                 target_language_server_id.clone(),
                 delegate,
+                language_server_status_source,
             )
             .await?;
         Ok(if let Some(json_options) = json_options {
@@ -435,6 +459,7 @@ impl LspAdapter for ExtensionLspAdapter {
 
         _cx: &mut AsyncApp,
     ) -> Result<Option<serde_json::Value>> {
+        let language_server_status_source = delegate.status_source_id();
         let delegate = Arc::new(WorktreeDelegateAdapter(delegate.clone())) as _;
         let json_options: Option<String> = self
             .extension
@@ -442,6 +467,7 @@ impl LspAdapter for ExtensionLspAdapter {
                 self.language_server_id.clone(),
                 target_language_server_id.clone(),
                 delegate,
+                language_server_status_source,
             )
             .await?;
         Ok(if let Some(json_options) = json_options {
@@ -811,6 +837,7 @@ mod language_server_failure_tests {
             _: LanguageServerName,
             _: LanguageName,
             _: Arc<dyn WorktreeDelegate>,
+            _: gpui::EntityId,
         ) -> Result<ExtensionCommand> {
             Err(anyhow::anyhow!(self.error.clone()))
         }
@@ -820,6 +847,7 @@ mod language_server_failure_tests {
             _: LanguageServerName,
             _: LanguageName,
             _: Arc<dyn WorktreeDelegate>,
+            _: gpui::EntityId,
         ) -> Result<Option<String>> {
             unimplemented!("only the failing path is exercised")
         }
@@ -828,6 +856,7 @@ mod language_server_failure_tests {
             &self,
             _: LanguageServerName,
             _: Arc<dyn WorktreeDelegate>,
+            _: gpui::EntityId,
         ) -> Result<Option<String>> {
             unimplemented!("only the failing path is exercised")
         }
@@ -836,6 +865,7 @@ mod language_server_failure_tests {
             &self,
             _: LanguageServerName,
             _: Arc<dyn WorktreeDelegate>,
+            _: gpui::EntityId,
         ) -> Result<Option<String>> {
             unimplemented!("only the failing path is exercised")
         }
@@ -844,6 +874,7 @@ mod language_server_failure_tests {
             &self,
             _: LanguageServerName,
             _: Arc<dyn WorktreeDelegate>,
+            _: gpui::EntityId,
         ) -> Result<Option<String>> {
             unimplemented!("only the failing path is exercised")
         }
@@ -853,6 +884,7 @@ mod language_server_failure_tests {
             _: LanguageServerName,
             _: LanguageServerName,
             _: Arc<dyn WorktreeDelegate>,
+            _: gpui::EntityId,
         ) -> Result<Option<String>> {
             unimplemented!("only the failing path is exercised")
         }
@@ -862,6 +894,7 @@ mod language_server_failure_tests {
             _: LanguageServerName,
             _: LanguageServerName,
             _: Arc<dyn WorktreeDelegate>,
+            _: gpui::EntityId,
         ) -> Result<Option<String>> {
             unimplemented!("only the failing path is exercised")
         }
@@ -988,6 +1021,10 @@ mod language_server_failure_tests {
 
         fn resolve_relative_path(&self, path: PathBuf) -> PathBuf {
             path
+        }
+
+        fn status_source_id(&self) -> gpui::EntityId {
+            gpui::EntityId::from(1u64)
         }
 
         fn update_status(&self, language: LanguageServerName, status: BinaryStatus) {

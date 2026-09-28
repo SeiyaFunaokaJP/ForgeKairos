@@ -213,11 +213,12 @@ impl Render for ModeIndicator {
             .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
             .child(
                 h_flex()
+                    .h(ButtonSize::Default.rems())
                     .gap_1()
                     .when(!label.is_empty(), |el| {
                         el.child(
                             Label::new(label)
-                                .line_height_style(LineHeightStyle::UiLabel)
+                                .size(LabelSize::Small)
                                 .weight(FontWeight::MEDIUM),
                         )
                     })
@@ -233,7 +234,6 @@ impl Render for ModeIndicator {
                                 .child(
                                     Label::new(mode)
                                         .size(LabelSize::Small)
-                                        .line_height_style(LineHeightStyle::UiLabel)
                                         .weight(FontWeight::MEDIUM)
                                         .when(
                                             bg_color != system_transparent

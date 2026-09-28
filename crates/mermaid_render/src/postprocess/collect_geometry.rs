@@ -54,6 +54,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use anyhow::Result;
+use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 
 use crate::{DiagramGeometry, EdgeGeometry, NodeGeometry};
@@ -262,7 +263,7 @@ struct EdgeLabel {
 /// passes that need the text handle themselves) is measured raw.
 fn attribute(element: &BytesStart<'_>, name: &str) -> Option<String> {
     let attr = element.try_get_attribute(name).ok()??;
-    Some(match attr.unescape_value() {
+    Some(match attr.normalized_value(XmlVersion::Implicit1_0) {
         Ok(value) => value.into_owned(),
         Err(_) => String::from_utf8_lossy(attr.value.as_ref()).into_owned(),
     })

@@ -1465,6 +1465,10 @@ mod tests {
         cx.executor()
             .advance_clock(workspace::SERIALIZATION_THROTTLE_TIME);
         cx.run_until_parked();
+        // The last handle now goes away in a task rather than inside an update
+        // (upstream v1.20), and a dropped entity is only removed at the end of
+        // the next effect cycle.
+        cx.update(|_, _| {});
 
         released_comparison.assert_released();
         released_editor.assert_released();
@@ -2993,7 +2997,7 @@ mod tests {
         let fixture = merge_request_fixture();
 
         let project = Project::test(
-            Arc::new(project::RealFs::new(None, cx.executor())),
+            project::RealFs::new(None, cx.executor()),
             [fixture.work_directory.as_path()],
             cx,
         )

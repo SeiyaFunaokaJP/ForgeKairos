@@ -13,3 +13,6 @@ msgstr "保存できませんでした"
 
 msgid "Open File Permalink"
 msgstr "ファイルの永続リンクを開く"
+
+msgid "empty project"
+msgstr "空のプロジェクト"

@@ -41,6 +41,7 @@ impl ApplicationMenu {
 
 /// The menus are named in the UI language, while `OpenApplicationMenu` in a keymap
 /// may name one in English ("File") or as it is shown.
+#[cfg(any(test, not(target_os = "macos")))]
 pub(super) fn shown_menu_name(name: &str) -> String {
     i18n::tr_ctx(i18n::context::MENU, name).to_string()
 }

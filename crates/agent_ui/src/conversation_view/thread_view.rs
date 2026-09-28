@@ -1976,7 +1976,7 @@ impl ThreadView {
     fn emit_thread_error_telemetry(&self, error: &ThreadError, cx: &mut Context<Self>) {
         let (error_kind, acp_error_code, message): (&str, Option<SharedString>, SharedString) =
             match error {
-                ThreadError::PaymentRequired => (
+                ThreadError::ZedPaymentRequired => (
                     "payment_required",
                     None,
                     "You reached your free usage limit. Upgrade to Zed Pro for more prompts."
@@ -7878,29 +7878,36 @@ impl ThreadView {
                             },
                         );
 
-                    let has_selection = chunks
-                        .map(|chunks| {
-                            chunks.iter().any(|chunk| {
-                                let md = match chunk {
-                                    AssistantMessageChunk::Message { block, .. } => {
-                                        block.markdown()
-                                    }
-                                    AssistantMessageChunk::Thought { block, .. } => {
-                                        block.markdown()
-                                    }
-                                };
-                                md.map_or(false, |m| m.read(cx).has_selection())
-                            })
-                        })
-                        .unwrap_or(false);
-
                     let context_menu_link = chunks.and_then(|chunks| {
                         chunks.iter().find_map(|chunk| {
-                            let md = match chunk {
+                            let markdown = match chunk {
                                 AssistantMessageChunk::Message { block, .. } => block.markdown(),
                                 AssistantMessageChunk::Thought { block, .. } => block.markdown(),
                             };
-                            md.and_then(|m| m.read(cx).context_menu_link().cloned())
+                            markdown
+                                .and_then(|markdown| markdown.read(cx).context_menu_link().cloned())
+                        })
+                    });
+                    let selected_text = chunks.and_then(|chunks| {
+                        chunks.iter().find_map(|chunk| {
+                            let markdown = match chunk {
+                                AssistantMessageChunk::Message { block, .. } => block.markdown(),
+                                AssistantMessageChunk::Thought { block, .. } => block.markdown(),
+                            };
+                            markdown.and_then(|markdown| {
+                                markdown.read(cx).context_menu_selected_text().cloned()
+                            })
+                        })
+                    });
+                    let selected_markdown = chunks.and_then(|chunks| {
+                        chunks.iter().find_map(|chunk| {
+                            let markdown = match chunk {
+                                AssistantMessageChunk::Message { block, .. } => block.markdown(),
+                                AssistantMessageChunk::Thought { block, .. } => block.markdown(),
+                            };
+                            markdown.and_then(|markdown| {
+                                markdown.read(cx).context_menu_selected_markdown().cloned()
+                            })
                         })
                     });
 
@@ -7961,11 +7968,28 @@ impl ThreadView {
                             })
                             .separator()
                         })
-                        .action_disabled_when(
-                            !has_selection,
-                            "選択範囲をコピー",
-                            Box::new(markdown::CopyAsMarkdown),
-                        )
+                        .when_some(selected_text, |menu, selected_text| {
+                            menu.entry(
+                                i18n::t!("Copy"),
+                                Some(Box::new(markdown::Copy)),
+                                move |_, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        selected_text.to_string(),
+                                    ));
+                                },
+                            )
+                        })
+                        .when_some(selected_markdown, |menu, selected_markdown| {
+                            menu.entry(
+                                i18n::t!("Copy as Markdown"),
+                                Some(Box::new(markdown::CopyAsMarkdown)),
+                                move |_, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        selected_markdown.to_string(),
+                                    ));
+                                },
+                            )
+                        })
                         .item(copy_this_agent_response)
                         .separator()
                         .item(scroll_item)
@@ -11441,7 +11465,7 @@ impl ThreadView {
             ThreadError::AuthenticationRequired(error) => {
                 self.render_authentication_required_error(error.clone(), cx)
             }
-            ThreadError::PaymentRequired => self.render_payment_required_error(cx),
+            ThreadError::ZedPaymentRequired => self.render_zed_payment_required_error(cx),
             ThreadError::RateLimitExceeded { provider } => self.render_error_callout(
                 "レート制限に達しました",
                 format!(
@@ -11577,19 +11601,21 @@ impl ThreadView {
             .dismiss_action(self.dismiss_error_button(cx))
     }
 
-    fn render_payment_required_error(&self, cx: &mut Context<Self>) -> Callout {
-        const ERROR_MESSAGE: &str = "無料利用の上限に達しました。より多くのプロンプトを使うには Zed Pro にアップグレードしてください。";
+    fn render_zed_payment_required_error(&self, cx: &mut Context<Self>) -> Callout {
+        const ERROR_MESSAGE: &str = i18n::msg!(
+            "You reached your free usage limit. Upgrade to Zed Pro for more prompts."
+        );
 
         Callout::new()
             .severity(Severity::Error)
             .icon(IconName::XCircle)
             .title("無料利用の上限を超えました")
-            .description(ERROR_MESSAGE)
+            .description(i18n::tr(ERROR_MESSAGE))
             .actions_slot(
                 h_flex()
                     .gap_0p5()
                     .child(self.upgrade_button(cx))
-                    .child(self.create_copy_button(ERROR_MESSAGE)),
+                    .child(self.create_copy_button(i18n::tr(ERROR_MESSAGE))),
             )
             .dismiss_action(self.dismiss_error_button(cx))
     }
@@ -12087,8 +12113,8 @@ impl ThreadView {
                 v_flex()
                     .gap_1()
                     .child(
-                        Label::new(format!(
-                            "スキルの説明は {MAX_SKILL_DESCRIPTION_LEN} バイト以内にしてください。長すぎるとモデルのコンテキストトークンを多く消費する場合があります。"
+                        Label::new(i18n::t!(
+                            "Ensure skill descriptions are at most {MAX_SKILL_DESCRIPTION_LEN} characters; longer ones may consume more model-context tokens."
                         ))
                         .size(LabelSize::Small)
                         .color(Color::Muted),

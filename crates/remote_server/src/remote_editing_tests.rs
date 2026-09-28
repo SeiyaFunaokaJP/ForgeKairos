@@ -36,14 +36,17 @@ use language::{
 };
 use lsp::{
     CompletionContext, CompletionResponse, CompletionTriggerKind, DEFAULT_LSP_REQUEST_TIMEOUT,
-    LanguageServerName,
+    LanguageServerId, LanguageServerName,
 };
 use node_runtime::NodeRuntime;
 use project::{
-    LspStoreEvent, ProgressToken, Project, ProjectPath,
+    LanguageServerLogType, LspStoreEvent, ProgressToken, Project, ProjectPath,
     agent_server_store::AgentServerCommand,
     image_store,
-    lsp_store::{FormatTrigger, LspFormatTarget, OpenLspBufferHandle},
+    lsp_store::{
+        FormatTrigger, LspFormatTarget, OpenLspBufferHandle,
+        log_store::{LanguageServerKind, LanguageServerLogKey, LogStore},
+    },
     project_launch_approvals::{
         ExecutionHost, LaunchApprovalDetails, LaunchDefinitionFile, LaunchHost, LaunchKind,
         ProjectLaunchApprovals, ProjectLaunchApprovalsEvent,
@@ -370,6 +373,36 @@ async fn test_basic_remote_editing(cx: &mut TestAppContext, server_cx: &mut Test
     buffer.update(cx, |buffer, _| {
         assert_eq!(&**buffer.file().unwrap().path(), rel_path("src/lib2.rs"));
     });
+    let renamed_buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path("src/lib2.rs")), cx)
+        })
+        .await
+        .unwrap();
+    assert_eq!(renamed_buffer, buffer);
+
+    fs.insert_file(
+        path!("/code/project1/src/lib.rs"),
+        b"fn two() -> usize { 2 }".to_vec(),
+    )
+    .await;
+    cx.run_until_parked();
+
+    let recreated_buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path("src/lib.rs")), cx)
+        })
+        .await
+        .unwrap();
+    assert_ne!(recreated_buffer, buffer);
+    recreated_buffer.read_with(cx, |buffer, _| {
+        assert_eq!(&**buffer.file().unwrap().path(), rel_path("src/lib.rs"));
+        assert_eq!(buffer.text(), "fn two() -> usize { 2 }");
+    });
+    buffer.read_with(cx, |buffer, _| {
+        assert_eq!(&**buffer.file().unwrap().path(), rel_path("src/lib2.rs"));
+        assert_eq!(buffer.text(), "fn one() -> usize { 100 }");
+    });
 
     fs.set_index_for_repo(
         Path::new(path!("/code/project1/.git")),
@@ -382,6 +415,68 @@ async fn test_basic_remote_editing(cx: &mut TestAppContext, server_cx: &mut Test
             "fn one() -> usize { 100 }"
         );
     });
+}
+
+#[gpui::test]
+async fn test_remote_buffer_path_swap(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code/project"),
+        json!({ "a.txt": "first", "b.txt": "second" }),
+    )
+    .await;
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    let session = headless.read_with(server_cx, |headless, _| headless.session.clone());
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project"), true, cx)
+        })
+        .await
+        .unwrap();
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let first_buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path("a.txt")), cx)
+        })
+        .await
+        .unwrap();
+    let second_buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path("b.txt")), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    for updates in [
+        [(&first_buffer, "b.txt"), (&second_buffer, "a.txt")],
+        [(&second_buffer, "b.txt"), (&first_buffer, "a.txt")],
+    ] {
+        for (buffer, path) in updates {
+            let message = buffer.read_with(cx, |buffer, cx| {
+                let mut file = buffer.file().unwrap().to_proto(cx);
+                file.path = path.to_owned();
+                proto::UpdateBufferFile {
+                    project_id: proto::REMOTE_SERVER_PROJECT_ID,
+                    buffer_id: buffer.remote_id().to_proto(),
+                    file: Some(file),
+                }
+            });
+            session.send(message).unwrap();
+            cx.run_until_parked();
+        }
+        for (buffer, path) in updates {
+            buffer.read_with(cx, |buffer, _| {
+                assert_eq!(&**buffer.file().unwrap().path(), rel_path(path));
+            });
+            project.read_with(cx, |project, cx| {
+                assert_eq!(
+                    project.get_open_buffer(&(worktree_id, rel_path(path)).into(), cx),
+                    Some(buffer.clone())
+                );
+            });
+        }
+    }
 }
 
 #[gpui::test]
@@ -1393,7 +1488,7 @@ async fn test_remote_lsp(cx: &mut TestAppContext, server_cx: &mut TestAppContext
 
     project
         .update(cx, |project, cx| {
-            project.perform_rename(buffer.clone(), 3, "two".to_string(), cx)
+            project.perform_rename(buffer.clone(), 3, "two".to_string(), None, cx)
         })
         .await
         .unwrap();
@@ -5049,7 +5144,7 @@ async fn test_remote_external_agent_sandbox_is_placed_on_the_host(
         project::agent_sandbox::set_sandboxed_agents_home_for_test(None);
     });
 
-    let server_fs: Arc<dyn Fs> = Arc::new(fs::RealFs::new(None, server_cx.executor()));
+    let server_fs: Arc<dyn Fs> = fs::RealFs::new(None, server_cx.executor());
     let (project, _headless_project) = init_test_with_fs(server_fs, cx, server_cx).await;
     project
         .update(cx, |project, cx| {
@@ -5696,6 +5791,77 @@ async fn test_remote_project_creation_notifies_new_entity_observers(
     assert!(project.read_with(cx, |project, _| project.is_remote()));
 }
 
+#[gpui::test]
+async fn test_log_store_keys_remote_events_by_primary_kind_on_supplementary_id_collision(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let server_fs = Arc::new(FakeFs::new(server_cx.executor()));
+    server_fs
+        .insert_tree(path!("/code"), json!({ "project1": { "README.md": "" } }))
+        .await;
+    let (project, _headless) = init_test(&server_fs, cx, server_cx).await;
+
+    let log_store = cx.new(|cx| LogStore::new(false, cx));
+    log_store.update(cx, |log_store, cx| log_store.add_project(&project, cx));
+
+    // A supplementary server (e.g. Copilot) allocates its ID from the local
+    // registry, which may collide numerically with a host-side server ID.
+    let server_id = LanguageServerId(42);
+    let supplementary_server_key = LanguageServerLogKey::new(
+        LanguageServerKind::Supplementary {
+            project: project.downgrade(),
+        },
+        server_id,
+    );
+    log_store.update(cx, |log_store, cx| {
+        log_store.add_language_server(
+            LanguageServerKind::Supplementary {
+                project: project.downgrade(),
+            },
+            server_id,
+            Some(LanguageServerName::new_static("copilot")),
+            None,
+            None,
+            cx,
+        );
+    });
+
+    project.update(cx, |_, cx| {
+        cx.emit(project::Event::LanguageServerLog(
+            server_id,
+            LanguageServerLogType::Log(lsp::MessageType::LOG),
+            "host server log".to_string(),
+        ));
+    });
+    cx.run_until_parked();
+
+    let remote_server_key = LanguageServerLogKey::new(
+        LanguageServerKind::Remote {
+            project: project.downgrade(),
+        },
+        server_id,
+    );
+    log_store.read_with(cx, |log_store, _| {
+        assert_eq!(
+            log_store.server_logs(&remote_server_key).map(|logs| {
+                logs.iter()
+                    .map(|log| log.as_ref().to_string())
+                    .collect::<Vec<_>>()
+            }),
+            Some(vec!["host server log".to_string()]),
+            "host server logs should be keyed by the remote server kind"
+        );
+        assert_eq!(
+            log_store
+                .server_logs(&supplementary_server_key)
+                .map(|logs| logs.len()),
+            Some(0),
+            "host server logs should not leak into the supplementary server with the same ID"
+        );
+    });
+}
+
 pub async fn init_test(
     server_fs: &Arc<FakeFs>,
     cx: &mut TestAppContext,
@@ -5937,11 +6103,15 @@ fn runs_language_server(
 
 /// The last reason the remote host gave for not starting `name`.
 fn last_failure(
-    statuses: &mut futures::channel::mpsc::UnboundedReceiver<(LanguageServerName, BinaryStatus)>,
+    statuses: &mut futures::channel::mpsc::UnboundedReceiver<(
+        Option<gpui::EntityId>,
+        LanguageServerName,
+        BinaryStatus,
+    )>,
     name: &str,
 ) -> Option<String> {
     let mut failure = None;
-    while let Ok((server, status)) = statuses.try_recv() {
+    while let Ok((_, server, status)) = statuses.try_recv() {
         if &*server.0 == name
             && let BinaryStatus::Failed { error } = status
         {
@@ -5953,11 +6123,15 @@ fn last_failure(
 
 /// The last status the remote host reported for `name`.
 fn last_status(
-    statuses: &mut futures::channel::mpsc::UnboundedReceiver<(LanguageServerName, BinaryStatus)>,
+    statuses: &mut futures::channel::mpsc::UnboundedReceiver<(
+        Option<gpui::EntityId>,
+        LanguageServerName,
+        BinaryStatus,
+    )>,
     name: &str,
 ) -> Option<BinaryStatus> {
     let mut last = None;
-    while let Ok((server, status)) = statuses.try_recv() {
+    while let Ok((_, server, status)) = statuses.try_recv() {
         if &*server.0 == name {
             last = Some(status);
         }
@@ -6174,7 +6348,8 @@ async fn test_a_denied_remote_language_server_stays_stopped(
             .await;
     let languages = host_languages(&headless, server_cx);
     let mut fake_servers = register_fake_server_on_host(&languages, PROJECT_SERVER);
-    let mut binary_statuses = languages.language_server_binary_statuses();
+    let (mut binary_statuses, _binary_status_subscription) =
+        languages.language_server_binary_statuses();
     let (_buffer, _handle) =
         open_with_language_servers(&project, path!("/code/project1"), cx).await;
 
@@ -6413,7 +6588,8 @@ async fn test_an_ide_without_launch_approvals_gets_nothing_started(
     let (client, headless) = session_without_launch_approvals(&fs, cx, server_cx).await;
     let languages = host_languages(&headless, server_cx);
     let mut fake_servers = register_fake_server_on_host(&languages, PROJECT_SERVER);
-    let mut binary_statuses = languages.language_server_binary_statuses();
+    let (mut binary_statuses, _binary_status_subscription) =
+        languages.language_server_binary_statuses();
     let session = client.read_with(cx, |client, _| client.proto_client());
     let buffer_id = open_buffer_over_session(&session, cx).await;
 
@@ -7110,7 +7286,8 @@ async fn test_a_stalled_ide_holds_language_servers_until_it_answers(
     let (client, headless) = session_without_launch_approvals(&fs, cx, server_cx).await;
     let languages = host_languages(&headless, server_cx);
     let mut fake_servers = register_fake_server_on_host(&languages, PROJECT_SERVER);
-    let mut binary_statuses = languages.language_server_binary_statuses();
+    let (mut binary_statuses, _binary_status_subscription) =
+        languages.language_server_binary_statuses();
     let session = client.read_with(cx, |client, _| client.proto_client());
     let (end_stall, stall_ended) = futures::channel::oneshot::channel::<()>();
     let stall_ended = futures::FutureExt::shared(stall_ended);
@@ -7282,7 +7459,8 @@ async fn test_a_language_server_waits_for_room_at_the_ide(
             .await;
     let languages = host_languages(&headless, server_cx);
     let mut fake_servers = register_fake_server_on_host(&languages, PROJECT_SERVER);
-    let mut binary_statuses = languages.language_server_binary_statuses();
+    let (mut binary_statuses, _binary_status_subscription) =
+        languages.language_server_binary_statuses();
     let worktree_id = project
         .update(cx, |project, cx| {
             project.find_or_create_worktree(path!("/code/project1"), true, cx)

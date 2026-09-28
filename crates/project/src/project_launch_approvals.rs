@@ -3098,7 +3098,7 @@ mod tests {
     }
 
     fn real_fs(cx: &TestAppContext) -> Arc<dyn Fs> {
-        Arc::new(RealFs::new(None, cx.executor()))
+        RealFs::new(None, cx.executor())
     }
 
     fn request_of(scan: CommandLineScan) -> LaunchRequest {

@@ -551,7 +551,7 @@ pub fn execute_daemon(log_file: PathBuf, state_dir: PathBuf) -> Result<()> {
         );
         let relay_http_through_client = watch_relay_http_setting(cx);
 
-        let fs = Arc::new(RealFs::new(None, cx.background_executor().clone()));
+        let fs = RealFs::new(None, cx.background_executor().clone());
         let node_settings_rx = initialize_settings(router.clone(), fs.clone(), cx);
 
         let proxy_url = read_proxy_settings(cx);

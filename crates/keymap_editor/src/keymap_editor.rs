@@ -1165,7 +1165,7 @@ impl KeymapEditor {
                         Tooltip::with_meta(
                             "競合を表示",
                             Some(&ToggleConflictFilter),
-                            "alt+クリックですべての競合を表示します",
+                            i18n::t!("Use {}+click to show all conflicts", ui::alt_key_name!()),
                             cx,
                         )
                     })
@@ -1195,11 +1195,14 @@ impl KeymapEditor {
                     }))
             } else {
                 base_button_style(index, IconName::Info)
-                    .tooltip(|_window, cx|  {
+                    .tooltip(|_window, cx| {
                         Tooltip::with_meta(
                             "一致するキーバインドを表示",
                             Some(&ShowMatchingKeybinds),
-                            "このキーバインドは他のキーバインドによって上書きされています。\nalt+クリックでこのキーバインドを編集します",
+                            i18n::t!(
+                                "This binding is overridden by other bindings.\nUse {}+click to edit this binding",
+                                ui::alt_key_name!()
+                            ),
                             cx,
                         )
                     })

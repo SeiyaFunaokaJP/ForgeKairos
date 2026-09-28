@@ -20,6 +20,23 @@ include!(concat!(env!("OUT_DIR"), "/zed.messages.rs"));
 pub const REMOTE_SERVER_PEER_ID: PeerId = PeerId { owner_id: 0, id: 0 };
 pub const REMOTE_SERVER_PROJECT_ID: u64 = 0;
 
+impl Envelope {
+    #[inline(never)]
+    pub fn decode_from_slice(buffer: &[u8]) -> Result<Self, DecodeError> {
+        Self::decode(buffer)
+    }
+
+    #[inline(never)]
+    pub fn encode_to_buffer(&self, buffer: &mut Vec<u8>) -> Result<(), prost::EncodeError> {
+        self.encode(buffer)
+    }
+
+    #[inline(never)]
+    pub fn encoded_size(&self) -> usize {
+        self.encoded_len()
+    }
+}
+
 messages!(
     // zed-jp-enhance: kept together so that upstream's own entries below merge
     // untouched. Their `RequestMessage` / `EntityMessage` impls are in
@@ -215,6 +232,8 @@ messages!(
     (LoadCommitDiffResponse, Foreground),
     (LspExtExpandMacro, Background),
     (LspExtExpandMacroResponse, Background),
+    (LspExtExpandAbbreviation, Background),
+    (LspExtExpandAbbreviationResponse, Background),
     (LspExtOpenDocs, Background),
     (LspExtOpenDocsResponse, Background),
     (LspExtRunnables, Background),
@@ -586,6 +605,7 @@ request_messages!(
     (UpdateRepository, Ack),
     (RemoveRepository, Ack),
     (LspExtExpandMacro, LspExtExpandMacroResponse),
+    (LspExtExpandAbbreviation, LspExtExpandAbbreviationResponse),
     (LspExtOpenDocs, LspExtOpenDocsResponse),
     (LspExtRunnables, LspExtRunnablesResponse),
     (SetRoomParticipantRole, Ack),
@@ -823,6 +843,7 @@ entity_messages!(
     UpdateWorktreeSettings,
     UpdateUserSettings,
     LspExtExpandMacro,
+    LspExtExpandAbbreviation,
     LspExtOpenDocs,
     LspExtRunnables,
     LspExtSwitchSourceHeader,

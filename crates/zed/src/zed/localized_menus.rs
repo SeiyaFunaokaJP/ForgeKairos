@@ -221,8 +221,19 @@ mod tests {
                 ReleaseChannel::Stable
             };
             release_channel::init_test(semver::Version::new(0, 0, 0), channel, cx);
+            init_menu_settings(cx);
             app_menus(cx)
         })
+    }
+
+    /// `app_menus` reads `DisableAiSettings` (upstream since v1.20), so the menus
+    /// can only be built once the settings are registered.
+    fn init_menu_settings(cx: &mut App) {
+        if !cx.has_global::<settings::SettingsStore>() {
+            let store = settings::SettingsStore::test(cx);
+            cx.set_global(store);
+            <project::DisableAiSettings as settings::Settings>::register(cx);
+        }
     }
 
     fn sample_menus() -> Vec<Menu> {
@@ -385,6 +396,7 @@ mod tests {
         cx: &mut TestAppContext,
     ) {
         cx.update(|cx| {
+            init_menu_settings(cx);
             assert!(refresh_localized_menus(cx));
             assert!(!refresh_localized_menus(cx));
 

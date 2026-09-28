@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use anyhow::{Context as _, Result};
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use prost::Message as _;
 use rpc::proto::Envelope;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest as _, Sha256};
@@ -24,7 +23,7 @@ pub async fn read_message_with_len<S: AsyncRead + Unpin>(
 ) -> Result<Envelope> {
     buffer.resize(message_len as usize, 0);
     stream.read_exact(buffer).await?;
-    Ok(Envelope::decode(buffer.as_slice())?)
+    Ok(Envelope::decode_from_slice(buffer.as_slice())?)
 }
 
 pub async fn read_message<S: AsyncRead + Unpin>(
@@ -44,13 +43,13 @@ pub async fn write_message<S: AsyncWrite + Unpin>(
     buffer: &mut Vec<u8>,
     message: Envelope,
 ) -> Result<()> {
-    let message_len = message.encoded_len() as u32;
+    let message_len = message.encoded_size() as u32;
     stream
         .write_all(message_len.to_le_bytes().as_slice())
         .await?;
     buffer.clear();
     buffer.reserve(message_len as usize);
-    message.encode(buffer)?;
+    message.encode_to_buffer(buffer)?;
     stream.write_all(buffer).await?;
     Ok(())
 }
@@ -249,13 +248,13 @@ pub async fn write_envelope_frame<S: AsyncWrite + Unpin>(
     envelope: Envelope,
 ) -> Result<()> {
     buffer.clear();
-    buffer.reserve(envelope.encoded_len());
-    envelope.encode(buffer)?;
+    buffer.reserve(envelope.encoded_size());
+    envelope.encode_to_buffer(buffer)?;
     write_daemon_frame(stream, DaemonFrameKind::Envelope, buffer).await
 }
 
 pub fn decode_envelope(bytes: &[u8]) -> Result<Envelope> {
-    Ok(Envelope::decode(bytes)?)
+    Ok(Envelope::decode_from_slice(bytes)?)
 }
 
 /// The client instance id carried at the front of a connection identifier,

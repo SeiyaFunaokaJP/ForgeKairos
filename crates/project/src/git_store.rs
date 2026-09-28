@@ -15053,7 +15053,7 @@ mod tests {
         let head_before = run_git(&repo_dir, &["rev-parse", "HEAD"]);
 
         let project = Project::test(
-            Arc::new(fs::RealFs::new(None, cx.executor())),
+            fs::RealFs::new(None, cx.executor()),
             [repo_dir.as_path()],
             cx,
         )
@@ -15192,7 +15192,7 @@ mod tests {
         let head_before = run_git(&repo_dir, &["rev-parse", "HEAD"]);
 
         let project = Project::test(
-            Arc::new(fs::RealFs::new(None, cx.executor())),
+            fs::RealFs::new(None, cx.executor()),
             [repo_dir.as_path()],
             cx,
         )
@@ -15339,7 +15339,7 @@ mod tests {
         let head_before = run_git(&repo_dir, &["rev-parse", "HEAD"]);
 
         let project = Project::test(
-            Arc::new(fs::RealFs::new(None, cx.executor())),
+            fs::RealFs::new(None, cx.executor()),
             [repo_dir.as_path()],
             cx,
         )
@@ -15464,7 +15464,7 @@ mod tests {
         let head_before = run_git(&repo_dir, &["rev-parse", "HEAD"]);
 
         let project = Project::test(
-            Arc::new(fs::RealFs::new(None, cx.executor())),
+            fs::RealFs::new(None, cx.executor()),
             [repo_dir.as_path()],
             cx,
         )
@@ -16470,7 +16470,7 @@ mod tests {
         let base = shas["base"].clone();
 
         let project = Project::test(
-            Arc::new(fs::RealFs::new(None, cx.executor())),
+            fs::RealFs::new(None, cx.executor()),
             [directory.as_path()],
             cx,
         )
@@ -16856,7 +16856,7 @@ mod tests {
         installed_git_output(&directory, &["branch", "mr/dev", &shas["B"]]);
 
         let project = Project::test(
-            Arc::new(fs::RealFs::new(None, cx.executor())),
+            fs::RealFs::new(None, cx.executor()),
             [directory.as_path()],
             cx,
         )

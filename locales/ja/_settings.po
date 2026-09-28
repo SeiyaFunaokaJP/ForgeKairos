@@ -527,6 +527,10 @@ msgid "Colorize Brackets"
 msgstr "括弧の色分け"
 
 msgctxt "settings"
+msgid "Command Palette"
+msgstr "コマンドパレット"
+
+msgctxt "settings"
 msgid "Command to automatically run when Zed creates a Terminal Thread shell in the agent panel. Runs in your configured shell."
 msgstr "エージェントパネルでターミナルスレッドのシェルを作成したときに、自動的に実行するコマンドです。設定済みのシェルで実行されます。"
 
@@ -635,6 +639,10 @@ msgid "Cursor"
 msgstr "カーソル"
 
 msgctxt "settings"
+msgid "Cursor Animation"
+msgstr "カーソルのアニメーション"
+
+msgctxt "settings"
 msgid "Cursor Blink"
 msgstr "カーソルの点滅"
 
@@ -693,6 +701,10 @@ msgstr "カーソル"
 msgctxt "settings"
 msgid "Custom Button Layout"
 msgstr "カスタムのボタン配置"
+
+msgctxt "settings"
+msgid "Custom Delay"
+msgstr "カスタムの遅延"
 
 msgctxt "settings"
 msgid "Custom Digraphs"
@@ -867,6 +879,14 @@ msgid "Delay in milliseconds before the which-key menu appears."
 msgstr "Which-key メニューが表示されるまでの遅延 (ミリ秒) です。"
 
 msgctxt "settings"
+msgid "Delay in milliseconds before tooltips appear for project panel titles."
+msgstr "プロジェクトパネルの項目名のツールチップが表示されるまでの遅延 (ミリ秒) です。"
+
+msgctxt "settings"
+msgid "Delay in milliseconds of the project panel title tooltips."
+msgstr "プロジェクトパネルの項目名のツールチップの遅延 (ミリ秒) です。"
+
+msgctxt "settings"
 msgid "Detached Shell Timeout"
 msgstr "未接続のシェルを終了するまでの時間"
 
@@ -979,8 +999,8 @@ msgid "Display the terminal title in breadcrumbs inside the terminal pane."
 msgstr "ターミナルペイン内のパンくずリストに、ターミナルのタイトルを表示します。"
 
 msgctxt "settings"
-msgid "Display the which-key menu with matching bindings while a multi-stroke binding is pending."
-msgstr "複数ストロークのキーバインドの入力中に、一致するキーバインドを Which-key メニューとして表示します。"
+msgid "Display the which-key menu with matching bindings while a multi-stroke binding is pending. The pending keystrokes indicator remains visible, but its binding preview popover is disabled."
+msgstr "複数ストロークのキーバインドの入力中に、一致するキーバインドを Which-key メニューとして表示します。入力中のキーストロークのインジケーターは表示されたままですが、そのキーバインドのプレビューのポップオーバーは無効になります。"
 
 msgctxt "settings"
 msgid "Double Click In Multibuffer"
@@ -2095,6 +2115,10 @@ msgid "On Last Window Closed"
 msgstr "最後のウィンドウを閉じたとき"
 
 msgctxt "settings"
+msgid "On New Window"
+msgstr "新しいウィンドウを開いたとき"
+
+msgctxt "settings"
 msgid "On: format the whole buffer.\nOff: do not format.\nModifications: format only lines with unstaged changes; skips formatting when a git diff or LSP range formatting is unavailable.\nModifications If Available: same, but falls back to formatting the whole buffer."
 msgstr "On: バッファー全体をフォーマットします。\nOff: フォーマットしません。\nModifications: 未ステージの変更がある行だけをフォーマットします。git の差分または LSP の範囲フォーマットが使えない場合はフォーマットしません。\nModifications If Available: 同様ですが、使えない場合はバッファー全体のフォーマットにフォールバックします。"
 
@@ -2117,6 +2141,10 @@ msgstr "マウスモードでもリンクを開く"
 msgctxt "settings"
 msgid "Open Macro Folders Collapsed"
 msgstr "マクロのフォルダーを閉じて開く"
+
+msgctxt "settings"
+msgid "Open Markdown Files in Preview"
+msgstr "Markdown ファイルをプレビューで開く"
 
 msgctxt "settings"
 msgid "Optimize Zed's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
@@ -2185,6 +2213,10 @@ msgstr "パーサー"
 msgctxt "settings"
 msgid "Path Style"
 msgstr "パスの表示スタイル"
+
+msgctxt "settings"
+msgid "Pending Keystrokes Indicator"
+msgstr "入力中のキーストロークのインジケーター"
 
 msgctxt "settings"
 msgid "Performance Profiler"
@@ -2273,6 +2305,10 @@ msgstr "プロジェクトパネルの既定の幅"
 msgctxt "settings"
 msgid "Project Panel Dock"
 msgstr "プロジェクトパネルのドック位置"
+
+msgctxt "settings"
+msgid "Project Panel Title Tooltips Delay"
+msgstr "プロジェクトパネルの項目名のツールチップの遅延"
 
 msgctxt "settings"
 msgid "Project Search Button"
@@ -2779,6 +2815,10 @@ msgid "Show agent review buttons in the editor toolbar."
 msgstr "エディターのツールバーにエージェントのレビューボタンを表示します。"
 
 msgctxt "settings"
+msgid "Show an indicator with a countdown while a multi-stroke key binding is pending. Its binding preview popover is disabled when the which-key menu is enabled."
+msgstr "複数ストロークのキーバインドの入力中に、カウントダウン付きのインジケーターを表示します。Which-key メニューが有効なときは、そのキーバインドのプレビューのポップオーバーは無効になります。"
+
+msgctxt "settings"
 msgid "Show author name as part of the commit information in branch picker."
 msgstr "ブランチの選択で、コミット情報の一部として作成者名を表示します。"
 
@@ -3113,6 +3153,10 @@ msgstr "固定表示"
 msgctxt "settings"
 msgid "Sticky Scroll"
 msgstr "スティッキースクロール"
+
+msgctxt "settings"
+msgid "String substituted for `${separator}` in the window title format. Include any surrounding whitespace in the value."
+msgstr "ウィンドウのタイトルの書式で `${separator}` に入る文字列です。前後の空白も値に含めてください。"
 
 msgctxt "settings"
 msgid "Strip Control Sequences"
@@ -3463,8 +3507,16 @@ msgid "Title Bar"
 msgstr "タイトルバー"
 
 msgctxt "settings"
+msgid "Title Format"
+msgstr "タイトルの書式"
+
+msgctxt "settings"
 msgid "Title Override"
 msgstr "タイトルの上書き"
+
+msgctxt "settings"
+msgid "Title Separator"
+msgstr "タイトルの区切り文字"
 
 msgctxt "settings"
 msgid "Toggle On Modifiers Press"
@@ -3529,6 +3581,10 @@ msgstr "囲み文字を自動的に挿入"
 msgctxt "settings"
 msgid "Use Autoclose"
 msgstr "閉じ文字を自動的に挿入"
+
+msgctxt "settings"
+msgid "Use Command History"
+msgstr "コマンドの履歴を使う"
 
 msgctxt "settings"
 msgid "Use LSP tasks over Zed language extension tasks."
@@ -3681,6 +3737,10 @@ msgstr "アウトラインパネルのディレクトリに何を表示するか
 msgctxt "settings"
 msgid "What to show for directories in the project panel."
 msgstr "プロジェクトパネルのディレクトリに何を表示するかを設定します。"
+
+msgctxt "settings"
+msgid "What to show when opening a new window."
+msgstr "新しいウィンドウを開いたときに表示する内容です。"
 
 msgctxt "settings"
 msgid "What working directory to use when launching the terminal."
@@ -3947,6 +4007,10 @@ msgid "Whether the cursor blinks in the editor."
 msgstr "エディターでカーソルを点滅させるかどうかを設定します。"
 
 msgctxt "settings"
+msgid "Whether the cursor smoothly animates when moving around the editor."
+msgstr "エディター内でカーソルが移動するときに、滑らかにアニメーションさせるかどうかを設定します。"
+
+msgctxt "settings"
 msgid "Whether the editor search results will loop."
 msgstr "エディターの検索結果を末尾から先頭へ循環させるかどうかを設定します。"
 
@@ -4009,6 +4073,10 @@ msgstr "JSX のタグを自動的に閉じるかどうかを設定します。"
 msgctxt "settings"
 msgid "Whether to automatically enable case-sensitive search based on the search query."
 msgstr "検索クエリの内容に応じて、大文字と小文字の区別を自動的に有効にするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to automatically open Markdown files in the preview."
+msgstr "Markdown ファイルを自動的にプレビューで開くかどうかを設定します。"
 
 msgctxt "settings"
 msgid "Whether to automatically open files after pasting or duplicating them."
@@ -4151,8 +4219,8 @@ msgid "Whether to open tabs in preview mode when opened from a multibuffer."
 msgstr "マルチバッファーから開いたときに、プレビューモードのタブで開くかどうかを設定します。"
 
 msgctxt "settings"
-msgid "Whether to open tabs in preview mode when opened from the project panel with a single click."
-msgstr "プロジェクトパネルからシングルクリックで開いたときに、プレビューモードのタブで開くかどうかを設定します。"
+msgid "Whether to open tabs in preview mode when opened from the project panel with a single click or the Open action."
+msgstr "プロジェクトパネルからシングルクリックまたは「開く」アクションで開いたときに、プレビューモードのタブで開くかどうかを設定します。"
 
 msgctxt "settings"
 msgid "Whether to open tabs in preview mode when selected from the file finder."
@@ -4251,6 +4319,10 @@ msgid "Whether to use additional LSP queries to format (and amend) the code afte
 msgstr "LSP サーバーの機能で定義された「トリガー」文字を入力するたびに、追加の LSP 問い合わせでコードを整形・修正するかどうかを設定します"
 
 msgctxt "settings"
+msgid "Whether to use command history ranking for sorting in the command palette."
+msgstr "コマンドパレットの並べ替えに、コマンドの使用履歴による順位を使うかどうかを設定します。"
+
+msgctxt "settings"
 msgid "Whether to use language servers to provide code intelligence."
 msgstr "コードインテリジェンスに言語サーバーを使うかどうかを設定します。"
 
@@ -4321,6 +4393,10 @@ msgstr "ウィンドウとレイアウト"
 msgctxt "settings"
 msgid "Window Decorations"
 msgstr "ウィンドウの装飾"
+
+msgctxt "settings"
+msgid "Window title template. Available variables are `${projectName}`, `${fileName}`, `${filePath}`, `${relativePath}`, `${fileStem}`, `${remoteName}`, `${remoteHost}`, `${appName}`, `${branch}`, and `${separator}`. `${separator}` is omitted when adjacent variables are empty, but literal text is preserved. The collaboration indicator, when present, is appended after the rendered template. If the template renders to nothing, the default template is used instead."
+msgstr "ウィンドウのタイトルのテンプレートです。使える変数は `${projectName}`、`${fileName}`、`${filePath}`、`${relativePath}`、`${fileStem}`、`${remoteName}`、`${remoteHost}`、`${appName}`、`${branch}`、`${separator}` です。`${separator}` は隣の変数が空のときは省かれますが、文字どおりに書いたテキストは残ります。共同作業のインジケーターがある場合は、展開したテンプレートの後ろに付きます。テンプレートを展開した結果が空のときは、既定のテンプレートを使います。"
 
 msgctxt "settings"
 msgid "Word Diff Enabled"

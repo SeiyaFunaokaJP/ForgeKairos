@@ -415,7 +415,7 @@ impl Render for DeleteWorktreeTooltip {
             Tooltip::with_meta_in(
                 "ワークツリーを削除",
                 Some(&DeleteWorktree),
-                "alt を押しながらクリックすると強制削除します",
+                i18n::t!("Hold {} to force delete", ui::alt_key_name!()),
                 &self.focus_handle,
                 cx,
             )

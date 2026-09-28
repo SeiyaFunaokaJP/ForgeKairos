@@ -568,9 +568,14 @@ pub fn init(cx: &mut App) {
             let Some(window) = window else {
                 return;
             };
-            let project = workspace.project().clone();
+            // A workspace opened with `--dev-container` has its worktrees scanning
+            // before this observer runs, so their update events can't be relied on
+            // to trigger the auto-open.
+            if workspace.open_in_dev_container() {
+                dev_container_suggest::open_dev_container_from_cli(workspace, window, cx);
+            }
             cx.subscribe_in(
-                &project,
+                workspace.project(),
                 window,
                 move |workspace, project, event, window, cx| {
                     if let project::Event::WorktreeUpdatedEntries(worktree_id, updated_entries) =
@@ -588,33 +593,6 @@ pub fn init(cx: &mut App) {
                 },
             )
             .detach();
-
-            // `--dev-container` sets `open_in_dev_container` before this
-            // subscription exists (the CLI's worktree is added while opening
-            // the workspace, not after). A worktree that finishes its scan -
-            // and emits its only `WorktreeUpdatedEntries` event - before the
-            // subscription above is registered would otherwise leave the flag
-            // set forever, since no later event would arrive to consume it.
-            // Re-check the worktrees the project already has so that case is
-            // still handled.
-            if workspace.open_in_dev_container() {
-                let existing_worktree_ids = project
-                    .read(cx)
-                    .worktrees(cx)
-                    .map(|worktree| worktree.read(cx).id())
-                    .collect::<Vec<_>>();
-                let no_updated_entries: worktree::UpdatedEntriesSet = Vec::new().into();
-                for worktree_id in existing_worktree_ids {
-                    dev_container_suggest::suggest_on_worktree_updated(
-                        workspace,
-                        worktree_id,
-                        &no_updated_entries,
-                        &project,
-                        window,
-                        cx,
-                    );
-                }
-            }
         },
     )
     .detach();

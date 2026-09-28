@@ -4,7 +4,7 @@ use crate::NoopTextSystem;
 use crate::PathPromptOptions;
 use crate::{
     AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DevicePixels,
-    DummyKeyboardMapper, ForegroundExecutor, Keymap, Platform, PlatformDisplay,
+    DummyKeyboardMapper, ForegroundExecutor, Keymap, OwnedMenu, Platform, PlatformDisplay,
     PlatformHeadlessRenderer, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
     PromptButton, ScreenCaptureFrame, ScreenCaptureSource, ScreenCaptureStream, SharedString,
     SourceMetadata, SystemNotification, SystemNotificationResponse, Task, TestDisplay, TestWindow,
@@ -44,8 +44,8 @@ pub(crate) struct TestPlatform {
     pub expect_restart:
         RefCell<Option<oneshot::Sender<(Option<PathBuf>, Vec<std::ffi::OsString>)>>>,
     headless_renderer_factory: Option<Box<dyn Fn() -> Option<Box<dyn PlatformHeadlessRenderer>>>>,
-    menus: RefCell<Option<Vec<crate::OwnedMenu>>>,
     weak: Weak<Self>,
+    menus: RefCell<Vec<OwnedMenu>>,
 }
 
 #[derive(Clone)]
@@ -651,11 +651,11 @@ impl Platform for TestPlatform {
     }
 
     fn set_menus(&self, menus: Vec<crate::Menu>, _keymap: &Keymap) {
-        *self.menus.borrow_mut() = Some(menus.into_iter().map(|menu| menu.owned()).collect());
+        *self.menus.borrow_mut() = menus.into_iter().map(|menu| menu.owned()).collect()
     }
 
-    fn get_menus(&self) -> Option<Vec<crate::OwnedMenu>> {
-        self.menus.borrow().clone()
+    fn get_menus(&self) -> Option<Vec<OwnedMenu>> {
+        Some(self.menus.borrow().clone())
     }
 
     fn set_dock_menu(&self, _menu: Vec<crate::MenuItem>, _keymap: &Keymap) {}

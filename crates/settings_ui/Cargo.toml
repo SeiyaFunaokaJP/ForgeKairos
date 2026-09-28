@@ -88,6 +88,7 @@ futures.workspace = true
 gpui = { workspace = true, features = ["test-support"] }
 i18n_catalog = { workspace = true, features = ["test-support"] }
 i18n_settings = { workspace = true, features = ["test-support"] }
+language_models = { workspace = true, features = ["test-support"] }
 paths.workspace = true
 pretty_assertions.workspace = true
 project = { workspace = true, features = ["test-support"] }

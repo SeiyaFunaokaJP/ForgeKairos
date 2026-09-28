@@ -1,3 +1,4 @@
+mod command_palette_settings;
 mod persistence;
 
 use std::{
@@ -7,28 +8,35 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context as _;
 use client::parse_zed_link;
 use command_palette_hooks::{
     CommandInterceptItem, CommandInterceptResult, CommandPaletteFilter,
     GlobalCommandPaletteInterceptor,
 };
+use command_palette_settings::CommandPaletteSettings;
 
 use fuzzy_nucleo::{StringMatch, StringMatchCandidate};
 use gpui::{
-    Action, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
-    ParentElement, Render, Styled, Task, TaskExt, WeakEntity, Window,
+    Action, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, MouseButton,
+    ParentElement, Render, Styled, Task, TaskExt, WeakEntity, Window, actions,
 };
 use persistence::CommandPaletteDB;
 use picker::Direction;
 use picker::{Picker, PickerDelegate};
 use postage::{sink::Sink, stream::Stream};
 use settings::Settings;
-use ui::{HighlightedLabel, KeyBinding, ListItem, ListItemSpacing, prelude::*};
+use ui::{
+    ButtonLike, HighlightedLabel, KeyBinding, ListItem, ListItemSpacing, Tooltip, prelude::*,
+};
 use util::ResultExt;
 use workspace::{ModalView, Workspace, WorkspaceSettings};
 use zed_actions::{OpenZedUrl, command_palette::Toggle};
 
+actions!(command_palette, [RemoveSelected]);
+
 pub fn init(cx: &mut App) {
+    CommandPaletteSettings::register(cx);
     command_palette_hooks::init(cx);
     cx.observe_new(CommandPalette::register).detach();
 }
@@ -133,6 +141,7 @@ impl CommandPalette {
         let picker = cx.new(|cx| {
             // One-shot action; there's nothing to reopen.
             let picker = Picker::uniform_list(delegate, window, cx)
+                .initial_width(rems(38.0))
                 .reopenable(false, cx)
                 .show_scrollbar(true);
             picker.set_query(query, window, cx);
@@ -145,6 +154,22 @@ impl CommandPalette {
         self.picker
             .update(cx, |picker, cx| picker.set_query(query, window, cx))
     }
+
+    fn remove_selected(&mut self, _: &RemoveSelected, window: &mut Window, cx: &mut Context<Self>) {
+        self.picker.update(cx, |picker, cx| {
+            let delegate = &mut picker.delegate;
+            let Some(command_name) = delegate
+                .selected_command()
+                .filter(|command| command.usage.is_some())
+                .map(|command| command.usage_key.clone())
+            else {
+                return;
+            };
+            delegate
+                .remove_command_history(command_name, window, cx)
+                .detach();
+        });
+    }
 }
 
 impl EventEmitter<DismissEvent> for CommandPalette {}
@@ -156,9 +181,10 @@ impl Focusable for CommandPalette {
 }
 
 impl Render for CommandPalette {
-    fn render(&mut self, _window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .key_context("CommandPalette")
+            .on_action(cx.listener(Self::remove_selected))
             .child(self.picker.clone())
     }
 }
@@ -180,33 +206,36 @@ pub struct CommandPaletteDelegate {
 }
 
 struct Command {
-    name: String,
+    name: SharedString,
     /// Fuzzy-match haystack, see [`localized_action_name_and_search_text`].
     search_text: String,
     /// Key of the usage history in the database. `name` is translated, so keying by it would lose
     /// the history on every change of the display language; the English humanized name is also
     /// what upstream stores, so databases stay interchangeable.
-    usage_key: String,
+    usage_key: SharedString,
     action: Box<dyn Action>,
+    usage: Option<CommandUsage>,
 }
 
 impl Command {
     fn for_action(action: Box<dyn Action>) -> Self {
         let (name, search_text) = localized_action_name_and_search_text(action.name());
         Self {
-            name,
+            name: SharedString::from(name),
             search_text,
-            usage_key: humanize_action_name(action.name()),
+            usage_key: SharedString::from(humanize_action_name(action.name())),
             action,
+            usage: None,
         }
     }
 
-    fn from_intercepted(name: String, action: Box<dyn Action>) -> Self {
+    fn from_intercepted(name: SharedString, action: Box<dyn Action>) -> Self {
         Self {
-            search_text: name.clone(),
+            search_text: name.to_string(),
             usage_key: name.clone(),
             name,
             action,
+            usage: None,
         }
     }
 
@@ -320,6 +349,7 @@ impl Clone for Command {
             search_text: self.search_text.clone(),
             usage_key: self.usage_key.clone(),
             action: self.action.boxed_clone(),
+            usage: self.usage,
         }
     }
 }
@@ -335,13 +365,13 @@ impl CommandPaletteDelegate {
             command_palette,
             workspace,
             all_commands: commands.clone(),
-            matches: vec![],
+            matches: Vec::new(),
             commands,
             selected_ix: 0,
             previous_focus_handle,
             latest_query: String::new(),
             updating_matches: None,
-            query_history: Default::default(),
+            query_history: QueryHistory::default(),
         }
     }
 
@@ -370,10 +400,11 @@ impl CommandPaletteDelegate {
             {
                 matches.remove(idx);
             }
+            let string = SharedString::from(string);
             commands.push(Command::from_intercepted(string.clone(), action));
             new_matches.push(StringMatch {
                 candidate_id: commands.len() - 1,
-                string: string.into(),
+                string,
                 positions,
                 score: 0.0,
             })
@@ -393,13 +424,17 @@ impl CommandPaletteDelegate {
     /// Hit count for each command in the palette.
     /// We only account for commands triggered directly via command palette and not by e.g. keystrokes because
     /// if a user already knows a keystroke for a command, they are unlikely to use a command palette to look for it.
-    fn command_usage(&self, cx: &App) -> HashMap<String, CommandUsage> {
+    fn command_usage(&self, cx: &App) -> HashMap<SharedString, CommandUsage> {
+        if !CommandPaletteSettings::get_global(cx).use_command_history {
+            return HashMap::new();
+        }
+
         if let Ok(commands) = CommandPaletteDB::global(cx).list_commands_used() {
             commands
                 .into_iter()
                 .map(|command| {
                     (
-                        command.command_name,
+                        SharedString::from(command.command_name),
                         CommandUsage {
                             last_invoked: command.last_invoked.unix_timestamp(),
                             invocations: command.invocations,
@@ -410,6 +445,86 @@ impl CommandPaletteDelegate {
         } else {
             HashMap::new()
         }
+    }
+
+    fn remove_command_history(
+        &mut self,
+        command_name: SharedString,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) -> Task<()> {
+        let db = CommandPaletteDB::global(cx);
+        cx.spawn_in(window, async move |picker, cx| {
+            if db
+                .delete_command_history(command_name.to_string())
+                .await
+                .with_context(|| format!("removing {command_name:?} from command history"))
+                .log_err()
+                .is_none()
+            {
+                return;
+            }
+            picker
+                .update_in(cx, |picker, window, cx| {
+                    picker.delegate.query_history = QueryHistory::default();
+                    picker.refresh(window, cx);
+                })
+                .ok();
+        })
+    }
+
+    fn render_history_button(
+        ix: usize,
+        command_name: SharedString,
+        cx: &mut Context<Picker<Self>>,
+    ) -> impl IntoElement {
+        h_flex()
+            .id(("command-history", ix))
+            .debug_selector(move || format!("command-history-{ix}"))
+            .group("command-history-button")
+            .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                cx.stop_propagation();
+                window.prevent_default();
+            })
+            .on_mouse_up(MouseButton::Right, |_, window, cx| {
+                cx.stop_propagation();
+                window.prevent_default();
+            })
+            .child(
+                ButtonLike::new(("remove-command-history", ix))
+                    .aria_label("Remove from Command History")
+                    .tooltip(Tooltip::for_action_title(
+                        "Remove from Command History",
+                        &RemoveSelected,
+                    ))
+                    .child(
+                        h_flex()
+                            .relative()
+                            .child(
+                                h_flex()
+                                    .group_hover("command-history-button", |this| this.invisible())
+                                    .child(
+                                        Icon::new(IconName::HistoryRerun)
+                                            .color(Color::Muted)
+                                            .size(IconSize::Small),
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .absolute()
+                                    .inset_0()
+                                    .visible_on_hover("command-history-button")
+                                    .child(Icon::new(IconName::Close).size(IconSize::Small)),
+                            ),
+                    )
+                    .on_click(cx.listener(move |picker, _, window, cx| {
+                        window.prevent_default();
+                        picker
+                            .delegate
+                            .remove_command_history(command_name.clone(), window, cx)
+                            .detach();
+                    })),
+            )
     }
 
     fn selected_command(&self) -> Option<&Command> {
@@ -523,12 +638,10 @@ impl PickerDelegate for CommandPaletteDelegate {
             let query = normalize_action_query(query_str);
             let query_for_link = query_str.to_string();
             async move {
-                commands.sort_by_key(|action| {
-                    (
-                        Reverse(command_usage.get(&action.usage_key).copied()),
-                        action.name.clone(),
-                    )
-                });
+                for command in &mut commands {
+                    command.usage = command_usage.get(&command.usage_key).copied();
+                }
+                commands.sort_by_key(|command| (Reverse(command.usage), command.name.clone()));
 
                 let candidates = commands
                     .iter()
@@ -549,7 +662,7 @@ impl PickerDelegate for CommandPaletteDelegate {
 
                 let used_commands = commands
                     .iter()
-                    .take_while(|command| command_usage.contains_key(&command.usage_key))
+                    .take_while(|command| command.usage.is_some())
                     .count();
                 matches.sort_by_key(|string_match| {
                     if string_match.candidate_id < used_commands {
@@ -702,15 +815,31 @@ impl PickerDelegate for CommandPaletteDelegate {
                         .w_full()
                         .py_px()
                         .justify_between()
-                        .child(HighlightedLabel::new(
-                            command.name.clone(),
-                            command.highlights_within_name(&matching_command.positions),
-                        ))
-                        .child(KeyBinding::for_action_in(
-                            &*command.action,
-                            &self.previous_focus_handle,
-                            cx,
-                        )),
+                        .gap_2()
+                        .child(
+                            HighlightedLabel::new(
+                                command.name.clone(),
+                                command.highlights_within_name(&matching_command.positions),
+                            )
+                            .truncate(),
+                        )
+                        .child(
+                            h_flex()
+                                .flex_shrink_0()
+                                .gap_2()
+                                .child(KeyBinding::for_action_in(
+                                    &*command.action,
+                                    &self.previous_focus_handle,
+                                    cx,
+                                ))
+                                .when(command.usage.is_some(), |this| {
+                                    this.child(Self::render_history_button(
+                                        ix,
+                                        command.usage_key.clone(),
+                                        cx,
+                                    ))
+                                }),
+                        ),
                 ),
         )
     }
@@ -1062,7 +1191,7 @@ mod tests {
             editor.update(cx, |editor, cx| window.focus(&editor.focus_handle(cx), cx))
         });
 
-        cx.simulate_keystrokes("cmd-shift-p");
+        cx.dispatch_action(Toggle);
 
         let palette = workspace.update(cx, |workspace, cx| {
             workspace
@@ -1089,11 +1218,75 @@ mod tests {
             );
         });
 
-        cx.simulate_keystrokes("enter");
+        cx.dispatch_action(menu::Confirm);
 
         workspace.update(cx, |workspace, cx| {
             assert!(workspace.active_modal::<CommandPalette>(cx).is_none());
             assert_eq!(editor.read(cx).text(cx), "ab")
+        });
+
+        cx.dispatch_action(Toggle);
+        let history_button = cx.debug_bounds("command-history-0").unwrap();
+        cx.simulate_mouse_move(history_button.center(), None, gpui::Modifiers::default());
+        cx.simulate_mouse_down(
+            history_button.center(),
+            MouseButton::Right,
+            gpui::Modifiers::default(),
+        );
+        cx.simulate_mouse_up(
+            history_button.center(),
+            MouseButton::Right,
+            gpui::Modifiers::default(),
+        );
+        cx.simulate_mouse_down(
+            history_button.center(),
+            MouseButton::Left,
+            gpui::Modifiers::default(),
+        );
+        let label_position = history_button.center() - gpui::point(px(100.0), px(0.0));
+        cx.simulate_mouse_move(
+            label_position,
+            MouseButton::Left,
+            gpui::Modifiers::default(),
+        );
+        cx.simulate_mouse_up(
+            label_position,
+            MouseButton::Left,
+            gpui::Modifiers::default(),
+        );
+        workspace.read_with(cx, |workspace, cx| {
+            assert!(workspace.active_modal::<CommandPalette>(cx).is_some());
+            assert_eq!(editor.read(cx).text(cx), "ab");
+        });
+        assert_eq!(
+            db.get_command_usage("editor: backspace")
+                .unwrap()
+                .unwrap()
+                .invocations,
+            1
+        );
+
+        cx.simulate_mouse_move(history_button.center(), None, gpui::Modifiers::default());
+        cx.simulate_click(history_button.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+
+        assert_eq!(db.get_command_usage("editor: backspace").unwrap(), None);
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert_eq!(editor.read(cx).text(cx), "ab");
+            let palette = workspace.active_modal::<CommandPalette>(cx).unwrap();
+            let picker = palette.read(cx).picker.read(cx);
+            assert_eq!(
+                picker
+                    .delegate
+                    .matches
+                    .iter()
+                    .filter(|matching_command| {
+                        matching_command.string == "編集: 前の文字を削除 editor: backspace"
+                    })
+                    .count(),
+                1,
+            );
+            workspace.hide_modal(window, cx);
         });
 
         // Add namespace filter, and redeploy the palette
@@ -1103,7 +1296,7 @@ mod tests {
             });
         });
 
-        cx.simulate_keystrokes("cmd-shift-p");
+        cx.dispatch_action(Toggle);
         cx.simulate_input("bcksp");
 
         let palette = workspace.update(cx, |workspace, cx| {
@@ -1271,8 +1464,8 @@ mod tests {
             cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
         let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
 
-        cx.simulate_keystrokes("cmd-n");
-        cx.simulate_keystrokes("cmd-shift-p");
+        cx.dispatch_action(workspace::NewFile);
+        cx.dispatch_action(Toggle);
 
         let palette = workspace.update(cx, |workspace, cx| {
             workspace.active_modal::<CommandPalette>(cx).unwrap()
@@ -1284,6 +1477,14 @@ mod tests {
         });
         cx.run_until_parked();
 
+        let unranked_names = picker.read_with(cx, |picker, _| {
+            picker
+                .delegate
+                .matches
+                .iter()
+                .map(|matching_command| matching_command.string.to_string())
+                .collect::<Vec<_>>()
+        });
         let (worst_match, second_worst_match, match_count) = picker.read_with(cx, |picker, _| {
             let matches = &picker.delegate.matches;
             (
@@ -1323,6 +1524,152 @@ mod tests {
             assert_eq!(names[1], second_worst_match);
             assert_eq!(names.len(), match_count);
         });
+
+        picker.update_in(cx, |picker, window, cx| {
+            CommandPaletteSettings::override_global(
+                CommandPaletteSettings {
+                    use_command_history: false,
+                },
+                cx,
+            );
+            picker.refresh(window, cx);
+        });
+        cx.run_until_parked();
+        cx.dispatch_action(RemoveSelected);
+        picker.read_with(cx, |picker, _| {
+            assert_eq!(
+                picker
+                    .delegate
+                    .matches
+                    .iter()
+                    .map(|matching_command| matching_command.string.to_string())
+                    .collect::<Vec<_>>(),
+                unranked_names
+            );
+            assert!(
+                picker
+                    .delegate
+                    .commands
+                    .iter()
+                    .all(|command| command.usage.is_none())
+            );
+        });
+        assert_eq!(db.list_commands_used().unwrap().len(), 2);
+
+        picker.update_in(cx, |picker, window, cx| {
+            CommandPaletteSettings::override_global(
+                CommandPaletteSettings {
+                    use_command_history: true,
+                },
+                cx,
+            );
+            picker.refresh(window, cx);
+        });
+        cx.run_until_parked();
+        cx.dispatch_action(RemoveSelected);
+        cx.run_until_parked();
+        picker.read_with(cx, |picker, _| {
+            let expected = std::iter::once(second_worst_match.clone())
+                .chain(
+                    unranked_names
+                        .iter()
+                        .filter(|name| *name != &second_worst_match)
+                        .cloned(),
+                )
+                .collect::<Vec<_>>();
+            assert_eq!(
+                picker
+                    .delegate
+                    .matches
+                    .iter()
+                    .map(|matching_command| matching_command.string.to_string())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        });
+
+        let remaining_usage = db.list_commands_used().unwrap();
+        picker.update_in(cx, |picker, window, cx| {
+            picker.delegate.set_selected_index(1, window, cx);
+        });
+        cx.dispatch_action(RemoveSelected);
+        assert_eq!(db.list_commands_used().unwrap(), remaining_usage);
+    }
+
+    #[gpui::test]
+    async fn test_intercepted_commands_are_not_history(cx: &mut TestAppContext) {
+        let app_state = init_test(cx);
+        let project = Project::test(app_state.fs.clone(), [], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(cx, |workspace, _| workspace.workspace().clone());
+        let picker = open_palette_with_history(&workspace, &[], cx);
+
+        for (exclusive, expected) in [
+            (
+                false,
+                vec![("intercepted", false), ("older", true), ("unused", false)],
+            ),
+            (true, vec![("intercepted", false)]),
+        ] {
+            picker.update(cx, |picker, cx| {
+                let commands = [
+                    ("recent", Toggle.boxed_clone()),
+                    ("older", menu::Confirm.boxed_clone()),
+                    ("unused", menu::Cancel.boxed_clone()),
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(index, (name, action))| Command {
+                    name: SharedString::from(name),
+                    search_text: name.to_string(),
+                    usage_key: SharedString::from(name),
+                    action,
+                    usage: (index < 2).then_some(CommandUsage {
+                        last_invoked: 0,
+                        invocations: 1,
+                    }),
+                })
+                .collect::<Vec<_>>();
+                let matches = commands
+                    .iter()
+                    .enumerate()
+                    .map(|(candidate_id, command)| StringMatch {
+                        candidate_id,
+                        string: command.name.clone(),
+                        positions: Vec::new(),
+                        score: 0.0,
+                    })
+                    .collect::<Vec<_>>();
+                let intercept_result = CommandInterceptResult {
+                    results: vec![CommandInterceptItem {
+                        action: Toggle.boxed_clone(),
+                        string: "intercepted".to_string(),
+                        positions: Vec::new(),
+                    }],
+                    exclusive,
+                };
+                picker.delegate.matches_updated(
+                    String::new(),
+                    commands,
+                    matches,
+                    intercept_result,
+                    cx,
+                );
+                assert_eq!(
+                    picker
+                        .delegate
+                        .matches
+                        .iter()
+                        .map(|matching_command| {
+                            let command = &picker.delegate.commands[matching_command.candidate_id];
+                            (command.name.as_str(), command.usage.is_some())
+                        })
+                        .collect::<Vec<_>>(),
+                    expected,
+                );
+            });
+        }
     }
 
     #[gpui::test]
@@ -1345,6 +1692,7 @@ mod tests {
 
         cx.simulate_input("definitely-no-command-should-match-this");
         cx.background_executor.run_until_parked();
+        cx.dispatch_action(RemoveSelected);
 
         picker.read_with(cx, |picker, _cx| {
             assert!(picker.delegate.matches.is_empty());
@@ -1524,7 +1872,7 @@ mod tests {
         history: &[&str],
         cx: &mut VisualTestContext,
     ) -> Entity<Picker<CommandPaletteDelegate>> {
-        cx.simulate_keystrokes("cmd-shift-p");
+        cx.dispatch_action(Toggle);
         cx.run_until_parked();
 
         let palette = workspace.update(cx, |workspace, cx| {

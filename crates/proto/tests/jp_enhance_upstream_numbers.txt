@@ -1,5 +1,5 @@
 # Every numbered field and enum value in upstream's crates/proto/proto at
-# v1.19.2 (df181c6), as `scope name number`. Written by `regenerate_upstream_numbers`
+# v1.20.2 (7c451e6), as `scope name number`. Written by `regenerate_upstream_numbers`
 # in jp_enhance_numbering.rs; do not edit by hand.
 AckBufferOperation buffer_id 1
 AckBufferOperation epoch 2
@@ -899,6 +899,8 @@ Envelope load_commit_template_response 473
 Envelope log_to_debug_console 348
 Envelope lsp_ext_cancel_flycheck 345
 Envelope lsp_ext_clear_flycheck 347
+Envelope lsp_ext_expand_abbreviation 488
+Envelope lsp_ext_expand_abbreviation_response 489
 Envelope lsp_ext_expand_macro 154
 Envelope lsp_ext_expand_macro_response 155
 Envelope lsp_ext_go_to_parent_module 343
@@ -1698,18 +1700,32 @@ LspExtCancelFlycheck language_server_id 2
 LspExtCancelFlycheck project_id 1
 LspExtClearFlycheck language_server_id 2
 LspExtClearFlycheck project_id 1
+LspExtExpandAbbreviation abbreviation 3
+LspExtExpandAbbreviation base_indent 10
+LspExtExpandAbbreviation bem_filter 8
+LspExtExpandAbbreviation buffer_id 2
+LspExtExpandAbbreviation comment_filter 7
+LspExtExpandAbbreviation indent 9
+LspExtExpandAbbreviation language 5
+LspExtExpandAbbreviation project_id 1
+LspExtExpandAbbreviation server_id 6
+LspExtExpandAbbreviation text 4
+LspExtExpandAbbreviationResponse expansion 1
 LspExtExpandMacro buffer_id 2
 LspExtExpandMacro position 3
 LspExtExpandMacro project_id 1
+LspExtExpandMacro server_id 4
 LspExtExpandMacroResponse expansion 2
 LspExtExpandMacroResponse name 1
 LspExtGoToParentModule buffer_id 2
 LspExtGoToParentModule position 3
 LspExtGoToParentModule project_id 1
+LspExtGoToParentModule server_id 4
 LspExtGoToParentModuleResponse links 1
 LspExtOpenDocs buffer_id 2
 LspExtOpenDocs position 3
 LspExtOpenDocs project_id 1
+LspExtOpenDocs server_id 4
 LspExtOpenDocsResponse local 2
 LspExtOpenDocsResponse web 1
 LspExtRunFlycheck buffer_id 2
@@ -1719,9 +1735,11 @@ LspExtRunFlycheck project_id 1
 LspExtRunnables buffer_id 2
 LspExtRunnables position 3
 LspExtRunnables project_id 1
+LspExtRunnables server_id 4
 LspExtRunnablesResponse runnables 1
 LspExtSwitchSourceHeader buffer_id 2
 LspExtSwitchSourceHeader project_id 1
+LspExtSwitchSourceHeader server_id 3
 LspExtSwitchSourceHeaderResponse target_file 1
 LspLogTrace message 1
 LspQuery get_code_actions 6
@@ -1749,6 +1767,7 @@ LspQuery project_id 1
 LspQuery semantic_tokens 16
 LspQuery server_id 15
 LspQueryResponse lsp_request_id 2
+LspQueryResponse peer_id 4
 LspQueryResponse project_id 1
 LspQueryResponse responses 3
 LspResponse get_code_actions_response 2
@@ -1894,6 +1913,7 @@ PendingParticipant calling_user_id 2
 PendingParticipant initial_project_id 3
 PendingParticipant user_id 1
 PerformRename buffer_id 2
+PerformRename language_server_id 6
 PerformRename new_name 4
 PerformRename position 3
 PerformRename project_id 1
@@ -1912,6 +1932,7 @@ PrepareRename project_id 1
 PrepareRename version 4
 PrepareRenameResponse can_rename 1
 PrepareRenameResponse end 3
+PrepareRenameResponse language_server_id 6
 PrepareRenameResponse only_unprepared_rename_supported 5
 PrepareRenameResponse start 2
 PrepareRenameResponse version 4

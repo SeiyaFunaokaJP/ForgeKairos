@@ -8,6 +8,9 @@ msgstr ""
 msgid "Discard Changes to {count} Files"
 msgstr "{count} 個のファイルの変更を破棄"
 
+msgid "Hold {} to force delete"
+msgstr "{} キーを押しながらクリックすると強制削除します"
+
 msgid "Not available while several files are selected"
 msgstr "複数のファイルを選んでいるときは使えません"
 

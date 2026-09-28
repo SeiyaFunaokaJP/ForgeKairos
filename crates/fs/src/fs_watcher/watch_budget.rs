@@ -334,17 +334,6 @@ impl WatchBudget {
         self.enabled
     }
 
-    #[cfg(all(test, target_os = "linux"))]
-    pub(super) fn set_source(&self, source: Arc<dyn WatchBudgetSource>) {
-        *self.source.lock() = source;
-        let mut state = self.state.lock();
-        let native_watches = state.native_watches;
-        *state = BudgetState {
-            native_watches,
-            ..BudgetState::default()
-        };
-    }
-
     pub(super) fn native_watches(&self) -> usize {
         self.state.lock().native_watches
     }

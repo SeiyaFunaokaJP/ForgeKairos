@@ -8,8 +8,8 @@ use gpui::{
 };
 use http_client::RequestHost;
 use language::{
-    BinaryStatus, LanguageName, LanguageRegistry, LanguageServerId, LanguageServerName,
-    LanguageServerStatusUpdate, ServerHealth, language_settings::all_language_settings,
+    BinaryStatus, LanguageName, LanguageServerId, LanguageServerName, LanguageServerStatusUpdate,
+    ServerHealth, language_settings::all_language_settings,
 };
 use lsp::LanguageServerSelector;
 use project::{
@@ -246,28 +246,12 @@ fn manual_install_hint(server_name: &LanguageServerName) -> String {
 impl ActivityIndicator {
     pub fn new(
         workspace: &mut Workspace,
-        languages: Arc<LanguageRegistry>,
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) -> Entity<ActivityIndicator> {
         let project = workspace.project().clone();
         let workspace_handle = cx.entity().downgrade();
         let this = cx.new(|cx| {
-            let mut status_events = languages.language_server_binary_statuses();
-            cx.spawn(async move |this, cx| {
-                while let Some((name, binary_status)) = status_events.next().await {
-                    this.update(cx, |this: &mut ActivityIndicator, cx| {
-                        this.record_status(
-                            name,
-                            LanguageServerStatusUpdate::Binary(binary_status),
-                            cx,
-                        );
-                    })?;
-                }
-                anyhow::Ok(())
-            })
-            .detach();
-
             let fs = project.read(cx).fs().clone();
             let mut job_events = fs.subscribe_to_jobs();
             cx.spawn(async move |this, cx| {
@@ -275,11 +259,17 @@ impl ActivityIndicator {
                     this.update(cx, |this: &mut ActivityIndicator, cx| {
                         match job_event {
                             fs::JobEvent::Started { info } => {
-                                this.fs_jobs.retain(|j| j.id != info.id);
+                                this.fs_jobs.retain(|job| job.id != info.id);
                                 this.fs_jobs.push(info);
                             }
+                            fs::JobEvent::Updated { id, message } => {
+                                if let Some(job) = this.fs_jobs.iter_mut().find(|job| job.id == id)
+                                {
+                                    job.message = message;
+                                }
+                            }
                             fs::JobEvent::Completed { id } => {
-                                this.fs_jobs.retain(|j| j.id != id);
+                                this.fs_jobs.retain(|job| job.id != id);
                             }
                         }
                         cx.notify();
@@ -466,9 +456,9 @@ impl ActivityIndicator {
         this
     }
 
-    /// Records the latest status for a server, whichever ingest path it came
-    /// in on (the local registry stream, or a remote host's over proto), and
-    /// raises the ADR-F22 consent prompt when the reason is an egress denial.
+    /// Records the latest status for a server, as the project's LSP store
+    /// reports it (local servers and a remote host's alike), and raises the
+    /// ADR-F22 consent prompt when the reason is an egress denial.
     fn record_status(
         &mut self,
         name: LanguageServerName,

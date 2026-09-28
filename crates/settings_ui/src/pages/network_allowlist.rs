@@ -1022,6 +1022,10 @@ mod tests {
         assert_eq!(error, None);
         assert_eq!(loaded.status, Status::Present);
         assert_eq!(loaded.entries, vec!["api.anthropic.com".to_string()]);
+        // A watch on a path that does not exist yet notices its creation by
+        // polling on the executor's clock (upstream's watcher since v1.20), for
+        // the fake filesystem as for the real one.
+        cx.executor().advance_clock(fs::fs_watcher::poll_interval());
         cx.run_until_parked();
         assert!(
             handle.allows(&anthropic),

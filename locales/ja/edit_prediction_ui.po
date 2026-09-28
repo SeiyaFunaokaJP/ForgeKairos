@@ -1,0 +1,9 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Display predictions inline only when holding a modifier key ({} by default)."
+msgstr "修飾キー (既定では {}) を押している間だけ、予測をインラインで表示します。"

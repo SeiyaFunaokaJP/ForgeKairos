@@ -56,6 +56,7 @@
 //! offset no longer `-width/2`) is left alone rather than over-corrected.
 
 use anyhow::Result;
+use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 
 struct CenterEdgeLabels<I> {
@@ -80,7 +81,11 @@ fn attr_f64(e: &BytesStart<'_>, name: &str) -> Result<Option<f64>> {
     let Some(attr) = e.try_get_attribute(name)? else {
         return Ok(None);
     };
-    Ok(attr.unescape_value()?.trim().parse::<f64>().ok())
+    Ok(attr
+        .normalized_value(XmlVersion::Implicit1_0)?
+        .trim()
+        .parse::<f64>()
+        .ok())
 }
 
 fn has_class(e: &BytesStart<'_>, class: &str) -> Result<bool> {
@@ -88,7 +93,7 @@ fn has_class(e: &BytesStart<'_>, class: &str) -> Result<bool> {
         return Ok(false);
     };
     Ok(attr
-        .unescape_value()?
+        .normalized_value(XmlVersion::Implicit1_0)?
         .split_ascii_whitespace()
         .any(|token| token == class))
 }
@@ -100,7 +105,7 @@ fn transform_translate_dx(e: &BytesStart<'_>) -> Result<f64> {
     let Some(attr) = e.try_get_attribute("transform")? else {
         return Ok(0.0);
     };
-    let value = attr.unescape_value()?;
+    let value = attr.normalized_value(XmlVersion::Implicit1_0)?;
     let Some((_, rest)) = value.split_once("translate(") else {
         return Ok(0.0);
     };
@@ -144,7 +149,7 @@ impl<I> CenterEdgeLabels<I> {
         }
         let is_centered = e
             .try_get_attribute("text-anchor")?
-            .map(|attr| attr.unescape_value())
+            .map(|attr| attr.normalized_value(XmlVersion::Implicit1_0))
             .transpose()?
             .is_some_and(|anchor| anchor.trim() == "middle");
         if !is_centered || center_x.abs() < MIN_SHIFT {
@@ -384,7 +389,7 @@ mod tests {
         let Ok(Some(attr)) = e.try_get_attribute("transform") else {
             return (0.0, 0.0);
         };
-        let Ok(value) = attr.unescape_value() else {
+        let Ok(value) = attr.normalized_value(XmlVersion::Implicit1_0) else {
             return (0.0, 0.0);
         };
         let Some((_, rest)) = value.split_once("translate(") else {
@@ -463,7 +468,9 @@ mod tests {
                     } else {
                         &mut labels
                     };
-                    if let (Some(label), Ok(text)) = (list.last_mut(), bytes.xml_content()) {
+                    if let (Some(label), Ok(text)) =
+                        (list.last_mut(), bytes.xml_content(XmlVersion::Implicit1_0))
+                    {
                         label.text.push_str(&text);
                     }
                     continue;

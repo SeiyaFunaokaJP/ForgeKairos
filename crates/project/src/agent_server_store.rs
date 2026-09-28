@@ -2526,7 +2526,7 @@ mod tests {
         http_client: Arc<dyn HttpClient>,
         sha256: Option<String>,
     ) -> LocalRegistryArchiveAgent {
-        let fs: Arc<dyn Fs> = Arc::new(fs::RealFs::new(None, cx.executor()));
+        let fs: Arc<dyn Fs> = fs::RealFs::new(None, cx.executor());
         let target = RegistryTargetConfig {
             archive: TEST_ARCHIVE_URL.to_string(),
             cmd: "./agent".to_string(),
@@ -2594,7 +2594,7 @@ mod tests {
 
     #[cfg(all(target_os = "windows", feature = "test-support"))]
     fn make_custom_agent(cx: &mut TestAppContext, command_path: &str) -> LocalCustomAgent {
-        let fs: Arc<dyn Fs> = Arc::new(fs::RealFs::new(None, cx.executor()));
+        let fs: Arc<dyn Fs> = fs::RealFs::new(None, cx.executor());
         cx.update(|cx| {
             let worktree_store =
                 cx.new(|cx| WorktreeStore::local(false, fs.clone(), WorktreeIdCounter::get(cx)));

@@ -1077,12 +1077,12 @@ async fn run_on_this_machine(
     process
         .args(&command.args)
         .stdin(if command.stdin.is_some() {
-            std::process::Stdio::piped()
+            util::command::Stdio::piped()
         } else {
-            std::process::Stdio::null()
+            util::command::Stdio::null()
         })
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(util::command::Stdio::piped())
+        .stderr(util::command::Stdio::piped())
         .kill_on_drop(true);
     if let Some(working_directory) = &command.working_directory {
         process.current_dir(working_directory);

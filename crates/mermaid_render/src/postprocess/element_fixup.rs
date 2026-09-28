@@ -22,6 +22,7 @@ use std::borrow::Cow;
 use std::fmt::Write as _;
 
 use anyhow::Result;
+use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 
 use super::unescape_attribute_value;
@@ -99,7 +100,7 @@ fn is_bad_rect(e: &BytesStart) -> Result<bool> {
         match e.try_get_attribute(attr_name)? {
             None => return Ok(true),
             Some(attr) => {
-                let val = attr.unescape_value()?;
+                let val = attr.normalized_value(XmlVersion::Implicit1_0)?;
                 let trimmed = val.trim();
                 if trimmed.is_empty() {
                     return Ok(true);
@@ -284,7 +285,7 @@ impl<'a, I: Iterator<Item = Result<Event<'a>>>> ElementFixup<I> {
             let attr = attr?;
             match attr.key.local_name().as_ref() {
                 b"fill" if fix_fill => {
-                    let val = attr.unescape_value()?;
+                    let val = attr.normalized_value(XmlVersion::Implicit1_0)?;
                     if is_hardcoded_text_fill(&val)
                         || (self.diagram_kind == DiagramKind::C4 && val == C4_DEFAULT_INK)
                     {
@@ -342,7 +343,10 @@ impl<'a, I: Iterator<Item = Result<Event<'a>>>> ElementFixup<I> {
                 // outranks it while keeping merman's per-node color.
                 let fill = e
                     .try_get_attribute("fill")?
-                    .map(|fill| fill.unescape_value().map(|value| value.into_owned()))
+                    .map(|fill| {
+                        fill.normalized_value(XmlVersion::Implicit1_0)
+                            .map(|value| value.into_owned())
+                    })
                     .transpose()?;
                 if let Some(fill) = fill
                     && e.try_get_attribute("style")?.is_none()

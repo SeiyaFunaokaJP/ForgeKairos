@@ -356,6 +356,11 @@ msgctxt "action"
 msgid "call_hierarchy::ToggleDirection"
 msgstr "呼び出し階層: 呼び出し元と呼び出し先の切り替え"
 
+#. command palette: remove selected
+msgctxt "action"
+msgid "command_palette::RemoveSelected"
+msgstr "コマンドパレット: 選択した項目を履歴から削除"
+
 #. command palette: toggle
 msgctxt "action"
 msgid "command_palette::Toggle"
@@ -550,6 +555,11 @@ msgstr "デバッグ: ブレークポイントを解除"
 msgctxt "action"
 msgid "dev::CopyDebugAdapterArguments"
 msgstr "開発: デバッグアダプターの引数をコピー"
+
+#. dev: debug filesystem watching
+msgctxt "action"
+msgid "dev::DebugFilesystemWatching"
+msgstr "開発: ファイルの監視をデバッグ"
 
 #. dev: edit prediction context go back
 msgctxt "action"
@@ -1990,6 +2000,11 @@ msgstr "ブックマーク: 一覧を表示"
 msgctxt "action"
 msgid "editor::WrapSelectionsInTag"
 msgstr "編集: 選択範囲をタグで囲む"
+
+#. editor: wrap with abbreviation
+msgctxt "action"
+msgid "editor::WrapWithAbbreviation"
+msgstr "編集: Emmet の省略記法で選択範囲を囲む"
 
 #. encoding selector: toggle
 msgctxt "action"

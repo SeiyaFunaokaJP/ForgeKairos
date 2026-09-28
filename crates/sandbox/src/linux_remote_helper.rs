@@ -77,7 +77,7 @@
 
 use anyhow::{Context as _, Result, anyhow, bail, ensure};
 use std::ffi::{CString, OsStr, OsString};
-use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd, RawFd};
+use std::os::fd::{AsFd as _, AsRawFd as _, FromRawFd as _, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt as _;
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt as _;
@@ -196,7 +196,7 @@ fn close_verified_exec_descriptor() {
         return;
     }
     let is_this_executable = match (
-        crate::util::linux_fd_identity(fd),
+        fstat_raw(fd).ok().map(|stat| (stat.st_dev, stat.st_ino)),
         std::fs::metadata("/proc/self/exe"),
     ) {
         (Some(identity), Ok(metadata)) => identity == (metadata.dev(), metadata.ino()),
@@ -2345,7 +2345,7 @@ impl IdeRendezvous {
         );
         let directory = crate::util::open_o_path(&directory_path, crate::util::FollowSymlinks::No)
             .with_context(|| format!("opening {}", directory_path.display()))?;
-        let status = nix::sys::stat::fstat(directory.as_raw_fd())
+        let status = nix::sys::stat::fstat(&directory)
             .map_err(|errno| anyhow!("examining {}: {errno}", directory_path.display()))?;
         // SAFETY: `geteuid` takes no arguments and cannot fail.
         let own_uid = unsafe { libc::geteuid() };
@@ -2384,7 +2384,7 @@ impl IdeRendezvous {
         }
         // SAFETY: freshly opened by us and owned by nothing else.
         let socket = unsafe { OwnedFd::from_raw_fd(raw) };
-        let status = nix::sys::stat::fstat(socket.as_raw_fd()).map_err(std::io::Error::from)?;
+        let status = nix::sys::stat::fstat(&socket).map_err(std::io::Error::from)?;
         // SAFETY: `geteuid` takes no arguments and cannot fail.
         let own_uid = unsafe { libc::geteuid() };
         if status.st_mode & libc::S_IFMT != libc::S_IFSOCK || status.st_uid != own_uid {
@@ -2761,7 +2761,7 @@ fn ensure_standard_descriptors() -> Result<StandardStreams> {
         output_was_open: true,
     };
     for fd in [libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
-        match nix::sys::stat::fstat(fd) {
+        match fstat_raw(fd) {
             Ok(stat) => {
                 let kind = stat.st_mode & libc::S_IFMT;
                 let is_a_pipe = kind == libc::S_IFIFO || kind == libc::S_IFSOCK;
@@ -3637,13 +3637,27 @@ fn landlock_entry_access(kind: GrantKind, is_dir: bool, abi: i32, handled: u64) 
     (writes | reads) & handled
 }
 
+/// `fstat` of a bare descriptor number. nix 0.30 only takes `AsFd`, but some of
+/// these numbers were not opened by us (the standard descriptors, one inherited
+/// through `/proc/self/fd/N`) and may not be open at all, so borrowing them as a
+/// `BorrowedFd` would promise more than we know; `EBADF` is an answer here.
+fn fstat_raw(fd: RawFd) -> nix::Result<libc::stat> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `fstat` only writes into the buffer we pass, and reports a
+    // descriptor that is not open as `EBADF` instead of touching it.
+    let result = unsafe { libc::fstat(fd, stat.as_mut_ptr()) };
+    nix::errno::Errno::result(result)?;
+    // SAFETY: `fstat` succeeded, so it filled the whole buffer.
+    Ok(unsafe { stat.assume_init() })
+}
+
 /// Whether the inode behind `fd` is a directory. `fd` may be an `O_PATH` handle
 /// (`fstat` is one of the few operations `O_PATH` permits), which is what the
 /// Landlock rule path opens — so the type is read from the *same* fd the rule
 /// pins, leaving no window for the object to change type between the check and
 /// the rule.
 fn fd_is_dir(fd: RawFd) -> Result<bool> {
-    let stat = nix::sys::stat::fstat(fd).map_err(|errno| anyhow!("fstat failed: {errno}"))?;
+    let stat = fstat_raw(fd).map_err(|errno| anyhow!("fstat failed: {errno}"))?;
     Ok(stat.st_mode & libc::S_IFMT == libc::S_IFDIR)
 }
 
@@ -4446,8 +4460,8 @@ fn provide_private_tmp(
         let source = crate::util::open_o_path(root.path(), crate::util::FollowSymlinks::No)
             .with_context(|| format!("reopening writable {}", root.path().display()))?;
         match (
-            crate::util::linux_fd_identity(source.as_raw_fd()),
-            crate::util::linux_fd_identity(root.fd().as_raw_fd()),
+            crate::util::linux_fd_identity(source.as_fd()),
+            crate::util::linux_fd_identity(root.fd().as_fd()),
         ) {
             (Some(reopened), Some(pinned)) if reopened == pinned => {}
             _ => bail!(
@@ -4678,7 +4692,7 @@ fn cover_windows_drives(
     }
     let approved: Vec<(u64, u64)> = writable_pins
         .iter()
-        .filter_map(|pin| crate::util::linux_fd_identity(pin.fd().as_raw_fd()))
+        .filter_map(|pin| crate::util::linux_fd_identity(pin.fd().as_fd()))
         .collect();
     spellings.retain(|path| covers.iter().any(|cover| path.starts_with(cover)));
     spellings.sort_by_key(|path| path.components().count());
@@ -4697,7 +4711,7 @@ fn cover_windows_drives(
             );
             continue;
         };
-        let approved_root = crate::util::linux_fd_identity(source.as_raw_fd())
+        let approved_root = crate::util::linux_fd_identity(source.as_fd())
             .is_some_and(|identity| approved.contains(&identity));
         if !approved_root {
             log::warn!(
@@ -5217,8 +5231,8 @@ fn cover_enclosure(
             );
             continue;
         };
-        let pinned = crate::util::linux_fd_identity(pin.fd().as_raw_fd());
-        if pinned.is_none() || pinned != crate::util::linux_fd_identity(source.as_raw_fd()) {
+        let pinned = crate::util::linux_fd_identity(pin.fd().as_fd());
+        if pinned.is_none() || pinned != crate::util::linux_fd_identity(source.as_fd()) {
             log::warn!(
                 "[remote-sandbox] leaving {} covered: it was replaced after it was pinned",
                 path.display()
@@ -5702,8 +5716,8 @@ fn bind_read_only(pin: &CanonicalPathBuf) -> Result<()> {
     let source = crate::util::open_o_path(target, crate::util::FollowSymlinks::Yes)
         .with_context(|| format!("reopening protected {}", target.display()))?;
     let pinned =
-        crate::util::linux_fd_identity(pin.fd().as_raw_fd()).context("fstat of pinned inode")?;
-    let reopened = crate::util::linux_fd_identity(source.as_raw_fd())
+        crate::util::linux_fd_identity(pin.fd().as_fd()).context("fstat of pinned inode")?;
+    let reopened = crate::util::linux_fd_identity(source.as_fd())
         .context("fstat of reopened protected path")?;
     if pinned != reopened {
         bail!(
@@ -6110,7 +6124,7 @@ fn verify_same_inode(pin: &CanonicalPathBuf, mounted: &Path) -> Result<()> {
     let mounted_meta = std::fs::symlink_metadata(mounted)
         .with_context(|| format!("lstat {}", mounted.display()))?;
     let expected =
-        crate::util::linux_fd_identity(pin.fd().as_raw_fd()).context("fstat of pinned inode")?;
+        crate::util::linux_fd_identity(pin.fd().as_fd()).context("fstat of pinned inode")?;
     let actual = (mounted_meta.dev(), mounted_meta.ino());
     if expected != actual {
         bail!(
@@ -7365,8 +7379,8 @@ mod tests {
         let mut paths = merge_remote_builtin_protected_paths(Vec::new(), &home);
         protect_read_hidden_entries(&mut paths, &read_hidden_home_paths(&home, false));
         let protected = classify_protected_paths(&paths).expect("classifying them");
-        let writable =
-            pin_writable_paths(&[home.clone()], false).expect("pinning the worktree = the home");
+        let writable = pin_writable_paths(std::slice::from_ref(&home), false)
+            .expect("pinning the worktree = the home");
         let plan = plan_filesystem(&writable, &protected, false, false, &|_| true)
             .expect("planning the grants");
         let tmp_path = private_tmp.path().to_path_buf();

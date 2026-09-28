@@ -496,9 +496,9 @@ async fn reinstall_server(
             command
                 .args(&template.args)
                 .envs(template.env)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
+                .stdin(util::command::Stdio::null())
+                .stdout(util::command::Stdio::piped())
+                .stderr(util::command::Stdio::piped())
                 .kill_on_drop(true);
             command.output().await
         })

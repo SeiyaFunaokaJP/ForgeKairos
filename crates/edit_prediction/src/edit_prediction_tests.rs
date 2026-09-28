@@ -2691,6 +2691,7 @@ fn init_test_with_fake_client_and_legacy_data_collection(
         cx.set_global(AppDatabase::test_new());
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
+        use_upstream_edit_prediction_defaults(cx);
         disable_jumps_feature_flag(cx);
         zlog::init_test();
 
@@ -3254,7 +3255,25 @@ fn init_test(cx: &mut TestAppContext) {
         cx.set_global(AppDatabase::test_new());
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
+        use_upstream_edit_prediction_defaults(cx);
         disable_jumps_feature_flag(cx);
+    });
+}
+
+/// This fork's defaults turn edit predictions and their data collection off (ADR-F09); these
+/// tests exercise Zed's predictions from upstream's defaults.
+fn use_upstream_edit_prediction_defaults(cx: &mut App) {
+    SettingsStore::update_global(cx, |store, cx| {
+        store.update_user_settings(cx, |content| {
+            let edit_predictions = content
+                .project
+                .all_languages
+                .edit_predictions
+                .get_or_insert_default();
+            edit_predictions.provider = Some(settings::EditPredictionProvider::Zed);
+            edit_predictions.allow_data_collection =
+                Some(EditPredictionDataCollectionChoice::Default);
+        });
     });
 }
 

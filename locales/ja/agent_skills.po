@@ -1,0 +1,9 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Skill description is {actual_len} characters, exceeding the {max_len}-character limit. The skill was loaded, but long descriptions may consume more model-context tokens."
+msgstr "スキルの説明が {actual_len} 文字あり、上限の {max_len} 文字を超えています。読み込みは行われましたが、説明が長いとモデルのコンテキストトークンを多く消費する場合があります。"

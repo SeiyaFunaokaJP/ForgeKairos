@@ -4,6 +4,8 @@ use settings::{IntoGpui, RegisterSetting, Settings};
 /// The settings for the markdown preview.
 #[derive(Clone, Copy, Debug, RegisterSetting)]
 pub struct MarkdownPreviewSettings {
+    /// Whether to automatically open Markdown files in the preview.
+    pub open_markdown_files_in_preview: bool,
     /// The maximum width of the rendered markdown content, or `None` to render
     /// content edge to edge.
     pub max_width: Option<Pixels>,
@@ -15,6 +17,7 @@ pub struct MarkdownPreviewSettings {
 impl Default for MarkdownPreviewSettings {
     fn default() -> Self {
         Self {
+            open_markdown_files_in_preview: false,
             max_width: None,
             soft_break_as_hard_break: true,
         }
@@ -30,6 +33,7 @@ impl Settings for MarkdownPreviewSettings {
             None
         };
         Self {
+            open_markdown_files_in_preview: content.open_markdown_files_in_preview.unwrap_or(false),
             max_width,
             soft_break_as_hard_break: content.soft_break_as_hard_break.unwrap_or(true),
         }

@@ -1,25 +1,30 @@
+use futures::{Stream, StreamExt as _};
 use gpui::{BackgroundExecutor, Task};
 use notify::{Event, EventKind};
 use parking_lot::{Condvar, Mutex};
 use std::{
     collections::{HashMap, hash_map::Entry},
-    fs,
     hash::{DefaultHasher, Hash, Hasher},
     ops::DerefMut,
     path::Path,
+    pin::Pin,
     sync::{
-        Arc, LazyLock, OnceLock,
+        Arc, LazyLock, Weak,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use util::{ResultExt, paths::SanitizedPath};
 
-use crate::{PathEvent, PathEventKind, Watcher};
+use crate::{Fs, PathEvent, PathEventKind, Watcher};
 
+mod diagnostics;
 mod fallback_watcher;
 mod watch_budget;
 
+pub use diagnostics::{
+    WatchDiagnosticEvent, WatchRecording, WatchRoot, WatchSnapshot, WatcherSnapshot,
+};
 use fallback_watcher::{FallbackEventSink, FallbackWatcher, PollPacer, sweep_operation_budget};
 use watch_budget::{
     MAINTENANCE_INTERVAL, PROMOTION_INTERVAL, PROMOTIONS_PER_MEASUREMENT, ProcfsBudgetSource,
@@ -27,27 +32,103 @@ use watch_budget::{
     should_yield_native_watches,
 };
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum WatcherMode {
-    #[default]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub enum OsWatcherKind {
     Native,
     Poll,
-    /// Non-recursive polling of a single path, used on Linux in place of an inotify watch when
-    /// Zed's watches would crowd out other programs running as the same user.
+    /// Non-recursive polling of a single path, which the native watcher uses in place of an
+    /// inotify watch when Zed's watches would crowd out other programs running as the same user
+    /// (ADR-F43). It is not a watcher of its own: it only names, in diagnostics, the paths and
+    /// events of the native watcher's fallback poller.
     Fallback,
 }
 
-impl WatcherMode {
+impl OsWatcherKind {
+    /// Poll watches and native macOS/Windows watches cover their whole subtree;
+    /// native Linux (inotify) watches and fallback polls cover one directory.
     fn is_recursive(self) -> bool {
         match self {
-            WatcherMode::Native => cfg!(any(target_os = "windows", target_os = "macos")),
-            WatcherMode::Poll => true,
-            WatcherMode::Fallback => false,
+            Self::Native => cfg!(any(target_os = "windows", target_os = "macos")),
+            Self::Poll => true,
+            Self::Fallback => false,
         }
     }
 }
 
+pub(crate) async fn watch(
+    fs: Arc<dyn Fs>,
+    native_watcher: Arc<OsWatcher>,
+    poll_watcher: Arc<OsWatcher>,
+    executor: BackgroundExecutor,
+    path: &Path,
+    latency: Duration,
+) -> (
+    Pin<Box<dyn Send + Stream<Item = Vec<PathEvent>>>>,
+    Arc<dyn Watcher>,
+) {
+    let (tx, rx) = async_channel::unbounded();
+    let pending_paths: Arc<Mutex<Vec<PathEvent>>> = Default::default();
+
+    let watcher: Arc<dyn Watcher> = Arc::new(FsWatcher::new(
+        native_watcher,
+        poll_watcher,
+        fs.clone(),
+        executor.clone(),
+        tx,
+        pending_paths.clone(),
+    ));
+
+    if let Err(e) = watcher.add(path) {
+        log::warn!("Failed to watch {}:\n{e}", path.display());
+    }
+
+    // Check if path is a symlink and follow the target parent
+    if let Some(mut target) = fs.read_link(path).await.ok() {
+        log::trace!("watch symlink {path:?} -> {target:?}");
+        // Check if symlink target is relative path, if so make it absolute
+        if target.is_relative()
+            && let Some(parent) = path.parent()
+        {
+            target = parent.join(target);
+            if let Ok(canonical) = fs.canonicalize(&target).await {
+                target = SanitizedPath::new(&canonical).as_path().to_path_buf();
+            }
+        }
+        watcher.add(&target).ok();
+        // Skipped for poll watchers: PollWatcher::watch() recursively scans
+        // at registration, blocking on large virtual filesystem mounts
+        if let Some(parent) = target.parent()
+            && !fs.requires_poll_watcher(parent)
+        {
+            watcher.add(parent).log_err();
+        }
+    }
+
+    (
+        Box::pin(rx.filter_map({
+            let watcher = watcher.clone();
+            move |_| {
+                let _ = watcher.clone();
+                let pending_paths = pending_paths.clone();
+                let executor = executor.clone();
+                async move {
+                    if !latency.is_zero() {
+                        executor.timer(latency).await;
+                    }
+                    let paths = std::mem::take(&mut *pending_paths.lock());
+                    log::debug!("pending path events: {:?}", paths);
+                    (!paths.is_empty()).then_some(paths)
+                }
+            }
+        })),
+        watcher,
+    )
+}
+
 pub struct FsWatcher {
+    native_watcher: Arc<OsWatcher>,
+    poll_watcher: Arc<OsWatcher>,
+    fs: Arc<dyn Fs>,
     executor: BackgroundExecutor,
     tx: async_channel::Sender<()>,
     pending_path_events: Arc<Mutex<Vec<PathEvent>>>,
@@ -55,22 +136,30 @@ pub struct FsWatcher {
     pending_registrations: Arc<Mutex<HashMap<Arc<std::path::Path>, Task<()>>>>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct FsWatcherRegistration {
     id: WatcherRegistrationId,
-    /// The mode the path was registered with. It only decides whether the registration covers
-    /// descendants, which later hand-overs between the native and fallback watchers don't
-    /// change since both watch a single directory on the platforms that hand over.
-    mode: WatcherMode,
+    os_watcher: Arc<OsWatcher>,
+    /// Whether the registration covers descendants, taken when it was made. A native watcher
+    /// on macOS or Windows is recursive, but a path its fallback poller holds is not; later
+    /// hand-overs between the two only happen where both watch a single directory (Linux), so
+    /// they don't change this.
+    recursive: bool,
 }
 
 impl FsWatcher {
-    pub fn new(
+    pub(crate) fn new(
+        native_watcher: Arc<OsWatcher>,
+        poll_watcher: Arc<OsWatcher>,
+        fs: Arc<dyn Fs>,
         executor: BackgroundExecutor,
         tx: async_channel::Sender<()>,
         pending_path_events: Arc<Mutex<Vec<PathEvent>>>,
     ) -> Self {
         Self {
+            native_watcher,
+            poll_watcher,
+            fs,
             executor,
             tx,
             pending_path_events,
@@ -80,19 +169,33 @@ impl FsWatcher {
     }
 
     fn add_existing_path(&self, path: Arc<Path>) -> anyhow::Result<()> {
-        let case_insensitive = case_insensitive_path(&path);
+        let case_insensitive = !self.fs.is_path_case_sensitive(&path);
         let key = WatchKey::for_registration(SanitizedPath::new(&path), case_insensitive);
         if self.registrations.lock().contains_key(&key) {
             log::trace!("path to watch is already watched: {path:?}");
             return Ok(());
         }
-        let registration = register_existing_path(
-            path,
+        match register_existing_path(
+            &self.native_watcher,
+            &self.poll_watcher,
+            self.fs.as_ref(),
+            path.clone(),
             case_insensitive,
             self.tx.clone(),
             self.pending_path_events.clone(),
-        )?;
-        self.registrations.lock().insert(key, registration);
+        )? {
+            Some(registration) => {
+                self.registrations.lock().insert(key, registration);
+            }
+            None => {
+                // Registration was skipped (the native watch-limit cooldown of a watcher
+                // without a fallback poller is active). Retry in the background rather than
+                // silently leaving the path unwatched forever. The native watcher of a real
+                // filesystem has a fallback poller and never skips (ADR-F43).
+                log::warn!("watch registration for {path:?} was skipped; retrying in background");
+                self.add_pending_path(path);
+            }
+        }
         Ok(())
     }
 
@@ -103,6 +206,9 @@ impl FsWatcher {
         }
 
         let task = self.executor.spawn(poll_path_until_created(
+            self.native_watcher.clone(),
+            self.poll_watcher.clone(),
+            self.fs.clone(),
             self.executor.clone(),
             path.clone(),
             self.tx.clone(),
@@ -124,9 +230,8 @@ impl Drop for FsWatcher {
             std::mem::swap(old.deref_mut(), &mut registrations);
         }
 
-        let global_watcher = global_watcher();
         for (_, registration) in registrations {
-            global_watcher.remove(registration.id);
+            registration.os_watcher.remove(registration.id);
         }
     }
 }
@@ -153,7 +258,7 @@ impl Watcher for FsWatcher {
             return Ok(());
         }
 
-        if fs::symlink_metadata(path.as_ref()).is_err() {
+        if !self.fs.path_exists(&path) {
             self.add_pending_path(path);
             return Ok(());
         }
@@ -173,7 +278,7 @@ impl Watcher for FsWatcher {
                 .or_else(|| registrations.remove(&WatchKey::folded(sanitized)))
         };
         if let Some(registration) = registration {
-            global_watcher().remove(registration.id);
+            registration.os_watcher.remove(registration.id);
         }
         Ok(())
     }
@@ -193,7 +298,7 @@ fn path_covered_by_recursive_registration(
             .any(|key| {
                 registrations
                     .get(key)
-                    .is_some_and(|registration| registration.mode.is_recursive())
+                    .is_some_and(|registration| registration.recursive)
             })
     })
 }
@@ -353,7 +458,7 @@ fn remember_watch_root(root: &Path) {
 
     let is_share = root_leads_to_wsl_share(
         root,
-        |path: &Path| fs::canonicalize(path),
+        |path: &Path| std::fs::canonicalize(path),
         cached_drive_destination,
     );
     let mut roots = WSL_SHARE_ROOTS.lock();
@@ -710,29 +815,68 @@ fn string_until_nul(buffer: &[u16]) -> Option<String> {
 }
 
 fn register_existing_path(
+    native_watcher: &Arc<OsWatcher>,
+    poll_watcher: &Arc<OsWatcher>,
+    fs: &dyn Fs,
     path: Arc<Path>,
     case_insensitive: bool,
     tx: async_channel::Sender<()>,
     pending_path_events: Arc<Mutex<Vec<PathEvent>>>,
-) -> anyhow::Result<FsWatcherRegistration> {
-    let mode = if requires_poll_watcher(path.as_ref()) {
+) -> anyhow::Result<Option<FsWatcherRegistration>> {
+    if fs.requires_poll_watcher(path.as_ref()) {
         log::info!(
             "Using poll watcher ({}ms interval) for {}",
             poll_interval().as_millis(),
             path.display()
         );
         telemetry::event!("fs_watcher_poll", path = path.display().to_string());
-        WatcherMode::Poll
-    } else {
-        WatcherMode::Native
-    };
+        return register_with(
+            poll_watcher,
+            path,
+            case_insensitive,
+            tx,
+            pending_path_events,
+        );
+    }
+    match register_with(
+        native_watcher,
+        path.clone(),
+        case_insensitive,
+        tx.clone(),
+        pending_path_events.clone(),
+    ) {
+        // Polling is recursive, which is what the native watch would have been on the platform
+        // that reports this (Windows), so the registration still covers descendants.
+        Err(error) if is_unsupported_native_watch_error(&error) => {
+            log::info!(
+                "Native file watching is not supported for {} ({error}); using poll watcher ({}ms interval)",
+                path.display(),
+                poll_interval().as_millis(),
+            );
+            telemetry::event!("fs_watcher_poll", path = path.display().to_string());
+            register_with(
+                poll_watcher,
+                path,
+                case_insensitive,
+                tx,
+                pending_path_events,
+            )
+        }
+        result => result,
+    }
+}
+
+fn register_with(
+    os_watcher: &Arc<OsWatcher>,
+    path: Arc<Path>,
+    case_insensitive: bool,
+    tx: async_channel::Sender<()>,
+    pending_path_events: Arc<Mutex<Vec<PathEvent>>>,
+) -> anyhow::Result<Option<FsWatcherRegistration>> {
     let root_path = SanitizedPath::new_arc(path.as_ref());
     let path_for_callback = path.clone();
-    global_watcher().add(
-        path,
-        mode,
-        case_insensitive,
-        move |event: &notify::Event| {
+    let Some(registration_id) =
+        os_watcher.add(path, case_insensitive, move |event: &notify::Event| {
             log::trace!("watcher received event: {event:?}");
             push_notify_event(
                 &tx,
@@ -742,8 +886,15 @@ fn register_existing_path(
                 path_for_callback.as_ref(),
                 event,
             );
-        },
-    )
+        })?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(FsWatcherRegistration {
+        id: registration_id,
+        recursive: os_watcher.covers_descendants(registration_id),
+        os_watcher: os_watcher.clone(),
+    }))
 }
 
 #[cfg(target_os = "linux")]
@@ -857,7 +1008,7 @@ fn is_wsl_drvfs_path(path: &Path) -> bool {
 /// Whether the volume backing `path` does case-insensitive name lookups, used to
 /// pick exact vs. folded matching.
 #[cfg(target_os = "macos")]
-fn case_insensitive_path(path: &Path) -> bool {
+pub(crate) fn case_insensitive_path(path: &Path) -> bool {
     use std::os::unix::ffi::OsStrExt as _;
 
     // `pathconf(_PC_CASE_SENSITIVE)` returns 1 (sensitive), 0 (insensitive), or -1
@@ -870,7 +1021,7 @@ fn case_insensitive_path(path: &Path) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn case_insensitive_path(_path: &Path) -> bool {
+pub(crate) fn case_insensitive_path(_path: &Path) -> bool {
     // use std::os::unix::ffi::OsStrExt as _;
 
     // // Only ext4/f2fs casefold (`+F`) dirs are insensitive, reported by `statx` via
@@ -895,7 +1046,7 @@ fn case_insensitive_path(_path: &Path) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn case_insensitive_path(_path: &Path) -> bool {
+pub(crate) fn case_insensitive_path(_path: &Path) -> bool {
     // todo(windows): Windows defaults to case in sensitive, but
     // they can mark specific directories as case sensitive. Mainly
     // for WSL use cases
@@ -903,7 +1054,7 @@ fn case_insensitive_path(_path: &Path) -> bool {
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-fn case_insensitive_path(_path: &Path) -> bool {
+pub(crate) fn case_insensitive_path(_path: &Path) -> bool {
     // Other BSDs default to case-sensitive local filesystems.
     false
 }
@@ -972,6 +1123,9 @@ impl WatchKey {
 }
 
 async fn poll_path_until_created(
+    native_watcher: Arc<OsWatcher>,
+    poll_watcher: Arc<OsWatcher>,
+    fs: Arc<dyn Fs>,
     executor: BackgroundExecutor,
     path: Arc<Path>,
     tx: async_channel::Sender<()>,
@@ -986,13 +1140,13 @@ async fn poll_path_until_created(
             return;
         }
 
-        if smol::fs::symlink_metadata(path.as_ref()).await.is_err() {
+        if !fs.path_exists(&path) {
             continue;
         }
 
         // Probe case sensitivity now that the path exists, rather than at add
         // time when it didn't.
-        let case_insensitive = case_insensitive_path(path.as_ref());
+        let case_insensitive = !fs.is_path_case_sensitive(&path);
         let key = WatchKey::for_registration(SanitizedPath::new(&path), case_insensitive);
 
         if registrations.lock().contains_key(&key) {
@@ -1001,16 +1155,19 @@ async fn poll_path_until_created(
         }
 
         match register_existing_path(
+            &native_watcher,
+            &poll_watcher,
+            fs.as_ref(),
             path.clone(),
             case_insensitive,
             tx.clone(),
             pending_path_events.clone(),
         ) {
-            Ok(registration) => {
+            Ok(Some(registration)) => {
                 {
                     let mut pending_registrations = pending_registrations.lock();
                     if pending_registrations.remove(path.as_ref()).is_none() {
-                        global_watcher().remove(registration.id);
+                        registration.os_watcher.remove(registration.id);
                         return;
                     }
                     registrations.lock().insert(key, registration);
@@ -1031,6 +1188,7 @@ async fn poll_path_until_created(
                 );
                 return;
             }
+            Ok(None) => {}
             Err(error) => {
                 log::warn!("failed to watch newly-created path {path:?}: {error}; retrying");
             }
@@ -1089,11 +1247,19 @@ fn push_notify_event(
             log::warn!("filesystem watcher lost sync for {watched_root:?}; scheduling rescan");
         }
 
-        path_events.retain(|path_event| path_event.path != watched_root);
-        path_events.push(PathEvent {
-            path: watched_root.to_path_buf(),
-            kind: Some(PathEventKind::Rescan),
-        });
+        // A rescan event names the subtrees that lost sync (FSEvents
+        // `MustScanSubDirs`); only a pathless one (inotify queue overflow) means
+        // the whole watched root is suspect.
+        if path_events.is_empty() {
+            path_events.push(PathEvent {
+                path: watched_root.to_path_buf(),
+                kind: Some(PathEventKind::Rescan),
+            });
+        } else {
+            for path_event in &mut path_events {
+                path_event.kind = Some(PathEventKind::Rescan);
+            }
+        }
     }
     log::trace!("path_events: {:?}", path_events);
     enqueue_path_events(tx, pending_path_events, path_events);
@@ -1177,15 +1343,21 @@ pub struct WatcherRegistrationId(u32);
 struct WatcherRegistrationState {
     callback: Arc<dyn Fn(&notify::Event) + Send + Sync>,
     key: WatchKey,
-    mode: WatcherMode,
+    path: Arc<SanitizedPath>,
 }
 
 struct PathRegistrationState {
     watcher_ids: Vec<WatcherRegistrationId>,
     has_os_watcher: bool,
-    /// The spelling the backend watch was created with. Unwatching the path, or handing it to
-    /// another backend, has to use the same one.
+    /// The spelling the backend watch was created with. Unwatching the path, or handing it
+    /// between the native backend and the fallback poller, has to use the same one (on a
+    /// case-insensitive volume a later registration may spell it differently).
     watched_path: Arc<SanitizedPath>,
+    /// Whether the native watcher's fallback poller holds this path in place of the backend
+    /// (ADR-F43). A path is only ever held by one of the two, and handing it over keeps the
+    /// entry and its registrations, so events that either of them queued before a hand-over
+    /// still reach the same callbacks.
+    polled_by_fallback: bool,
     /// Set when a native watch failed for a reason other than the watch limit, so promotion
     /// stops retrying it.
     native_unavailable: bool,
@@ -1199,26 +1371,19 @@ enum TransitionOrder {
     ShallowestFirst,
 }
 
-/// The registered watch paths for one watcher mode, keyed by [`WatchKey`] so that
+/// The registered watch paths for one backend, keyed by [`WatchKey`] so that
 /// add (dedup), remove, and dispatch share a single notion of path identity.
 #[derive(Default)]
 struct WatchPaths {
     entries: HashMap<WatchKey, PathRegistrationState>,
-    /// Lets dispatch skip building folded keys while no case-insensitive path is registered.
+    /// Lets dispatch skip building folded keys while no case-insensitive path is registered,
+    /// which on Linux is always (the fallback poller can hold tens of thousands of paths).
     folded_entries: usize,
 }
 
 impl WatchPaths {
     fn contains(&self, key: &WatchKey) -> bool {
         self.entries.contains_key(key)
-    }
-
-    fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    fn has_folded_entries(&self) -> bool {
-        self.folded_entries > 0
     }
 
     fn get_mut(&mut self, key: &WatchKey) -> Option<&mut PathRegistrationState> {
@@ -1242,21 +1407,6 @@ impl WatchPaths {
         }
     }
 
-    fn insert(&mut self, key: WatchKey, registration: PathRegistrationState) {
-        match self.entries.entry(key) {
-            Entry::Occupied(mut occupied) => occupied
-                .get_mut()
-                .watcher_ids
-                .extend(registration.watcher_ids),
-            Entry::Vacant(vacant) => {
-                if matches!(vacant.key(), WatchKey::Folded(_)) {
-                    self.folded_entries += 1;
-                }
-                vacant.insert(registration);
-            }
-        }
-    }
-
     fn remove(&mut self, key: &WatchKey) -> Option<PathRegistrationState> {
         let removed = self.entries.remove(key);
         if removed.is_some() && matches!(key, WatchKey::Folded(_)) {
@@ -1265,11 +1415,21 @@ impl WatchPaths {
         removed
     }
 
-    fn watched_path(&self, key: &WatchKey) -> Option<Arc<SanitizedPath>> {
+    /// The spelling of a path that holds a watch of its own, if it is held by the backend
+    /// (`polled_by_fallback == false`) or by the fallback poller (`true`) as asked.
+    fn watched_path(&self, key: &WatchKey, polled_by_fallback: bool) -> Option<Arc<SanitizedPath>> {
         self.entries
             .get(key)
-            .filter(|registration| registration.has_os_watcher)
+            .filter(|registration| {
+                registration.has_os_watcher && registration.polled_by_fallback == polled_by_fallback
+            })
             .map(|registration| registration.watched_path.clone())
+    }
+
+    fn set_polled_by_fallback(&mut self, key: &WatchKey, polled_by_fallback: bool) {
+        if let Some(registration) = self.entries.get_mut(key) {
+            registration.polled_by_fallback = polled_by_fallback;
+        }
     }
 
     fn mark_native_unavailable(&mut self, key: &WatchKey) {
@@ -1278,12 +1438,28 @@ impl WatchPaths {
         }
     }
 
-    fn transition_candidates(&self, order: TransitionOrder) -> Vec<WatchKey> {
+    /// How many paths hold a watch of their own with the backend or with the fallback poller.
+    fn count_watched(&self, polled_by_fallback: bool) -> usize {
+        self.entries
+            .values()
+            .filter(|registration| {
+                registration.has_os_watcher && registration.polled_by_fallback == polled_by_fallback
+            })
+            .count()
+    }
+
+    fn transition_candidates(
+        &self,
+        polled_by_fallback: bool,
+        order: TransitionOrder,
+    ) -> Vec<WatchKey> {
         let mut candidates = self
             .entries
             .iter()
             .filter(|(_, registration)| {
-                registration.has_os_watcher && !registration.native_unavailable
+                registration.has_os_watcher
+                    && registration.polled_by_fallback == polled_by_fallback
+                    && !registration.native_unavailable
             })
             .map(|(key, registration)| {
                 (
@@ -1305,31 +1481,36 @@ impl WatchPaths {
     }
 
     /// True if a recursive registration on a strict ancestor already covers
-    /// `path`. Only poll watches and native macOS/Windows watches are recursive.
-    fn covered_by_recursive_ancestor(&self, path: &SanitizedPath, mode: WatcherMode) -> bool {
-        if !mode.is_recursive() {
+    /// `path`. Only poll watches and native macOS/Windows watches are recursive,
+    /// and a path the fallback poller holds covers nothing below it.
+    fn covered_by_recursive_ancestor(&self, path: &SanitizedPath, recursive: bool) -> bool {
+        if !recursive {
             return false;
         }
         path.as_path().ancestors().skip(1).any(|ancestor| {
             let ancestor = SanitizedPath::unchecked_new(ancestor);
-            self.entries.contains_key(&WatchKey::exact(ancestor))
-                || self.entries.contains_key(&WatchKey::folded(ancestor))
+            [WatchKey::exact(ancestor), WatchKey::folded(ancestor)]
+                .iter()
+                .any(|key| {
+                    self.entries
+                        .get(key)
+                        .is_some_and(|registration| !registration.polled_by_fallback)
+                })
         })
     }
 
-    /// Collects the watcher ids of the registrations at any of `ancestor_keys`, the keys of an
-    /// event path and its ancestors.
-    fn watcher_ids_for(
-        &self,
-        ancestor_keys: &[AncestorKeys],
-        ids: &mut Vec<WatcherRegistrationId>,
-    ) {
-        for ancestor in ancestor_keys {
-            if let Some(registration) = self.entries.get(&ancestor.exact) {
+    /// Collects the watcher ids of every registration whose directory is an
+    /// ancestor of (or equal to) `path`. Both exact and folded keys are probed,
+    /// so a real-cased event path matches a folded registration and vice versa.
+    fn watcher_ids_covering(&self, path: &SanitizedPath, ids: &mut Vec<WatcherRegistrationId>) {
+        let include_folded = self.folded_entries > 0;
+        for ancestor in path.as_path().ancestors() {
+            let ancestor = SanitizedPath::unchecked_new(ancestor);
+            if let Some(registration) = self.entries.get(&WatchKey::exact(ancestor)) {
                 ids.extend_from_slice(&registration.watcher_ids);
             }
-            if let Some(folded) = &ancestor.folded
-                && let Some(registration) = self.entries.get(folded)
+            if include_folded
+                && let Some(registration) = self.entries.get(&WatchKey::folded(ancestor))
             {
                 ids.extend_from_slice(&registration.watcher_ids);
             }
@@ -1337,99 +1518,57 @@ impl WatchPaths {
     }
 }
 
-struct AncestorKeys {
-    exact: WatchKey,
-    folded: Option<WatchKey>,
+struct RemovedWatch {
+    watched_path: Arc<SanitizedPath>,
+    polled_by_fallback: bool,
 }
 
-/// The keys of `path` and each of its ancestors. Both exact and folded keys are probed, so a
-/// real-cased event path matches a folded registration and vice versa; folded keys are only
-/// built while a case-insensitive path is registered.
-fn ancestor_keys(path: &SanitizedPath, include_folded: bool) -> Vec<AncestorKeys> {
-    path.as_path()
-        .ancestors()
-        .map(|ancestor| {
-            let ancestor = SanitizedPath::unchecked_new(ancestor);
-            AncestorKeys {
-                exact: WatchKey::exact(ancestor),
-                folded: include_folded.then(|| WatchKey::folded(ancestor)),
-            }
-        })
-        .collect()
-}
-
-#[derive(Default)]
 struct WatcherState {
     watchers: HashMap<WatcherRegistrationId, WatcherRegistrationState>,
-    native_path_registrations: WatchPaths,
-    poll_path_registrations: WatchPaths,
-    fallback_path_registrations: WatchPaths,
+    paths: WatchPaths,
+    cooldown_until: Option<Instant>,
     last_registration: WatcherRegistrationId,
 }
 
 impl WatcherState {
-    fn path_registrations(&self, mode: WatcherMode) -> &WatchPaths {
-        match mode {
-            WatcherMode::Native => &self.native_path_registrations,
-            WatcherMode::Poll => &self.poll_path_registrations,
-            WatcherMode::Fallback => &self.fallback_path_registrations,
+    fn new() -> Self {
+        Self {
+            watchers: Default::default(),
+            paths: Default::default(),
+            cooldown_until: None,
+            last_registration: Default::default(),
         }
     }
 
-    fn path_registrations_mut(&mut self, mode: WatcherMode) -> &mut WatchPaths {
-        match mode {
-            WatcherMode::Native => &mut self.native_path_registrations,
-            WatcherMode::Poll => &mut self.poll_path_registrations,
-            WatcherMode::Fallback => &mut self.fallback_path_registrations,
-        }
+    fn is_native_watch_limit_cooldown_active(&self) -> bool {
+        self.cooldown_until
+            .is_some_and(|cooldown_until| cooldown_until > Instant::now())
     }
 
-    /// A path moves between the native and fallback watchers while events from the one it
-    /// left may still be queued, so events from either are matched against both. A key is
-    /// only ever registered with one of the two.
-    fn dispatch_targets(&self, mode: WatcherMode) -> [Option<&WatchPaths>; 2] {
-        match mode {
-            WatcherMode::Poll => [Some(&self.poll_path_registrations), None],
-            WatcherMode::Native | WatcherMode::Fallback => [
-                Some(&self.native_path_registrations),
-                Some(&self.fallback_path_registrations),
-            ],
-        }
-    }
-
-    /// The mode a new watcher on `key` can join without a backend call, and whether a new path
-    /// entry would own a backend watch: either the path is registered already (with whichever
-    /// of the native and fallback watchers holds it), or a recursive ancestor covers it.
+    /// Whether a new registration on `key` can join what is already there without a backend
+    /// call, and if so whether a new path entry would own a watch: either the path is
+    /// registered already, or a recursive ancestor covers it.
     fn joinable_registration(
         &self,
         key: &WatchKey,
         path: &SanitizedPath,
-        mode: WatcherMode,
-    ) -> Option<(WatcherMode, bool)> {
-        let modes_sharing_key: &[WatcherMode] = if mode == WatcherMode::Poll {
-            &[WatcherMode::Poll]
-        } else {
-            &[WatcherMode::Native, WatcherMode::Fallback]
-        };
-        if let Some(registered_mode) = modes_sharing_key
-            .iter()
-            .copied()
-            .find(|registered_mode| self.path_registrations(*registered_mode).contains(key))
-        {
-            return Some((registered_mode, true));
+        recursive: bool,
+    ) -> Option<bool> {
+        if self.paths.contains(key) {
+            return Some(true);
         }
-        self.path_registrations(mode)
-            .covered_by_recursive_ancestor(path, mode)
-            .then_some((mode, false))
+        self.paths
+            .covered_by_recursive_ancestor(path, recursive)
+            .then_some(false)
     }
 
     fn register_watcher(
         &mut self,
         key: WatchKey,
         path: Arc<SanitizedPath>,
-        mode: WatcherMode,
         callback: Arc<dyn Fn(&notify::Event) + Send + Sync>,
         has_os_watcher: bool,
+        polled_by_fallback: bool,
     ) -> WatcherRegistrationId {
         let id = self.last_registration;
         self.last_registration = WatcherRegistrationId(id.0 + 1);
@@ -1438,52 +1577,36 @@ impl WatcherState {
             WatcherRegistrationState {
                 callback,
                 key: key.clone(),
-                mode,
+                path: path.clone(),
             },
         );
-        self.path_registrations_mut(mode)
-            .add_watcher(key, id, || PathRegistrationState {
-                watcher_ids: vec![id],
-                has_os_watcher,
-                watched_path: path,
-                native_unavailable: false,
-            });
+        self.paths.add_watcher(key, id, || PathRegistrationState {
+            watcher_ids: vec![id],
+            has_os_watcher,
+            watched_path: path,
+            polled_by_fallback,
+            native_unavailable: false,
+        });
         id
     }
 
-    fn move_path_registration(&mut self, key: &WatchKey, from: WatcherMode, to: WatcherMode) {
-        let Some(path_state) = self.path_registrations_mut(from).remove(key) else {
-            return;
-        };
-        for id in &path_state.watcher_ids {
-            if let Some(registration) = self.watchers.get_mut(id) {
-                registration.mode = to;
-            }
-        }
-        self.path_registrations_mut(to)
-            .insert(key.clone(), path_state);
-    }
-
-    fn remove_registration(
-        &mut self,
-        id: WatcherRegistrationId,
-    ) -> Option<(Arc<SanitizedPath>, WatcherMode)> {
+    fn remove_registration(&mut self, id: WatcherRegistrationId) -> Option<RemovedWatch> {
         let registration_state = self.watchers.remove(&id)?;
-        let path_registrations = self.path_registrations_mut(registration_state.mode);
-        let path_state = path_registrations.get_mut(&registration_state.key)?;
+        let path_state = self.paths.get_mut(&registration_state.key)?;
         path_state.watcher_ids.retain(|&existing| existing != id);
         if !path_state.watcher_ids.is_empty() {
             return None;
         }
 
-        let path_state = path_registrations.remove(&registration_state.key)?;
-        path_state
-            .has_os_watcher
-            .then_some((path_state.watched_path, registration_state.mode))
+        let path_state = self.paths.remove(&registration_state.key)?;
+        path_state.has_os_watcher.then_some(RemovedWatch {
+            watched_path: path_state.watched_path,
+            polled_by_fallback: path_state.polled_by_fallback,
+        })
     }
 }
 
-trait WatchBackend: Send {
+pub(crate) trait WatchBackend: Send {
     fn watch(&mut self, path: &Path, mode: notify::RecursiveMode) -> notify::Result<()>;
     fn unwatch(&mut self, path: &Path) -> notify::Result<()>;
 }
@@ -1498,30 +1621,109 @@ impl<T: notify::Watcher + Send> WatchBackend for T {
     }
 }
 
-type DispatchEvent = (WatcherMode, Result<notify::Event, notify::Error>);
-
 const KEY_LOCK_STRIPES: usize = 64;
 
-pub struct GlobalWatcher {
-    state: Mutex<WatcherState>,
+pub struct OsWatcher {
+    kind: OsWatcherKind,
+    recursive: bool,
+    state: Arc<Mutex<WatcherState>>,
 
-    // DANGER: never keep state lock while holding watcher lock
-    // two mutexes because calling watcher.add triggers watcher.event, which needs watchers.
-    native_watcher: Mutex<Option<Box<dyn WatchBackend>>>,
-    poll_watcher: Mutex<Option<Box<dyn WatchBackend>>>,
-    fallback_watcher: FallbackWatcher,
-    budget: WatchBudget,
-    // Adding, removing, and handing a path between the native and fallback watchers each span
-    // several state updates with backend calls in between, so these operations are serialized
-    // per watch key. The locks are striped so that unrelated paths don't wait on each other's
-    // backend calls. A key lock is taken before the state, backend, and budget locks, and no
-    // thread ever holds two of them at once.
+    // Never hold the state lock while calling the backend: a backend call can be
+    // slow (a poll watch scans its whole tree up front, an FSEvents watch rebuilds
+    // the stream) and dispatch needs the state to route every other registration's
+    // events. Whoever re-locks the state afterwards must re-check what they assumed.
+    backend: Mutex<Option<Box<dyn WatchBackend>>>,
+    event_tx: async_channel::Sender<notify::Result<notify::Event>>,
+    _dispatch_task: Task<()>,
+    diagnostics: Arc<diagnostics::DiagnosticRecorder>,
+    // Adding, removing, and handing a path between the backend and the fallback poller each
+    // span several state updates with backend calls in between, so these operations are
+    // serialized per watch key. The locks are striped so that unrelated paths don't wait on
+    // each other's backend calls. A key lock is taken before the state, backend, and budget
+    // locks, and no thread ever holds two of them at once.
     key_locks: [Mutex<()>; KEY_LOCK_STRIPES],
+    /// Only the native watcher of a real filesystem has one (ADR-F43).
+    fallback: Option<NativeFallback>,
+}
+
+/// What lets the native watcher stay within Zed's share of the user's inotify watches: paths
+/// beyond the share, or refused with ENOSPC, are polled without recursion instead, which is
+/// what a single inotify watch on them would report. They are handed back and forth with the
+/// backend as other programs take and free watches.
+///
+/// It lives inside the native watcher rather than beside it as a watcher of its own because a
+/// hand-over has to keep every registration's id and callback: the path stays one entry of one
+/// registration table, and only who watches it changes.
+struct NativeFallback {
+    poller: FallbackWatcher,
+    /// Shared by every native watcher of the process (see `process_watch_budget`).
+    budget: Arc<WatchBudget>,
+    background: Arc<FallbackBackground>,
     spawn_background_thread: bool,
-    background_thread: Mutex<BackgroundThread>,
-    maintenance_requested: Mutex<bool>,
-    maintenance_wake: Condvar,
-    event_tx: async_channel::Sender<DispatchEvent>,
+    this: Weak<OsWatcher>,
+}
+
+struct FallbackOptions {
+    budget: Arc<WatchBudget>,
+    spawn_background_thread: bool,
+}
+
+/// The thread that polls the fallback paths and keeps the watch budget up to date.
+struct FallbackBackground {
+    thread: Mutex<BackgroundThread>,
+    signal: Mutex<MaintenanceSignal>,
+    wake: Condvar,
+}
+
+#[derive(Default)]
+struct MaintenanceSignal {
+    requested: bool,
+    shut_down: bool,
+}
+
+enum MaintenanceWake {
+    Deadline,
+    Requested,
+    ShutDown,
+}
+
+impl FallbackBackground {
+    fn new() -> Self {
+        Self {
+            thread: Mutex::new(BackgroundThread::NotStarted),
+            signal: Mutex::new(MaintenanceSignal::default()),
+            wake: Condvar::new(),
+        }
+    }
+
+    /// Asks the background thread to run maintenance right away.
+    fn request_maintenance(&self) {
+        self.signal.lock().requested = true;
+        self.wake.notify_one();
+    }
+
+    fn take_maintenance_request(&self) -> bool {
+        std::mem::replace(&mut self.signal.lock().requested, false)
+    }
+
+    fn shut_down(&self) {
+        self.signal.lock().shut_down = true;
+        self.wake.notify_all();
+    }
+
+    fn wait(&self, deadline: Instant) -> MaintenanceWake {
+        let mut signal = self.signal.lock();
+        if !signal.requested && !signal.shut_down {
+            self.wake.wait_until(&mut signal, deadline);
+        }
+        if signal.shut_down {
+            MaintenanceWake::ShutDown
+        } else if std::mem::replace(&mut signal.requested, false) {
+            MaintenanceWake::Requested
+        } else {
+            MaintenanceWake::Deadline
+        }
+    }
 }
 
 enum BackgroundThread {
@@ -1532,8 +1734,16 @@ enum BackgroundThread {
 
 const BACKGROUND_THREAD_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WatchOutcome {
+    Backend,
+    Fallback,
+    /// The native watch-limit cooldown of a watcher without a fallback poller is active.
+    Skipped,
+}
+
 struct NewWatch {
-    mode: anyhow::Result<WatcherMode>,
+    outcome: anyhow::Result<WatchOutcome>,
     hit_watch_limit: bool,
 }
 
@@ -1559,28 +1769,119 @@ fn promotion_jitter() -> Duration {
     Duration::from_millis(seed % 10_000)
 }
 
-impl GlobalWatcher {
-    fn new(
-        event_tx: async_channel::Sender<DispatchEvent>,
-        native_watcher: Option<Box<dyn WatchBackend>>,
-        poll_watcher: Option<Box<dyn WatchBackend>>,
-        fallback_event_sink: FallbackEventSink,
-        budget: WatchBudget,
-        spawn_background_thread: bool,
-    ) -> Self {
-        Self {
-            state: Mutex::new(WatcherState::default()),
-            native_watcher: Mutex::new(native_watcher),
-            poll_watcher: Mutex::new(poll_watcher),
-            fallback_watcher: FallbackWatcher::new(fallback_event_sink),
-            budget,
-            key_locks: std::array::from_fn(|_| Mutex::new(())),
-            spawn_background_thread,
-            background_thread: Mutex::new(BackgroundThread::NotStarted),
-            maintenance_requested: Mutex::new(false),
-            maintenance_wake: Condvar::new(),
+/// The budget of every native watcher of this process. The inotify watches it holds against
+/// the user's limit are the whole process's, however many filesystems (and so native watchers)
+/// it has, so they are counted in one place. Several watchers trimming against the same count
+/// can hand over more paths than needed; the next promotion round takes the extra back.
+fn process_watch_budget() -> Arc<WatchBudget> {
+    static BUDGET: LazyLock<Arc<WatchBudget>> = LazyLock::new(|| {
+        // Only inotify charges one watch per directory against a small per-user limit;
+        // FSEvents and ReadDirectoryChangesW watch whole trees with one handle.
+        Arc::new(WatchBudget::new(
+            cfg!(target_os = "linux"),
+            Arc::new(ProcfsBudgetSource),
+        ))
+    });
+    BUDGET.clone()
+}
+
+impl OsWatcher {
+    /// Watches with notify's backend of `kind`, created lazily on first use so
+    /// that a failure to start it can be reported by `ensure_backend`.
+    pub fn new(kind: OsWatcherKind, executor: BackgroundExecutor) -> Arc<Self> {
+        let fallback = (kind == OsWatcherKind::Native).then(|| FallbackOptions {
+            budget: process_watch_budget(),
+            spawn_background_thread: true,
+        });
+        Self::build(kind, executor, None, fallback)
+    }
+
+    /// Watches with the given backend in place of notify's; `event_sink` is how
+    /// that backend reports events, standing in for notify's `EventHandler`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn with_backend(
+        kind: OsWatcherKind,
+        executor: BackgroundExecutor,
+        backend: Option<Box<dyn WatchBackend>>,
+    ) -> Arc<Self> {
+        Self::build(kind, executor, backend, None)
+    }
+
+    fn build(
+        kind: OsWatcherKind,
+        executor: BackgroundExecutor,
+        backend: Option<Box<dyn WatchBackend>>,
+        fallback: Option<FallbackOptions>,
+    ) -> Arc<Self> {
+        let (event_tx, event_rx) = async_channel::unbounded();
+        let state = Arc::new(Mutex::new(WatcherState::new()));
+        let dispatch_task = executor.spawn({
+            let state = state.clone();
+            async move {
+                while let Ok(first) = event_rx.recv().await {
+                    dispatch_batch(kind, &state, first, &event_rx);
+                }
+            }
+        });
+        let diagnostics: Arc<diagnostics::DiagnosticRecorder> = Default::default();
+        Arc::new_cyclic(|this| Self {
+            kind,
+            recursive: kind.is_recursive(),
+            state,
+            backend: Mutex::new(backend),
+            fallback: fallback.map(|options| {
+                NativeFallback::new(
+                    fallback_event_sink(&event_tx, &diagnostics),
+                    options,
+                    this.clone(),
+                )
+            }),
             event_tx,
+            _dispatch_task: dispatch_task,
+            diagnostics,
+            key_locks: std::array::from_fn(|_| Mutex::new(())),
+        })
+    }
+
+    /// The callback a substitute backend uses to report events, standing
+    /// in for the `EventHandler` notify would have been constructed with.
+    pub(crate) fn event_sink(
+        &self,
+    ) -> impl Fn(notify::Result<notify::Event>) + Send + Sync + 'static {
+        let event_tx = self.event_tx.clone();
+        let diagnostics = self.diagnostics.clone();
+        let kind = self.kind;
+        move |event| {
+            diagnostics.record(|| match &event {
+                Ok(event) => WatchDiagnosticEvent::from_notify_event(kind, event),
+                Err(error) => WatchDiagnosticEvent::new(
+                    kind,
+                    "error",
+                    &error.paths,
+                    format!("{error:?}"),
+                    false,
+                ),
+            });
+            enqueue(&event_tx, event);
         }
+    }
+
+    pub(crate) fn is_recursive(&self) -> bool {
+        self.recursive
+    }
+
+    /// Whether the registration covers the descendants of its path: a path the fallback poller
+    /// holds covers only itself, even where the backend's watches are recursive.
+    fn covers_descendants(&self, id: WatcherRegistrationId) -> bool {
+        if !self.is_recursive() {
+            return false;
+        }
+        let state = self.state.lock();
+        state
+            .watchers
+            .get(&id)
+            .and_then(|registration| state.paths.entries.get(&registration.key))
+            .is_some_and(|path| !path.polled_by_fallback)
     }
 
     fn lock_key(&self, key: &WatchKey) -> parking_lot::MutexGuard<'_, ()> {
@@ -1594,252 +1895,192 @@ impl GlobalWatcher {
     fn add(
         &self,
         path: Arc<std::path::Path>,
-        mode: WatcherMode,
         case_insensitive: bool,
         cb: impl Fn(&notify::Event) + Send + Sync + 'static,
-    ) -> anyhow::Result<FsWatcherRegistration> {
+    ) -> anyhow::Result<Option<WatcherRegistrationId>> {
         let path = SanitizedPath::from_arc(path);
         let key = WatchKey::for_registration(&path, case_insensitive);
         let callback: Arc<dyn Fn(&notify::Event) + Send + Sync> = Arc::new(cb);
-        if mode == WatcherMode::Native {
-            self.budget.ensure_initial_measurement();
+        if let Some(fallback) = &self.fallback {
+            fallback.budget.ensure_initial_measurement();
         }
 
         let key_guard = self.lock_key(&key);
         {
             let mut state = self.state.lock();
-            if let Some((registered_mode, has_os_watcher)) =
-                state.joinable_registration(&key, &path, mode)
-            {
-                let id =
-                    state.register_watcher(key, path, registered_mode, callback, has_os_watcher);
-                return Ok(FsWatcherRegistration {
-                    id,
-                    mode: registered_mode,
-                });
+            if let Some(has_os_watcher) = state.joinable_registration(&key, &path, self.recursive) {
+                return Ok(Some(state.register_watcher(
+                    key,
+                    path,
+                    callback,
+                    has_os_watcher,
+                    false,
+                )));
             }
         }
 
-        let new_watch = self.watch_new_path(&path, mode);
-        let refused_path = new_watch.hit_watch_limit.then(|| path.clone());
-        let registration = new_watch.mode.map(|registered_mode| {
-            let id = self
-                .state
-                .lock()
-                .register_watcher(key, path, registered_mode, callback, true);
-            FsWatcherRegistration {
-                id,
-                mode: registered_mode,
-            }
+        let NewWatch {
+            outcome,
+            hit_watch_limit,
+        } = self.watch_new_path(&path);
+        let registered_outcome = outcome.as_ref().ok().copied();
+        let registration = outcome.map(|outcome| {
+            let polled_by_fallback = match outcome {
+                WatchOutcome::Skipped => return None,
+                WatchOutcome::Backend => false,
+                WatchOutcome::Fallback => true,
+            };
+            Some(self.state.lock().register_watcher(
+                key,
+                path.clone(),
+                callback,
+                true,
+                polled_by_fallback,
+            ))
         });
         drop(key_guard);
 
+        let Some(fallback) = &self.fallback else {
+            return registration;
+        };
         // Learning scans `/proc`, and trimming to the learned limit can move thousands of
         // paths, so neither happens under the key lock or on the caller's thread.
-        if let Some(refused_path) = refused_path
-            && self.budget.is_enabled()
-            && self
+        if hit_watch_limit
+            && fallback.budget.is_enabled()
+            && fallback
                 .budget
-                .learn_limit_from_watch_limit_error(refused_path.as_path())
+                .learn_limit_from_watch_limit_error(path.as_path())
         {
-            self.request_maintenance();
+            fallback.background.request_maintenance();
         }
-        if let Ok(registration) = &registration
-            && (registration.mode == WatcherMode::Fallback
-                || (registration.mode == WatcherMode::Native && self.budget.is_enabled()))
-        {
+        let needs_background_thread = match registered_outcome {
+            Some(WatchOutcome::Fallback) => true,
+            Some(WatchOutcome::Backend) => fallback.budget.is_enabled(),
+            Some(WatchOutcome::Skipped) | None => false,
+        };
+        if needs_background_thread {
             self.ensure_background_thread();
         }
         registration
     }
 
-    /// Starts watching a path that has no registration yet. Paths that can't get a native
-    /// watch are polled instead of being skipped, so they never have to be retried.
-    fn watch_new_path(&self, path: &SanitizedPath, mode: WatcherMode) -> NewWatch {
-        if mode != WatcherMode::Native {
+    /// Starts watching a path that has no registration yet. With a fallback poller, paths
+    /// that can't get a native watch are polled instead of being skipped, so they never have
+    /// to be retried (ADR-F43).
+    fn watch_new_path(&self, path: &SanitizedPath) -> NewWatch {
+        let Some(fallback) = &self.fallback else {
+            if self.kind == OsWatcherKind::Native
+                && self.state.lock().is_native_watch_limit_cooldown_active()
+            {
+                self.diagnostics.record(|| {
+                    WatchDiagnosticEvent::new(
+                        self.kind,
+                        "watch_skipped",
+                        &[path.as_path().to_owned()],
+                        "Native watch limit cooldown is active; registration will be retried"
+                            .into(),
+                        false,
+                    )
+                });
+                return NewWatch {
+                    outcome: Ok(WatchOutcome::Skipped),
+                    hit_watch_limit: false,
+                };
+            }
+            let outcome = match self.watch(path.as_path()) {
+                Ok(()) => Ok(WatchOutcome::Backend),
+                Err(error)
+                    if self.kind == OsWatcherKind::Native && is_max_files_watch_error(&error) =>
+                {
+                    self.start_native_watch_limit_cooldown(path.as_path());
+                    Ok(WatchOutcome::Skipped)
+                }
+                Err(error) => Err(error),
+            };
             return NewWatch {
-                mode: self.watch(path.as_path(), mode).map(|()| mode),
+                outcome,
                 hit_watch_limit: false,
             };
-        }
+        };
 
-        if !self.budget.try_reserve_native() {
+        if !fallback.budget.try_reserve_native() {
             return NewWatch {
-                mode: self.watch_fallback(path),
+                outcome: self.watch_fallback(fallback, path),
                 hit_watch_limit: false,
             };
         }
 
         // Creating the inotify instance fails once the user's instance limit is reached; the
         // path is still polled then.
-        if let Err(error) = self.ensure_native_watcher() {
-            self.budget.release_native();
+        if let Err(error) = self.ensure_backend() {
+            fallback.budget.release_native();
             static LOGGED: AtomicBool = AtomicBool::new(false);
             if !LOGGED.swap(true, Ordering::Relaxed) {
                 log::warn!("native file watching is unavailable, polling instead: {error:#}");
             }
             return NewWatch {
-                mode: self.watch_fallback(path),
+                outcome: self.watch_fallback(fallback, path),
                 hit_watch_limit: false,
             };
         }
 
-        match self.watch(path.as_path(), WatcherMode::Native) {
+        match self.watch(path.as_path()) {
             Ok(()) => NewWatch {
-                mode: Ok(WatcherMode::Native),
+                outcome: Ok(WatchOutcome::Backend),
                 hit_watch_limit: false,
             },
             Err(error) if is_max_files_watch_error(&error) => {
-                self.budget.release_native();
+                fallback.budget.release_native();
                 NewWatch {
-                    mode: self.watch_fallback(path),
+                    outcome: self.watch_fallback(fallback, path),
                     hit_watch_limit: true,
                 }
             }
-            Err(error) if is_unsupported_native_watch_error(&error) => {
-                self.budget.release_native();
-                NewWatch {
-                    mode: self.watch_poll_instead_of_native(path, &error),
-                    hit_watch_limit: false,
-                }
-            }
+            // Includes a volume without native watching, which `register_existing_path`
+            // answers with the poll watcher.
             Err(error) => {
-                self.budget.release_native();
+                fallback.budget.release_native();
                 NewWatch {
-                    mode: Err(error),
+                    outcome: Err(error),
                     hit_watch_limit: false,
                 }
             }
         }
     }
 
-    /// Polls a path whose volume has no working native watch. Polling is recursive, which is
-    /// what the native watch would have been on the platforms that report this (Windows), so
-    /// the registration still covers descendants.
-    fn watch_poll_instead_of_native(
+    fn watch_fallback(
         &self,
+        fallback: &NativeFallback,
         path: &SanitizedPath,
-        error: &anyhow::Error,
-    ) -> anyhow::Result<WatcherMode> {
-        log::info!(
-            "Native file watching is not supported for {} ({error}); using poll watcher ({}ms interval)",
-            path.as_path().display(),
-            poll_interval().as_millis(),
-        );
-        telemetry::event!(
-            "fs_watcher_poll",
-            path = path.as_path().display().to_string()
-        );
-        self.watch(path.as_path(), WatcherMode::Poll)?;
-        Ok(WatcherMode::Poll)
+    ) -> anyhow::Result<WatchOutcome> {
+        self.watch_with_fallback_poller(fallback, path.as_path())?;
+        Ok(WatchOutcome::Fallback)
     }
 
-    fn watch_fallback(&self, path: &SanitizedPath) -> anyhow::Result<WatcherMode> {
-        self.watch(path.as_path(), WatcherMode::Fallback)?;
-        Ok(WatcherMode::Fallback)
+    #[cfg(test)]
+    fn dispatch(&self, event: notify::Result<notify::Event>) {
+        dispatch(self.kind, &self.state, event);
     }
 
-    fn enqueue(&self, mode: WatcherMode, event: Result<notify::Event, notify::Error>) {
-        if matches!(
-            event,
-            Ok(Event {
-                kind: EventKind::Access(_),
-                ..
-            })
-        ) {
-            return;
-        }
-
-        // A failed send only happens once the dispatch thread has shut down, at
-        // which point there's nothing left to dispatch to.
-        self.event_tx.try_send((mode, event)).ok();
-    }
-
-    fn dispatch(&self, mode: WatcherMode, event: Result<notify::Event, notify::Error>) {
-        let event = match event {
-            Ok(event) => event,
-            Err(error) => {
-                log::warn!("watcher error for {mode:?}: {error}");
-                return;
-            }
-        };
-
-        log::trace!("global handle event for {mode:?}: {event:?}");
-
-        let callbacks = {
-            let state = self.state.lock();
-            if event.need_rescan() {
-                // A native overflow also covers paths that were just handed to the poller, whose
-                // native events may be among the lost ones.
-                let callbacks = state
-                    .watchers
-                    .values()
-                    .filter(|registration| {
-                        registration.mode == mode
-                            || (mode == WatcherMode::Native
-                                && registration.mode == WatcherMode::Fallback)
-                    })
-                    .map(|registration| registration.callback.clone())
-                    .collect::<Vec<_>>();
-                log::warn!(
-                    "filesystem watcher lost sync for {mode:?}; scheduling rescans for {} registrations",
-                    callbacks.len()
-                );
-                callbacks
-            } else {
-                let targets = state.dispatch_targets(mode);
-                let include_folded = targets
-                    .iter()
-                    .flatten()
-                    .any(|path_registrations| path_registrations.has_folded_entries());
-                let mut ids = Vec::new();
-                for path in &event.paths {
-                    let keys = ancestor_keys(SanitizedPath::new(path), include_folded);
-                    for path_registrations in targets.iter().flatten() {
-                        path_registrations.watcher_ids_for(&keys, &mut ids);
-                    }
-                }
-                ids.sort_unstable_by_key(|id| id.0);
-                ids.dedup();
-                ids.into_iter()
-                    .filter_map(|id| state.watchers.get(&id))
-                    .map(|registration| registration.callback.clone())
-                    .collect::<Vec<_>>()
-            }
-        };
-
-        for callback in callbacks {
-            callback(&event);
-        }
-    }
-
+    #[cfg(test)]
     fn dispatch_batch(
         &self,
-        first: DispatchEvent,
-        event_rx: &async_channel::Receiver<DispatchEvent>,
+        first: notify::Result<notify::Event>,
+        event_rx: &async_channel::Receiver<notify::Result<notify::Event>>,
     ) {
-        // A single backend overflow can enqueue many rescan markers. One rescan
-        // per mode covers the entire drained batch; ordinary events still run.
-        let mut native_rescan_dispatched = false;
-        let mut poll_rescan_dispatched = false;
-        let mut fallback_rescan_dispatched = false;
+        dispatch_batch(self.kind, &self.state, first, event_rx);
+    }
 
-        for (mode, event) in
-            std::iter::once(first).chain(std::iter::from_fn(|| event_rx.try_recv().ok()))
-        {
-            let rescan_dispatched = match mode {
-                WatcherMode::Native => &mut native_rescan_dispatched,
-                WatcherMode::Poll => &mut poll_rescan_dispatched,
-                WatcherMode::Fallback => &mut fallback_rescan_dispatched,
-            };
-            if event.as_ref().is_ok_and(notify::Event::need_rescan) {
-                if *rescan_dispatched {
-                    continue;
-                }
-                *rescan_dispatched = true;
-            }
-
-            self.dispatch(mode, event);
+    fn start_native_watch_limit_cooldown(&self, path: &Path) {
+        let mut state = self.state.lock();
+        let now = Instant::now();
+        let should_log = !state.is_native_watch_limit_cooldown_active();
+        state.cooldown_until = Some(now + *NATIVE_WATCH_LIMIT_COOLDOWN);
+        if should_log {
+            log::warn!(
+                "OS file watch limit reached while watching {path:?}; skipping new native file watcher registrations for {} seconds",
+                NATIVE_WATCH_LIMIT_COOLDOWN.as_secs()
+            );
         }
     }
 
@@ -1854,61 +2095,80 @@ impl GlobalWatcher {
             return;
         };
         let _key_guard = self.lock_key(&key);
-        let Some((path, mode)) = self.state.lock().remove_registration(id) else {
+        let Some(removed) = self.state.lock().remove_registration(id) else {
             return;
         };
-        self.unwatch(path.as_path(), mode).log_err();
-        if mode == WatcherMode::Native {
-            self.budget.release_native();
+        match &self.fallback {
+            Some(fallback) if removed.polled_by_fallback => {
+                self.unwatch_with_fallback_poller(fallback, removed.watched_path.as_path());
+            }
+            _ => {
+                self.unwatch(removed.watched_path.as_path()).log_err();
+                if let Some(fallback) = &self.fallback {
+                    fallback.budget.release_native();
+                }
+            }
         }
     }
 
-    fn watch(&self, path: &Path, mode: WatcherMode) -> anyhow::Result<()> {
-        match mode {
-            WatcherMode::Native => {
-                self.ensure_native_watcher()?;
-                self.native_watcher
-                    .lock()
-                    .as_mut()
-                    .expect("native watcher initialized")
-                    .watch(
-                        path,
-                        if mode.is_recursive() {
-                            notify::RecursiveMode::Recursive
-                        } else {
-                            notify::RecursiveMode::NonRecursive
-                        },
-                    )?;
-            }
-            WatcherMode::Poll => {
-                self.ensure_poll_watcher()?;
-                self.poll_watcher
-                    .lock()
-                    .as_mut()
-                    .expect("poll watcher initialized")
-                    .watch(path, notify::RecursiveMode::Recursive)?;
-            }
-            WatcherMode::Fallback => self.fallback_watcher.watch(path)?,
-        }
-
+    fn watch(&self, path: &Path) -> anyhow::Result<()> {
+        self.ensure_backend()?;
+        let result = self
+            .backend
+            .lock()
+            .as_mut()
+            .expect("watcher backend initialized")
+            .watch(
+                path,
+                if self.recursive {
+                    notify::RecursiveMode::Recursive
+                } else {
+                    notify::RecursiveMode::NonRecursive
+                },
+            );
+        self.diagnostics.record(|| {
+            WatchDiagnosticEvent::new(
+                self.kind,
+                if result.is_ok() {
+                    "watch"
+                } else {
+                    "watch_error"
+                },
+                &[path.to_owned()],
+                match &result {
+                    Ok(()) => format!("recursive={}", self.recursive),
+                    Err(error) => format!("{error:?}"),
+                },
+                false,
+            )
+        });
+        result?;
         Ok(())
     }
 
-    fn unwatch(&self, path: &Path, mode: WatcherMode) -> anyhow::Result<()> {
-        let watcher = match mode {
-            WatcherMode::Native => self
-                .native_watcher
-                .lock()
-                .as_mut()
-                .map(|watcher| watcher.unwatch(path)),
-            WatcherMode::Poll => self
-                .poll_watcher
-                .lock()
-                .as_mut()
-                .map(|watcher| watcher.unwatch(path)),
-            WatcherMode::Fallback => Some(self.fallback_watcher.unwatch(path)),
-        };
+    fn unwatch(&self, path: &Path) -> anyhow::Result<()> {
+        let watcher = self
+            .backend
+            .lock()
+            .as_mut()
+            .map(|watcher| watcher.unwatch(path));
 
+        self.diagnostics.record(|| {
+            WatchDiagnosticEvent::new(
+                self.kind,
+                if matches!(&watcher, Some(Err(_))) {
+                    "unwatch_error"
+                } else {
+                    "unwatch"
+                },
+                &[path.to_owned()],
+                match &watcher {
+                    Some(Err(error)) => format!("{error:?}"),
+                    _ => String::new(),
+                },
+                false,
+            )
+        });
         match watcher {
             // inotify auto-removes a watch when its directory is deleted, so a
             // later unwatch races that and fails with a benign error. Either way
@@ -1920,28 +2180,138 @@ impl GlobalWatcher {
         }
     }
 
-    fn demote_native_watches_over_learned_limit(&self) {
-        let Some(learned_limit) = self.budget.learned_limit() else {
+    /// Takes the poller's baseline of `path` right away, so a change made right after is still
+    /// reported.
+    fn watch_with_fallback_poller(
+        &self,
+        fallback: &NativeFallback,
+        path: &Path,
+    ) -> anyhow::Result<()> {
+        let result = fallback.poller.watch(path);
+        self.diagnostics.record(|| {
+            WatchDiagnosticEvent::new(
+                OsWatcherKind::Fallback,
+                if result.is_ok() {
+                    "watch"
+                } else {
+                    "watch_error"
+                },
+                &[path.to_owned()],
+                match &result {
+                    Ok(()) => "recursive=false".to_owned(),
+                    Err(error) => format!("{error:?}"),
+                },
+                false,
+            )
+        });
+        result?;
+        Ok(())
+    }
+
+    fn unwatch_with_fallback_poller(&self, fallback: &NativeFallback, path: &Path) {
+        let result = fallback.poller.unwatch(path);
+        self.diagnostics.record(|| {
+            WatchDiagnosticEvent::new(
+                OsWatcherKind::Fallback,
+                if result.is_ok() {
+                    "unwatch"
+                } else {
+                    "unwatch_error"
+                },
+                &[path.to_owned()],
+                match &result {
+                    Ok(()) => String::new(),
+                    Err(error) => format!("{error:?}"),
+                },
+                false,
+            )
+        });
+        result.log_err();
+    }
+
+    pub(crate) fn ensure_backend(&self) -> anyhow::Result<()> {
+        // The lock is held across creation: with a check-then-insert under two
+        // separate lock acquisitions, concurrent callers could each create a
+        // watcher and the loser's insert would silently drop the winner's
+        // watcher along with every path registered on it.
+        let mut backend = self.backend.lock();
+        if backend.is_none() {
+            *backend = Some(match self.kind {
+                OsWatcherKind::Native => {
+                    // CORE excludes Access events, which Zed discards anyway. Without this,
+                    // the default mask subscribes to inotify OPEN/CLOSE_* on Linux, so every
+                    // file read in a watched directory would queue events, increasing the
+                    // risk of queue overflows (and thus full rescans) under read-heavy
+                    // workloads like grep or language server indexing.
+                    let config =
+                        notify::Config::default().with_event_kinds(notify::EventKindMask::CORE);
+                    Box::new(
+                        <notify::RecommendedWatcher as notify::Watcher>::new(
+                            self.event_sink(),
+                            config,
+                        )
+                        .inspect_err(|error| self.record_backend_error(error))?,
+                    )
+                }
+                OsWatcherKind::Poll => {
+                    let config = notify::Config::default().with_poll_interval(*POLL_INTERVAL);
+                    // On Windows the poller serves the 9P share of a WSL distribution, where
+                    // every link the distribution made is one Windows cannot follow: following
+                    // links would make each pass report an error for each of them. The link
+                    // itself is still compared, and neither native backend follows links
+                    // either.
+                    #[cfg(target_os = "windows")]
+                    let config = config.with_follow_symlinks(false);
+                    Box::new(
+                        notify::PollWatcher::new(self.event_sink(), config)
+                            .inspect_err(|error| self.record_backend_error(error))?,
+                    )
+                }
+                OsWatcherKind::Fallback => {
+                    anyhow::bail!(
+                        "the fallback poller has no backend of its own; it is part of the native watcher"
+                    )
+                }
+            });
+        }
+        Ok(())
+    }
+
+    fn record_backend_error(&self, error: &notify::Error) {
+        self.diagnostics.record(|| {
+            WatchDiagnosticEvent::new(
+                self.kind,
+                "backend_error",
+                &error.paths,
+                format!("{error:?}"),
+                false,
+            )
+        });
+    }
+
+    fn demote_native_watches_over_learned_limit(&self, fallback: &NativeFallback) {
+        let Some(learned_limit) = fallback.budget.learned_limit() else {
             return;
         };
-        let excess = native_watches_over_learned_limit(self.budget.native_watches(), learned_limit);
+        let excess =
+            native_watches_over_learned_limit(fallback.budget.native_watches(), learned_limit);
         if excess > 0 {
-            self.demote_native_watches(excess);
+            self.demote_native_watches(fallback, excess);
         }
     }
 
-    fn demote_native_watches(&self, max_demotions: usize) -> usize {
+    fn demote_native_watches(&self, fallback: &NativeFallback, max_demotions: usize) -> usize {
         let candidates = self
             .state
             .lock()
-            .native_path_registrations
-            .transition_candidates(TransitionOrder::DeepestFirst);
+            .paths
+            .transition_candidates(false, TransitionOrder::DeepestFirst);
         let mut demoted = 0;
         for key in candidates {
             if demoted >= max_demotions {
                 break;
             }
-            if self.demote_native_watch(&key) {
+            if self.demote_native_watch(fallback, &key) {
                 demoted += 1;
             }
         }
@@ -1951,40 +2321,32 @@ impl GlobalWatcher {
         demoted
     }
 
-    fn demote_native_watch(&self, key: &WatchKey) -> bool {
+    fn demote_native_watch(&self, fallback: &NativeFallback, key: &WatchKey) -> bool {
         let _key_guard = self.lock_key(key);
-        let Some(watched_path) = self
-            .state
-            .lock()
-            .native_path_registrations
-            .watched_path(key)
-        else {
+        let Some(watched_path) = self.state.lock().paths.watched_path(key, false) else {
             return false;
         };
         // The poller takes its baseline before the native watch goes away, so that no change
         // can fall between the two.
-        if let Err(error) = self.watch(watched_path.as_path(), WatcherMode::Fallback) {
+        if let Err(error) = self.watch_with_fallback_poller(fallback, watched_path.as_path()) {
             log::debug!(
                 "keeping the native watch on {:?}: {error:#}",
                 watched_path.as_path()
             );
             return false;
         }
-        self.state
-            .lock()
-            .move_path_registration(key, WatcherMode::Native, WatcherMode::Fallback);
-        self.unwatch(watched_path.as_path(), WatcherMode::Native)
-            .log_err();
-        self.budget.release_native();
+        self.state.lock().paths.set_polled_by_fallback(key, true);
+        self.unwatch(watched_path.as_path()).log_err();
+        fallback.budget.release_native();
         true
     }
 
-    fn promote_fallback_watches(&self, max_promotions: usize) -> usize {
+    fn promote_fallback_watches(&self, fallback: &NativeFallback, max_promotions: usize) -> usize {
         let candidates = self
             .state
             .lock()
-            .fallback_path_registrations
-            .transition_candidates(TransitionOrder::ShallowestFirst);
+            .paths
+            .transition_candidates(true, TransitionOrder::ShallowestFirst);
         let mut promoted = 0;
         let mut refused_path = None;
         for key in candidates {
@@ -1994,7 +2356,7 @@ impl GlobalWatcher {
             // Other Zed processes may be promoting at the same time, so the room is measured
             // again every few promotions.
             if promoted > 0 && promoted % PROMOTIONS_PER_MEASUREMENT == 0 {
-                let reading = self.budget.measure();
+                let reading = fallback.budget.measure();
                 if reading
                     .limit
                     .is_none_or(|limit| promotion_capacity(reading.usage, limit) == 0)
@@ -2002,7 +2364,7 @@ impl GlobalWatcher {
                     break;
                 }
             }
-            match self.promote_fallback_watch(&key) {
+            match self.promote_fallback_watch(fallback, &key) {
                 PromotionOutcome::Promoted => promoted += 1,
                 PromotionOutcome::Skipped => {}
                 PromotionOutcome::BudgetExhausted => break,
@@ -2013,70 +2375,64 @@ impl GlobalWatcher {
             }
         }
         if let Some(refused_path) = refused_path
-            && self
+            && fallback
                 .budget
                 .learn_limit_from_watch_limit_error(refused_path.as_path())
         {
-            self.demote_native_watches_over_learned_limit();
+            self.demote_native_watches_over_learned_limit(fallback);
         }
         promoted
     }
 
-    fn promote_fallback_watch(&self, key: &WatchKey) -> PromotionOutcome {
+    fn promote_fallback_watch(
+        &self,
+        fallback: &NativeFallback,
+        key: &WatchKey,
+    ) -> PromotionOutcome {
         let _key_guard = self.lock_key(key);
-        let Some(watched_path) = self
-            .state
-            .lock()
-            .fallback_path_registrations
-            .watched_path(key)
-        else {
+        let Some(watched_path) = self.state.lock().paths.watched_path(key, true) else {
             return PromotionOutcome::Skipped;
         };
-        if self.fallback_watcher.has_vanished(watched_path.as_path()) {
+        if fallback.poller.has_vanished(watched_path.as_path()) {
             return PromotionOutcome::Skipped;
         }
-        if !self.budget.try_reserve_native() {
+        if !fallback.budget.try_reserve_native() {
             return PromotionOutcome::BudgetExhausted;
         }
-        match self.watch(watched_path.as_path(), WatcherMode::Native) {
+        match self.watch(watched_path.as_path()) {
             Ok(()) => {
-                self.state.lock().move_path_registration(
-                    key,
-                    WatcherMode::Fallback,
-                    WatcherMode::Native,
-                );
+                self.state.lock().paths.set_polled_by_fallback(key, false);
                 // Changes made since the poller's last pass happened before the native watch
                 // existed; one last poll reports them.
-                self.fallback_watcher.poll_path(watched_path.as_path());
-                self.unwatch(watched_path.as_path(), WatcherMode::Fallback)
-                    .log_err();
+                fallback.poller.poll_path(watched_path.as_path());
+                self.unwatch_with_fallback_poller(fallback, watched_path.as_path());
                 PromotionOutcome::Promoted
             }
             Err(error) if is_max_files_watch_error(&error) => {
-                self.budget.release_native();
+                fallback.budget.release_native();
                 PromotionOutcome::WatchLimitReached(watched_path)
             }
             Err(error) => {
-                self.budget.release_native();
+                fallback.budget.release_native();
                 log::debug!("keeping {:?} on polling: {error:#}", watched_path.as_path());
-                self.state
-                    .lock()
-                    .fallback_path_registrations
-                    .mark_native_unavailable(key);
+                self.state.lock().paths.mark_native_unavailable(key);
                 PromotionOutcome::Skipped
             }
         }
     }
 
     fn run_budget_maintenance(&self, promote: bool) {
-        if !self.budget.is_enabled() {
+        let Some(fallback) = &self.fallback else {
+            return;
+        };
+        if !fallback.budget.is_enabled() {
             return;
         }
         let (native_paths, fallback_paths) = {
             let state = self.state.lock();
             (
-                state.native_path_registrations.len(),
-                state.fallback_path_registrations.len(),
+                state.paths.count_watched(false),
+                state.paths.count_watched(true),
             )
         };
         if native_paths == 0 && fallback_paths == 0 {
@@ -2085,26 +2441,26 @@ impl GlobalWatcher {
 
         // Promotions need current numbers; otherwise the estimate is enough until a measurement
         // is due.
-        if promote || self.budget.measurement_due(Instant::now()) {
-            self.budget.measure();
+        if promote || fallback.budget.measurement_due(Instant::now()) {
+            fallback.budget.measure();
         }
         // Trimming to a limit learned from ENOSPC comes first, since that is what makes room
         // below the limit.
-        self.demote_native_watches_over_learned_limit();
-        let reading = self.budget.reading();
+        self.demote_native_watches_over_learned_limit(fallback);
+        let reading = fallback.budget.reading();
         let Some(limit) = reading.limit else {
             return;
         };
-        let native_watches = self.budget.native_watches();
+        let native_watches = fallback.budget.native_watches();
         if should_yield_native_watches(reading.usage, limit) {
             if native_watches > 0 {
-                if self.budget.begin_yielding() {
+                if fallback.budget.begin_yielding() {
                     log::warn!(
                         "only {} of this user's {limit} inotify watches are free; moving {native_watches} watched paths to polling so that other programs can keep watching files",
                         limit.saturating_sub(reading.usage)
                     );
                 }
-                self.demote_native_watches(usize::MAX);
+                self.demote_native_watches(fallback, usize::MAX);
             }
             return;
         }
@@ -2115,17 +2471,17 @@ impl GlobalWatcher {
                 "{} of this user's {limit} inotify watches are in use, well over Zed's share; moving {over_share} watched paths to polling",
                 reading.usage
             );
-            self.demote_native_watches(over_share);
+            self.demote_native_watches(fallback, over_share);
             return;
         }
 
         if promote && fallback_paths > 0 {
             let capacity = promotion_capacity(reading.usage, limit);
             if capacity > 0 {
-                let promoted = self.promote_fallback_watches(capacity);
+                let promoted = self.promote_fallback_watches(fallback, capacity);
                 if promoted > 0 {
                     log::info!("moved {promoted} polled paths back to inotify watches");
-                    self.budget.end_episode();
+                    fallback.budget.end_episode();
                 }
             }
         }
@@ -2144,29 +2500,14 @@ impl GlobalWatcher {
         self.run_budget_maintenance(promote);
     }
 
-    /// Asks the background thread to run maintenance right away.
-    fn request_maintenance(&self) {
-        *self.maintenance_requested.lock() = true;
-        self.maintenance_wake.notify_one();
-    }
-
-    fn take_maintenance_request(&self) -> bool {
-        std::mem::replace(&mut *self.maintenance_requested.lock(), false)
-    }
-
-    fn wait_for_maintenance_request(&self, deadline: Instant) -> bool {
-        let mut requested = self.maintenance_requested.lock();
-        if !*requested {
-            self.maintenance_wake.wait_until(&mut requested, deadline);
-        }
-        std::mem::replace(&mut *requested, false)
-    }
-
     fn ensure_background_thread(&self) {
-        if !self.spawn_background_thread {
+        let Some(fallback) = &self.fallback else {
+            return;
+        };
+        if !fallback.spawn_background_thread {
             return;
         }
-        let mut background_thread = self.background_thread.lock();
+        let mut background_thread = fallback.background.thread.lock();
         match *background_thread {
             BackgroundThread::Running => return,
             BackgroundThread::FailedAt(failed_at)
@@ -2176,9 +2517,11 @@ impl GlobalWatcher {
             }
             BackgroundThread::NotStarted | BackgroundThread::FailedAt(_) => {}
         }
+        let watcher = fallback.this.clone();
+        let background = fallback.background.clone();
         match std::thread::Builder::new()
             .name("fs-watcher-fallback".to_owned())
-            .spawn(|| run_background_thread(global_watcher()))
+            .spawn(move || run_background_thread(watcher, background))
         {
             Ok(_detached) => *background_thread = BackgroundThread::Running,
             Err(error) => {
@@ -2189,51 +2532,49 @@ impl GlobalWatcher {
             }
         }
     }
+}
 
-    fn ensure_native_watcher(&self) -> anyhow::Result<()> {
-        // The lock is held across creation: with a check-then-insert under two
-        // separate lock acquisitions, concurrent callers could each create a
-        // watcher and the loser's insert would silently drop the winner's
-        // watcher along with every path registered on it.
-        let mut native_watcher = self.native_watcher.lock();
-        if native_watcher.is_none() {
-            // CORE excludes Access events, which Zed discards anyway. Without this,
-            // the default mask subscribes to inotify OPEN/CLOSE_* on Linux, so every
-            // file read in a watched directory would queue events, increasing the
-            // risk of queue overflows (and thus full rescans) under read-heavy
-            // workloads like grep or language server indexing.
-            let config = notify::Config::default().with_event_kinds(notify::EventKindMask::CORE);
-            let watcher = <notify::RecommendedWatcher as notify::Watcher>::new(
-                |event| global_watcher().enqueue(WatcherMode::Native, event),
-                config,
-            )?;
-            *native_watcher = Some(Box::new(watcher));
+impl Drop for OsWatcher {
+    fn drop(&mut self) {
+        if let Some(fallback) = &self.fallback {
+            fallback.background.shut_down();
         }
-        Ok(())
-    }
-
-    fn ensure_poll_watcher(&self) -> anyhow::Result<()> {
-        let mut poll_watcher = self.poll_watcher.lock();
-        if poll_watcher.is_none() {
-            let config = notify::Config::default().with_poll_interval(*POLL_INTERVAL);
-            // On Windows the poller serves the 9P share of a WSL distribution, where every link
-            // the distribution made is one Windows cannot follow: following links would make each
-            // pass report an error for each of them. The link itself is still compared, and
-            // neither native backend follows links either.
-            #[cfg(target_os = "windows")]
-            let config = config.with_follow_symlinks(false);
-            let watcher = notify::PollWatcher::new(
-                |event| global_watcher().enqueue(WatcherMode::Poll, event),
-                config,
-            )?;
-            *poll_watcher = Some(Box::new(watcher));
-        }
-        Ok(())
     }
 }
 
-/// Polls the fallback paths and keeps the watch budget up to date for the global watcher.
-fn run_background_thread(watcher: &'static GlobalWatcher) {
+impl NativeFallback {
+    fn new(sink: FallbackEventSink, options: FallbackOptions, this: Weak<OsWatcher>) -> Self {
+        Self {
+            poller: FallbackWatcher::new(sink),
+            budget: options.budget,
+            background: Arc::new(FallbackBackground::new()),
+            spawn_background_thread: options.spawn_background_thread,
+            this,
+        }
+    }
+}
+
+/// The fallback poller's events go through the same queue and dispatch as the backend's, and
+/// match the same registration table, so a path's callbacks don't care which of the two
+/// reported a change.
+fn fallback_event_sink(
+    event_tx: &async_channel::Sender<notify::Result<notify::Event>>,
+    diagnostics: &Arc<diagnostics::DiagnosticRecorder>,
+) -> FallbackEventSink {
+    let event_tx = event_tx.clone();
+    let diagnostics = diagnostics.clone();
+    Arc::new(move |event: notify::Event| {
+        diagnostics
+            .record(|| WatchDiagnosticEvent::from_notify_event(OsWatcherKind::Fallback, &event));
+        enqueue(&event_tx, Ok(event));
+    })
+}
+
+/// Polls the fallback paths and keeps the watch budget up to date for one native watcher.
+///
+/// The watcher is only held while there is work to do, so one that is dropped between passes
+/// goes away without waiting for this thread, which then stops.
+fn run_background_thread(watcher: Weak<OsWatcher>, background: Arc<FallbackBackground>) {
     let started = Instant::now();
     let mut schedule = MaintenanceSchedule {
         next_tick: started + MAINTENANCE_INTERVAL,
@@ -2242,31 +2583,157 @@ fn run_background_thread(watcher: &'static GlobalWatcher) {
     let mut next_pass = started + poll_interval();
     loop {
         let wake_at = next_pass.min(schedule.next_tick);
-        if watcher.wait_for_maintenance_request(wake_at) {
-            schedule.next_tick = Instant::now();
+        match background.wait(wake_at) {
+            MaintenanceWake::ShutDown => return,
+            MaintenanceWake::Requested => schedule.next_tick = Instant::now(),
+            MaintenanceWake::Deadline => {}
         }
+        let Some(watcher) = watcher.upgrade() else {
+            return;
+        };
         watcher.run_scheduled_maintenance(&mut schedule);
         if Instant::now() < next_pass {
             continue;
         }
+        let Some(fallback) = &watcher.fallback else {
+            return;
+        };
 
         let pass_started = Instant::now();
         let mut pacer = PollPacer::new();
         let operation_budget = sweep_operation_budget(poll_interval());
-        watcher
-            .fallback_watcher
+        fallback
+            .poller
             .poll_pass(Some(operation_budget), &mut |operations| {
                 if let Some(delay) = pacer.record(operations) {
                     std::thread::sleep(delay);
                 }
                 // A pass over a large tree can take far longer than the maintenance interval.
-                if watcher.take_maintenance_request() {
+                if background.take_maintenance_request() {
                     schedule.next_tick = Instant::now();
                 }
                 watcher.run_scheduled_maintenance(&mut schedule);
             });
         next_pass = (pass_started + poll_interval()).max(Instant::now());
     }
+}
+
+fn dispatch(
+    kind: OsWatcherKind,
+    state: &Mutex<WatcherState>,
+    event: notify::Result<notify::Event>,
+) {
+    let event = match event {
+        Ok(event) => event,
+        Err(error) => {
+            log::warn!("{kind:?} watcher error: {error}");
+            return;
+        }
+    };
+
+    log::trace!("handle {kind:?} watcher event: {event:?}");
+
+    let callbacks = {
+        let state = state.lock();
+        if event.need_rescan() {
+            // This also reaches the paths the native watcher handed to its fallback poller,
+            // whose native events may be among the lost ones.
+            let callbacks = state
+                .watchers
+                .values()
+                .map(|registration| registration.callback.clone())
+                .collect::<Vec<_>>();
+            log::warn!(
+                "{kind:?} filesystem watcher lost sync; scheduling rescans for {} registrations",
+                callbacks.len()
+            );
+            callbacks
+        } else {
+            let mut ids = Vec::new();
+            for path in &event.paths {
+                let sanitized = SanitizedPath::new(path);
+                state.paths.watcher_ids_covering(sanitized, &mut ids);
+            }
+            ids.sort_unstable_by_key(|id| id.0);
+            ids.dedup();
+            ids.into_iter()
+                .filter_map(|id| state.watchers.get(&id))
+                .map(|registration| registration.callback.clone())
+                .collect::<Vec<_>>()
+        }
+    };
+
+    for callback in callbacks {
+        callback(&event);
+    }
+}
+
+fn dispatch_batch(
+    kind: OsWatcherKind,
+    state: &Mutex<WatcherState>,
+    first: notify::Result<notify::Event>,
+    event_rx: &async_channel::Receiver<notify::Result<notify::Event>>,
+) {
+    // A single backend overflow can enqueue many pathless rescan markers, each
+    // of which rescans every watched root, so one covers the entire
+    // drained batch. Rescans that name paths only cover those subtrees and are
+    // all dispatched; ordinary events still run.
+    let mut rescan_dispatched = false;
+
+    for event in std::iter::once(first).chain(std::iter::from_fn(|| event_rx.try_recv().ok())) {
+        if event
+            .as_ref()
+            .is_ok_and(|event| event.need_rescan() && event.paths.is_empty())
+        {
+            if rescan_dispatched {
+                continue;
+            }
+            rescan_dispatched = true;
+        }
+
+        dispatch(kind, state, event);
+    }
+}
+
+fn enqueue(
+    event_tx: &async_channel::Sender<notify::Result<notify::Event>>,
+    event: notify::Result<notify::Event>,
+) {
+    if matches!(
+        event,
+        Ok(Event {
+            kind: EventKind::Access(_),
+            ..
+        })
+    ) {
+        return;
+    }
+
+    // A failed send only happens once the dispatch thread has shut down, at
+    // which point there's nothing left to dispatch to.
+    event_tx.try_send(event).ok();
+}
+
+static POLL_INTERVAL: LazyLock<Duration> = LazyLock::new(|| {
+    let poll_ms: u64 = std::env::var("ZED_FILE_WATCHER_POLL_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(2000)
+        .clamp(500, 30000);
+    Duration::from_millis(poll_ms)
+});
+
+static NATIVE_WATCH_LIMIT_COOLDOWN: LazyLock<Duration> = LazyLock::new(|| {
+    let cooldown_seconds: u64 = std::env::var("ZED_NATIVE_WATCH_LIMIT_COOLDOWN_SECONDS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(5)
+        .clamp(0, 300);
+    Duration::from_secs(cooldown_seconds)
+});
+
+pub fn poll_interval() -> Duration {
+    *POLL_INTERVAL
 }
 
 fn is_max_files_watch_error(error: &anyhow::Error) -> bool {
@@ -2299,53 +2766,11 @@ fn is_unsupported_native_watch_error(_error: &anyhow::Error) -> bool {
     false
 }
 
-static POLL_INTERVAL: LazyLock<Duration> = LazyLock::new(|| {
-    let poll_ms: u64 = std::env::var("ZED_FILE_WATCHER_POLL_MS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(2000)
-        .clamp(500, 30000);
-    Duration::from_millis(poll_ms)
-});
-
-pub fn poll_interval() -> Duration {
-    *POLL_INTERVAL
-}
-
-static FS_WATCHER_INSTANCE: OnceLock<GlobalWatcher> = OnceLock::new();
-
-fn global_watcher() -> &'static GlobalWatcher {
-    FS_WATCHER_INSTANCE.get_or_init(|| {
-        let (event_tx, event_rx) = async_channel::unbounded::<DispatchEvent>();
-        std::thread::Builder::new()
-            .name("fs-watcher-dispatch".to_owned())
-            .spawn(move || {
-                while let Ok(first) = event_rx.recv_blocking() {
-                    global_watcher().dispatch_batch(first, &event_rx);
-                }
-            })
-            .expect("failed to spawn fs watcher dispatch thread");
-        GlobalWatcher::new(
-            event_tx,
-            None,
-            None,
-            Arc::new(|event| global_watcher().enqueue(WatcherMode::Fallback, Ok(event))),
-            // Only inotify charges one watch per directory against a small per-user limit;
-            // FSEvents and ReadDirectoryChangesW watch whole trees with one handle.
-            WatchBudget::new(cfg!(target_os = "linux"), Arc::new(ProcfsBudgetSource)),
-            true,
-        )
-    })
-}
-
 #[cfg(test)]
 mod tests {
+    use super::watch_budget::{InotifyUsage, WatchBudgetSource};
     use super::*;
-    use super::{
-        fallback_watcher::FallbackEventSink,
-        watch_budget::{InotifyUsage, WatchBudgetSource},
-    };
-    use std::{collections::HashSet, path::PathBuf};
+    use std::{collections::HashSet, fs, path::PathBuf};
 
     fn rescan(path: &str) -> PathEvent {
         PathEvent {
@@ -2437,60 +2862,87 @@ mod tests {
         }
     }
 
-    fn test_watcher(poll_watcher: Arc<Mutex<FakeWatchBackend>>) -> GlobalWatcher {
-        test_watcher_with_backends(None, Some(poll_watcher))
-    }
-
-    fn test_watcher_with_backends(
-        native_watcher: Option<Arc<Mutex<FakeWatchBackend>>>,
-        poll_watcher: Option<Arc<Mutex<FakeWatchBackend>>>,
-    ) -> GlobalWatcher {
+    fn os_watcher_for_test(
+        kind: OsWatcherKind,
+        backend: Option<Arc<Mutex<FakeWatchBackend>>>,
+        fallback: Option<(FallbackEventSink, Arc<WatchBudget>)>,
+    ) -> OsWatcher {
         // Tests call `dispatch` directly to exercise dispatch synchronously,
         // rather than going through the OS watcher callbacks, so nothing is ever
         // sent on this channel; the receiver can just be dropped.
         let (event_tx, _event_rx) = async_channel::unbounded();
-        GlobalWatcher::new(
+        OsWatcher {
+            kind,
+            recursive: kind.is_recursive(),
+            state: Arc::new(Mutex::new(WatcherState::new())),
+            backend: Mutex::new(
+                backend.map(|watcher| {
+                    Box::new(SharedFakeWatchBackend(watcher)) as Box<dyn WatchBackend>
+                }),
+            ),
             event_tx,
-            native_watcher
-                .map(|watcher| Box::new(SharedFakeWatchBackend(watcher)) as Box<dyn WatchBackend>),
-            poll_watcher
-                .map(|watcher| Box::new(SharedFakeWatchBackend(watcher)) as Box<dyn WatchBackend>),
-            Arc::new(|_| {}),
-            WatchBudget::new(false, Arc::new(ProcfsBudgetSource)),
-            false,
-        )
+            _dispatch_task: Task::ready(()),
+            diagnostics: Default::default(),
+            key_locks: std::array::from_fn(|_| Mutex::new(())),
+            fallback: fallback.map(|(sink, budget)| {
+                NativeFallback::new(
+                    sink,
+                    FallbackOptions {
+                        budget,
+                        spawn_background_thread: false,
+                    },
+                    Weak::new(),
+                )
+            }),
+        }
     }
 
-    /// A watcher with the watch budget enabled. Events of the fallback poller are collected
-    /// rather than dispatched, so tests can deliver them after running a pass.
-    fn test_watcher_with_budget(
+    fn test_os_watcher(
+        kind: OsWatcherKind,
+        backend: Option<Arc<Mutex<FakeWatchBackend>>>,
+    ) -> OsWatcher {
+        os_watcher_for_test(kind, backend, None)
+    }
+
+    /// A native watcher with a fallback poller whose events are collected rather than
+    /// dispatched, so tests can deliver them after running a pass.
+    fn test_os_watcher_with_fallback(
         native_backend: Arc<Mutex<FakeWatchBackend>>,
-        budget_source: Arc<FakeBudgetSource>,
-    ) -> (GlobalWatcher, Arc<Mutex<Vec<notify::Event>>>) {
-        let (event_tx, _event_rx) = async_channel::unbounded();
+        budget: WatchBudget,
+    ) -> (OsWatcher, Arc<Mutex<Vec<notify::Event>>>) {
         let fallback_events = Arc::new(Mutex::new(Vec::new()));
         let fallback_event_sink: FallbackEventSink = {
             let fallback_events = fallback_events.clone();
             Arc::new(move |event| fallback_events.lock().push(event))
         };
-        let watcher = GlobalWatcher::new(
-            event_tx,
-            Some(Box::new(SharedFakeWatchBackend(native_backend))),
-            None,
-            fallback_event_sink,
-            WatchBudget::new(true, budget_source),
-            false,
+        let watcher = os_watcher_for_test(
+            OsWatcherKind::Native,
+            Some(native_backend),
+            Some((fallback_event_sink, Arc::new(budget))),
         );
         (watcher, fallback_events)
     }
 
-    fn deliver_fallback_events(
-        watcher: &GlobalWatcher,
-        fallback_events: &Mutex<Vec<notify::Event>>,
-    ) {
+    /// A native watcher with the watch budget enabled.
+    fn test_os_watcher_with_budget(
+        native_backend: Arc<Mutex<FakeWatchBackend>>,
+        budget_source: Arc<FakeBudgetSource>,
+    ) -> (OsWatcher, Arc<Mutex<Vec<notify::Event>>>) {
+        test_os_watcher_with_fallback(native_backend, WatchBudget::new(true, budget_source))
+    }
+
+    impl OsWatcher {
+        fn fallback_for_test(&self) -> &NativeFallback {
+            self.fallback
+                .as_ref()
+                .expect("this watcher has a fallback poller")
+        }
+    }
+
+    fn deliver_fallback_events(watcher: &OsWatcher, fallback_events: &Mutex<Vec<notify::Event>>) {
         let events = std::mem::take(&mut *fallback_events.lock());
         for event in events {
-            watcher.dispatch(WatcherMode::Fallback, Ok(event));
+            watcher.dispatch(Ok(event));
         }
     }
 
@@ -2519,16 +2971,25 @@ mod tests {
             .collect()
     }
 
-    fn registration_mode(
-        watcher: &GlobalWatcher,
-        id: WatcherRegistrationId,
-    ) -> Option<WatcherMode> {
-        watcher
-            .state
-            .lock()
-            .watchers
-            .get(&id)
-            .map(|registration| registration.mode)
+    /// Who watches the registration's path now: the backend (`Native`) or the fallback poller.
+    fn registration_kind(watcher: &OsWatcher, id: WatcherRegistrationId) -> Option<OsWatcherKind> {
+        let state = watcher.state.lock();
+        let registration = state.watchers.get(&id)?;
+        let path = state.paths.entries.get(&registration.key)?;
+        Some(if path.polled_by_fallback {
+            OsWatcherKind::Fallback
+        } else {
+            watcher.kind
+        })
+    }
+
+    /// How many paths the backend and the fallback poller each watch.
+    fn watched_path_counts(watcher: &OsWatcher) -> (usize, usize) {
+        let state = watcher.state.lock();
+        (
+            state.paths.count_watched(false),
+            state.paths.count_watched(true),
+        )
     }
 
     fn path_recorder() -> (
@@ -2543,22 +3004,28 @@ mod tests {
         (fired, callback)
     }
 
+    /// A registration and who watched its path right after it was made.
+    struct TestRegistration {
+        id: WatcherRegistrationId,
+        kind: Option<OsWatcherKind>,
+    }
+
     fn watch_all(
-        watcher: &GlobalWatcher,
+        watcher: &OsWatcher,
         directories: &[PathBuf],
         callback: impl Fn(&notify::Event) + Send + Sync + Clone + 'static,
-    ) -> Vec<FsWatcherRegistration> {
+    ) -> Vec<TestRegistration> {
         directories
             .iter()
             .map(|directory| {
-                watcher
-                    .add(
-                        directory.as_path().into(),
-                        WatcherMode::Native,
-                        false,
-                        callback.clone(),
-                    )
+                let id = watcher
+                    .add(directory.as_path().into(), false, callback.clone())
                     .expect("add watch")
+                    .expect("watch registered");
+                TestRegistration {
+                    id,
+                    kind: registration_kind(watcher, id),
+                }
             })
             .collect()
     }
@@ -2578,19 +3045,21 @@ mod tests {
     #[test]
     fn covered_child_registration_is_not_unwatched_after_parent_is_removed() {
         let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
-        let watcher = test_watcher(backend.clone());
+        let watcher = test_os_watcher(OsWatcherKind::Poll, Some(backend.clone()));
         let parent = Arc::<Path>::from(Path::new("/repo"));
         let child = Arc::<Path>::from(Path::new("/repo/foo.csproj"));
 
         let parent_registration = watcher
-            .add(parent.as_ref().into(), WatcherMode::Poll, false, |_| {})
-            .expect("add parent watch");
+            .add(parent.as_ref().into(), false, |_| {})
+            .expect("add parent watch")
+            .expect("parent watch registered");
         let child_registration = watcher
-            .add(child.as_ref().into(), WatcherMode::Poll, false, |_| {})
-            .expect("add covered child watch");
+            .add(child.as_ref().into(), false, |_| {})
+            .expect("add covered child watch")
+            .expect("child watch registered");
 
-        watcher.remove(parent_registration.id);
-        watcher.remove(child_registration.id);
+        watcher.remove(parent_registration);
+        watcher.remove(child_registration);
 
         let backend = backend.lock();
         assert_eq!(backend.watch_calls, &[parent.to_path_buf()]);
@@ -2604,7 +3073,14 @@ mod tests {
 
         let (tx, rx) = async_channel::unbounded();
         let pending_path_events: Arc<Mutex<Vec<PathEvent>>> = Default::default();
-        let watcher = FsWatcher::new(cx.executor(), tx, pending_path_events.clone());
+        let watcher = FsWatcher::new(
+            OsWatcher::new(OsWatcherKind::Native, cx.executor()),
+            OsWatcher::new(OsWatcherKind::Poll, cx.executor()),
+            crate::RealFs::new(None, cx.executor()),
+            cx.executor(),
+            tx,
+            pending_path_events.clone(),
+        );
 
         watcher
             .add(&path)
@@ -2648,6 +3124,32 @@ mod tests {
     }
 
     #[test]
+    fn native_watch_limit_cools_down_subsequent_native_registrations() {
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend {
+            fail_with_watch_limit: true,
+            ..Default::default()
+        }));
+        let watcher = test_os_watcher(OsWatcherKind::Native, Some(native_backend.clone()));
+        let first_path = Arc::<Path>::from(Path::new("/repo/first"));
+        let second_path = Arc::<Path>::from(Path::new("/repo/second"));
+
+        let first_registration = watcher
+            .add(first_path.clone(), false, |_| {})
+            .expect("native watch limit is handled");
+        let second_registration = watcher
+            .add(second_path, false, |_| {})
+            .expect("native watch limit backoff is handled");
+
+        assert!(first_registration.is_none());
+        assert!(second_registration.is_none());
+
+        let native_backend = native_backend.lock();
+        assert_eq!(native_backend.watch_calls, &[first_path.to_path_buf()]);
+    }
+
+    /// With a fallback poller the watch limit is never answered with "skipped, retry later",
+    /// even when there is no budget to keep within (macOS and Windows).
+    #[test]
     fn native_watch_limit_without_a_budget_falls_back_to_polling() {
         let temp_dir = tempfile::tempdir().expect("create temp dir");
         let directories =
@@ -2656,7 +3158,10 @@ mod tests {
             fail_with_watch_limit: true,
             ..Default::default()
         }));
-        let watcher = test_watcher_with_backends(Some(native_backend.clone()), None);
+        let (watcher, _fallback_events) = test_os_watcher_with_fallback(
+            native_backend.clone(),
+            WatchBudget::new(false, Arc::new(ProcfsBudgetSource)),
+        );
 
         let registrations = watch_all(&watcher, &directories, |_| {});
 
@@ -2664,9 +3169,40 @@ mod tests {
         assert!(
             registrations
                 .iter()
-                .all(|registration| registration.mode == WatcherMode::Fallback)
+                .all(|registration| registration.kind == Some(OsWatcherKind::Fallback))
         );
         assert_eq!(native_backend.lock().watch_calls, directories);
+    }
+
+    /// A path the fallback poller holds covers nothing below it, even on the platforms where
+    /// the native watch it stands in for would have: `FsWatcher` must keep registering the
+    /// directories below it.
+    #[test]
+    fn a_polled_path_does_not_cover_its_descendants() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let parent = temp_dir.path().join("parent");
+        let child = parent.join("child");
+        fs::create_dir_all(&child).expect("create directories");
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend {
+            fail_with_watch_limit: true,
+            ..Default::default()
+        }));
+        let (watcher, _fallback_events) = test_os_watcher_with_fallback(
+            native_backend.clone(),
+            WatchBudget::new(false, Arc::new(ProcfsBudgetSource)),
+        );
+
+        let parent_registration = watcher
+            .add(parent.as_path().into(), false, |_| {})
+            .expect("add parent")
+            .expect("parent registered");
+        assert!(!watcher.covers_descendants(parent_registration));
+        watcher
+            .add(child.as_path().into(), false, |_| {})
+            .expect("add child")
+            .expect("child registered");
+
+        assert_eq!(native_backend.lock().watch_calls, vec![parent, child]);
     }
 
     /// `\\wsl.localhost\…` is decided on the spelling, before any watch is attempted, and the
@@ -3234,39 +3770,56 @@ mod tests {
     }
 
     /// A volume that isn't a WSL share but still has no `ReadDirectoryChangesW` is caught by
-    /// the failure of the native watch itself.
+    /// the failure of the native watch itself, and polled by the poll watcher instead.
     #[cfg(target_os = "windows")]
-    #[test]
-    fn a_native_watch_the_volume_cannot_serve_falls_back_to_polling() {
+    #[gpui::test]
+    fn a_native_watch_the_volume_cannot_serve_falls_back_to_polling(cx: &mut gpui::TestAppContext) {
         const ERROR_INVALID_FUNCTION: i32 = 1;
         let temp_dir = tempfile::tempdir().expect("create temp dir");
         let directories = make_directories(temp_dir.path(), ["share".to_owned()]);
+        let directory = directories.first().expect("one directory").clone();
         let native_backend = Arc::new(Mutex::new(FakeWatchBackend {
             fail_with_io_os_error: Some(ERROR_INVALID_FUNCTION),
             ..Default::default()
         }));
         let poll_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
-        let watcher =
-            test_watcher_with_backends(Some(native_backend.clone()), Some(poll_backend.clone()));
+        let native_watcher = Arc::new(test_os_watcher(
+            OsWatcherKind::Native,
+            Some(native_backend.clone()),
+        ));
+        let poll_watcher = Arc::new(test_os_watcher(
+            OsWatcherKind::Poll,
+            Some(poll_backend.clone()),
+        ));
+        let fs = crate::RealFs::new(None, cx.executor());
+        let (tx, _rx) = async_channel::unbounded();
 
-        let registrations = watch_all(&watcher, &directories, |_| {});
+        let registration = register_existing_path(
+            &native_watcher,
+            &poll_watcher,
+            fs.as_ref(),
+            directory.as_path().into(),
+            false,
+            tx,
+            Default::default(),
+        )
+        .expect("the path is polled instead")
+        .expect("the path is registered");
 
-        assert_eq!(
-            registrations.first().map(|registration| registration.mode),
-            Some(WatcherMode::Poll)
-        );
+        assert!(Arc::ptr_eq(&registration.os_watcher, &poll_watcher));
+        assert!(registration.recursive);
         assert_eq!(native_watched_paths(&native_backend), HashSet::new());
         assert_eq!(
             native_watched_paths(&poll_backend),
-            directories.iter().cloned().collect::<HashSet<_>>()
+            HashSet::from_iter([directory])
         );
     }
 
     /// Only "this volume cannot do that" is answered with polling: an error polling wouldn't
     /// fix still reaches the caller.
     #[cfg(target_os = "windows")]
-    #[test]
-    fn another_native_watch_error_is_reported_rather_than_polled() {
+    #[gpui::test]
+    fn another_native_watch_error_is_reported_rather_than_polled(cx: &mut gpui::TestAppContext) {
         const ERROR_ACCESS_DENIED: i32 = 5;
         let temp_dir = tempfile::tempdir().expect("create temp dir");
         let directories = make_directories(temp_dir.path(), ["denied".to_owned()]);
@@ -3276,13 +3829,22 @@ mod tests {
             ..Default::default()
         }));
         let poll_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
-        let watcher = test_watcher_with_backends(Some(native_backend), Some(poll_backend.clone()));
+        let native_watcher = Arc::new(test_os_watcher(OsWatcherKind::Native, Some(native_backend)));
+        let poll_watcher = Arc::new(test_os_watcher(
+            OsWatcherKind::Poll,
+            Some(poll_backend.clone()),
+        ));
+        let fs = crate::RealFs::new(None, cx.executor());
+        let (tx, _rx) = async_channel::unbounded();
 
-        let result = watcher.add(
+        let result = register_existing_path(
+            &native_watcher,
+            &poll_watcher,
+            fs.as_ref(),
             directory.as_path().into(),
-            WatcherMode::Native,
             false,
-            |_| {},
+            tx,
+            Default::default(),
         );
 
         assert!(result.is_err());
@@ -3301,9 +3863,11 @@ mod tests {
     /// ZED_E2E_WSL_WATCH=1 cargo test -p fs --lib -- --ignored --nocapture e2e_wsl
     /// ```
     #[cfg(target_os = "windows")]
-    #[test]
+    #[gpui::test]
     #[ignore]
-    fn e2e_wsl_share_changes_reach_the_watcher() {
+    async fn e2e_wsl_share_changes_reach_the_watcher(cx: &mut gpui::TestAppContext) {
+        use futures::{FutureExt as _, StreamExt as _};
+
         if !std::env::var("ZED_E2E_WSL_WATCH").is_ok_and(|value| value == "1") {
             return;
         }
@@ -3359,7 +3923,7 @@ mod tests {
         // 辿れないリンクは、リンク自身を開き直して file id を取る道が残っている (壊れた
         // symlink を普通のドライブで走査するため)。その開き直しが 9P の共有でも通るなら
         // リンクは worktree に載り、通らなければ `worktree` はこのエラーで見分けて飛ばす。
-        if let Err(file_id_error) = smol::block_on(crate::file_id(&link)) {
+        if let Err(file_id_error) = crate::file_id(&link).await {
             assert_eq!(
                 file_id_error
                     .downcast_ref::<std::io::Error>()
@@ -3369,35 +3933,33 @@ mod tests {
             );
         }
 
-        let (tx, _rx) = async_channel::unbounded();
-        let pending_path_events: Arc<Mutex<Vec<PathEvent>>> = Default::default();
-        let registration = register_existing_path(
-            share.as_path().into(),
-            case_insensitive_path(&share),
-            tx,
-            pending_path_events.clone(),
-        )
-        .expect("watching the share");
+        // The poller reports from its own thread by the wall clock, which the test executor
+        // doesn't drive, so this waits for real events on a real timer.
+        cx.executor().allow_parking();
+        let fs = crate::RealFs::new(None, cx.executor());
+        let (mut events, watcher) = fs.watch(&share, Duration::ZERO).await;
 
         run("touch /tmp/zed-4a-watch/from-wsl.txt".to_owned());
 
         // Long enough for several poll passes over 9P, which is slower than a local volume.
         let deadline = Instant::now() + Duration::from_secs(30);
-        let reported = loop {
-            let events = pending_path_events.lock().clone();
-            if events
-                .iter()
-                .any(|event| event.path.ends_with("from-wsl.txt"))
-            {
-                break events;
+        let mut reported: Vec<PathEvent> = Vec::new();
+        while !reported
+            .iter()
+            .any(|event| event.path.ends_with("from-wsl.txt"))
+            && Instant::now() < deadline
+        {
+            futures::select_biased! {
+                batch = events.next().fuse() => match batch {
+                    Some(batch) => reported.extend(batch),
+                    None => break,
+                },
+                _ = cx.executor().timer(Duration::from_millis(250)).fuse() => {}
             }
-            if Instant::now() >= deadline {
-                break events;
-            }
-            std::thread::sleep(Duration::from_millis(250));
-        };
+        }
 
-        global_watcher().remove(registration.id);
+        drop(events);
+        drop(watcher);
         run("rm -rf /tmp/zed-4a-watch".to_owned());
 
         assert!(
@@ -3418,7 +3980,7 @@ mod tests {
         let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
         let budget_source = FakeBudgetSource::new(Some(40), native_backend.clone());
         let (watcher, fallback_events) =
-            test_watcher_with_budget(native_backend.clone(), budget_source);
+            test_os_watcher_with_budget(native_backend.clone(), budget_source);
         let (fired, callback) = path_recorder();
 
         let registrations = watch_all(&watcher, &directories, callback);
@@ -3426,21 +3988,21 @@ mod tests {
         // A quarter of the limit of 40 is 10 watches for the whole user.
         let native_registrations = registrations
             .iter()
-            .filter(|registration| registration.mode == WatcherMode::Native)
+            .filter(|registration| registration.kind == Some(OsWatcherKind::Native))
             .count();
         assert_eq!(native_registrations, 10);
         assert_eq!(native_backend.lock().watched_paths.len(), 10);
-        assert_eq!(watcher.budget.native_watches(), 10);
+        assert_eq!(watcher.fallback_for_test().budget.native_watches(), 10);
 
         let fallback_directory = registrations
             .iter()
             .zip(&directories)
-            .find(|(registration, _)| registration.mode == WatcherMode::Fallback)
+            .find(|(registration, _)| registration.kind == Some(OsWatcherKind::Fallback))
             .map(|(_, directory)| directory)
             .expect("paths beyond the budget are polled");
         let file = fallback_directory.join("created.txt");
         fs::write(&file, b"x").expect("create file");
-        watcher.fallback_watcher.poll_once();
+        watcher.fallback_for_test().poller.poll_once();
         deliver_fallback_events(&watcher, &fallback_events);
         assert_eq!(*fired.lock(), vec![file]);
     }
@@ -3456,7 +4018,7 @@ mod tests {
         }));
         let budget_source = FakeBudgetSource::new(Some(1_000_000), native_backend.clone());
         let (watcher, fallback_events) =
-            test_watcher_with_budget(native_backend.clone(), budget_source);
+            test_os_watcher_with_budget(native_backend.clone(), budget_source);
         let (fired, callback) = path_recorder();
 
         let registrations = watch_all(&watcher, &directories, callback);
@@ -3467,14 +4029,14 @@ mod tests {
         assert!(
             registrations
                 .iter()
-                .all(|registration| registration.mode == WatcherMode::Fallback)
+                .all(|registration| registration.kind == Some(OsWatcherKind::Fallback))
         );
         assert_eq!(native_backend.lock().watch_calls, &directories[..1]);
-        assert_eq!(watcher.budget.learned_limit(), Some(0));
+        assert_eq!(watcher.fallback_for_test().budget.learned_limit(), Some(0));
 
         let file = directories[2].join("created.txt");
         fs::write(&file, b"x").expect("create file");
-        watcher.fallback_watcher.poll_once();
+        watcher.fallback_for_test().poller.poll_once();
         deliver_fallback_events(&watcher, &fallback_events);
         assert_eq!(*fired.lock(), vec![file]);
     }
@@ -3494,36 +4056,33 @@ mod tests {
         }));
         let budget_source = FakeBudgetSource::new(Some(1_000_000), native_backend.clone());
         let (watcher, fallback_events) =
-            test_watcher_with_budget(native_backend.clone(), budget_source);
+            test_os_watcher_with_budget(native_backend.clone(), budget_source);
         let (fired, callback) = path_recorder();
 
         let registrations = watch_all(&watcher, &directories, callback);
         // Trimming to the learned limit is left to the maintenance thread.
         watcher.run_budget_maintenance(false);
 
-        assert_eq!(watcher.budget.learned_limit(), Some(40));
+        let budget = &watcher.fallback_for_test().budget;
+        assert_eq!(budget.learned_limit(), Some(40));
         assert_eq!(native_backend.lock().watched_paths.len(), 10);
-        assert_eq!(watcher.budget.native_watches(), 10);
+        assert_eq!(budget.native_watches(), 10);
         assert_eq!(native_backend.lock().watch_calls.len(), 41);
-        {
-            let state = watcher.state.lock();
-            assert_eq!(state.native_path_registrations.len(), 10);
-            assert_eq!(state.fallback_path_registrations.len(), 50);
-            assert_eq!(state.watchers.len(), 60);
-        }
+        assert_eq!(watched_path_counts(&watcher), (10, 50));
+        assert_eq!(watcher.state.lock().watchers.len(), 60);
 
         let demoted_directory = registrations
             .iter()
             .zip(&directories)
             .find(|(registration, _)| {
-                registration.mode == WatcherMode::Native
-                    && registration_mode(&watcher, registration.id) == Some(WatcherMode::Fallback)
+                registration.kind == Some(OsWatcherKind::Native)
+                    && registration_kind(&watcher, registration.id) == Some(OsWatcherKind::Fallback)
             })
             .map(|(_, directory)| directory)
             .expect("some native watches were handed to the poller");
         let file = demoted_directory.join("created.txt");
         fs::write(&file, b"x").expect("create file");
-        watcher.fallback_watcher.poll_once();
+        watcher.fallback_for_test().poller.poll_once();
         deliver_fallback_events(&watcher, &fallback_events);
         assert_eq!(*fired.lock(), vec![file]);
     }
@@ -3536,33 +4095,32 @@ mod tests {
         let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
         let budget_source = FakeBudgetSource::new(Some(1000), native_backend.clone());
         let (watcher, fallback_events) =
-            test_watcher_with_budget(native_backend.clone(), budget_source.clone());
+            test_os_watcher_with_budget(native_backend.clone(), budget_source.clone());
         let (fired, callback) = path_recorder();
 
         let registration = watcher
-            .add(
-                directory.as_path().into(),
-                WatcherMode::Native,
-                false,
-                callback,
-            )
-            .expect("add watch");
-        assert_eq!(registration.mode, WatcherMode::Native);
+            .add(directory.as_path().into(), false, callback)
+            .expect("add watch")
+            .expect("watch registered");
+        assert_eq!(
+            registration_kind(&watcher, registration),
+            Some(OsWatcherKind::Native)
+        );
 
         // Other programs leave less than an eighth of the limit free.
         *budget_source.other_programs_usage.lock() = 990;
-        watcher.budget.measure();
+        watcher.fallback_for_test().budget.measure();
         watcher.run_budget_maintenance(false);
         assert!(native_backend.lock().watched_paths.is_empty());
         assert_eq!(
-            registration_mode(&watcher, registration.id),
-            Some(WatcherMode::Fallback)
+            registration_kind(&watcher, registration),
+            Some(OsWatcherKind::Fallback)
         );
-        assert_eq!(watcher.budget.native_watches(), 0);
+        assert_eq!(watcher.fallback_for_test().budget.native_watches(), 0);
 
         let polled_file = directory.join("while-polled.txt");
         write_settled_file(&polled_file);
-        watcher.fallback_watcher.poll_once();
+        watcher.fallback_for_test().poller.poll_once();
         deliver_fallback_events(&watcher, &fallback_events);
         assert_eq!(std::mem::take(&mut *fired.lock()), vec![polled_file]);
 
@@ -3576,21 +4134,72 @@ mod tests {
             HashSet::from_iter([directory.clone()])
         );
         assert_eq!(
-            registration_mode(&watcher, registration.id),
-            Some(WatcherMode::Native)
+            registration_kind(&watcher, registration),
+            Some(OsWatcherKind::Native)
         );
         deliver_fallback_events(&watcher, &fallback_events);
         assert_eq!(std::mem::take(&mut *fired.lock()), vec![handover_file]);
 
         // The poller no longer reports the path once it is watched natively again.
         write_settled_file(&directory.join("after-promotion.txt"));
-        watcher.fallback_watcher.poll_once();
+        watcher.fallback_for_test().poller.poll_once();
         assert!(fallback_events.lock().is_empty());
 
-        watcher.remove(registration.id);
+        watcher.remove(registration);
         assert!(native_backend.lock().watched_paths.is_empty());
-        assert_eq!(watcher.budget.native_watches(), 0);
+        assert_eq!(watcher.fallback_for_test().budget.native_watches(), 0);
         assert!(watcher.state.lock().watchers.is_empty());
+    }
+
+    /// The fallback poller's paths and events show up in the debug window's recording, apart
+    /// from the backend's.
+    #[test]
+    fn diagnostics_show_the_paths_and_events_of_the_fallback_poller() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let directories =
+            make_directories(temp_dir.path(), ["native".to_owned(), "polled".to_owned()]);
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend {
+            max_watches: Some(1),
+            ..Default::default()
+        }));
+        let mut watcher = os_watcher_for_test(OsWatcherKind::Native, Some(native_backend), None);
+        watcher.fallback = Some(NativeFallback::new(
+            fallback_event_sink(&watcher.event_tx, &watcher.diagnostics),
+            FallbackOptions {
+                budget: Arc::new(WatchBudget::new(false, Arc::new(ProcfsBudgetSource))),
+                spawn_background_thread: false,
+            },
+            Weak::new(),
+        ));
+        let watcher = Arc::new(watcher);
+        let recording = WatchRecording::new([watcher.clone()]);
+
+        watch_all(&watcher, &directories, |_| {});
+        let file = directories[1].join("created.txt");
+        write_settled_file(&file);
+        watcher.fallback_for_test().poller.poll_once();
+
+        let snapshot = recording.snapshot();
+        let roots_of = |backend: OsWatcherKind| {
+            snapshot
+                .watchers
+                .iter()
+                .filter(|watcher| watcher.backend == backend)
+                .flat_map(|watcher| watcher.roots.iter().map(|root| PathBuf::from(&root.path)))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(roots_of(OsWatcherKind::Native), &directories[..1]);
+        assert_eq!(roots_of(OsWatcherKind::Fallback), &directories[1..]);
+        assert!(snapshot.events.iter().any(|event| {
+            event.backend == OsWatcherKind::Fallback
+                && event.operation == "watch"
+                && event.paths == [directories[1].to_string_lossy().into_owned()]
+        }));
+        assert!(snapshot.events.iter().any(|event| {
+            event.backend == OsWatcherKind::Fallback
+                && event.operation == "event"
+                && event.paths == [file.to_string_lossy().into_owned()]
+        }));
     }
 
     #[test]
@@ -3603,7 +4212,7 @@ mod tests {
         }));
         let budget_source = FakeBudgetSource::new(Some(1_000_000), native_backend.clone());
         let (watcher, _fallback_events) =
-            test_watcher_with_budget(native_backend.clone(), budget_source);
+            test_os_watcher_with_budget(native_backend.clone(), budget_source);
 
         watch_all(&watcher, &directories, |_| {});
         watcher.run_budget_maintenance(false);
@@ -3623,13 +4232,13 @@ mod tests {
         let budget_source = FakeBudgetSource::new(Some(12), native_backend.clone());
         *budget_source.other_programs_usage.lock() = 100;
         let (watcher, _fallback_events) =
-            test_watcher_with_budget(native_backend.clone(), budget_source.clone());
+            test_os_watcher_with_budget(native_backend.clone(), budget_source.clone());
 
         let registrations = watch_all(&watcher, &directories, |_| {});
         assert!(
             registrations
                 .iter()
-                .all(|registration| registration.mode == WatcherMode::Fallback)
+                .all(|registration| registration.kind == Some(OsWatcherKind::Fallback))
         );
 
         // A quarter of 12 is 3 watches.
@@ -3648,18 +4257,18 @@ mod tests {
         let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
         // A quarter of 3 rounds down to no native watches at all.
         let budget_source = FakeBudgetSource::new(Some(3), native_backend.clone());
-        let (watcher, fallback_events) = test_watcher_with_budget(native_backend, budget_source);
+        let (watcher, fallback_events) = test_os_watcher_with_budget(native_backend, budget_source);
         let (first_fired, first_callback) = path_recorder();
         let (second_fired, second_callback) = path_recorder();
 
         let first = watch_all(&watcher, &directories, first_callback);
         let second = watch_all(&watcher, &directories, second_callback);
-        assert_eq!(first[0].mode, WatcherMode::Fallback);
-        assert_eq!(second[0].mode, WatcherMode::Fallback);
+        assert_eq!(first[0].kind, Some(OsWatcherKind::Fallback));
+        assert_eq!(second[0].kind, Some(OsWatcherKind::Fallback));
 
         let file = directories[0].join("created.txt");
         write_settled_file(&file);
-        watcher.fallback_watcher.poll_once();
+        watcher.fallback_for_test().poller.poll_once();
         deliver_fallback_events(&watcher, &fallback_events);
         assert_eq!(*first_fired.lock(), vec![file.clone()]);
         assert_eq!(*second_fired.lock(), vec![file]);
@@ -3667,22 +4276,22 @@ mod tests {
         // The poll only stops once the last registration is gone.
         watcher.remove(first[0].id);
         write_settled_file(&directories[0].join("second.txt"));
-        watcher.fallback_watcher.poll_once();
+        watcher.fallback_for_test().poller.poll_once();
         assert_eq!(fallback_events.lock().len(), 1);
         fallback_events.lock().clear();
 
         watcher.remove(second[0].id);
         write_settled_file(&directories[0].join("third.txt"));
-        watcher.fallback_watcher.poll_once();
+        watcher.fallback_for_test().poller.poll_once();
         assert!(fallback_events.lock().is_empty());
     }
 
     /// Hands every native watch over to the poller, as when other programs are about to run out
     /// of inotify watches, and then frees the watches again.
-    fn yield_native_watches(watcher: &GlobalWatcher, budget_source: &FakeBudgetSource) {
+    fn yield_native_watches(watcher: &OsWatcher, budget_source: &FakeBudgetSource) {
         let limit = budget_source.limit.lock().unwrap_or_default();
         *budget_source.other_programs_usage.lock() = limit;
-        watcher.budget.measure();
+        watcher.fallback_for_test().budget.measure();
         watcher.run_budget_maintenance(false);
         *budget_source.other_programs_usage.lock() = 0;
     }
@@ -3712,32 +4321,25 @@ mod tests {
         let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
         let budget_source = FakeBudgetSource::new(Some(1000), native_backend.clone());
         let (watcher, _fallback_events) =
-            test_watcher_with_budget(native_backend, budget_source.clone());
+            test_os_watcher_with_budget(native_backend, budget_source.clone());
         let (fired, callback) = path_recorder();
         let registration = watcher
-            .add(
-                directory.as_path().into(),
-                WatcherMode::Native,
-                false,
-                callback,
-            )
-            .expect("add watch");
+            .add(directory.as_path().into(), false, callback)
+            .expect("add watch")
+            .expect("watch registered");
 
         yield_native_watches(&watcher, &budget_source);
         assert_eq!(
-            registration_mode(&watcher, registration.id),
-            Some(WatcherMode::Fallback)
+            registration_kind(&watcher, registration),
+            Some(OsWatcherKind::Fallback)
         );
 
         // The native watcher reported this before the hand-over; dispatch runs later.
         let file = directory.join("queued.txt");
-        watcher.dispatch(
-            WatcherMode::Native,
-            Ok(
-                notify::Event::new(EventKind::Create(notify::event::CreateKind::File))
-                    .add_path(file.clone()),
-            ),
-        );
+        watcher.dispatch(Ok(notify::Event::new(EventKind::Create(
+            notify::event::CreateKind::File,
+        ))
+        .add_path(file.clone())));
         assert_eq!(*fired.lock(), vec![file]);
     }
 
@@ -3748,7 +4350,7 @@ mod tests {
         let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
         let budget_source = FakeBudgetSource::new(Some(1000), native_backend.clone());
         let (watcher, _fallback_events) =
-            test_watcher_with_budget(native_backend, budget_source.clone());
+            test_os_watcher_with_budget(native_backend, budget_source.clone());
         let (first_fired, first_callback) = fired_count();
         let (second_fired, second_callback) = fired_count();
         watch_all(&watcher, &directories[..1], first_callback);
@@ -3756,7 +4358,7 @@ mod tests {
 
         yield_native_watches(&watcher, &budget_source);
         let rescan = notify::Event::new(EventKind::Other).set_flag(notify::event::Flag::Rescan);
-        watcher.dispatch(WatcherMode::Native, Ok(rescan));
+        watcher.dispatch(Ok(rescan));
 
         assert_eq!(*first_fired.lock(), 1);
         assert_eq!(*second_fired.lock(), 1);
@@ -3771,23 +4373,25 @@ mod tests {
         );
         let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
         let budget_source = FakeBudgetSource::new(Some(40), native_backend.clone());
-        let (watcher, _fallback_events) = test_watcher_with_budget(native_backend, budget_source);
+        let (watcher, _fallback_events) =
+            test_os_watcher_with_budget(native_backend, budget_source);
         let registrations = watch_all(&watcher, &directories, |_| {});
-        assert_eq!(watcher.budget.native_watches(), 10);
+        let budget = &watcher.fallback_for_test().budget;
+        assert_eq!(budget.native_watches(), 10);
 
         let polled = registrations
             .iter()
-            .find(|registration| registration.mode == WatcherMode::Fallback)
+            .find(|registration| registration.kind == Some(OsWatcherKind::Fallback))
             .expect("the eleventh path is polled");
         watcher.remove(polled.id);
-        assert_eq!(watcher.budget.native_watches(), 10);
+        assert_eq!(budget.native_watches(), 10);
 
         let native = registrations
             .iter()
-            .find(|registration| registration.mode == WatcherMode::Native)
+            .find(|registration| registration.kind == Some(OsWatcherKind::Native))
             .expect("the first paths are watched natively");
         watcher.remove(native.id);
-        assert_eq!(watcher.budget.native_watches(), 9);
+        assert_eq!(budget.native_watches(), 9);
     }
 
     #[test]
@@ -3797,34 +4401,29 @@ mod tests {
         let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
         let budget_source = FakeBudgetSource::new(Some(1000), native_backend.clone());
         let (watcher, fallback_events) =
-            test_watcher_with_budget(native_backend.clone(), budget_source.clone());
+            test_os_watcher_with_budget(native_backend.clone(), budget_source.clone());
         let (first_fired, first_callback) = path_recorder();
         let (second_fired, second_callback) = path_recorder();
         let first = watcher
-            .add(
-                directory.as_path().into(),
-                WatcherMode::Native,
-                false,
-                first_callback,
-            )
-            .expect("add first watch");
+            .add(directory.as_path().into(), false, first_callback)
+            .expect("add first watch")
+            .expect("first watch registered");
         let second = watcher
-            .add(
-                directory.as_path().into(),
-                WatcherMode::Native,
-                false,
-                second_callback,
-            )
-            .expect("add second watch");
+            .add(directory.as_path().into(), false, second_callback)
+            .expect("add second watch")
+            .expect("second watch registered");
         assert_eq!(native_backend.lock().watch_calls.len(), 1);
 
         yield_native_watches(&watcher, &budget_source);
-        for id in [first.id, second.id] {
-            assert_eq!(registration_mode(&watcher, id), Some(WatcherMode::Fallback));
+        for id in [first, second] {
+            assert_eq!(
+                registration_kind(&watcher, id),
+                Some(OsWatcherKind::Fallback)
+            );
         }
         let polled_file = directory.join("polled.txt");
         write_settled_file(&polled_file);
-        watcher.fallback_watcher.poll_once();
+        watcher.fallback_for_test().poller.poll_once();
         deliver_fallback_events(&watcher, &fallback_events);
         assert_eq!(
             std::mem::take(&mut *first_fired.lock()),
@@ -3835,8 +4434,8 @@ mod tests {
         let handover_file = directory.join("handover.txt");
         write_settled_file(&handover_file);
         watcher.run_budget_maintenance(true);
-        for id in [first.id, second.id] {
-            assert_eq!(registration_mode(&watcher, id), Some(WatcherMode::Native));
+        for id in [first, second] {
+            assert_eq!(registration_kind(&watcher, id), Some(OsWatcherKind::Native));
         }
         deliver_fallback_events(&watcher, &fallback_events);
         assert_eq!(*first_fired.lock(), vec![handover_file.clone()]);
@@ -3850,23 +4449,19 @@ mod tests {
         }
     }
 
-    fn recording_watcher() -> (GlobalWatcher, Arc<Mutex<Vec<String>>>) {
+    fn recording_watcher() -> (OsWatcher, Arc<Mutex<Vec<String>>>) {
         let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
-        let watcher = test_watcher_with_backends(Some(backend), None);
+        let watcher = test_os_watcher(OsWatcherKind::Native, Some(backend));
         let fired = Arc::new(Mutex::new(Vec::new()));
         for dir in ["/repo/a", "/repo/a/nested", "/repo/b"] {
             let fired = fired.clone();
             let label = dir.to_owned();
             watcher
-                .add(
-                    Arc::<Path>::from(Path::new(dir)),
-                    WatcherMode::Native,
-                    false,
-                    move |_| {
-                        fired.lock().push(label.clone());
-                    },
-                )
-                .expect("add watch");
+                .add(Arc::<Path>::from(Path::new(dir)), false, move |_| {
+                    fired.lock().push(label.clone());
+                })
+                .expect("add watch")
+                .expect("watch registered");
         }
         (watcher, fired)
     }
@@ -3875,7 +4470,7 @@ mod tests {
     fn event_dispatches_only_to_registrations_covering_its_path() {
         let (watcher, fired) = recording_watcher();
 
-        watcher.dispatch(WatcherMode::Native, Ok(modify_event("/repo/a/file.txt")));
+        watcher.dispatch(Ok(modify_event("/repo/a/file.txt")));
 
         // Only the directory containing the file resolves; siblings stay untouched.
         assert_eq!(*fired.lock(), vec!["/repo/a".to_owned()]);
@@ -3885,10 +4480,7 @@ mod tests {
     fn event_dispatches_to_every_ancestor_registration() {
         let (watcher, fired) = recording_watcher();
 
-        watcher.dispatch(
-            WatcherMode::Native,
-            Ok(modify_event("/repo/a/nested/file.txt")),
-        );
+        watcher.dispatch(Ok(modify_event("/repo/a/nested/file.txt")));
 
         // Both the directory containing the file and the ancestor watching it
         // resync, each exactly once, matching the previous broadcast-and-filter
@@ -3939,81 +4531,58 @@ mod tests {
     #[test]
     fn case_insensitive_registration_matches_differently_cased_event() {
         let (fired, cb) = fired_count();
-        let watcher = test_watcher_with_backends(Some(Default::default()), None);
+        let watcher = test_os_watcher(OsWatcherKind::Native, Some(Default::default()));
         watcher
-            .add(
-                Path::new("/Repo/Project").into(),
-                WatcherMode::Native,
-                true,
-                cb,
-            )
-            .expect("add");
+            .add(Path::new("/Repo/Project").into(), true, cb)
+            .expect("add")
+            .expect("registered");
 
         // Event arrives lowercased (as TSGO/macOS may report it).
-        watcher.dispatch(
-            WatcherMode::Native,
-            Ok(modify_event("/repo/project/file.txt")),
-        );
+        watcher.dispatch(Ok(modify_event("/repo/project/file.txt")));
         assert_eq!(*fired.lock(), 1);
     }
 
     #[test]
     fn case_insensitive_registration_survives_case_only_rename() {
         let (fired, cb) = fired_count();
-        let watcher = test_watcher_with_backends(Some(Default::default()), None);
+        let watcher = test_os_watcher(OsWatcherKind::Native, Some(Default::default()));
         watcher
-            .add(
-                Path::new("/Repo/Proj").into(),
-                WatcherMode::Native,
-                true,
-                cb,
-            )
-            .expect("add");
+            .add(Path::new("/Repo/Proj").into(), true, cb)
+            .expect("add")
+            .expect("registered");
 
         // The watched directory was renamed to a different casing; events now
         // arrive under the new spelling.
-        watcher.dispatch(WatcherMode::Native, Ok(modify_event("/Repo/PROJ/file.txt")));
+        watcher.dispatch(Ok(modify_event("/Repo/PROJ/file.txt")));
         assert_eq!(*fired.lock(), 1);
     }
 
     #[test]
     fn case_sensitive_registration_ignores_differently_cased_event() {
         let (fired, cb) = fired_count();
-        let watcher = test_watcher_with_backends(Some(Default::default()), None);
+        let watcher = test_os_watcher(OsWatcherKind::Native, Some(Default::default()));
         watcher
-            .add(
-                Path::new("/Repo/proj").into(),
-                WatcherMode::Native,
-                false,
-                cb,
-            )
-            .expect("add");
+            .add(Path::new("/Repo/proj").into(), false, cb)
+            .expect("add")
+            .expect("registered");
 
         // On a case-sensitive volume these are genuinely different directories.
-        watcher.dispatch(WatcherMode::Native, Ok(modify_event("/Repo/PROJ/file.txt")));
+        watcher.dispatch(Ok(modify_event("/Repo/PROJ/file.txt")));
         assert_eq!(*fired.lock(), 0);
     }
 
     #[test]
     fn differently_cased_adds_dedupe_on_case_insensitive_volume() {
         let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
-        let watcher = test_watcher_with_backends(Some(backend.clone()), None);
+        let watcher = test_os_watcher(OsWatcherKind::Native, Some(backend.clone()));
         watcher
-            .add(
-                Path::new("/Repo/Proj").into(),
-                WatcherMode::Native,
-                true,
-                |_| {},
-            )
-            .expect("add");
+            .add(Path::new("/Repo/Proj").into(), true, |_| {})
+            .expect("add")
+            .expect("registered");
         watcher
-            .add(
-                Path::new("/repo/proj").into(),
-                WatcherMode::Native,
-                true,
-                |_| {},
-            )
-            .expect("add");
+            .add(Path::new("/repo/proj").into(), true, |_| {})
+            .expect("add")
+            .expect("registered");
 
         // The second, differently-cased spelling reuses the same OS watch.
         assert_eq!(backend.lock().watch_calls.len(), 1);
@@ -4022,17 +4591,13 @@ mod tests {
     #[test]
     fn recursive_parent_covers_differently_cased_child() {
         let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
-        let watcher = test_watcher(backend.clone());
+        let watcher = test_os_watcher(OsWatcherKind::Poll, Some(backend.clone()));
         watcher
-            .add(Path::new("/Repo").into(), WatcherMode::Poll, true, |_| {})
-            .expect("add");
+            .add(Path::new("/Repo").into(), true, |_| {})
+            .expect("add")
+            .expect("registered");
         watcher
-            .add(
-                Path::new("/repo/child").into(),
-                WatcherMode::Poll,
-                true,
-                |_| {},
-            )
+            .add(Path::new("/repo/child").into(), true, |_| {})
             .expect("add");
 
         // The child is covered by the recursive parent despite the case mismatch.
@@ -4040,14 +4605,14 @@ mod tests {
     }
 
     #[test]
-    fn rescan_event_broadcasts_to_all_registrations_of_the_same_mode() {
+    fn rescan_event_broadcasts_to_all_registrations_of_the_same_backend() {
         let (watcher, fired) = recording_watcher();
 
         let rescan = notify::Event::new(EventKind::Other).set_flag(notify::event::Flag::Rescan);
-        watcher.dispatch(WatcherMode::Native, Ok(rescan));
+        watcher.dispatch(Ok(rescan));
 
         // A pathless rescan may have missed events anywhere, so every registration
-        // of that mode resyncs, regardless of which directory it watches.
+        // of that backend resyncs, regardless of which directory it watches.
         let mut got = fired.lock().clone();
         got.sort();
         assert_eq!(
@@ -4066,13 +4631,11 @@ mod tests {
         let (event_tx, event_rx) = async_channel::unbounded();
         let rescan = || notify::Event::new(EventKind::Other).set_flag(notify::event::Flag::Rescan);
 
+        event_tx.try_send(Ok(rescan())).unwrap();
         event_tx
-            .try_send((WatcherMode::Native, Ok(rescan())))
+            .try_send(Ok(modify_event("/repo/a/file.txt")))
             .unwrap();
-        event_tx
-            .try_send((WatcherMode::Native, Ok(modify_event("/repo/a/file.txt"))))
-            .unwrap();
-        watcher.dispatch_batch((WatcherMode::Native, Ok(rescan())), &event_rx);
+        watcher.dispatch_batch(Ok(rescan()), &event_rx);
 
         let mut got = fired.lock().clone();
         got.sort();
@@ -4088,30 +4651,58 @@ mod tests {
     }
 
     #[test]
+    fn queued_rescans_naming_distinct_paths_are_all_dispatched() {
+        let (watcher, fired) = recording_watcher();
+        let (event_tx, event_rx) = async_channel::unbounded();
+        let rescan_of = |path: &str| {
+            notify::Event::new(EventKind::Other)
+                .set_flag(notify::event::Flag::Rescan)
+                .add_path(PathBuf::from(path))
+        };
+
+        event_tx.try_send(Ok(rescan_of("/repo/b"))).unwrap();
+        watcher.dispatch_batch(Ok(rescan_of("/repo/a/nested")), &event_rx);
+
+        // Each named rescan only covers its own subtree once it reaches the
+        // callbacks, so collapsing the second one would lose /repo/b's resync.
+        // Both are broadcast to every registration of the backend.
+        let mut got = fired.lock().clone();
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                "/repo/a".to_owned(),
+                "/repo/a".to_owned(),
+                "/repo/a/nested".to_owned(),
+                "/repo/a/nested".to_owned(),
+                "/repo/b".to_owned(),
+                "/repo/b".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
     #[cfg(target_os = "windows")]
     fn event_dispatches_when_reported_path_has_verbatim_prefix() {
         // `notify` (and Windows APIs generally) can report a changed path using the
         // verbatim `\\?\` long-path form even when the directory was registered
         // without it.
         let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
-        let watcher = test_watcher_with_backends(Some(backend), None);
+        let watcher = test_os_watcher(OsWatcherKind::Native, Some(backend));
         let fired = Arc::new(Mutex::new(Vec::new()));
         {
             let fired = fired.clone();
             watcher
                 .add(
                     Arc::<Path>::from(Path::new("C:\\repo\\src")),
-                    WatcherMode::Native,
                     false,
                     move |_| fired.lock().push(()),
                 )
-                .expect("add watch");
+                .expect("add watch")
+                .expect("watch registered");
         }
 
-        watcher.dispatch(
-            WatcherMode::Native,
-            Ok(modify_event("\\\\?\\C:\\repo\\src\\main.rs")),
-        );
+        watcher.dispatch(Ok(modify_event("\\\\?\\C:\\repo\\src\\main.rs")));
 
         assert_eq!(fired.lock().len(), 1);
     }
@@ -4202,30 +4793,10 @@ mod tests {
         }
     }
 
-    /// The real-inotify tests share the global watcher and its budget, so they run one at a
-    /// time.
+    /// The real-inotify tests count every inotify watch of the test process, so they run one
+    /// at a time.
     #[cfg(target_os = "linux")]
     static REAL_INOTIFY_TESTS: Mutex<()> = Mutex::new(());
-
-    #[cfg(target_os = "linux")]
-    struct GlobalBudgetSourceOverride;
-
-    #[cfg(target_os = "linux")]
-    impl GlobalBudgetSourceOverride {
-        fn install(source: Arc<dyn WatchBudgetSource>) -> Self {
-            global_watcher().budget.set_source(source);
-            Self
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    impl Drop for GlobalBudgetSourceOverride {
-        fn drop(&mut self) {
-            global_watcher()
-                .budget
-                .set_source(Arc::new(ProcfsBudgetSource));
-        }
-    }
 
     /// Shows the watcher's warnings (such as the limit it learned) in the test output.
     #[cfg(target_os = "linux")]
@@ -4254,23 +4825,43 @@ mod tests {
         }
     }
 
-    /// Watches fresh directories through a real `FsWatcher`, checks that a directory left to
-    /// the fallback poller reports a new file, and returns how many inotify watches this
-    /// process held once every directory was registered.
+    /// Watches fresh directories through a real `FsWatcher` whose native watcher keeps to a
+    /// budget read from `budget_source`, checks that a directory left to the fallback poller
+    /// reports a new file, and returns how many inotify watches this process held once every
+    /// directory was registered, with the limit the watcher learned from ENOSPC.
     #[cfg(target_os = "linux")]
     fn watch_directories_with_real_inotify(
-        cx: &gpui::TestAppContext,
+        cx: &mut gpui::TestAppContext,
         directory_count: usize,
-    ) -> usize {
+        budget_source: Arc<dyn WatchBudgetSource>,
+    ) -> (usize, Option<usize>) {
         install_stderr_logger();
+        // The poller reports from its own thread by the wall clock.
+        cx.executor().allow_parking();
         let temp_dir = tempfile::tempdir().expect("create temp dir");
         let directories = make_directories(
             temp_dir.path(),
             (0..directory_count).map(|index| format!("dir-{index:04}")),
         );
+        let native_watcher = OsWatcher::build(
+            OsWatcherKind::Native,
+            cx.executor(),
+            None,
+            Some(FallbackOptions {
+                budget: Arc::new(WatchBudget::new(true, budget_source)),
+                spawn_background_thread: true,
+            }),
+        );
         let (tx, _rx) = async_channel::unbounded();
         let pending_path_events: Arc<Mutex<Vec<PathEvent>>> = Default::default();
-        let watcher = FsWatcher::new(cx.executor(), tx, pending_path_events.clone());
+        let watcher = FsWatcher::new(
+            native_watcher.clone(),
+            OsWatcher::new(OsWatcherKind::Poll, cx.executor()),
+            crate::RealFs::new(None, cx.executor()),
+            cx.executor(),
+            tx,
+            pending_path_events.clone(),
+        );
         for directory in &directories {
             watcher.add(directory).expect("watch directory");
         }
@@ -4278,14 +4869,12 @@ mod tests {
             watcher.pending_registrations.lock().is_empty(),
             "no path should be left retrying"
         );
+        let budget = native_watcher.fallback_for_test().budget.clone();
         // Trimming to a learned limit happens on the maintenance thread.
         let deadline = Instant::now() + Duration::from_secs(10);
-        while global_watcher()
-            .budget
+        while budget
             .learned_limit()
-            .is_some_and(|learned_limit| {
-                global_watcher().budget.native_watches() > learned_limit / 4
-            })
+            .is_some_and(|learned_limit| budget.native_watches() > learned_limit / 4)
         {
             assert!(
                 Instant::now() < deadline,
@@ -4294,16 +4883,12 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         let own_watches = watch_budget::count_process_inotify_watches(Path::new("/proc/self"));
-        {
-            let state = global_watcher().state.lock();
-            eprintln!(
-                "registered {directory_count} directories: {} native, {} polled; budget counts {} native watches, learned limit {:?}; /proc/self lists {own_watches} inotify watches",
-                state.native_path_registrations.len(),
-                state.fallback_path_registrations.len(),
-                global_watcher().budget.native_watches(),
-                global_watcher().budget.learned_limit(),
-            );
-        }
+        let (native_paths, polled_paths) = watched_path_counts(&native_watcher);
+        eprintln!(
+            "registered {directory_count} directories: {native_paths} native, {polled_paths} polled; budget counts {} native watches, learned limit {:?}; /proc/self lists {own_watches} inotify watches",
+            budget.native_watches(),
+            budget.learned_limit(),
+        );
 
         let fallback_directory = directories
             .iter()
@@ -4315,39 +4900,45 @@ mod tests {
                     .lock()
                     .get(&key)
                     .map(|registration| registration.id);
-                id.and_then(|id| registration_mode(global_watcher(), id))
-                    == Some(WatcherMode::Fallback)
+                id.and_then(|id| registration_kind(&native_watcher, id))
+                    == Some(OsWatcherKind::Fallback)
             })
             .expect("some directories are left to the fallback poller");
         let file = fallback_directory.join("created.txt");
         fs::write(&file, b"x").expect("create file");
-        // The poller runs on its own thread by the wall clock, not on the test executor.
+        // The poller's thread queues the event; dispatching it is the test executor's work.
         let deadline = Instant::now() + Duration::from_secs(30);
-        while !pending_path_events
-            .lock()
-            .iter()
-            .any(|event| event.path == file)
-        {
+        loop {
+            cx.run_until_parked();
+            if pending_path_events
+                .lock()
+                .iter()
+                .any(|event| event.path == file)
+            {
+                break;
+            }
             assert!(
                 Instant::now() < deadline,
                 "the fallback poller never reported {file:?}"
             );
             std::thread::sleep(Duration::from_millis(50));
         }
+        let learned_limit = budget.learned_limit();
         drop(watcher);
-        own_watches
+        (own_watches, learned_limit)
     }
 
     #[cfg(target_os = "linux")]
     #[gpui::test]
-    async fn real_inotify_watches_stay_within_an_injected_limit(cx: &mut gpui::TestAppContext) {
+    fn real_inotify_watches_stay_within_an_injected_limit(cx: &mut gpui::TestAppContext) {
         const LIMIT: usize = 400;
         let _serialized = REAL_INOTIFY_TESTS.lock();
-        let _override = GlobalBudgetSourceOverride::install(Arc::new(ProcessOnlyBudgetSource {
-            limit: Some(LIMIT),
-        }));
 
-        let own_watches = watch_directories_with_real_inotify(cx, 300);
+        let (own_watches, _) = watch_directories_with_real_inotify(
+            cx,
+            300,
+            Arc::new(ProcessOnlyBudgetSource { limit: Some(LIMIT) }),
+        );
 
         eprintln!("inotify watches held with an injected limit of {LIMIT}: {own_watches}");
         assert!(
@@ -4363,16 +4954,16 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[gpui::test]
     #[ignore = "needs a lowered inotify limit that /proc overstates: run inside `unshare -Ur` after writing a small value such as 400 to /proc/sys/user/max_inotify_watches, with ZED_INOTIFY_MAX_USER_WATCHES set above it"]
-    async fn real_inotify_limit_is_learned_from_watch_limit_errors(cx: &mut gpui::TestAppContext) {
+    fn real_inotify_limit_is_learned_from_watch_limit_errors(cx: &mut gpui::TestAppContext) {
         let _serialized = REAL_INOTIFY_TESTS.lock();
-        let _override =
-            GlobalBudgetSourceOverride::install(Arc::new(ProcessOnlyBudgetSource { limit: None }));
 
-        let own_watches = watch_directories_with_real_inotify(cx, 1000);
+        let (own_watches, learned_limit) = watch_directories_with_real_inotify(
+            cx,
+            1000,
+            Arc::new(ProcessOnlyBudgetSource { limit: None }),
+        );
 
-        let learned_limit = global_watcher()
-            .budget
-            .learned_limit()
+        let learned_limit = learned_limit
             .expect("hitting the lowered limit should teach the watcher the effective limit");
         eprintln!(
             "learned an inotify limit of {learned_limit}; inotify watches held: {own_watches}"
@@ -4382,10 +4973,4 @@ mod tests {
             "{own_watches} inotify watches exceed a quarter of the learned limit {learned_limit}"
         );
     }
-}
-
-pub fn global<T>(f: impl FnOnce(&GlobalWatcher) -> T) -> anyhow::Result<T> {
-    let global_watcher = global_watcher();
-    global_watcher.ensure_native_watcher()?;
-    Ok(f(global_watcher))
 }
