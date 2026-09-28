@@ -18,7 +18,6 @@ auto_update.workspace = true
 client.workspace = true
 db.workspace = true
 gpui.workspace = true
-notifications.workspace = true
 prompt_store.workspace = true
 release_channel.workspace = true
 semver.workspace = true

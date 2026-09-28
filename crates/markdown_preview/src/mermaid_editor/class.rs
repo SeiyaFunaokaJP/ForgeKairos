@@ -373,6 +373,12 @@ fn apply_renames(items: &mut [ClassItem], renames: &[(String, String)]) {
 /// The first thing wrong with what the user typed, in the words shown above the
 /// form.
 pub(super) fn problem(document: &ClassDocument) -> Option<SharedString> {
+    // `merman` 0.8 refuses `classDiagram` with nothing after it, so a class
+    // diagram chosen from the kind picker and confirmed straight away would
+    // leave a fence the preview can only report an error about.
+    if document.items.is_empty() && document.direction.is_none() {
+        return Some("クラスを 1 つ以上追加してください。".into());
+    }
     items_problem(&document.items)
 }
 
@@ -437,6 +443,21 @@ fn items_problem(items: &[ClassItem]) -> Option<SharedString> {
                         format!("`namespace` の名前「{}」は使えません。", namespace.name).into()
                     }
                 }),
+                // `merman` 0.8 reads a namespace with nothing but comments in
+                // it and then fails to draw the diagram.
+                true if namespace
+                    .items
+                    .iter()
+                    .all(|item| matches!(item, ClassItem::Preserved(_))) =>
+                {
+                    Some(
+                        format!(
+                            "`namespace` の「{}」の中が空です。クラスを入れるか、`namespace` を削除してください (Mermaid は空の `namespace` を描けません)。",
+                            namespace.name
+                        )
+                        .into(),
+                    )
+                }
                 true => namespace
                     .label
                     .as_ref()
@@ -2072,6 +2093,36 @@ mod tests {
         // where Mermaid draws it.
         let nested = document("classDiagram\n  class A\n  namespace N {\n    class A\n  }").items;
         assert!(still_declared(nested.get(1..).unwrap_or_default(), "A"));
+    }
+
+    /// `merman` 0.8 refuses a bare `classDiagram` and fails to draw a
+    /// namespace with nothing in it (see `class_model`'s tests), so the form
+    /// asks for something to draw before it writes either.
+    #[test]
+    fn what_merman_cannot_draw_is_asked_for_before_writing() {
+        assert!(
+            problem(&ClassDocument::empty()).is_some_and(|problem| problem.contains("1 つ以上"))
+        );
+        for source in [
+            "classDiagram\n  namespace N {\n  }",
+            "classDiagram\n  class A\n  namespace N {\n    %% メモ\n  }",
+            "classDiagram\n  namespace M {\n    namespace N {\n    }\n    class A\n  }",
+        ] {
+            let found = problem(&document(source));
+            assert!(
+                found
+                    .as_ref()
+                    .is_some_and(|problem| problem.contains("「N」の中が空")),
+                "{source}: {found:?}"
+            );
+        }
+        for source in [
+            "classDiagram\n  namespace N {\n    class A\n  }",
+            "classDiagram\n  namespace N {\n    note \"メモ\"\n  }",
+            "classDiagram\n  direction LR",
+        ] {
+            assert_eq!(problem(&document(source)), None, "{source}");
+        }
     }
 
     #[test]

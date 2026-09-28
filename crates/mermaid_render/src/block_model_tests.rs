@@ -453,16 +453,15 @@ fn the_insert_template_round_trips_byte_for_byte() {
 /// blocks without one (anonymous groups, whose ids are random), in
 /// drawing order. Rounded, so that the same layout compares equal.
 fn drawn_positions(source: &str) -> (Vec<(String, [i64; 4])>, Vec<[i64; 4]>) {
-    let layouted = merman::render::layout_diagram_sync(
+    let layout = merman::svg::layout_json_sync(
         &Engine::new(),
         source,
         ParseOptions::strict(),
-        &merman::render::headless_layout_options(),
+        &merman::svg::headless_layout_options(),
     )
     .unwrap_or_else(|error| panic!("merman should lay out {source}: {error}"))
     .unwrap_or_else(|| panic!("merman should find a diagram in {source}"));
-    let layout = serde_json::to_value(&layouted.layout).unwrap_or(Value::Null);
-    let nodes = layout["BlockDiagram"]["nodes"]
+    let nodes = layout["layout"]["BlockDiagram"]["nodes"]
         .as_array()
         .cloned()
         .unwrap_or_default();
@@ -754,9 +753,19 @@ fn constructs_that_would_be_changed_are_refused() {
 }
 
 #[test]
-fn a_group_left_open_is_closed_and_a_block_line_with_blocks_is_split() {
-    let source =
+fn a_group_left_open_is_refused_and_a_block_line_with_blocks_is_split() {
+    // `merman` 0.7 closed a group left open at the end of the fence, and the
+    // model closed it too; 0.8 refuses it, and so does the model.
+    let open =
         "block\n  columns 3\n  B space\n  block BL\n    D\n  end\n  BL --> B\n  block\n    E";
+    assert!(render_to_svg(open, &MermaidTheme::default()).is_err());
+    let error = parse_block(open).expect_err("a group left open");
+    assert!(
+        error.to_string().contains("`end` で閉じられていません"),
+        "{error}"
+    );
+
+    let source = "block\n  columns 3\n  B space\n  block BL\n    D\n  end\n  BL --> B\n  block\n    E\n  end";
     let document = parse(source);
     assert_same_layout(source, &document);
     let emitted = assert_stable(source);
@@ -1073,12 +1082,12 @@ fn every_value_the_validators_accept_round_trips() {
             edge("n1", "中", Some("ラベル: 付き"), "-.->"),
             edge("中", "group_1", None, "--o"),
             BlockStatement::ClassDef {
-                name: "強調".to_string(),
+                name: "hot_1".to_string(),
                 css: String::new(),
             },
             BlockStatement::Class {
                 targets: vec!["n0".to_string(), "矢印".to_string()],
-                class_name: "強調".to_string(),
+                class_name: "hot_1".to_string(),
             },
             BlockStatement::Style {
                 target: "group_1".to_string(),
@@ -1137,9 +1146,11 @@ fn values_are_validated() {
     );
     assert_eq!(parse_arrow_directions(""), None);
     assert_eq!(parse_arrow_directions("right,"), None);
-    assert!(is_valid_block_class_name("強調"));
-    assert!(!is_valid_block_class_name("a b"));
-    assert!(!is_valid_block_class_name(""));
+    // Mermaid reads a class name as a word: ASCII letters, digits and `_`.
+    assert!(is_valid_block_class_name("hot_1"));
+    for name in ["強調", "foo.bar", "a-b", "a b", ""] {
+        assert!(!is_valid_block_class_name(name), "{name}");
+    }
     assert!(is_valid_block_css("fill:#f00, stroke:#333;"));
     assert!(!is_valid_block_css(" fill"));
     // The form names new items after these, so they have to be ids.

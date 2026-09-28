@@ -75,20 +75,22 @@ fn pie_slices_are_counted_the_way_merman_keeps_them() {
 #[test]
 fn a_pie_label_keeps_its_value_and_comments() {
     // merman cuts every pie line at `%%`, so a trailing comment is not part of
-    // the value, and `;` separates nothing: the rest of the line is ignored.
-    let source = "pie showData\n  %% \u{30b3}\u{30e1}\u{30f3}\u{30c8}\n  \"\u{72ac}\" : 386 %% \u{591a}\u{3044}\n  \"a\" : 1; \"b\" : 2\n";
+    // the value.
+    let source = "pie showData\n  %% \u{30b3}\u{30e1}\u{30f3}\u{30c8}\n  \"\u{72ac}\" : 386 %% \u{591a}\u{3044}\n  \"a\" : 1\n";
     let dog = lookup(source, LabelItem::PieSlice { index: 0 }, "\u{72ac} [386]").expect("found");
     assert_eq!(
         apply(source, &dog, "\u{30a4}\u{30cc}"),
-        "pie showData\n  %% \u{30b3}\u{30e1}\u{30f3}\u{30c8}\n  \"\u{30a4}\u{30cc}\" : 386 %% \u{591a}\u{3044}\n  \"a\" : 1; \"b\" : 2\n"
+        "pie showData\n  %% \u{30b3}\u{30e1}\u{30f3}\u{30c8}\n  \"\u{30a4}\u{30cc}\" : 386 %% \u{591a}\u{3044}\n  \"a\" : 1\n"
     );
     let a = lookup(source, LabelItem::PieSlice { index: 1 }, "a [1]").expect("found");
     assert_eq!(token(source, &a), "\"a\"");
-    assert_eq!(
-        lookup(source, LabelItem::PieSlice { index: 2 }, "b"),
-        Err(MermaidLabelRefusal::NotLocated),
-        "the `\"b\"` after `;` is not a slice"
-    );
+
+    // merman 0.7 ignored what followed a `;` on a slice's line, which this
+    // lookup mirrors; Mermaid reads the `;` as a statement separator, and
+    // merman 0.8 refuses the line. Nothing is drawn to click on, and the
+    // lookup has to learn the separator if merman comes to read it.
+    let separated = "pie showData\n  \"a\" : 1; \"b\" : 2\n";
+    assert!(render_to_svg(separated, &MermaidTheme::default()).is_err());
 }
 
 #[test]

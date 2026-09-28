@@ -315,6 +315,7 @@ impl Render for StashMessageModal {
 #[derive(Clone, Copy, Debug)]
 struct ChangesMenuState {
     has_tracked_changes: bool,
+    has_staged_tracked_changes: bool,
     has_staged_changes: bool,
     has_unstaged_changes: bool,
     has_new_changes: bool,
@@ -377,8 +378,8 @@ fn changes_menu_items(state: ChangesMenuState) -> Vec<PanelMenuItem> {
             PanelOperation::DiscardTrackedChanges,
             &RestoreTrackedFiles,
             refused_unless(
-                state.has_tracked_changes,
-                git_terms::NO_TRACKED_CHANGES_REFUSAL,
+                state.has_staged_tracked_changes,
+                git_terms::NO_STAGED_TRACKED_CHANGES_REFUSAL,
             ),
         ),
         PanelMenuItem::Separator,
@@ -448,8 +449,8 @@ fn changes_menu_items(state: ChangesMenuState) -> Vec<PanelMenuItem> {
             PanelOperation::DiscardTrackedChanges,
             &RestoreTrackedFiles,
             refused_unless(
-                state.has_tracked_changes,
-                git_terms::NO_TRACKED_CHANGES_REFUSAL,
+                state.has_staged_tracked_changes,
+                git_terms::NO_STAGED_TRACKED_CHANGES_REFUSAL,
             ),
         ),
         panel_menu_entry(
@@ -1915,7 +1916,11 @@ impl GitPanel {
 
         if self.commit_editor.read(cx).is_focused(window) {
             dispatch_context.add("CommitEditor");
-        } else if self.focus_handle.contains_focused(window, cx) {
+        } else if self.focus_handle.contains_focused(window, cx) || self.context_menu.is_some() {
+            // Preserve the panel's `ChangesList` context while a context menu
+            // is open. Its focus handle may not appear as a descendant of the
+            // panel until the next frame, so `FocusHandle::contains_focused`
+            // would return `false`.
             dispatch_context.add("menu");
             dispatch_context.add("ChangesList");
         }
@@ -2353,6 +2358,45 @@ impl GitPanel {
             .unique_by(|entry| entry.repo_path.clone())
     }
 
+    fn directory_descendants(&self, entry_index: usize) -> Option<&[GitStatusEntry]> {
+        let GitListEntry::Directory(directory) = self.entries.get(entry_index)? else {
+            return None;
+        };
+
+        self.view_mode
+            .tree_state()?
+            .directory_descendants
+            .get(&directory.key)
+            .map(Vec::as_slice)
+    }
+
+    /// Returns the list of entries that are children of the directory where the
+    /// context menu is deployed, if deployed.
+    fn directory_context_descendants(&self) -> Option<&[GitStatusEntry]> {
+        let entry_index = self.context_menu.as_ref()?.target_entry_index?;
+        self.directory_descendants(entry_index)
+    }
+
+    fn is_staged_tracked(entry: &GitStatusEntry) -> bool {
+        !entry.status.is_created() && entry.staging.has_staged()
+    }
+
+    fn contains_staged_tracked_entry<'a>(
+        entries: impl IntoIterator<Item = &'a GitStatusEntry>,
+    ) -> bool {
+        entries.into_iter().any(Self::is_staged_tracked)
+    }
+
+    fn staged_tracked_entries<'a>(
+        entries: impl IntoIterator<Item = &'a GitStatusEntry>,
+    ) -> Vec<GitStatusEntry> {
+        entries
+            .into_iter()
+            .filter(|entry| Self::is_staged_tracked(entry))
+            .cloned()
+            .collect()
+    }
+
     fn open_diff(&mut self, _: &menu::Confirm, window: &mut Window, cx: &mut Context<Self>) {
         if self.active_tab == GitPanelTab::History {
             self.open_selected_history_commit(window, cx);
@@ -2773,12 +2817,9 @@ impl GitPanel {
         cx: &mut Context<Self>,
     ) {
         let entries = self
-            .change_entries_by_path()
-            .filter(|status_entry| {
-                !status_entry.status.is_created() && status_entry.status.staging().has_staged()
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+            .directory_context_descendants()
+            .map(Self::staged_tracked_entries)
+            .unwrap_or_else(|| Self::staged_tracked_entries(self.change_entries_by_path()));
 
         match entries.len() {
             0 => return,
@@ -6600,6 +6641,10 @@ impl GitPanel {
         self.tracked_count > 0
     }
 
+    fn has_staged_tracked_changes(&self) -> bool {
+        Self::contains_staged_tracked_entry(self.change_entries_by_path())
+    }
+
     pub fn has_unstaged_conflicts(&self) -> bool {
         self.change_entries_by_path()
             .any(|entry| entry.status.is_conflicted() && entry.staging.has_unstaged())
@@ -7191,6 +7236,7 @@ impl GitPanel {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let has_tracked_changes = self.has_tracked_changes();
+        let has_staged_tracked_changes = self.has_staged_tracked_changes();
         let has_staged_changes = self.has_staged_changes();
         let has_unstaged_changes = self.has_unstaged_changes();
         let has_new_changes = self.new_count > 0;
@@ -7210,6 +7256,7 @@ impl GitPanel {
                 Some(build_panel_menu(
                     changes_menu_items(ChangesMenuState {
                         has_tracked_changes,
+                        has_staged_tracked_changes,
                         has_staged_changes,
                         has_unstaged_changes,
                         has_new_changes,
@@ -9191,7 +9238,7 @@ impl GitPanel {
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-                            this.deploy_panel_context_menu(event.position, false, window, cx)
+                            this.deploy_panel_context_menu(event.position, None, false, window, cx)
                         }),
                     )
                     .custom_scrollbars(
@@ -9403,7 +9450,7 @@ impl GitPanel {
     ) {
         if matches!(self.entries.get(ix), Some(GitListEntry::Directory(_))) {
             self.selected_entry = Some(ix);
-            self.deploy_panel_context_menu(position, true, window, cx);
+            self.deploy_panel_context_menu(position, Some(ix), true, window, cx);
             return;
         }
 
@@ -9431,19 +9478,27 @@ impl GitPanel {
     fn deploy_panel_context_menu(
         &mut self,
         position: Point<Pixels>,
+        target_entry_index: Option<usize>,
         include_copy_paths: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let has_stash_items = self.stash_entries.entries.len() > 0;
         let has_tracked_changes = self.has_tracked_changes();
         let has_staged_changes = self.has_staged_changes();
         let has_unstaged_changes = self.has_unstaged_changes();
         let has_new_changes = self.new_count > 0;
-        let has_stash_items = self.stash_entries.entries.len() > 0;
+        let has_staged_tracked_changes = target_entry_index
+            .and_then(|entry_index| self.directory_descendants(entry_index))
+            .map_or_else(
+                || self.has_staged_tracked_changes(),
+                |entries| Self::contains_staged_tracked_entry(entries),
+            );
 
         let context_menu = build_panel_menu(
             changes_menu_items(ChangesMenuState {
                 has_tracked_changes,
+                has_staged_tracked_changes,
                 has_staged_changes,
                 has_unstaged_changes,
                 has_new_changes,
@@ -9455,7 +9510,8 @@ impl GitPanel {
             window,
             cx,
         );
-        self.set_context_menu(context_menu, position, None, window, cx);
+
+        self.set_context_menu(context_menu, position, target_entry_index, window, cx);
     }
 
     fn set_context_menu(
@@ -17276,6 +17332,49 @@ mod tests {
                 "should have ChangesList context after re-focusing changes list"
             );
         });
+
+        // Case 5: Focus a newly opened context menu before it appears in the
+        // rendered dispatch tree. It should preserve the "menu" and
+        // "ChangesList" contexts so the resolved bindings do not flicker.
+        panel.update_in(cx, |panel, window, cx| {
+            panel.focus_editor(&FocusEditor, window, cx);
+        });
+        cx.simulate_resize(gpui::size(px(800.), px(600.)));
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.commit_editor.read(cx).is_focused(window));
+
+            let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
+                menu.context(panel.focus_handle.clone())
+                    .action("Stage All", StageAll.boxed_clone())
+            });
+
+            panel.set_context_menu(
+                context_menu.clone(),
+                gpui::point(px(0.), px(0.)),
+                None,
+                window,
+                cx,
+            );
+
+            let context_menu_focus_handle = context_menu.focus_handle(cx);
+            context_menu_focus_handle.focus(window, cx);
+
+            // The menu was focused without rendering another frame, so the
+            // previous dispatch tree does not yet recognize it as a descendant
+            // of `GitPanel`.
+            assert!(context_menu_focus_handle.is_focused(window));
+            assert!(!panel.focus_handle.contains_focused(window, cx));
+
+            // Ensure that, even if the panel doesn't contain the focused
+            // handle, we still have the `menu` and `ChangesList` contexts
+            // present if the context menu is opened.
+            let context = panel.dispatch_context(window, cx);
+            assert!(context.contains("GitPanel"));
+            assert!(context.contains("ChangesList"));
+            assert!(context.contains("menu"));
+            assert!(!context.contains("CommitEditor"));
+        })
     }
 
     #[gpui::test]
@@ -17409,6 +17508,70 @@ mod tests {
             history_panel_was_focused && center_item_is_focused,
             "pane navigation should focus the History panel after moving right and restore the center item after moving left; History panel focused after moving right: {history_panel_was_focused}, center item focused after moving left: {center_item_is_focused}"
         );
+    }
+
+    #[test]
+    fn test_directory_discard_tracked_changes() {
+        let entry = |path, status: FileStatus| GitStatusEntry {
+            repo_path: repo_path(path),
+            staging: status.staging(),
+            status,
+            diff_stat: None,
+        };
+
+        // 1. Single tracked file that is staged.
+        let entries = vec![entry(
+            "directory/tracked.rs",
+            FileStatus::index(StatusCode::Modified),
+        )];
+        let has_staged_tracked_changes = GitPanel::contains_staged_tracked_entry(&entries);
+        assert!(has_staged_tracked_changes);
+        assert_eq!(GitPanel::staged_tracked_entries(&entries).len(), 1);
+
+        // 2. Single untracked file that is staged.
+        let entries = vec![entry(
+            "directory/new.rs",
+            FileStatus::index(StatusCode::Added),
+        )];
+        let has_staged_tracked_changes = GitPanel::contains_staged_tracked_entry(&entries);
+        assert!(!has_staged_tracked_changes);
+        assert_eq!(GitPanel::staged_tracked_entries(&entries).len(), 0);
+
+        // 3. Single tracked file that is unstaged.
+        let entries = vec![entry(
+            "directory/tracked.rs",
+            StatusCode::Modified.worktree(),
+        )];
+        let has_staged_tracked_changes = GitPanel::contains_staged_tracked_entry(&entries);
+        assert!(!has_staged_tracked_changes);
+        assert_eq!(GitPanel::staged_tracked_entries(&entries).len(), 0);
+
+        // 4. Single untracked file that is unstaged.
+        let entries = vec![entry("directory/new.rs", FileStatus::Untracked)];
+        let has_staged_tracked_changes = GitPanel::contains_staged_tracked_entry(&entries);
+        assert!(!has_staged_tracked_changes);
+        assert_eq!(GitPanel::staged_tracked_entries(&entries).len(), 0);
+
+        // 5. Mixed tracked and untracked files that are both staged and
+        // unstaged.
+        let entries = vec![
+            entry(
+                "directory/staged_tracked.rs",
+                FileStatus::index(StatusCode::Modified),
+            ),
+            entry(
+                "directory/staged_new.rs",
+                FileStatus::index(StatusCode::Added),
+            ),
+            entry(
+                "directory/unstaged_tracked.rs",
+                StatusCode::Modified.worktree(),
+            ),
+            entry("directory/unstaged_new.rs", FileStatus::Untracked),
+        ];
+        let has_staged_tracked_changes = GitPanel::contains_staged_tracked_entry(&entries);
+        assert!(has_staged_tracked_changes);
+        assert_eq!(GitPanel::staged_tracked_entries(&entries).len(), 1);
     }
 
     #[gpui::test]
@@ -18360,6 +18523,7 @@ mod tests {
     fn test_changes_menu_explains_every_item() {
         let everything = ChangesMenuState {
             has_tracked_changes: true,
+            has_staged_tracked_changes: true,
             has_staged_changes: true,
             has_unstaged_changes: true,
             has_new_changes: true,
@@ -18415,6 +18579,7 @@ mod tests {
 
         let nothing = ChangesMenuState {
             has_tracked_changes: false,
+            has_staged_tracked_changes: false,
             has_staged_changes: false,
             has_unstaged_changes: false,
             has_new_changes: false,
@@ -18440,7 +18605,7 @@ mod tests {
                 (
                     "すべての変更を元に戻す",
                     &RestoreTrackedFiles,
-                    Some("追跡中のファイルに変更がありません"),
+                    Some("ステージ済みの、追跡中のファイルの変更がありません"),
                     "元に戻せません",
                 ),
                 (
@@ -18470,7 +18635,7 @@ mod tests {
                 (
                     "追跡中の変更を破棄",
                     &RestoreTrackedFiles,
-                    Some("追跡中のファイルに変更がありません"),
+                    Some("ステージ済みの、追跡中のファイルの変更がありません"),
                     "ステージした変更がある",
                 ),
                 (

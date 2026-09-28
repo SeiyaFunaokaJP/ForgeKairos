@@ -191,11 +191,18 @@ fn reorder<T>(rows: &mut Vec<Option<T>>, order: &[usize]) {
 }
 
 /// The first thing wrong with what the user typed, in the words shown above the
-/// form. Every check lives in `C4Document::structure_error`, which the caller
-/// consults right after this; the red frames come from the `is_valid_c4_*`
-/// predicates directly.
-pub(super) fn problem(_document: &C4Document) -> Option<SharedString> {
-    None
+/// form. Every other check lives in `C4Document::structure_error`, which the
+/// caller consults right after this; the red frames come from the
+/// `is_valid_c4_*` predicates directly.
+pub(super) fn problem(document: &C4Document) -> Option<SharedString> {
+    // `merman` 0.8 refuses a C4 diagram with nothing in it, so a C4 chosen
+    // from the kind picker and confirmed straight away would leave a fence the
+    // preview can only report an error about.
+    let has_declaration = document
+        .items
+        .iter()
+        .any(|item| matches!(item, C4Item::Element(_) | C4Item::BoundaryStart(_)));
+    (!has_declaration).then(|| "要素か境界を 1 つ以上追加してください。".into())
 }
 
 /// What the kind menu of an element, a boundary or a relationship says.

@@ -2182,9 +2182,12 @@ mod tests {
         );
         let svg = mermaid_render::render_to_svg(&edited, &mermaid_render::MermaidTheme::default())
             .unwrap_or_else(|error| panic!("{edited:?} should render: {error:#}"));
-        // The renderer puts each word in a `<tspan>` of its own.
+        // merman 0.7 put each word in a `<tspan>` of its own; 0.8 writes the
+        // label as one text, with the quotes escaped or not.
+        let label = "\u{8a00}\u{3046} \"\u{306f}\u{3044}\"";
         assert!(
-            svg.contains("&quot;\u{306f}\u{3044}&quot;</tspan>"),
+            svg.contains(&format!(">{label}<"))
+                || svg.contains(&format!(">{}<", label.replace('"', "&quot;"))),
             "the quotation marks have to be drawn"
         );
     }

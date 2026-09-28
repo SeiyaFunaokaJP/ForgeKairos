@@ -158,11 +158,11 @@ const NEWER_DIAGRAMS: &[(&str, &str)] = &[
     (
         "sankey",
         r#"sankey-beta
-    %% 1 行が 流れ元,流れ先,量
-    電力,家庭,30
-    電力,工場,50
-    ガス,家庭,20
-    ガス,工場,10"#,
+    %% 1 行が 流れ元,流れ先,量。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+    Power,Home,30
+    Power,Factory,50
+    Gas,Home,20
+    Gas,Factory,10"#,
     ),
     (
         "packet",
@@ -211,10 +211,10 @@ const NEWER_DIAGRAMS: &[(&str, &str)] = &[
         "architecture",
         r#"architecture-beta
     %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める
-    group app(cloud)[アプリ]
-    service web(server)[Web サーバー] in app
-    service db(database)[データベース] in app
-    service disk(disk)[ストレージ] in app
+    group app(cloud)["アプリ"]
+    service web(server)["Web サーバー"] in app
+    service db(database)["データベース"] in app
+    service disk(disk)["ストレージ"] in app
     web:R -- L:db
     web:B -- T:disk"#,
     ),
@@ -244,11 +244,11 @@ const NEWER_DIAGRAMS: &[(&str, &str)] = &[
     (
         "eventmodeling",
         r#"eventmodeling
-    %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル
-    tf 01 ui かご画面
-    tf 02 cmd 商品を追加
-    tf 03 evt 商品が追加された
-    tf 04 rmo かごの中身 ->> 03"#,
+    %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+    tf 01 ui CartScreen
+    tf 02 cmd AddItem
+    tf 03 evt ItemAdded
+    tf 04 rmo CartItems ->> 03"#,
     ),
 ];
 

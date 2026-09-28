@@ -851,6 +851,10 @@ msgid "Delay (milliseconds)"
 msgstr "遅延 (ミリ秒)"
 
 msgctxt "settings"
+msgid "Delay in milliseconds before automatically requesting a prediction after typing stops. Set to 0 to request predictions immediately."
+msgstr "入力が止まってから予測を自動で要求するまでの待ち時間 (ミリ秒) です。0 にするとすぐに要求します。"
+
+msgctxt "settings"
 msgid "Delay in milliseconds before drag and drop selection starts."
 msgstr "ドラッグ&ドロップによる選択が始まるまでの遅延 (ミリ秒) です。"
 
@@ -2189,6 +2193,10 @@ msgstr "プラグイン"
 msgctxt "settings"
 msgid "Position of the close button in a tab."
 msgstr "タブ内の閉じるボタンの位置です。"
+
+msgctxt "settings"
+msgid "Prediction Debounce"
+msgstr "予測のデバウンス"
 
 msgctxt "settings"
 msgid "Prefer LSP"

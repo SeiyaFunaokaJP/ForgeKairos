@@ -5,12 +5,18 @@
 //! and [`emit_event_modeling`] writes it back. See [`crate::mermaid_model`] for
 //! the invariants every diagram kind keeps.
 //!
-//! `merman` reads an event model one line at a time and silently skips what it
-//! does not recognise, including the words after an entity identifier and an
-//! arrow from a frame that is not declared yet. The model therefore reads the
-//! source itself, refuses what `merman` would read differently from what the
-//! text seems to say, and checks the result against `merman`'s own reading
-//! before the editor opens.
+//! `merman` 0.7 read an event model one line at a time and silently skipped
+//! what it did not recognise; 0.8 reads it the way Mermaid's grammar does and
+//! refuses what it does not recognise. The model reads the source itself,
+//! refuses what it does not carry (a `note`, a `gwt`, an `entity`, and the
+//! `title` and accessibility lines only `merman` takes — Mermaid refuses
+//! them), and checks the result against `merman`'s own reading before the
+//! editor opens.
+//!
+//! Mermaid reads names as ASCII identifiers: a frame's number is one to three
+//! digits, a lane, a box's name and a data block's name are letters, digits
+//! and `_`, starting with a letter or `_`. A data block is `{` … `}` over
+//! several lines, closed by a `}` at the start of its own line.
 //!
 //! The frames are a time line — their order is the order of the boxes — so the
 //! lines the model does not carry travel with the statement they stand in front
@@ -169,7 +175,7 @@ impl EventModelingDocument {
             let earlier = || self.frames.iter().take(index);
             if !is_valid_frame_name(&frame.name) {
                 return Some(format!(
-                    "フレーム番号「{}」は使えません (空・空白・%%・括弧 {{}} [] と # は不可)。",
+                    "フレーム番号「{}」は使えません (1〜3 桁の半角数字)。",
                     frame.name
                 ));
             }
@@ -178,14 +184,14 @@ impl EventModelingDocument {
             }
             if !is_valid_frame_label(&frame.label) {
                 return Some(format!(
-                    "名前「{}」は使えません (空・空白・%% は不可。レーンが無いときは `.` 1 つで区切った名前も不可)。",
+                    "名前「{}」は使えません (半角英数字と `_`、先頭は英字か `_`。`.` で区切れるが、レーンが無いときに `.` 1 つだけの名前は不可)。",
                     frame.label
                 ));
             }
             if let Some(namespace) = &frame.namespace {
                 if !is_valid_namespace(namespace) {
                     return Some(format!(
-                        "レーン「{namespace}」は使えません (空白・`.`・%% は不可)。"
+                        "レーン「{namespace}」は使えません (半角英数字と `_`、先頭は英字か `_`)。"
                     ));
                 }
                 if frame.label.contains('.') {
@@ -199,7 +205,7 @@ impl EventModelingDocument {
                 && !is_valid_inline_data(data)
             {
                 return Some(format!(
-                    "フレーム「{}」のデータ「{data}」は書けません ({{ }} で囲んだ 1 行。%%・[[・単独の ->> は不可)。",
+                    "フレーム「{}」のデータ「{data}」は書けません ({{ }} で囲んだ 1 行。%% は不可)。",
                     frame.name
                 ));
             }
@@ -251,7 +257,7 @@ impl EventModelingDocument {
         for (index, block) in self.data_blocks.iter().enumerate() {
             if !is_valid_data_name(&block.name) {
                 return Some(format!(
-                    "データ名「{}」は使えません (空・空白・%%・括弧 {{}} [] と # は不可)。",
+                    "データ名「{}」は使えません (半角英数字と `_`、先頭は英字か `_`)。",
                     block.name
                 ));
             }
@@ -265,7 +271,7 @@ impl EventModelingDocument {
             }
             if !is_valid_data_value(&block.value) {
                 return Some(format!(
-                    "データ「{}」の中身は {{ で始まり、対応する }} で終わる必要があります (%% は不可)。",
+                    "データ「{}」の中身は {{ の行で始め、行頭の }} だけの行で終える必要があります (1 行では書けません。%% は不可)。",
                     block.name
                 ));
             }
@@ -340,10 +346,33 @@ pub fn parse_event_modeling(source: &str) -> Result<EventModelingDocument> {
             document.frames.push(frame);
             continue;
         }
-        // `merman` skips a line it does not recognise — a title, an
-        // accessibility statement, a misspelt keyword — so keeping it verbatim
-        // changes nothing in the drawing.
-        leading.push(join_lines(lines.get(start..index).unwrap_or_default()));
+        let keyword = trimmed
+            .split(|character: char| character.is_whitespace() || character == ':')
+            .next()
+            .unwrap_or_default();
+        match keyword {
+            "note" | "gwt" | "entity" => bail!(
+                "`{keyword}` の文は構造化編集に対応していません ({} 行目)。テキストのまま編集してください。",
+                start + 1
+            ),
+            "title" | "accTitle" | "accDescr" => bail!(
+                "`{keyword}` はイベントモデリングでは使えません ({} 行目。公式の Mermaid が受け付けません)。行を消すか、テキストのまま編集してください。",
+                start + 1
+            ),
+            // `merman` 0.7 skipped a line it did not recognise; 0.8 refuses
+            // it, as Mermaid does, and reports where.
+            _ => {
+                if let Err(error) = crate::parse_for_render_model(source) {
+                    bail!(
+                        "Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。"
+                    );
+                }
+                bail!(
+                    "`{trimmed}` は構造化編集に対応していません ({} 行目)。テキストのまま編集してください。",
+                    start + 1
+                );
+            }
+        }
     }
     document
         .preserved_lines
@@ -371,24 +400,25 @@ fn parse_frame(line: &str) -> Result<Option<EventModelingFrame>> {
         return Ok(None);
     };
 
-    // `merman` splits at every single whitespace character, so two spaces in a
-    // row leave an empty word it rejects.
-    let mut parts = rest.trim_start().splitn(4, char::is_whitespace);
+    // `merman` 0.8 reads the words as tokens, so any run of whitespace
+    // separates them.
+    let mut remaining = rest;
     let mut next_word = |what: &str| -> Result<String> {
-        parts
-            .next()
-            .filter(|word| !word.is_empty())
-            .map(str::to_string)
-            .ok_or_else(|| {
-                anyhow!(
-                    "フレームの行に{what}がありません ({line})。`tf 番号 種類 名前` の形で、語の間は空白 1 つで書いてください。"
-                )
-            })
+        let trimmed = remaining.trim_start();
+        let end = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
+        let word = trimmed.get(..end).unwrap_or_default();
+        remaining = trimmed.get(end..).unwrap_or_default();
+        if word.is_empty() {
+            bail!(
+                "フレームの行に{what}がありません ({line})。`tf 番号 種類 名前` の形で書いてください。"
+            );
+        }
+        Ok(word.to_string())
     };
     let name = next_word("番号")?;
     let type_keyword = next_word("種類")?;
     let identifier = next_word("名前")?;
-    let tail = parts.next().unwrap_or_default().trim();
+    let tail = remaining.trim();
 
     let Some((entity_type, long_type)) = EventModelingEntityType::from_keyword(&type_keyword)
     else {
@@ -496,9 +526,14 @@ fn parse_frame_tail(tail: &str, line: &str, frame: &mut EventModelingFrame) -> R
             rest = rest.get(length..).unwrap_or_default();
             continue;
         }
+        if rest.starts_with("%%") {
+            bail!(
+                "フレームの行の末尾のコメントは構造化編集で失われます ({line})。コメントを独立した行に移してから開いてください。"
+            );
+        }
         let word = rest.split_whitespace().next().unwrap_or(rest);
         bail!(
-            "フレームの行の「{word}」は Mermaid に無視されます ({line})。名前に空白は使えないので、削除するか 1 語にしてから開いてください。"
+            "フレームの行の「{word}」は Mermaid が読めません ({line})。名前に空白は使えないので、削除するか 1 語にしてから開いてください。"
         );
     }
 }
@@ -593,7 +628,7 @@ fn parse_data_block(
     }
     if !is_valid_data_value(&value) {
         bail!(
-            "データ「{name}」は構造化編集で扱えません。`data {name} {{` の行から始めて、対応する `}}` の行で終えてください (1 行で書くと Mermaid は次の行まで読み込みます)。"
+            "データ「{name}」は構造化編集で扱えません。`data {name} {{` の行から始めて、行頭の `}}` だけの行で終えてください (Mermaid は 1 行のブロックを受け付けません)。"
         );
     }
     Ok((
@@ -625,7 +660,7 @@ fn check_against_merman(source: &str, document: &EventModelingDocument) -> Resul
             )
         })?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-    let RenderSemanticModel::EventModeling(model) = parsed.model else {
+    let RenderSemanticModel::EventModeling(model) = parsed.into_parts().1 else {
         bail!("この図はイベントモデリングではありません。");
     };
 
@@ -745,9 +780,9 @@ pub fn emit_event_modeling(document: &EventModelingDocument) -> String {
             .value
             .split_once('\n')
             .unwrap_or((block.value.as_str(), ""));
-        // A `{` line that closes its own braces makes `merman` read the next
-        // line into the block as well, so a one-line block goes on the line
-        // after the name, where it is read on its own.
+        // A block whose `{` line closes its own braces goes on the line after
+        // the name, where Mermaid reads it (a one-line block is refused by
+        // `is_valid_data_value`).
         if brace_delta(first) > 0 {
             out.push_str(&format!("{INDENT}data {} {first}\n", block.name));
             if !rest.is_empty() {
@@ -782,64 +817,58 @@ fn preserved_at(
         .map(|line| line.text.as_str())
 }
 
-/// A name `merman` reads back as the same single word, both as a frame's first
-/// word and after `->>`. Braces and brackets would be taken for data, the
-/// separators `merman` trims off an arrow's target would be lost, and `#`
-/// starts an entity that preprocessing rewrites.
-fn is_valid_name(name: &str) -> bool {
-    !name.is_empty()
-        && !name.contains(char::is_whitespace)
-        && !name.contains("%%")
-        && !name.contains(['{', '}', '[', ']', '#'])
-        && !name.starts_with([',', ';'])
-        && !name.ends_with([',', ';'])
-        && name != SOURCE_ARROW
+/// Whether `name` is an identifier as Mermaid (and `merman` 0.8) reads one:
+/// ASCII letters, digits and `_`, starting with a letter or `_`.
+fn is_identifier(name: &str) -> bool {
+    name.starts_with(|character: char| character.is_ascii_alphabetic() || character == '_')
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
-/// Whether `name` can be a frame's name (the `01` of `tf 01 ui 画面`).
+/// Whether `name` can be a frame's number (the `01` of `tf 01 ui Screen`):
+/// one to three ASCII digits.
 pub fn is_valid_frame_name(name: &str) -> bool {
-    is_valid_name(name)
+    (1..=3).contains(&name.len()) && name.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 /// Whether `name` can name a `data` block.
 pub fn is_valid_data_name(name: &str) -> bool {
-    is_valid_name(name)
+    is_identifier(name)
 }
 
 /// Whether `namespace` can be a frame's lane.
 pub fn is_valid_namespace(namespace: &str) -> bool {
-    !namespace.is_empty()
-        && !namespace.contains(char::is_whitespace)
-        && !namespace.contains('.')
-        && !namespace.contains("%%")
+    is_identifier(namespace)
 }
 
-/// Whether `label` can be what a frame's box says. It is one word; without a
-/// lane, a single `.` with text on both sides would make its first half one.
+/// Whether `label` can be what a frame's box says: identifiers joined by `.`.
+/// Without a lane, a single `.` would make its first half one.
 pub fn is_valid_frame_label(label: &str) -> bool {
-    !label.is_empty()
-        && !label.contains(char::is_whitespace)
-        && !label.contains("%%")
-        && split_identifier(label).0.is_none()
+    label.split('.').all(is_identifier) && split_identifier(label).0.is_none()
 }
 
 /// Whether `data` can be written as a frame's inline data: one `{ … }` group
-/// on one line, with nothing `merman` would read as an arrow or a reference.
+/// on one line. Mermaid reads it to the last `}` of the line, so an arrow or
+/// a `[[…]]` inside it is data.
 pub fn is_valid_inline_data(data: &str) -> bool {
     data.starts_with('{')
         && balanced_length(data) == Some(data.len())
         && !data.contains(['\n', '\r'])
         && !data.contains("%%")
-        && !data.contains("[[")
-        && !data.split_whitespace().any(|word| word == SOURCE_ARROW)
 }
 
 /// Whether `value` can be written as a `data` block: a `{ … }` group whose
-/// braces close only at its very end, without the comment marker
-/// preprocessing would cut out of it.
+/// braces close only at its very end, over several lines — Mermaid ends the
+/// block at the first `}` that starts a line, and refuses one on a single
+/// line — without the comment marker preprocessing would cut out of it.
 pub fn is_valid_data_value(value: &str) -> bool {
+    let closes_on_its_own_line = value
+        .strip_suffix("\n}")
+        .is_some_and(|body| !body.contains("\n}"));
     value.starts_with('{')
         && balanced_length(value) == Some(value.len())
+        && closes_on_its_own_line
         && !value.contains("%%")
         && !value.contains('\r')
         && value.lines().all(|line| line.trim_end() == line)
@@ -851,11 +880,11 @@ mod tests {
     use crate::{MermaidTheme, render_to_svg};
 
     const TEMPLATE: &str = "eventmodeling
-    %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル
-    tf 01 ui かご画面
-    tf 02 cmd 商品を追加
-    tf 03 evt 商品が追加された
-    tf 04 rmo かごの中身 ->> 03";
+    %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+    tf 01 ui CartScreen
+    tf 02 cmd AddItem
+    tf 03 evt ItemAdded
+    tf 04 rmo CartItems ->> 03";
 
     /// Every sample in `merman`'s `fixtures/eventmodeling`, verbatim.
     const MERMAN_FIXTURES: [&str; 10] = [
@@ -914,7 +943,7 @@ mod tests {
 
     #[test]
     fn the_keyword_is_recognized_the_way_merman_recognizes_it() {
-        let source = "eventmodeling\n    tf 01 ui 画面";
+        let source = "eventmodeling\n    tf 01 ui Screen";
         assert!(
             is_event_modeling_source(source),
             "{source} should be an event model"
@@ -942,7 +971,7 @@ mod tests {
         assert_eq!(document.frames.len(), 4);
         let last = &document.frames[3];
         assert_eq!(last.entity_type, EventModelingEntityType::ReadModel);
-        assert_eq!(last.label, "かごの中身");
+        assert_eq!(last.label, "CartItems");
         assert_eq!(last.sources, ["03"]);
         assert_eq!(document.frames[0].leading_lines.len(), 1);
         assert_renders(TEMPLATE);
@@ -1001,55 +1030,78 @@ mod tests {
         );
     }
 
+    /// `merman` 0.7 read a one-line data block on the line after its name,
+    /// and the model wrote one there; 0.8 refuses a block on a single line
+    /// wherever it stands, as Mermaid does, so the model refuses to write one.
     #[test]
-    fn a_one_line_data_block_is_written_where_merman_reads_it_alone() {
+    fn a_data_block_is_written_over_several_lines() {
         let mut document = parse(TEMPLATE);
-        document.frames[2].data_reference = Some("商品".to_string());
+        document.frames[2].data_reference = Some("Item".to_string());
         document.data_blocks.push(EventModelingDataBlock {
-            name: "商品".to_string(),
+            name: "Item".to_string(),
             value: "{ id: 1 }".to_string(),
             leading_lines: Vec::new(),
         });
+        let error = document.structure_error().expect("a one-line block");
+        assert!(error.contains("1 行では書けません"), "{error}");
+        assert!(render_to_svg(&emit_event_modeling(&document), &MermaidTheme::default()).is_err());
+
+        if let Some(block) = document.data_blocks.first_mut() {
+            block.value = "{\n  id: 1\n}".to_string();
+        }
         let mut extra = document.frames[1].clone();
         extra.name = "05".to_string();
         document.frames.push(extra);
         assert_eq!(document.structure_error(), None);
         let emitted = emit_event_modeling(&document);
         assert!(
-            emitted.contains("    data 商品\n    { id: 1 }"),
+            emitted.ends_with("    data Item {\n  id: 1\n}"),
             "{emitted}"
         );
-        let reread = parse(&emitted);
-        assert_eq!(reread, document);
+        assert_eq!(parse(&emitted), document);
         assert_renders(&emitted);
 
-        // Written on the `data` line, the block would take the frame after it.
-        let refused = refusal("eventmodeling\ndata A { id: 1 }\ntf 01 ui 画面 [[A]]");
-        assert!(refused.contains("次の行"), "{refused}");
+        // A `}` that is not at the start of its line does not close the block
+        // for Mermaid.
+        if let Some(block) = document.data_blocks.first_mut() {
+            block.value = "{\n  id: 1\n  }".to_string();
+        }
+        assert!(document.structure_error().is_some());
+
+        for source in [
+            "eventmodeling\ndata A { id: 1 }\ntf 01 ui Screen [[A]]",
+            "eventmodeling\ntf 01 ui Screen [[A]]\ndata A\n{ id: 1 }",
+        ] {
+            let refused = refusal(source);
+            assert!(
+                refused.contains("1 行のブロック") || refused.contains("Mermaid の構文"),
+                "{refused}"
+            );
+        }
     }
 
     #[test]
-    fn comments_and_ignored_lines_stay_where_they_were() {
+    fn comments_stay_where_they_were() {
         let source = "---
 title: 注文
 ---
 %%{init: {\"theme\": \"dark\"}}%%
 eventmodeling
     %% 画面
-    tf 01 ui 画面
-    title 無視される行
+    tf 01 ui Screen
+    %% 操作の前
     %% 操作
-    tf 02 cmd 追加
+    tf 02 cmd Add
     %% データの前
     data D {
       a: 1
-    }
+}
     %% 最後";
         let document = parse(source);
         assert_eq!(document.frames[0].leading_lines, ["    %% 画面"]);
         assert_eq!(
             document.frames[1].leading_lines,
-            ["    title 無視される行", "    %% 操作"]
+            ["    %% 操作の前", "    %% 操作"]
         );
         assert_eq!(document.data_blocks[0].leading_lines, ["    %% データの前"]);
         let emitted = assert_stable(source);
@@ -1062,23 +1114,44 @@ eventmodeling
         let emitted = emit_event_modeling(&moved);
         assert!(
             emitted.contains(
-                "    title 無視される行\n    %% 操作\n    tf 02 cmd 追加\n    %% 画面\n    tf 01 ui 画面"
+                "    %% 操作の前\n    %% 操作\n    tf 02 cmd Add\n    %% 画面\n    tf 01 ui Screen"
             ),
             "{emitted}"
         );
+
+        // `merman` 0.7 skipped a `title` or accessibility line; 0.8 reads it,
+        // but Mermaid refuses it in an event model, so the model does too,
+        // and it refuses the statements it does not carry.
+        for (source, expected) in [
+            ("eventmodeling\n    title T\n    tf 01 ui A", "使えません"),
+            (
+                "eventmodeling\n    tf 01 ui A\n    accTitle: x",
+                "使えません",
+            ),
+            (
+                "eventmodeling\n    accDescr {\n      x\n    }\n    tf 01 ui A",
+                "使えません",
+            ),
+            (
+                "eventmodeling\n    tf 01 ui A\n    note 01\n{\n  x\n}",
+                "`note`",
+            ),
+            ("eventmodeling\n    tfx 01 ui A", "Mermaid の構文"),
+        ] {
+            let message = refusal(source);
+            assert!(message.contains(expected), "{source}: {message}");
+        }
     }
 
     #[test]
     fn what_merman_would_read_differently_is_refused() {
         for (source, expected) in [
-            ("eventmodeling\ntf 01 ui Cart Screen", "無視"),
-            ("eventmodeling\ntf 01 ui A %% note", "無視"),
+            ("eventmodeling\ntf 01 ui Cart Screen", "読めません"),
+            ("eventmodeling\ntf 01 ui A %% note", "コメント"),
             ("eventmodeling\ntf 01 box A", "未知の種類"),
-            ("eventmodeling\ntf 01  ui A", "空白 1 つ"),
             ("eventmodeling\ntf 01 ui", "名前"),
             ("eventmodeling tf 01 ui A", "次の行"),
-            ("eventmodeling\ntf 01 cmd A { x ->> y }", "一致しません"),
-            ("eventmodeling\ntf 01 cmd A { [[D]] }", "一致しません"),
+            ("eventmodeling\ntf 零 evt Start", "フレーム番号"),
             (
                 "eventmodeling\ntf 01 cmd A { x } [[D]]\ndata D {\n  x\n}",
                 "両方",
@@ -1095,6 +1168,21 @@ eventmodeling
                 "{source}: expected {expected} in {message}"
             );
         }
+        // `merman` 0.7 found arrows and references anywhere after the name,
+        // inside the braces too, and split words at every single space; 0.8
+        // reads inline data to the last `}` of the line and words as tokens,
+        // as Mermaid does, so these open and come back as written.
+        for source in [
+            "eventmodeling\n    tf 01 cmd A { x ->> y }",
+            "eventmodeling\n    tf 01 cmd A { [[D]] }",
+        ] {
+            assert_eq!(assert_stable(source), source);
+            assert_renders(source);
+        }
+        assert_eq!(
+            assert_stable("eventmodeling\ntf 01  ui   A"),
+            "eventmodeling\n    tf 01 ui A"
+        );
     }
 
     #[test]
@@ -1125,12 +1213,31 @@ eventmodeling
                 "2 本",
             ),
             (
-                Box::new(|document| document.frames[2].data_reference = Some("無い".to_string())),
+                Box::new(|document| {
+                    document.frames[2].data_reference = Some("Missing".to_string())
+                }),
                 "ありません",
             ),
             (
-                Box::new(|document| document.frames[0].label = "かご 画面".to_string()),
+                Box::new(|document| document.frames[0].label = "Cart Screen".to_string()),
                 "名前",
+            ),
+            // Mermaid reads names as ASCII identifiers.
+            (
+                Box::new(|document| document.frames[0].label = "かご画面".to_string()),
+                "名前",
+            ),
+            (
+                Box::new(|document| document.frames[0].label = "1st".to_string()),
+                "名前",
+            ),
+            (
+                Box::new(|document| document.frames[0].name = "0001".to_string()),
+                "フレーム番号",
+            ),
+            (
+                Box::new(|document| document.frames[0].namespace = Some("店".to_string())),
+                "レーン",
             ),
             (
                 Box::new(|document| document.frames[0].label = "a.b".to_string()),
@@ -1154,20 +1261,6 @@ eventmodeling
                 }),
                 "データ",
             ),
-            // `merman` finds a reference and arrows anywhere after the name,
-            // inside the braces too.
-            (
-                Box::new(|document| document.frames[1].inline_data = Some("{ [[D]] }".to_string())),
-                "データ",
-            ),
-            (
-                Box::new(|document| {
-                    document.frames[1].inline_data = Some("{ a ->> 01 }".to_string())
-                }),
-                "データ",
-            ),
-            // `merman` trims these off an arrow's source, so the arrow would
-            // name a frame that does not exist.
             (
                 Box::new(|document| document.frames[2].name = "03,".to_string()),
                 "フレーム番号",
@@ -1180,7 +1273,7 @@ eventmodeling
                 Box::new(|document| {
                     document.data_blocks.push(EventModelingDataBlock {
                         name: "D;".to_string(),
-                        value: "{ a }".to_string(),
+                        value: "{\n  a\n}".to_string(),
                         leading_lines: Vec::new(),
                     })
                 }),
@@ -1190,20 +1283,29 @@ eventmodeling
                 Box::new(move |document| {
                     document.frames[1].inline_data = Some("{ a }".to_string());
                     document.frames[1].data_reference = Some("D".to_string());
-                    document.data_blocks.push(data_block("{ a }"));
+                    document.data_blocks.push(data_block("{\n  a\n}"));
                 }),
                 "両方",
             ),
             (
-                Box::new(move |document| document.data_blocks.push(data_block("{ a } b"))),
+                Box::new(move |document| document.data_blocks.push(data_block("{\n  a\n} b"))),
                 "中身",
             ),
             (
                 Box::new(move |document| {
-                    document.data_blocks.push(data_block("{ a }"));
-                    document.data_blocks.push(data_block("{ b }"));
+                    document.data_blocks.push(data_block("{\n  a\n}"));
+                    document.data_blocks.push(data_block("{\n  b\n}"));
                 }),
                 "重複",
+            ),
+            (
+                Box::new(move |document| {
+                    document.data_blocks.push(EventModelingDataBlock {
+                        name: "データ".to_string(),
+                        ..data_block("{\n  a\n}")
+                    })
+                }),
+                "データ名",
             ),
         ];
         for (edit, expected) in cases {
@@ -1219,14 +1321,14 @@ eventmodeling
     #[test]
     fn edited_documents_that_pass_the_checks_are_read_back_as_written() {
         let mut document = parse(TEMPLATE);
-        document.frames[0].namespace = Some("店".to_string());
+        document.frames[0].namespace = Some("Shop".to_string());
         document.frames[1].inline_data = Some("{ 商品: 1 }".to_string());
         document.frames[1].reset = true;
         document.frames[2].sources = vec!["01".to_string(), "02".to_string()];
-        document.frames[2].data_reference = Some("詳細".to_string());
+        document.frames[2].data_reference = Some("Detail".to_string());
         document.frames[3].entity_type = EventModelingEntityType::Processor;
         document.data_blocks.push(EventModelingDataBlock {
-            name: "詳細".to_string(),
+            name: "Detail".to_string(),
             value: "{\n  商品: 1,\n  数: 2\n}".to_string(),
             leading_lines: Vec::new(),
         });
@@ -1236,13 +1338,15 @@ eventmodeling
         assert_eq!(reread, document, "{emitted}");
         assert_renders(&emitted);
 
-        // A tag opened in one frame and closed in a later one has `merman`
-        // change the quotes of the data between them, which must not keep the
-        // written diagram from opening again.
+        // A tag opened in one frame's data and closed in a later one has
+        // `merman` change the quotes of the data between them, which must not
+        // keep the written diagram from opening again. (Under `merman` 0.7 the
+        // tag could open in a box's name, which Mermaid reads only as an
+        // ASCII identifier.)
         let mut document = parse(TEMPLATE);
-        document.frames[0].label = "<b".to_string();
+        document.frames[0].inline_data = Some("{ <b }".to_string());
         document.frames[1].inline_data = Some("{ a=\"x\" }".to_string());
-        document.frames[2].label = "c>".to_string();
+        document.frames[2].inline_data = Some("{ c> }".to_string());
         assert_eq!(document.structure_error(), None);
         let emitted = emit_event_modeling(&document);
         assert_eq!(parse(&emitted), document, "{emitted}");
@@ -1257,18 +1361,28 @@ eventmodeling
         assert_renders(&emitted);
     }
 
+    /// `merman` 0.7 read any word as a frame's number or name, Japanese
+    /// included; 0.8 reads numbers of one to three digits and ASCII
+    /// identifiers, as Mermaid does, so a Japanese name no longer opens, and
+    /// only data carries Japanese text.
     #[test]
-    fn multibyte_names_are_read_by_character() {
-        let document = parse("eventmodeling\n  tf 零 evt 始\n  tf 一 ui 画面.かご ->> 零; {あ}");
-        assert_eq!(document.frames[1].sources, ["零"]);
-        assert_eq!(document.frames[1].namespace.as_deref(), Some("画面"));
-        assert_eq!(document.frames[1].label, "かご");
+    fn multibyte_names_are_refused_and_multibyte_data_is_kept() {
+        for source in [
+            "eventmodeling\n  tf 零 evt Start",
+            "eventmodeling\n  tf 01 evt 始",
+            "eventmodeling\n  tf 01 ui 画面.Cart",
+        ] {
+            assert!(
+                render_to_svg(source, &MermaidTheme::default()).is_err(),
+                "{source}"
+            );
+            refusal(source);
+        }
+        let document =
+            parse("eventmodeling\n  tf 01 evt Start\n  tf 02 ui Screen.Cart ->> 01 {あ}");
+        assert_eq!(document.frames[1].sources, ["01"]);
+        assert_eq!(document.frames[1].namespace.as_deref(), Some("Screen"));
+        assert_eq!(document.frames[1].label, "Cart");
         assert_eq!(document.frames[1].inline_data.as_deref(), Some("{あ}"));
-
-        // `、` is not a separator `merman` trims, so the arrow names `零、`,
-        // which is no frame: `merman` would drop it.
-        let document = parse("eventmodeling\n  tf 零 evt 始\n  tf 一 ui 画面 ->> 零、");
-        let error = document.structure_error().unwrap_or_default();
-        assert!(error.contains("前のフレーム"), "{error}");
     }
 }

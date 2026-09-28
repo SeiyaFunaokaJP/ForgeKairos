@@ -861,14 +861,14 @@ pub fn parse_gitgraph(source: &str) -> Result<GitGraphDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::GitGraph(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::GitGraph(_)) {
             bail!("この図は Git グラフではありません。");
         }
         // The main branch is named by the configuration, which can come from
         // the frontmatter, an init directive or both; `merman` has already
         // merged them the way Mermaid does, so its answer is taken as is.
         if let Some(name) = parsed
-            .meta
+            .metadata()
             .effective_config
             .get_str("gitGraph.mainBranchName")
         {
@@ -931,7 +931,12 @@ pub fn parse_gitgraph(source: &str) -> Result<GitGraphDocument> {
                 }));
             continue;
         }
-        if is_acc_statement(trimmed, "accTitle") || is_acc_statement(trimmed, "accDescr") {
+        // Mermaid and `merman` 0.8 read a `title` line as the diagram's title;
+        // the form does not edit it, so it stays the line it is.
+        if is_acc_statement(trimmed, "accTitle")
+            || is_acc_statement(trimmed, "accDescr")
+            || keyword_tail(trimmed, "title").is_some()
+        {
             document
                 .items
                 .push(GitGraphItem::Preserved(trimmed.to_string()));
@@ -1175,7 +1180,7 @@ fn parse_statement(statement: &str) -> Result<GitGraphItem, String> {
             }
             Ok(GitGraphItem::Merge(merge))
         }
-        "cherry-pick" | "cherryPick" => {
+        "cherry-pick" => {
             let mut id = None;
             let mut pick = GitCherryPick {
                 id: String::new(),
@@ -1295,12 +1300,44 @@ pub fn is_valid_gitgraph_order(text: &str) -> bool {
 
 /// A branch name as a statement spells it: bare when the name is one word, in
 /// quotes when it would otherwise be cut short or read as a key.
+/// Words Mermaid's lexer takes for a keyword before it takes them for a branch
+/// id, so that a branch named after one has to be quoted.
+const GITGRAPH_KEYWORDS: [&str; 13] = [
+    "commit",
+    "branch",
+    "checkout",
+    "switch",
+    "merge",
+    "cherry-pick",
+    "NORMAL",
+    "REVERSE",
+    "HIGHLIGHT",
+    "LR",
+    "TB",
+    "BT",
+    "gitGraph",
+];
+
+/// `name` as a statement writes it: bare when Mermaid's lexer reads it as one
+/// branch id (ASCII word characters, with `-` `.` `/` inside and `-` at the
+/// end, and not a keyword), in quotes otherwise — Japanese included, which
+/// Mermaid and `merman` 0.8 refuse bare.
 fn branch_token(name: &str) -> String {
-    if name.contains(|character: char| character.is_whitespace() || matches!(character, ':' | ';'))
-    {
-        format!("\"{name}\"")
-    } else {
+    let is_word = |character: char| character.is_ascii_alphanumeric() || character == '_';
+    let is_bare = !GITGRAPH_KEYWORDS.contains(&name)
+        && !name.starts_with("title")
+        && name.chars().next().is_some_and(is_word)
+        && name
+            .chars()
+            .last()
+            .is_some_and(|character| is_word(character) || character == '-')
+        && name
+            .chars()
+            .all(|character| is_word(character) || matches!(character, '-' | '.' | '/'));
+    if is_bare {
         name.to_string()
+    } else {
+        format!("\"{name}\"")
     }
 }
 
@@ -1477,12 +1514,23 @@ mod tests {
             "gitGraph\n  commit \"メッセージだけ\"\n  commit msg: \"m\" id:\"x\"",
             "gitGraph\n  commit\n  branch \"my feature\" order: 2\n  commit\n  switch main\n  commit\n  merge \"my feature\" id: \"M\" tag: \"t\" type: REVERSE",
             "gitGraph\n  commit id: \"A\"\n  branch dev\n  commit id: \"B\"\n  checkout main\n  cherry-pick id: \"B\" tag: \"\"",
-            "gitGraph\n  commit id: \"A\"\n  branch dev\n  commit id: \"B\"\n  checkout main\n  commit id: \"C\"\n  merge dev id: \"M\"\n  branch rel\n  commit\n  cherryPick id: \"M\" parent: \"C\"",
+            "gitGraph\n  commit id: \"A\"\n  branch dev\n  commit id: \"B\"\n  checkout main\n  commit id: \"C\"\n  merge dev id: \"M\"\n  branch rel\n  commit\n  cherry-pick id: \"M\" parent: \"C\"",
+            "gitGraph\n  title 題\n  commit\n  branch \"開発\"\n  commit",
         ] {
             let emitted = assert_stable(source);
             assert_renders(&emitted);
             assert_eq!(parse(&emitted).structure_error(), None, "{emitted}");
         }
+        // A branch named after a keyword stays quoted: Mermaid reads a bare
+        // `branch branch` as two keywords.
+        let emitted = assert_stable(
+            "gitGraph\n  commit\n  branch \"branch\"\n  checkout \"branch\"\n  commit\n  branch commit01",
+        );
+        assert!(
+            emitted.contains("branch \"branch\"\n    checkout \"branch\""),
+            "{emitted}"
+        );
+        assert!(emitted.contains("branch commit01"), "{emitted}");
     }
 
     #[test]
@@ -1515,15 +1563,7 @@ mod tests {
     fn a_line_the_model_would_shorten_is_refused() {
         for (source, fragment) in [
             ("gitGraph\n  commit \"m\" id: \"x\"", "無視"),
-            ("gitGraph\n  commit\n  branch b\n  checkout b extra", "無視"),
             ("gitGraph\n  commit id: \"a\" id: \"b\"", "2 回"),
-            ("gitGraph\n  commit\n  branch b color: red", "`color:`"),
-            (
-                "gitGraph\n  commit\n  branch b\n  commit\n  checkout main\n  merge b foo: 1",
-                "`foo:`",
-            ),
-            ("gitGraph\n  commit id: a:b", "読めません"),
-            ("gitGraph RL:\n  commit", "向き"),
         ] {
             let message = refusal(source);
             assert!(message.contains(fragment), "{source}: {message}");
@@ -1532,11 +1572,26 @@ mod tests {
 
     #[test]
     fn a_diagram_merman_rejects_does_not_open() {
+        // `merman` 0.8 refuses, as Mermaid does, what 0.7 let through: words
+        // after a `checkout`, the `cherryPick` spelling, a direction without
+        // its `:`, an unquoted value, and a branch name that is not an ASCII
+        // word unless it is quoted.
         for source in [
             "gitGraph\n  commit;",
-            "gitGraph\n  title t\n  commit",
             "gitGraph\n  checkout nowhere",
             "gitGraph\n  commit\n  branch b\n  merge b",
+            "gitGraph\n  commit\n  branch b\n  checkout b extra",
+            "gitGraph\n  commit id: \"A\"\n  branch dev\n  commit id: \"B\"\n  checkout main\n  cherryPick id: \"B\"",
+            "gitGraph LR\n  commit",
+            "gitGraph\n  commit msg:",
+            "gitGraph\n  commit id: a",
+            "gitGraph\n  branch x order: \"2\"",
+            "gitGraph\n  branch 日本",
+            "gitGraph\n  branch a;b",
+            "gitGraph\n  commit\n  branch b color: red",
+            "gitGraph\n  commit\n  branch b\n  commit\n  checkout main\n  merge b foo: 1",
+            "gitGraph\n  commit id: a:b",
+            "gitGraph RL:\n  commit",
         ] {
             let message = refusal(source);
             assert!(message.contains("Mermaid の構文"), "{source}: {message}");
@@ -1754,7 +1809,7 @@ mod tests {
         let emitted = emit_gitgraph(&document);
         assert_eq!(
             emitted,
-            "gitGraph\n    commit id: \"A\"\n    branch 開発\n    commit id: \"B2\"\n    checkout main\n    merge 開発\n    checkout 開発\n    commit\n    checkout main\n    cherry-pick id: \"B2\""
+            "gitGraph\n    commit id: \"A\"\n    branch \"開発\"\n    commit id: \"B2\"\n    checkout main\n    merge \"開発\"\n    checkout \"開発\"\n    commit\n    checkout main\n    cherry-pick id: \"B2\""
         );
         assert_eq!(document.structure_error(), None);
         assert_renders(&emitted);
@@ -1935,16 +1990,11 @@ mod tests {
 
         for source in [
             "gitGraph\n  commit \"m\"\n  commit",
-            "gitGraph LR\n  commit",
-            "gitGraph TB\n  commit\n  branch b\n  commit",
             "gitGraph\n  commit id: \"\"\n  commit",
-            "gitGraph\n  commit id: a tag: v1 type: \"HIGHLIGHT\"",
-            "gitGraph\n  commit msg:\n  commit tag:",
-            "gitGraph\n  commit\n  branch \"x\" order: \"2\"\n  commit\n  checkout \"main\"\n  commit\n  merge \"x\" id: \"\"",
-            "gitGraph\n  commit id: \"A\"\n  branch dev\n  commit id: \"B\"\n  checkout main\n  commit\n  cherryPick id: \"B\" parent: \"\"",
+            "gitGraph\n  commit\n  branch \"x\" order: 2\n  commit\n  checkout \"main\"\n  commit\n  merge \"x\" id: \"\"",
+            "gitGraph\n  commit id: \"A\"\n  branch dev\n  commit id: \"B\"\n  checkout main\n  commit\n  cherry-pick id: \"B\" parent: \"\"",
             "gitGraph\n  commit id: \"A\"\n  branch dev\n  commit id: \"B\"\n  checkout main\n  commit id: \"C\"\n  cherry-pick id: \"B\" parent: \"A\"",
             "gitGraph\n  commit id:\"甲\"\n  branch \"開発\u{3000}ブランチ\"\n  commit id:\"乙 丙\"\n  checkout main\n  merge \"開発\u{3000}ブランチ\" tag: \"タグ\"",
-            "gitGraph\n  commit\n  branch a;b\n  commit\n  checkout main\n  commit\n  merge a;b",
         ] {
             let emitted = emit_gitgraph(&parse(source));
             assert_ne!(emitted, source, "this case should exercise a normalization");
@@ -1956,16 +2006,15 @@ mod tests {
         }
     }
 
-    /// A directive that is never closed is a comment line to Mermaid, and the
-    /// statements after it are drawn; they must stay rows of their own.
+    /// `merman` 0.7 read a directive that is never closed as a comment line
+    /// and drew the statements after it; 0.8 cuts from it to the end of the
+    /// text, as Mermaid does, so the diagram does not open.
     #[test]
-    fn an_unclosed_directive_does_not_swallow_the_statements_after_it() {
+    fn an_unclosed_directive_swallows_the_statements_after_it() {
         let source =
             "gitGraph\n    commit\n    %%{init: {'theme': 'dark'\n    branch dev\n    commit";
-        let document = parse(source);
-        assert_eq!(emit_gitgraph(&document), source);
-        assert_eq!(document.items.len(), 4, "{:?}", document.items);
-        assert_eq!(document.branch_names(), vec!["main", "dev"]);
+        let error = refusal(source);
+        assert!(error.contains("閉じていない `%%{`"), "{error}");
 
         let closed = "gitGraph\n    commit\n    %%{init: {'theme':\n    'dark'}}%%\n    commit";
         let document = parse(closed);

@@ -131,13 +131,22 @@ pub(crate) fn render_edit_prediction_setup_page(
                     &["api-feedback.inceptionlabs.ai"],
                     None,
                 ),
-                None,
+                Some(
+                    settings_window
+                        .render_sub_page_items_section(
+                            mercury_settings().iter().enumerate(),
+                            true,
+                            window,
+                            cx,
+                        )
+                        .into_any_element(),
+                ),
                 window,
                 cx,
             )
             .into_any_element(),
         ),
-        Some(render_zed_provider(settings_window, cx).into_any_element()),
+        Some(render_zed_provider(settings_window, window, cx).into_any_element()),
     ];
 
     div()
@@ -700,6 +709,37 @@ fn ollama_settings() -> Box<[SettingsPageItem]> {
             metadata: None,
             files: USER,
         }),
+        SettingsPageItem::SettingItem(SettingItem {
+            title: "Prediction Debounce",
+            description: "Delay in milliseconds before automatically requesting a prediction after typing stops. Set to 0 to request predictions immediately.",
+            field: Box::new(SettingField {
+                organization_override: None,
+                pick: |settings| {
+                    settings
+                        .project
+                        .all_languages
+                        .edit_predictions
+                        .as_ref()?
+                        .ollama
+                        .as_ref()?
+                        .prediction_debounce
+                        .as_ref()
+                },
+                write: |settings, value, _app: &App| {
+                    settings
+                        .project
+                        .all_languages
+                        .edit_predictions
+                        .get_or_insert_default()
+                        .ollama
+                        .get_or_insert_default()
+                        .prediction_debounce = value;
+                },
+                json_path: Some("edit_predictions.ollama.prediction_debounce"),
+            }),
+            metadata: None,
+            files: USER,
+        }),
     ])
 }
 
@@ -835,6 +875,37 @@ fn open_ai_compatible_settings() -> Box<[SettingsPageItem]> {
             metadata: None,
             files: USER,
         }),
+        SettingsPageItem::SettingItem(SettingItem {
+            title: "Prediction Debounce",
+            description: "Delay in milliseconds before automatically requesting a prediction after typing stops. Set to 0 to request predictions immediately.",
+            field: Box::new(SettingField {
+                organization_override: None,
+                pick: |settings| {
+                    settings
+                        .project
+                        .all_languages
+                        .edit_predictions
+                        .as_ref()?
+                        .open_ai_compatible_api
+                        .as_ref()?
+                        .prediction_debounce
+                        .as_ref()
+                },
+                write: |settings, value, _app: &App| {
+                    settings
+                        .project
+                        .all_languages
+                        .edit_predictions
+                        .get_or_insert_default()
+                        .open_ai_compatible_api
+                        .get_or_insert_default()
+                        .prediction_debounce = value;
+                },
+                json_path: Some("edit_predictions.open_ai_compatible_api.prediction_debounce"),
+            }),
+            metadata: None,
+            files: USER,
+        }),
     ])
 }
 
@@ -939,7 +1010,140 @@ fn codestral_settings() -> Box<[SettingsPageItem]> {
             })),
             files: USER,
         }),
+        SettingsPageItem::SettingItem(SettingItem {
+            title: "Prediction Debounce",
+            description: "Delay in milliseconds before automatically requesting a prediction after typing stops. Set to 0 to request predictions immediately.",
+            field: Box::new(SettingField {
+                organization_override: None,
+                pick: |settings| {
+                    settings
+                        .project
+                        .all_languages
+                        .edit_predictions
+                        .as_ref()?
+                        .codestral
+                        .as_ref()?
+                        .prediction_debounce
+                        .as_ref()
+                },
+                write: |settings, value, _app: &App| {
+                    settings
+                        .project
+                        .all_languages
+                        .edit_predictions
+                        .get_or_insert_default()
+                        .codestral
+                        .get_or_insert_default()
+                        .prediction_debounce = value;
+                },
+                json_path: Some("edit_predictions.codestral.prediction_debounce"),
+            }),
+            metadata: None,
+            files: USER,
+        }),
     ])
+}
+
+fn mercury_settings() -> Box<[SettingsPageItem]> {
+    Box::new([SettingsPageItem::SettingItem(SettingItem {
+        title: "Prediction Debounce",
+        description: "Delay in milliseconds before automatically requesting a prediction after typing stops. Set to 0 to request predictions immediately.",
+        field: Box::new(SettingField {
+            organization_override: None,
+            pick: |settings| {
+                settings
+                    .project
+                    .all_languages
+                    .edit_predictions
+                    .as_ref()?
+                    .mercury
+                    .as_ref()?
+                    .prediction_debounce
+                    .as_ref()
+            },
+            write: |settings, value, _app: &App| {
+                settings
+                    .project
+                    .all_languages
+                    .edit_predictions
+                    .get_or_insert_default()
+                    .mercury
+                    .get_or_insert_default()
+                    .prediction_debounce = value;
+            },
+            json_path: Some("edit_predictions.mercury.prediction_debounce"),
+        }),
+        metadata: None,
+        files: USER,
+    })])
+}
+
+fn zed_settings() -> Box<[SettingsPageItem]> {
+    Box::new([SettingsPageItem::SettingItem(SettingItem {
+        title: "Prediction Debounce",
+        description: "Delay in milliseconds before automatically requesting a prediction after typing stops. Set to 0 to request predictions immediately.",
+        field: Box::new(SettingField {
+            organization_override: None,
+            pick: |settings| {
+                settings
+                    .project
+                    .all_languages
+                    .edit_predictions
+                    .as_ref()?
+                    .zed
+                    .as_ref()?
+                    .prediction_debounce
+                    .as_ref()
+            },
+            write: |settings, value, _app: &App| {
+                settings
+                    .project
+                    .all_languages
+                    .edit_predictions
+                    .get_or_insert_default()
+                    .zed
+                    .get_or_insert_default()
+                    .prediction_debounce = value;
+            },
+            json_path: Some("edit_predictions.zed.prediction_debounce"),
+        }),
+        metadata: None,
+        files: USER,
+    })])
+}
+
+fn copilot_settings() -> Box<[SettingsPageItem]> {
+    Box::new([SettingsPageItem::SettingItem(SettingItem {
+        title: "Prediction Debounce",
+        description: "Delay in milliseconds before automatically requesting a prediction after typing stops. Set to 0 to request predictions immediately.",
+        field: Box::new(SettingField {
+            organization_override: None,
+            pick: |settings| {
+                settings
+                    .project
+                    .all_languages
+                    .edit_predictions
+                    .as_ref()?
+                    .copilot
+                    .as_ref()?
+                    .prediction_debounce
+                    .as_ref()
+            },
+            write: |settings, value, _app: &App| {
+                settings
+                    .project
+                    .all_languages
+                    .edit_predictions
+                    .get_or_insert_default()
+                    .copilot
+                    .get_or_insert_default()
+                    .prediction_debounce = value;
+            },
+            json_path: Some("edit_predictions.copilot.prediction_debounce"),
+        }),
+        metadata: None,
+        files: USER,
+    })])
 }
 
 /// The card for `Zed`, last in the list so that it matches the dropdown order.
@@ -953,9 +1157,14 @@ fn codestral_settings() -> Box<[SettingsPageItem]> {
 /// and a way to withdraw the consent.
 fn render_zed_provider(
     settings_window: &SettingsWindow,
+    window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) -> impl IntoElement {
     let target = zed_consent_target(cx);
+    let zed_settings = zed_settings();
+    let additional_fields = settings_window
+        .render_sub_page_items_section(zed_settings.iter().enumerate(), true, window, cx)
+        .into_any_element();
     let acknowledged = external_ai_consent::is_acknowledged(settings::ZED_CLOUD_AI_CONSENT_KEY, cx);
 
     v_flex()
@@ -1013,6 +1222,9 @@ fn render_zed_provider(
                     }),
             )
         })
+        // The debounce only delays requests Zed makes itself; it sends nothing, so
+        // it stays reachable while the consent is missing, like Ollama's fields.
+        .child(div().px_neg_8().child(additional_fields))
 }
 
 fn render_github_copilot_provider(
@@ -1048,6 +1260,10 @@ fn render_github_copilot_provider(
         })
     });
 
+    let additional_fields = settings_window
+        .render_sub_page_items_section(copilot_settings().iter().enumerate(), true, window, cx)
+        .into_any_element();
+
     Some(
         v_flex()
             .id("github-copilot")
@@ -1066,7 +1282,8 @@ fn render_github_copilot_provider(
                     external_ai_consent::render_consent_summary(settings_window, target, cx)
                 })
             })
-            .children(configuration_view),
+            .children(configuration_view)
+            .child(div().px_neg_8().child(additional_fields)),
     )
 }
 

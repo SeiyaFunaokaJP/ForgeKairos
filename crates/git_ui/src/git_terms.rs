@@ -748,6 +748,8 @@ pub(crate) fn panel_operation_help(operation: PanelOperation) -> OperationHelp {
 pub(crate) const NOTHING_TO_STAGE_REFUSAL: &str = "ステージする変更がありません";
 pub(crate) const NOTHING_TO_UNSTAGE_REFUSAL: &str = "ステージ済みの変更がありません";
 pub(crate) const NO_TRACKED_CHANGES_REFUSAL: &str = "追跡中のファイルに変更がありません";
+pub(crate) const NO_STAGED_TRACKED_CHANGES_REFUSAL: &str =
+    "ステージ済みの、追跡中のファイルの変更がありません";
 pub(crate) const NOTHING_TO_STASH_REFUSAL: &str = "退避する変更がありません";
 pub(crate) const NO_STASH_REFUSAL: &str = "棚 (stash) に退避した変更がありません";
 pub(crate) const NO_UNTRACKED_FILES_REFUSAL: &str = "未追跡のファイルがありません";

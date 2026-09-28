@@ -353,8 +353,7 @@ mod tests {
     fn test_each_app_menu_label_shows_the_japanese_it_replaced(cx: &mut TestAppContext) {
         let _japanese =
             LocaleOverride::new(Some(i18n_catalog::test_support::bundled_catalog("ja")));
-        let before: HashMap<&str, &str> =
-            MENU_LABELS_BEFORE_PO_MIGRATION.iter().copied().collect();
+        let before: HashMap<&str, &str> = MENU_LABELS_BEFORE_PO_MIGRATION.iter().copied().collect();
 
         for dev_channel in [false, true] {
             let english = collect_labels(&build_app_menus(dev_channel, cx));
@@ -373,8 +372,10 @@ mod tests {
                 mismatches.is_empty(),
                 "dev channel {dev_channel}:
 {}",
-                mismatches.join("
-")
+                mismatches.join(
+                    "
+"
+                )
             );
         }
     }
@@ -523,7 +524,10 @@ mod tests {
         ("Find", "検索"),
         ("Find All References", "すべての参照を検索"),
         ("Find in Project", "プロジェクト内を検索"),
-        ("Fixup into an Earlier Commit…", "今の変更を昔のコミットに入れる (fixup)…"),
+        (
+            "Fixup into an Earlier Commit…",
+            "今の変更を昔のコミットに入れる (fixup)…",
+        ),
         ("Force Push with Lease…", "強制プッシュ (lease 付き)…"),
         ("Forward", "進む"),
         ("Git", "Git"),
@@ -534,7 +538,10 @@ mod tests {
         ("Go to Definition", "定義へ移動"),
         ("Go to File...", "ファイルへ移動..."),
         ("Go to Line/Column...", "行/列へ移動..."),
-        ("Go to Symbol in Editor...", "エディター内のシンボルへ移動..."),
+        (
+            "Go to Symbol in Editor...",
+            "エディター内のシンボルへ移動...",
+        ),
         ("Go to Type Definition", "型定義へ移動"),
         ("Help", "ヘルプ"),
         ("Hide Others", "ほかを非表示"),
@@ -556,7 +563,10 @@ mod tests {
         ("Open Keymap", "キーマップを開く"),
         ("Open Keymap File", "キーマップファイルを開く"),
         ("Open Project Settings", "プロジェクト設定を開く"),
-        ("Open Project Settings File", "プロジェクト設定ファイルを開く"),
+        (
+            "Open Project Settings File",
+            "プロジェクト設定ファイルを開く",
+        ),
         ("Open Recent…", "最近のプロジェクトを開く…"),
         ("Open Remote…", "リモートプロジェクトを開く…"),
         ("Open Settings", "設定を開く"),
@@ -613,7 +623,10 @@ mod tests {
         ("Undo", "元に戻す"),
         ("View", "表示"),
         ("View Dependency Licenses", "依存ライブラリのライセンス"),
-        ("View Release Notes Locally", "リリースノートをエディターで表示"),
+        (
+            "View Release Notes Locally",
+            "リリースノートをエディターで表示",
+        ),
         ("View Telemetry", "テレメトリログを表示"),
         ("Window", "ウィンドウ"),
         ("Zed", "Zed"),

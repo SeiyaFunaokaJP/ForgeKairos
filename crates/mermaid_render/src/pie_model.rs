@@ -95,7 +95,7 @@ pub fn parse_pie(source: &str) -> Result<PieDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::Pie(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::Pie(_)) {
             bail!("この図は円グラフではありません。");
         }
     }
@@ -248,14 +248,6 @@ fn parse_slice(statement: &str) -> Result<PieSlice> {
         })
         .collect::<String>();
     let remainder = rest.get(value.len()..).unwrap_or_default().trim();
-    // `merman` reads the digits in front of the exponent and ignores the rest
-    // of the line, so `1e3` is drawn as a slice of 1. Opening it with the
-    // spelling kept would show the editor a thousand where the picture has one.
-    if is_exponent(remainder) {
-        bail!(
-            "指数表記の値 ({value}{remainder}) は Mermaid が `{value}` と読むため、図と一致しません ({statement})。`1000` のように桁を書き下してから開いてください。"
-        );
-    }
     if !remainder.is_empty() {
         bail!(
             "数値のあとの `{remainder}` は円グラフに書けません ({statement})。テキストのまま編集してください。"
@@ -267,14 +259,6 @@ fn parse_slice(statement: &str) -> Result<PieSlice> {
         );
     }
     Ok(PieSlice { label, value })
-}
-
-fn is_exponent(text: &str) -> bool {
-    let Some(exponent) = text.strip_prefix(['e', 'E']) else {
-        return false;
-    };
-    let digits = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
-    !digits.is_empty() && digits.chars().all(|character| character.is_ascii_digit())
 }
 
 /// Reads a quoted string the way `merman` does, including its `\` escapes, and
@@ -375,13 +359,16 @@ pub fn is_valid_pie_label(label: &str) -> bool {
 }
 
 /// Whether `text` can be written as a pie slice value: a non-negative decimal
-/// number, spelled the way `merman`'s number scanner reads one.
+/// number, spelled the way Mermaid's number terminal reads one — digits on
+/// both sides of a `.`, or an integer without leading zeros. `merman` 0.8
+/// refuses `.5`, `1.`, `007` and `1e3` as Mermaid does.
 pub fn is_valid_pie_value(text: &str) -> bool {
-    !text.is_empty()
-        && text
-            .chars()
-            .all(|character| character.is_ascii_digit() || character == '.')
-        && text.parse::<f64>().is_ok_and(f64::is_finite)
+    let is_digits =
+        |part: &str| !part.is_empty() && part.chars().all(|character| character.is_ascii_digit());
+    match text.split_once('.') {
+        Some((integer, fraction)) => is_digits(integer) && is_digits(fraction),
+        None => is_digits(text) && (text == "0" || !text.starts_with('0')),
+    }
 }
 
 /// Whether `title` can be written as a pie chart title. The title runs to the
@@ -431,7 +418,7 @@ mod tests {
         "pie showData title 割合\n  \"あ\" : 12.5\n  \"い\" : 87.5",
         "pie\n\"one\" : 1",
         "pie title t\n  'single' : 1\n  \"double\" : 2",
-        "pie title 小数\n  \"a\" : .5\n  \"b\" : 1.\n  \"c\" : 0",
+        "pie title 小数\n  \"a\" : 0.5\n  \"b\" : 00.5\n  \"c\" : 0",
         "pie title コメント入り\n  %% 先頭のメモ\n  \"a\" : 1\n  %% 末尾のメモ",
         "---\ntitle: フロントマター\n---\n%%{init: {\"theme\": \"dark\"}}%%\npie title 図\n  accTitle: 概要\n  \"a\" : 1",
     ];
@@ -613,30 +600,34 @@ mod tests {
     /// and the reason has to still hold: if `merman` ever reads the exponent,
     /// the first assertion fails and the value can be opened after all.
     #[test]
-    fn an_exponent_is_refused_because_mermaid_reads_only_its_digits() {
-        let svg = render_to_svg(
-            "pie showData\n  \"a\" : 1e3\n  \"b\" : 1",
-            &MermaidTheme::default(),
-        )
-        .expect("merman should draw the chart");
-        assert!(svg.contains("a [1]"), "{svg}");
-        assert!(!svg.contains("a [1000]"), "{svg}");
-
+    /// `merman` 0.7 drew `1e3` as a slice of 1, which the model refused for
+    /// what it would have shown; 0.8 refuses it, `.5`, `1.` and `007` as
+    /// Mermaid does, and so does the value check the form uses.
+    fn numbers_mermaid_does_not_read_are_refused() {
         for source in [
             "pie\n  \"a\" : 1e3",
             "pie\n  \"a\" : 1.5E+2",
             "pie\n  \"a\" : 2e-1",
+            "pie\n  \"a\" : .5",
+            "pie\n  \"a\" : 1.",
+            "pie\n  \"a\" : 007",
+            "pie\n  \"a\" : 1 each",
         ] {
+            assert!(
+                render_to_svg(source, &MermaidTheme::default()).is_err(),
+                "{source}"
+            );
             let error = parse_pie(source)
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
-            assert!(format!("{error}").contains("指数表記"), "{error}");
+            assert!(format!("{error}").contains("Mermaid の構文"), "{error}");
         }
-        // A word after the number is still refused for what it is.
-        let error = parse_pie("pie\n  \"a\" : 1 each")
-            .err()
-            .expect("a trailing word should be refused");
-        assert!(!format!("{error}").contains("指数表記"), "{error}");
+        for value in ["0", "7", "35.0", "0.5", "00.5"] {
+            assert!(is_valid_pie_value(value), "{value}");
+        }
+        for value in ["", ".5", "1.", "007", "1e3", "-1", "1.2.3"] {
+            assert!(!is_valid_pie_value(value), "{value}");
+        }
     }
 
     #[test]
@@ -659,7 +650,8 @@ mod tests {
     fn values_and_labels_are_validated() {
         assert!(is_valid_pie_value("1"));
         assert!(is_valid_pie_value("35.0"));
-        assert!(is_valid_pie_value(".5"));
+        // Mermaid (and `merman` 0.8) needs a digit before the `.`.
+        assert!(!is_valid_pie_value(".5"));
         assert!(!is_valid_pie_value(""));
         assert!(!is_valid_pie_value("-1"));
         assert!(!is_valid_pie_value("1e3"));

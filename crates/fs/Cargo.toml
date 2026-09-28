@@ -41,7 +41,6 @@ smol.workspace = true
 telemetry.workspace = true
 tempfile.workspace = true
 text.workspace = true
-time.workspace = true
 util.workspace = true
 path.workspace = true
 is_executable = "1.0.5"
@@ -57,8 +56,8 @@ windows.workspace = true
 dunce.workspace = true
 async-std.workspace = true
 
-[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
-ashpd.workspace = true
+[package.metadata.cargo-shear]
+ignored = ["async-std"]
 
 [dev-dependencies]
 fs = { workspace = true, features = ["test-support"] }

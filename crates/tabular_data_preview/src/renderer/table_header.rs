@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     sync::{
         Arc,
@@ -14,7 +15,7 @@ use gpui::{
 use picker::{Picker, PickerDelegate};
 use ui::{
     Color, GradientFade, HighlightedLabel, Icon, IconButton, IconName, IconSize, Label, LabelSize,
-    ListItem, ListItemSpacing, PopoverMenu, Tooltip, prelude::*,
+    ListItem, ListItemSpacing, PopoverMenu, Tooltip, prelude::*, utils::replace_control_characters,
 };
 
 use crate::{
@@ -950,6 +951,13 @@ impl TabularDataPreviewPane {
         } else {
             SharedString::default()
         };
+        // Column names come from the file being previewed, so they may hold
+        // control characters. Show stand-ins for those, but keep the real name
+        // for the cell's value, which is what editing and copying start from.
+        let displayed_header = match replace_control_characters(&header_text) {
+            Cow::Borrowed(_) => header_text.clone(),
+            Cow::Owned(replaced) => SharedString::from(replaced),
+        };
 
         let colors = cx.theme().colors();
         let paint = self.cell_paint(header_cell, is_selected, is_active_cell, cx);
@@ -1042,7 +1050,7 @@ impl TabularDataPreviewPane {
                             .size(LabelSize::XSmall)
                             .color(Color::Muted),
                     )
-                    .child(header_text),
+                    .child(displayed_header),
             )
             .child(
                 GradientFade::new(base_bg, base_bg, base_bg)

@@ -1,19 +1,17 @@
-use gpui::{Action as _, Modifiers, prelude::FluentBuilder as _};
+use gpui::{Action as _, Anchor, Entity, Modifiers};
 use ui::{
-    ActiveTheme as _, AnyElement, Button, ButtonCommon as _, ButtonSize, ButtonStyle, Checkbox,
-    Clickable as _, Color, Context, ContextMenu, Disableable as _, DropdownMenu, ElementId, Icon,
-    IconButton, IconName, IconPosition, IconSize, IntoElement as _, Label, LabelCommon as _,
-    LabelSize, ParentElement as _, Styled as _, ToggleState, Tooltip, Window, div, h_flex,
-    text_for_keystroke,
+    Checkbox, ContextMenu, ContextMenuEntry, DocumentationSide, PopoverMenu, ToggleState, Tooltip,
+    prelude::*, text_for_keystroke,
 };
 
 use crate::{
     ClearCells, DeleteColumns, DeleteRows, InsertColumnLeft, InsertColumnRight, InsertRowAbove,
     InsertRowBelow, OpenAsText, TabularDataPreviewPane, ToggleHeaderRow,
     renderer::table_header::ClearAllFilters,
-    settings::{FilterSortOrder, RowIdentifiers, VerticalAlignment},
+    settings::{FilterSortOrder, TabularDataPreviewSettings, VerticalAlignment},
 };
 
+///// Settings related /////
 impl TabularDataPreviewPane {
     /// The toolbar above the grid.
     pub(crate) fn render_settings_panel(
@@ -77,7 +75,7 @@ impl TabularDataPreviewPane {
             .child(self.render_color_buttons(cx))
             .child(self.render_clear_filters_button())
             .child(self.render_diff_menu(window, cx))
-            .child(self.render_view_menu(window, cx))
+            .child(settings_popover_menu(cx.entity()))
             .child(div().flex_1())
             .child(self.render_grid_status(cx))
             .into_any_element()
@@ -158,137 +156,6 @@ impl TabularDataPreviewPane {
         .into_any_element()
     }
 
-    fn render_view_menu(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let view = cx.entity();
-        #[cfg(feature = "dev-tools")]
-        let dev_tools_view = view.clone();
-        let settings = self.settings.clone();
-        let menu = ContextMenu::build(window, cx, move |menu, _window, _cx| {
-            let menu = menu
-                .header("行番号")
-                .toggleable_entry(
-                    "通し番号",
-                    matches!(settings.numbering_type, RowIdentifiers::RowNum),
-                    IconPosition::Start,
-                    None,
-                    {
-                        let view = view.clone();
-                        move |_window, cx| {
-                            view.update(cx, |this, cx| {
-                                this.settings.numbering_type = RowIdentifiers::RowNum;
-                                this.sync_column_widths(cx);
-                                cx.notify();
-                            });
-                        }
-                    },
-                )
-                .toggleable_entry(
-                    "元の行番号",
-                    matches!(settings.numbering_type, RowIdentifiers::SrcLines),
-                    IconPosition::Start,
-                    None,
-                    {
-                        let view = view.clone();
-                        move |_window, cx| {
-                            view.update(cx, |this, cx| {
-                                this.settings.numbering_type = RowIdentifiers::SrcLines;
-                                this.sync_column_widths(cx);
-                                cx.notify();
-                            });
-                        }
-                    },
-                )
-                .separator()
-                .header("セル内の配置")
-                .toggleable_entry(
-                    "上寄せ",
-                    matches!(settings.vertical_alignment, VerticalAlignment::Top),
-                    IconPosition::Start,
-                    None,
-                    {
-                        let view = view.clone();
-                        move |_window, cx| {
-                            view.update(cx, |this, cx| {
-                                this.settings.vertical_alignment = VerticalAlignment::Top;
-                                cx.notify();
-                            });
-                        }
-                    },
-                )
-                .toggleable_entry(
-                    "中央寄せ",
-                    matches!(settings.vertical_alignment, VerticalAlignment::Center),
-                    IconPosition::Start,
-                    None,
-                    {
-                        let view = view.clone();
-                        move |_window, cx| {
-                            view.update(cx, |this, cx| {
-                                this.settings.vertical_alignment = VerticalAlignment::Center;
-                                cx.notify();
-                            });
-                        }
-                    },
-                )
-                .separator()
-                .toggleable_entry(
-                    "複数行のセルをすべて表示",
-                    settings.multiline_cells_enabled,
-                    IconPosition::Start,
-                    None,
-                    {
-                        let view = view.clone();
-                        move |_window, cx| {
-                            view.update(cx, |this, cx| {
-                                this.settings.multiline_cells_enabled =
-                                    !this.settings.multiline_cells_enabled;
-                                cx.notify();
-                            });
-                        }
-                    },
-                )
-                .separator()
-                .header("絞り込みの並び")
-                .toggleable_entry(
-                    "名前順",
-                    settings.filter_sort_order == FilterSortOrder::AlphaThenCount,
-                    IconPosition::Start,
-                    None,
-                    {
-                        let view = view.clone();
-                        move |_window, cx| {
-                            view.update(cx, |this, cx| {
-                                this.settings.filter_sort_order = FilterSortOrder::AlphaThenCount;
-                                cx.notify();
-                            });
-                        }
-                    },
-                )
-                .toggleable_entry(
-                    "件数順",
-                    settings.filter_sort_order == FilterSortOrder::CountThenAlpha,
-                    IconPosition::Start,
-                    None,
-                    move |_window, cx| {
-                        view.update(cx, |this, cx| {
-                            this.settings.filter_sort_order = FilterSortOrder::CountThenAlpha;
-                            cx.notify();
-                        });
-                    },
-                );
-
-            #[cfg(feature = "dev-tools")]
-            let menu = add_dev_only_entries(menu, &settings, dev_tools_view);
-
-            menu
-        });
-
-        DropdownMenu::new(ElementId::Name("tabular-view-menu".into()), "表示", menu)
-            .trigger_size(ButtonSize::Compact)
-            .trigger_tooltip(Tooltip::text("表の見え方を変えます"))
-            .into_any_element()
-    }
-
     fn render_grid_status(&self, cx: &Context<Self>) -> AnyElement {
         let header_rows = usize::from(self.has_header_row());
         let total_rows = self.engine.contents.rows.len() + header_rows;
@@ -352,74 +219,157 @@ fn toolbar_action_button(
         })
 }
 
-#[cfg(feature = "dev-tools")]
-fn add_dev_only_entries(
+/// Adds a toggleable entry that applies `set` to the pane's settings when clicked. `description`,
+/// when given, shows as a documentation aside explaining what the entry does.
+fn toggle_entry(
     menu: ContextMenu,
-    settings: &crate::settings::TabularDataPreviewSettings,
-    view: gpui::Entity<TabularDataPreviewPane>,
+    label: &'static str,
+    description: Option<&'static str>,
+    selected: bool,
+    view_entity: &Entity<TabularDataPreviewPane>,
+    set: impl Fn(&mut TabularDataPreviewSettings) + 'static,
+) -> ContextMenu {
+    let view_entity = view_entity.clone();
+    let entry = ContextMenuEntry::new(label)
+        .toggleable(IconPosition::Start, selected)
+        .handler(move |_, cx| {
+            view_entity.update(cx, |this, cx| {
+                set(&mut this.settings);
+                cx.notify();
+            });
+        });
+    let entry = if let Some(description) = description {
+        entry.documentation_aside(DocumentationSide::Right, move |_| {
+            Label::new(description).into_any_element()
+        })
+    } else {
+        entry
+    };
+    menu.item(entry)
+}
+
+pub(crate) fn settings_popover_menu(
+    view_entity: Entity<TabularDataPreviewPane>,
+) -> PopoverMenu<ContextMenu> {
+    PopoverMenu::new("table-settings-menu")
+        .trigger_with_tooltip(
+            // Not upstream's filter icon: the grid's toolbar, where this menu sits, already has
+            // a filter-icon button that clears the column filters.
+            IconButton::new("table-settings-trigger", IconName::Settings)
+                .icon_size(IconSize::Small)
+                .size(ButtonSize::Compact),
+            Tooltip::text(i18n::t!("Table Settings")),
+        )
+        .anchor(Anchor::TopRight)
+        .menu(move |window, cx| {
+            let view_entity = view_entity.clone();
+            Some(ContextMenu::build_persistent(
+                window,
+                cx,
+                move |menu, _window, cx| {
+                    let settings = view_entity.read(cx).settings.clone();
+
+                    let menu = toggle_entry(
+                        menu.header(i18n::t!("Text Alignment")),
+                        i18n::t!("Top"),
+                        Some(i18n::t!("Choose vertical text alignment within cells")),
+                        matches!(settings.vertical_alignment, VerticalAlignment::Top),
+                        &view_entity,
+                        |settings| settings.vertical_alignment = VerticalAlignment::Top,
+                    );
+                    let menu = toggle_entry(
+                        menu,
+                        i18n::t!("Center"),
+                        None,
+                        matches!(settings.vertical_alignment, VerticalAlignment::Center),
+                        &view_entity,
+                        |settings| settings.vertical_alignment = VerticalAlignment::Center,
+                    );
+
+                    let menu = menu.separator().header(i18n::t!("Filter Sort"));
+                    let menu = toggle_entry(
+                        menu,
+                        i18n::t!("A-Z, then Count"),
+                        Some(i18n::t!("Choose how filter values are sorted in the filter menu")),
+                        settings.filter_sort_order == FilterSortOrder::AlphaThenCount,
+                        &view_entity,
+                        |settings| settings.filter_sort_order = FilterSortOrder::AlphaThenCount,
+                    );
+                    let menu = toggle_entry(
+                        menu,
+                        i18n::t!("Count, then A-Z"),
+                        None,
+                        settings.filter_sort_order == FilterSortOrder::CountThenAlpha,
+                        &view_entity,
+                        |settings| settings.filter_sort_order = FilterSortOrder::CountThenAlpha,
+                    );
+
+                    let menu = toggle_entry(
+                        menu.separator(),
+                        i18n::t!("Display multiline rows"),
+                        Some(
+                            i18n::t!("When enabled, row height grows to show all content. \
+                             When disabled, only the first line is visible — hover a cell to see the rest."),
+                        ),
+                        settings.multiline_cells_enabled,
+                        &view_entity,
+                        |settings| settings.multiline_cells_enabled = !settings.multiline_cells_enabled,
+                    );
+
+                    #[cfg(feature = "dev-tools")]
+                    let menu = append_dev_only_entries(menu, &view_entity, &settings);
+
+                    menu
+                },
+            ))
+        })
+}
+
+#[cfg(feature = "dev-tools")]
+fn append_dev_only_entries(
+    menu: ContextMenu,
+    view_entity: &Entity<TabularDataPreviewPane>,
+    settings: &TabularDataPreviewSettings,
 ) -> ContextMenu {
     use crate::settings::RowRenderMechanism;
 
-    menu.separator()
-        .header("開発用")
-        .toggleable_entry(
-            "可変行高で描画",
-            settings.rendering_with == RowRenderMechanism::VariableList,
-            IconPosition::Start,
-            None,
-            {
-                let view = view.clone();
-                move |_window, cx| {
-                    view.update(cx, |this, cx| {
-                        this.settings.rendering_with = RowRenderMechanism::VariableList;
-                        cx.notify();
-                    });
-                }
-            },
-        )
-        .toggleable_entry(
-            "均一行高で描画",
-            settings.rendering_with == RowRenderMechanism::UniformList,
-            IconPosition::Start,
-            None,
-            {
-                let view = view.clone();
-                move |_window, cx| {
-                    view.update(cx, |this, cx| {
-                        this.settings.rendering_with = RowRenderMechanism::UniformList;
-                        cx.notify();
-                    });
-                }
-            },
-        )
-        .toggleable_entry(
-            "性能指標を表示",
-            settings.show_perf_metrics_overlay,
-            IconPosition::Start,
-            None,
-            {
-                let view = view.clone();
-                move |_window, cx| {
-                    view.update(cx, |this, cx| {
-                        this.settings.show_perf_metrics_overlay =
-                            !this.settings.show_perf_metrics_overlay;
-                        cx.notify();
-                    });
-                }
-            },
-        )
-        .toggleable_entry(
-            "セルの位置を表示",
-            settings.show_debug_info,
-            IconPosition::Start,
-            None,
-            {
-                move |_window, cx| {
-                    view.update(cx, |this, cx| {
-                        this.settings.show_debug_info = !this.settings.show_debug_info;
-                        cx.notify();
-                    });
-                }
-            },
-        )
+    let menu = menu
+        .separator()
+        .header(i18n::t!("Dev-only: Rendering Mode"));
+    let menu = toggle_entry(
+        menu,
+        i18n::t!("Variable Height"),
+        Some(i18n::t!(
+            "Dev-only section used for debugging purposes.\n\
+             Will be removed on public release of the tabular data preview feature"
+        )),
+        settings.rendering_with == RowRenderMechanism::VariableList,
+        view_entity,
+        |settings| settings.rendering_with = RowRenderMechanism::VariableList,
+    );
+    let menu = toggle_entry(
+        menu,
+        i18n::t!("Uniform Height"),
+        None,
+        settings.rendering_with == RowRenderMechanism::UniformList,
+        view_entity,
+        |settings| settings.rendering_with = RowRenderMechanism::UniformList,
+    );
+
+    let menu = toggle_entry(
+        menu.separator(),
+        i18n::t!("Show perf metrics"),
+        None,
+        settings.show_perf_metrics_overlay,
+        view_entity,
+        |settings| settings.show_perf_metrics_overlay = !settings.show_perf_metrics_overlay,
+    );
+    toggle_entry(
+        menu,
+        i18n::t!("Show cell positions"),
+        None,
+        settings.show_debug_info,
+        view_entity,
+        |settings| settings.show_debug_info = !settings.show_debug_info,
+    )
 }

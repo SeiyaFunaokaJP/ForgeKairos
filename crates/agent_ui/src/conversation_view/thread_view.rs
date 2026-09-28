@@ -2040,11 +2040,9 @@ impl ThreadView {
                         .into()
                     }),
                 ),
-                ThreadError::RequestFailed => (
-                    "request_failed",
-                    None,
-                    "Request could not be completed after multiple attempts.".into(),
-                ),
+                ThreadError::ProviderRejection { message } => {
+                    ("provider_rejection", None, message.clone())
+                }
                 ThreadError::MaxOutputTokens => (
                     "max_output_tokens",
                     None,
@@ -11499,11 +11497,9 @@ impl ThreadView {
 
                 self.render_error_callout("権限がありません", message, false, false, cx)
             }
-            ThreadError::RequestFailed => self.render_error_callout(
-                "リクエストに失敗しました",
-                "複数回試行しましたがリクエストを完了できませんでした。\
-                しばらくしてからやり直してください。"
-                    .into(),
+            ThreadError::ProviderRejection { message } => self.render_error_callout(
+                i18n::t!("Request Failed"),
+                message.clone(),
                 true,
                 false,
                 cx,

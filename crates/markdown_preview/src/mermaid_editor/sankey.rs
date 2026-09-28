@@ -21,7 +21,8 @@ use super::{
     row_controls, section_title,
 };
 
-const NEW_NODE_NAME: &str = "新しいノード";
+// Mermaid reads no name outside ASCII in a Sankey diagram.
+const NEW_NODE_NAME: &str = "NewNode";
 const NEW_FLOW_VALUE: &str = "10";
 
 pub(super) struct SankeyForm {

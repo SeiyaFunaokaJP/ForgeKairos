@@ -8,6 +8,7 @@ use crate::{
 };
 use editor::Editor;
 use gpui::{App, AppContext, Context, Entity, Subscription, Task};
+use std::path::Path;
 use std::time::{Duration, Instant};
 use text::BufferSnapshot;
 use ui::{SharedString, table_row::TableRow};
@@ -40,11 +41,14 @@ const TABULAR_FORMATS: &[(&str, TabularFormat)] = &[
 ];
 
 impl TabularFormat {
+    pub(crate) fn from_editor(editor: &Entity<Editor>, cx: &App) -> Option<Self> {
+        Self::from_extension(editor_file_extension(editor, cx)?)
+    }
+
     pub(crate) fn from_extension(ext: &str) -> Option<Self> {
-        let lower = ext.to_lowercase();
         TABULAR_FORMATS
             .iter()
-            .find(|(name, _)| *name == lower)
+            .find(|(name, _)| name.eq_ignore_ascii_case(ext))
             .map(|(_, format)| *format)
     }
 
@@ -58,27 +62,23 @@ impl TabularFormat {
     }
 }
 
+pub(crate) fn editor_file_extension<'a>(editor: &Entity<Editor>, cx: &'a App) -> Option<&'a str> {
+    let buffer = editor.read(cx).buffer().read(cx).as_singleton()?;
+    let file = buffer.read(cx).file()?;
+    Path::new(file.file_name(cx)).extension()?.to_str()
+}
+
 impl TabularDataPreviewPane {
     /// Delimiter of the previewed file, derived from its extension.
     pub(crate) fn current_delimiter(&self, cx: &App) -> char {
-        let extension = self
-            .active_editor_state
-            .editor
-            .read(cx)
-            .buffer()
-            .read(cx)
-            .as_singleton()
-            .and_then(|buffer| buffer.read(cx).file())
-            .and_then(|file| file.path().extension().map(ToOwned::to_owned));
+        let extension = editor_file_extension(&self.active_editor_state.editor, cx);
 
         extension
-            .as_deref()
             .and_then(TabularFormat::from_extension)
             .map(TabularFormat::delimiter)
             .unwrap_or_else(|| {
                 log::warn!(
-                    "unrecognized tabular data extension {:?}, defaulting to comma delimiter",
-                    extension
+                    "unrecognized tabular data extension {extension:?}, defaulting to comma delimiter"
                 );
                 ','
             })

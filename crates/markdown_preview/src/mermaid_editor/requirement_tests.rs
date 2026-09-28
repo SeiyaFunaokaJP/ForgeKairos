@@ -162,19 +162,19 @@ async fn fields_menus_and_renames_are_written_back(cx: &mut TestAppContext) {
             requirementDiagram
                 %% requirement は要求、element は満たす側。- satisfies -> で結ぶ
                 direction LR
-                functionalRequirement ログイン {
+                functionalRequirement \"ログイン\" {
                     id: 1
                     text: \"#1 ログインできること\"
                     risk: medium
                 }
-                requirement 要求 {
+                requirement \"要求\" {
                 }
-                element ログイン画面 {
+                element \"ログイン画面\" {
                     type: \"画面\"
                     docref: docs/login.md
                 }
-                ログイン画面 - satisfies -> ログイン
-                ログイン画面 - verifies -> 要求
+                \"ログイン画面\" - satisfies -> \"ログイン\"
+                \"ログイン画面\" - verifies -> \"要求\"
             ```
         "},
     );

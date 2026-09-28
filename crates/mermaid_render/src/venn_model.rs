@@ -362,7 +362,7 @@ fn merman_venn(source: &str) -> Result<merman::diagrams::venn::VennDiagramRender
             )
         })?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-    let RenderSemanticModel::Venn(model) = parsed.model else {
+    let RenderSemanticModel::Venn(model) = parsed.into_parts().1 else {
         bail!("この図はベン図ではありません。");
     };
     Ok(model)

@@ -783,34 +783,12 @@ fn directive_problem(source: &str) -> Option<String> {
     None
 }
 
-/// Whether `merman` cuts the directives out of `text` at all: it does so only
-/// when it finds at least one closed `%%{ … }%%` that opens with a word.
-/// Otherwise every `%%{` is left where it is, for the diagram's own parser to
-/// read as the comment that `%%` starts.
+/// Whether `merman` cuts the directives out of `text` at all. 0.7 did so only
+/// when it found a closed `%%{ … }%%` that opened with a word; 0.8 cuts every
+/// `%%{`, and one that never closes runs to the end of the text, as the
+/// optional closing marker of Mermaid's own directive pattern makes it do.
 fn removes_directives(text: &str) -> bool {
-    let mut position = 0;
-    while let Some(relative) = text
-        .get(position..)
-        .and_then(|rest| rest.find(DIRECTIVE_START))
-    {
-        let inner_start = position + relative + DIRECTIVE_START.len();
-        let Some(length) = text
-            .get(inner_start..)
-            .and_then(|rest| rest.find(DIRECTIVE_END))
-        else {
-            return false;
-        };
-        let opens_with_a_word = text
-            .get(inner_start..inner_start + length)
-            .unwrap_or_default()
-            .trim_start()
-            .starts_with(|character: char| character.is_ascii_alphanumeric() || character == '_');
-        if opens_with_a_word {
-            return true;
-        }
-        position = inner_start + length + DIRECTIVE_END.len();
-    }
-    false
+    text.contains(DIRECTIVE_START)
 }
 
 /// What `merman` reads after it has taken the frontmatter off: only a `---`
@@ -1078,6 +1056,13 @@ title: 図
 ---
 flowchart TD
   %%{init: {}}%% A --> B",
+            // `merman` 0.7 cut nothing without a closed directive that opens
+            // with a word; 0.8 cuts every `%%{`, and an unclosed one to the end.
+            "flowchart TD
+  %% メモ %%{
+  A --> B",
+            "flowchart TD
+  %%{ }%% A --> B",
         ] {
             assert!(directive_problem(source).is_some(), "{source}");
         }
@@ -1100,12 +1085,9 @@ flowchart TD
   %%{init: {}}%%
   A --> B
   %% 最後 %%{",
-            // No closed directive that opens with a word: `merman` cuts nothing.
             "flowchart TD
-  %% メモ %%{
-  A --> B",
-            "flowchart TD
-  %%{ }%% A --> B",
+  A --> B
+  %% 最後 %%{",
             "flowchart TD
   A[\"100%\"] --> B",
             // A directive in the frontmatter is YAML, not a directive.
@@ -1235,6 +1217,10 @@ pub(crate) mod preprocessing_cases {
             format!("{keyword_line} %%{{init: {{}}}}%%{setup}\n    {statement}"),
             format!("%%{{init: {{}}}}%%\n{header}\n    %% メモ %%{{\n    {statement}"),
             format!("{header}\n    %% メモ %%{{init:\n    {{}}}}%% {statement}"),
+            // `merman` 0.7 cut nothing without a closed directive, and the
+            // `%%` made the line a comment; 0.8 cuts from the `%%{` to the end
+            // of the text, as Mermaid does, so the statement below is lost.
+            format!("{header}\n    %% 閉じない %%{{\n    {statement}"),
         ];
         for source in refused {
             let error = match parse_document(&source) {
@@ -1250,9 +1236,9 @@ pub(crate) mod preprocessing_cases {
             format!(
                 "{header}\n    %%{{init: {{}}}}%%\n    %% メモ %%{{init: {{}}}}%%\n    {statement}"
             ),
-            // Without a directive `merman` cuts nothing, and the `%%` makes the
-            // line a comment.
-            format!("{header}\n    %% 閉じない %%{{\n    {statement}"),
+            // A `%%{` that never closes cuts only what follows it, which is
+            // nothing but comments here.
+            format!("{header}\n    {statement}\n    %% 閉じない %%{{\n    %% メモ"),
         ];
         for source in opened {
             let document = parse_document(&source)

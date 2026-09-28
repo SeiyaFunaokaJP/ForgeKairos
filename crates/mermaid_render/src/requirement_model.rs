@@ -773,7 +773,7 @@ fn merman_model(source: &str) -> Result<RequirementDiagramRenderModel> {
             )
         })?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-    let RenderSemanticModel::Requirement(model) = parsed.model else {
+    let RenderSemanticModel::Requirement(model) = parsed.into_parts().1 else {
         bail!("この図は要求図ではありません。");
     };
     Ok(model)
@@ -1313,12 +1313,16 @@ fn value_token(value: &RequirementValue) -> String {
     }
 }
 
-/// A name is quoted when it holds a space — `style` and `class` lists end a
-/// bare name there — or when it starts like `style` or `class`, which would
-/// turn a relationship written from it into a styling statement.
+/// A name is quoted when it holds anything but ASCII letters, digits and `_`
+/// — Mermaid's lexer refuses a bare Japanese name, and `style` and `class`
+/// lists end a bare name at a space — or when it starts like `style` or
+/// `class`, which would turn a relationship written from it into a styling
+/// statement.
 fn name_token(name: &str) -> String {
     let lowered = name.to_ascii_lowercase();
-    if name.contains(char::is_whitespace)
+    if !name
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '_')
         || lowered.starts_with("style")
         || lowered.starts_with("class")
     {
@@ -1583,6 +1587,19 @@ mod tests {
         );
     }
 
+    /// `merman` reads a bare Japanese name; Mermaid's lexer does not, so a
+    /// name that is not ASCII letters, digits and `_` is written quoted.
+    #[test]
+    fn a_name_mermaid_does_not_read_bare_is_quoted() {
+        let emitted = assert_stable(
+            "requirementDiagram\n    requirement 要求 {\n    }\n    element login_page {\n    }\n    login_page - satisfies -> 要求",
+        );
+        assert_eq!(
+            emitted,
+            "requirementDiagram\n    requirement \"要求\" {\n    }\n    element login_page {\n    }\n    login_page - satisfies -> \"要求\""
+        );
+    }
+
     #[test]
     fn what_would_be_drawn_differently_is_refused() {
         // A trailing comment is gone from merman's model, and `#` starts one
@@ -1633,7 +1650,13 @@ mod tests {
             "requirementDiagram\n    element a-b {\n    }",
             "名前に使えません",
         );
-        assert_refused("requirementDiagram\n    element \"a\" b {\n    }", "無視");
+        // `merman` 0.7 dropped the word after a quoted name, which the model
+        // refused for what it would have lost; 0.8 refuses the line itself, as
+        // Mermaid does.
+        assert_refused(
+            "requirementDiagram\n    element \"a\" b {\n    }",
+            "Mermaid の構文",
+        );
         // Two classes applied at a block's definition, defined in the other
         // order before it: moving the block ahead of both changes which style
         // wins.

@@ -1,5 +1,5 @@
 # Every numbered field and enum value in upstream's crates/proto/proto at
-# v1.17.2 (c8e44cf), as `scope name number`. Written by `regenerate_upstream_numbers`
+# v1.18.1 (bebe92f), as `scope name number`. Written by `regenerate_upstream_numbers`
 # in jp_enhance_numbering.rs; do not edit by hand.
 AckBufferOperation buffer_id 1
 AckBufferOperation epoch 2

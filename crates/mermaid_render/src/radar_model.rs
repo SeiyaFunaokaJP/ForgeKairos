@@ -192,6 +192,13 @@ impl RadarDocument {
                     ));
                 }
             }
+            // `merman` 0.8 refuses `curve x{}`, as Mermaid does.
+            if curve.values.iter().all(String::is_empty) {
+                return Some(format!(
+                    "系列 `{}` に値がありません。値を 1 つ以上書いてください (Mermaid は空の系列を受け付けません)。",
+                    curve.id
+                ));
+            }
             for (position, value) in curve.values.iter().enumerate() {
                 if value.is_empty() {
                     return Some(format!(
@@ -268,7 +275,7 @@ pub fn parse_radar(source: &str) -> Result<RadarDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::Radar(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::Radar(_)) {
             bail!("この図はレーダーチャートではありません。");
         }
     }
@@ -993,7 +1000,7 @@ mod tests {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .ok()??;
-        match parsed.model {
+        match parsed.into_parts().1 {
             RenderSemanticModel::Radar(model) => Some(model),
             _ => None,
         }
@@ -1236,16 +1243,26 @@ mod tests {
 
     #[test]
     fn a_value_count_that_differs_from_the_axes_is_kept() {
-        let source =
-            "radar-beta\n  axis a, b, c\n  curve x{1}\n  curve y{1, 2, 3, 4}\n  curve z{\n  }";
+        let source = "radar-beta\n  axis a, b, c\n  curve x{1}\n  curve y{1, 2, 3, 4}";
         let document = parse(source);
         assert_eq!(document.structure_error(), None);
         let emitted = assert_stable(source);
         assert_eq!(
             emitted,
-            "radar-beta\n    axis a, b, c\n    curve x{1}\n    curve y{1, 2, 3, 4}\n    curve z{}"
+            "radar-beta\n    axis a, b, c\n    curve x{1}\n    curve y{1, 2, 3, 4}"
         );
         assert_matches_merman(&emitted, &document);
+
+        // `merman` 0.7 read a curve with no value at all; 0.8 refuses it, as
+        // Mermaid does, so the form reports one before writing it.
+        let empty = "radar-beta\n  axis a, b, c\n  curve z{\n  }";
+        assert!(parse_radar(empty).is_err());
+        let mut document = parse(source);
+        if let Some(curve) = document.curves.get_mut(0) {
+            curve.values = vec![String::new(); 3];
+        }
+        let error = document.structure_error().expect("a curve without values");
+        assert!(error.contains("値がありません"), "{error}");
     }
 
     #[test]
@@ -1284,12 +1301,18 @@ mod tests {
             "radar-beta\n  axis a, b\n  curve x{a: 1}",
             "radar-beta\n  showLegend yes",
             "radar-beta\n  curve x{-1}",
-            // `merman` reads an option line as one option before it tries a
-            // list, so a list of options never reaches the list reader.
-            "radar-beta\n  ticks 3, max 8",
         ] {
             assert!(parse_radar(source).is_err(), "{source}");
         }
+        // `merman` 0.7 read an option line as one option and refused a list of
+        // them; 0.8 reads the list as Mermaid does, and the model writes each
+        // option on a line of its own.
+        let source = "radar-beta\n  ticks 3, max 8\n  axis a, b, c\n  curve x{1, 2, 3}";
+        let document = parse(source);
+        assert_eq!(document.options.ticks.as_deref(), Some("3"));
+        assert_eq!(document.options.max.as_deref(), Some("8"));
+        let emitted = assert_stable(source);
+        assert_matches_merman(&emitted, &document);
     }
 
     #[test]

@@ -489,7 +489,7 @@ fn check_against_merman(source: &str, document: &KanbanDocument) -> Result<()> {
             )
         })?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-    let RenderSemanticModel::Kanban(model) = parsed.model else {
+    let RenderSemanticModel::Kanban(model) = parsed.into_parts().1 else {
         bail!("この図はかんばんではありません。");
     };
 
@@ -1848,7 +1848,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap_or_else(|error| panic!("merman should read {source}: {error}"))
             .expect("a diagram");
-        format!("{:?}", parsed.model)
+        format!("{:?}", parsed.model())
     }
 
     /// Every example `merman`'s own tests draw either opens and survives a

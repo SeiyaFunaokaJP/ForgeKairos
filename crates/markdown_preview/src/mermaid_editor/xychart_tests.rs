@@ -52,7 +52,7 @@ async fn open_on(
     (cx, modal, app_state)
 }
 
-const TEMPLATE_FENCE: &str = "```mermaid\nxychart-betaˇ\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title 月別の売上\n    x-axis [\"1月\", \"2月\", \"3月\", \"4月\"]\n    y-axis \"売上 (万円)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]\n```\n";
+const TEMPLATE_FENCE: &str = "```mermaid\nxychart-betaˇ\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title \"月別の売上\"\n    x-axis [\"1月\", \"2月\", \"3月\", \"4月\"]\n    y-axis \"売上 (万円)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]\n```\n";
 
 fn cell(modal: &MermaidEditor, row: usize, column: usize) -> Entity<Editor> {
     modal
@@ -130,7 +130,7 @@ async fn categories_and_series_move_their_values_together(cx: &mut TestAppContex
 
     assert_eq!(
         fence_text(&mut cx),
-        "```mermaid\nxychart-beta horizontal\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title 月別の売上\n    x-axis [\"一月\", \"3月\", \"4月\", \"項目5\"]\n    y-axis \"売上 (万円)\" 0 --> 100\n    line [30, 60, 80, 95]\n    bar [30, 60, 80, 90]\n    bar [0, 0, 0, 0]\n```\n"
+        "```mermaid\nxychart-beta horizontal\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title \"月別の売上\"\n    x-axis [\"一月\", \"3月\", \"4月\", \"項目5\"]\n    y-axis \"売上 (万円)\" 0 --> 100\n    line [30, 60, 80, 95]\n    bar [30, 60, 80, 90]\n    bar [0, 0, 0, 0]\n```\n"
     );
 }
 
@@ -149,7 +149,7 @@ async fn switching_the_x_axis_to_a_range_keeps_the_values(cx: &mut TestAppContex
 
     assert_eq!(
         fence_text(&mut cx),
-        "```mermaid\nxychart-beta\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title 月別の売上\n    x-axis 1 --> 4\n    y-axis \"売上 (万円)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]\n```\n"
+        "```mermaid\nxychart-beta\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title \"月別の売上\"\n    x-axis 1 --> 4\n    y-axis \"売上 (万円)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]\n```\n"
     );
 }
 

@@ -40,7 +40,19 @@ impl project::ProjectItem for TabularBuffer {
         cx: &mut App,
     ) -> Option<Task<Result<Entity<Self>>>> {
         // Called for every file the user opens, so bail out before touching the project.
-        TabularFormat::from_extension(path.path.extension()?)?;
+        match path.path.extension() {
+            Some(extension) => TabularFormat::from_extension(extension)?,
+            // A file opened on its own is a worktree whose root is the file, so the path
+            // within it is empty and the name to read the extension from is the worktree's.
+            None if path.path.is_empty() => {
+                let worktree = project.read(cx).worktree_for_id(path.worktree_id, cx)?;
+                let extension = Path::new(worktree.read(cx).root_name_str())
+                    .extension()?
+                    .to_str()?;
+                TabularFormat::from_extension(extension)?
+            }
+            None => return None,
+        };
         if !TabularDataSettings::get_global(cx).open_as_grid {
             return None;
         }
@@ -859,6 +871,40 @@ mod tests {
 
         let text = open_file(&workspace, worktree_id, "notes.txt", cx).await;
         assert_eq!(text.to_any_view().entity_type(), TypeId::of::<Editor>());
+    }
+
+    /// A file opened on its own is a worktree whose root is the file, so its path within
+    /// the worktree is empty and the extension has to come from the worktree's name.
+    #[gpui::test]
+    async fn a_tabular_file_opened_on_its_own_opens_as_a_grid(cx: &mut TestAppContext) {
+        let app_state = init_test(cx);
+        app_state
+            .fs
+            .as_fake()
+            .insert_tree(
+                path!("/elsewhere"),
+                json!({ "alone.CSV": "name,count\nalpha,1\n", "alone.txt": "plain\n" }),
+            )
+            .await;
+
+        for (file, expected) in [
+            (
+                path!("/elsewhere/alone.CSV"),
+                TypeId::of::<TabularDataPreviewPane>(),
+            ),
+            (path!("/elsewhere/alone.txt"), TypeId::of::<Editor>()),
+        ] {
+            let project = Project::test(app_state.fs.clone(), [file.as_ref()], cx).await;
+            let worktree_id = project.update(cx, |project, cx| {
+                let worktree = project.worktrees(cx).next().unwrap();
+                assert!(worktree.read(cx).is_single_file(), "{file}");
+                worktree.read(cx).id()
+            });
+            let (workspace, cx) =
+                cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
+            let item = open_file(&workspace, worktree_id, "", cx).await;
+            assert_eq!(item.to_any_view().entity_type(), expected, "{file}");
+        }
     }
 
     #[gpui::test]

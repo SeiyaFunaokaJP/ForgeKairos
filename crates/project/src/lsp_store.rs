@@ -159,7 +159,7 @@ use util::{
     paths::{PathStyle, SanitizedPath, UrlExt},
     post_inc,
     redact::redact_command,
-    rel_path::RelPath,
+    rel_path::{RelPath, RelPathBuf},
     union_json_value_into,
 };
 
@@ -2263,7 +2263,7 @@ impl LocalLspStore {
                                 .map(|(adapter, lsp)| (adapter.clone(), lsp.clone()))
                                 .collect::<Vec<_>>()
                         };
-                    let settings = LanguageSettings::for_buffer(buffer, cx).into_owned();
+                    let settings = LanguageSettings::for_buffer(buffer, cx);
                     let request_timeout = ProjectSettings::get_global(cx)
                         .global_lsp_settings
                         .get_request_timeout();
@@ -3192,9 +3192,20 @@ impl LocalLspStore {
                 anyhow::Ok(())
             })??;
 
-            let mut edits = None;
+            let mut edits = None::<Vec<lsp::TextEdit>>;
             for range in lsp_ranges {
-                if let Some(mut edit) = language_server
+                if edits.as_ref().is_some_and(|edits| {
+                    edits
+                        .iter()
+                        .any(|kept| kept.range.start <= range.start && range.end <= kept.range.end)
+                }) {
+                    log::debug!(
+                        "language server {}: skipping range formatting request for {range:?}: an earlier response already covers it",
+                        language_server.name()
+                    );
+                    continue;
+                }
+                if let Some(range_edits) = language_server
                     .request::<lsp::request::RangeFormatting>(
                         lsp::DocumentRangeFormattingParams {
                             text_document: text_document.clone(),
@@ -3207,7 +3218,50 @@ impl LocalLspStore {
                     .await
                     .into_response()?
                 {
-                    edits.get_or_insert_with(Vec::new).append(&mut edit);
+                    let kept_edits = edits.get_or_insert_with(Vec::new);
+                    let mut new_edits = Vec::new();
+                    let mut overlaps_earlier_response = false;
+                    for edit in range_edits {
+                        let is_duplicate = kept_edits
+                            .iter()
+                            .any(|kept| kept.range == edit.range && kept.new_text == edit.new_text);
+                        if is_duplicate {
+                            continue;
+                        }
+                        if kept_edits
+                            .iter()
+                            .any(|kept| lsp_ranges_conflict(&edit.range, &kept.range))
+                        {
+                            overlaps_earlier_response = true;
+                            break;
+                        }
+                        new_edits.push(edit);
+                    }
+                    if overlaps_earlier_response {
+                        log::debug!(
+                            "language server {} returned range formatting edits for {range:?} that overlap an earlier response and differ; dropping the whole response",
+                            language_server.name()
+                        );
+                        continue;
+                    }
+                    let response_start = kept_edits.len();
+                    let mut dropped_within_response = 0_usize;
+                    for edit in new_edits {
+                        if kept_edits[response_start..]
+                            .iter()
+                            .any(|kept| lsp_ranges_overlap(&edit.range, &kept.range))
+                        {
+                            dropped_within_response += 1;
+                            continue;
+                        }
+                        kept_edits.push(edit);
+                    }
+                    if dropped_within_response > 0 {
+                        log::debug!(
+                            "language server {} returned overlapping edits within one range formatting response for {range:?}; dropped {dropped_within_response} later edit(s)",
+                            language_server.name()
+                        );
+                    }
                 }
             }
             edits
@@ -4453,7 +4507,7 @@ impl LocalLspStore {
                 })
                 .collect::<Vec<_>>();
 
-            lsp_edits.sort_unstable_by_key(|(range, _)| (range.start, range.end));
+            lsp_edits.sort_by_key(|(range, _)| (range.start, range.end));
 
             let mut lsp_edits = lsp_edits.into_iter().peekable();
             let mut edits = Vec::new();
@@ -6373,7 +6427,38 @@ impl LspStore {
                 self.on_buffer_reloaded(buffer, cx);
             }
 
+            language::BufferEvent::SettingsChanged => {
+                self.on_buffer_settings_changed(&buffer, cx);
+            }
+
             _ => {}
+        }
+    }
+
+    fn on_buffer_settings_changed(&mut self, buffer: &Entity<Buffer>, cx: &mut Context<Self>) {
+        let Some(prettier_store) = self.as_local().map(|s| s.prettier_store.clone()) else {
+            return;
+        };
+        let buffer = buffer.read(cx);
+        if buffer.language().is_none() {
+            return;
+        }
+        let settings = LanguageSettings::for_buffer(buffer, cx);
+        if settings.prettier.allowed
+            && let Some(prettier_plugins) = prettier_store::prettier_plugins_for_language(&settings)
+        {
+            let worktree_id = File::from_dyn(buffer.file()).map(|file| file.worktree_id(cx));
+            let prettier_plugins = prettier_plugins
+                .iter()
+                .map(|plugin| Arc::from(plugin.as_str()))
+                .collect::<Vec<_>>();
+            prettier_store.update(cx, |prettier_store, cx| {
+                prettier_store.install_default_prettier(
+                    worktree_id,
+                    prettier_plugins.into_iter(),
+                    cx,
+                )
+            })
         }
     }
 
@@ -6752,7 +6837,7 @@ impl LspStore {
 
         log::debug!("Parsed modeline settings: {:?}", modeline_settings);
 
-        buffer_handle.update(cx, |buffer, _cx| buffer.set_modeline(modeline_settings))
+        buffer_handle.update(cx, |buffer, cx| buffer.set_modeline(modeline_settings, cx))
     }
 
     fn detect_language_for_buffer(
@@ -6823,8 +6908,7 @@ impl LspStore {
             Some(&buffer_entity.read(cx)),
             Some(&new_language.name()),
             cx,
-        )
-        .into_owned();
+        );
         let buffer_file = File::from_dyn(buffer_file.as_ref());
 
         let worktree_id = if let Some(file) = buffer_file {
@@ -7199,26 +7283,7 @@ impl LspStore {
     }
 
     fn on_settings_changed(&mut self, cx: &mut Context<Self>) {
-        let mut language_formatters_to_check = Vec::new();
-        for buffer in self.buffer_store.read(cx).buffers() {
-            let buffer = buffer.read(cx);
-            let settings = LanguageSettings::for_buffer(buffer, cx);
-            if buffer.language().is_some() {
-                let buffer_file = File::from_dyn(buffer.file());
-                language_formatters_to_check.push((
-                    buffer_file.map(|f| f.worktree_id(cx)),
-                    settings.into_owned(),
-                ));
-            }
-        }
-
         self.request_workspace_config_refresh();
-
-        if let Some(prettier_store) = self.as_local().map(|s| s.prettier_store.clone()) {
-            prettier_store.update(cx, |prettier_store, cx| {
-                prettier_store.on_settings_changed(language_formatters_to_check, cx)
-            })
-        }
 
         let new_semantic_token_rules = crate::project_settings::ProjectSettings::get_global(cx)
             .global_lsp_settings
@@ -10967,11 +11032,16 @@ impl LspStore {
                 } else {
                     (Arc::<Path>::from(abs_path.as_path()), None)
                 };
-            let worktree = lsp_store.update(cx, |lsp_store, cx| {
-                lsp_store.worktree_store.update(cx, |worktree_store, cx| {
-                    worktree_store.find_worktree(&worktree_root_target, cx)
-                })
-            })?;
+            let worktree = if known_relative_path.is_some() {
+                lsp_store.read_with(cx, |lsp_store, cx| {
+                    lsp_store
+                        .worktree_store
+                        .read(cx)
+                        .find_worktree(&worktree_root_target, cx)
+                })?
+            } else {
+                find_worktree_for_lsp_path(&lsp_store, &abs_path, cx).await?
+            };
             let (worktree, relative_path, source_ws) = if let Some(result) = worktree {
                 let relative_path = known_relative_path.unwrap_or_else(|| result.1.clone());
                 (result.0, relative_path, None)
@@ -15612,6 +15682,113 @@ fn server_capabilities_support_range_formatting(capabilities: &lsp::ServerCapabi
         capabilities.document_range_formatting_provider.as_ref(),
         Some(provider) if *provider != OneOf::Left(false)
     )
+}
+
+fn lsp_ranges_conflict(a: &lsp::Range, b: &lsp::Range) -> bool {
+    if a.start == a.end || b.start == b.end {
+        a.start <= b.end && b.start <= a.end
+    } else {
+        lsp_ranges_overlap(a, b)
+    }
+}
+
+fn lsp_ranges_overlap(a: &lsp::Range, b: &lsp::Range) -> bool {
+    a.start < b.end && b.start < a.end
+}
+
+async fn find_worktree_for_lsp_path(
+    lsp_store: &WeakEntity<LspStore>,
+    abs_path: &Path,
+    cx: &mut AsyncApp,
+) -> Result<Option<(Entity<Worktree>, Arc<RelPath>)>> {
+    let (fs, worktree) = lsp_store.read_with(cx, |lsp_store, cx| {
+        (
+            lsp_store.as_local().map(|local| local.fs.clone()),
+            lsp_store
+                .worktree_store
+                .read(cx)
+                .find_worktree(abs_path, cx),
+        )
+    })?;
+    match worktree {
+        Some((worktree, relative_path)) => {
+            let relative_path =
+                normalize_lsp_relative_path(&worktree, abs_path, relative_path, cx).await?;
+            Ok(Some((worktree, relative_path)))
+        }
+        None => {
+            let Some(fs) = fs else {
+                return Ok(None);
+            };
+            let Ok(canonical_path) = fs.canonicalize(abs_path).await else {
+                return Ok(None);
+            };
+            lsp_store.read_with(cx, |lsp_store, cx| {
+                lsp_store
+                    .worktree_store
+                    .read(cx)
+                    .find_worktree(&canonical_path, cx)
+            })
+        }
+    }
+}
+
+async fn normalize_lsp_relative_path(
+    worktree: &Entity<Worktree>,
+    abs_path: &Path,
+    relative_path: Arc<RelPath>,
+    cx: &mut AsyncApp,
+) -> Result<Arc<RelPath>> {
+    let Some((fs, snapshot, worktree_root)) = worktree.read_with(cx, |worktree, _| {
+        let local_worktree = worktree.as_local()?;
+        if local_worktree.fs_is_case_sensitive() {
+            return None;
+        }
+        Some((
+            local_worktree.fs().clone(),
+            worktree.snapshot(),
+            worktree.abs_path(),
+        ))
+    }) else {
+        return Ok(relative_path);
+    };
+    if snapshot.entry_for_path(&relative_path).is_some() {
+        return Ok(relative_path);
+    }
+
+    let mut normalized_path = RelPathBuf::new();
+    let mut components = relative_path.components();
+    while let Some(component) = components.next() {
+        let mut exact_path = normalized_path.clone();
+        exact_path.push_component(component)?;
+        if snapshot.entry_for_path(&exact_path).is_some() {
+            normalized_path = exact_path;
+            continue;
+        }
+        let case_insensitive_match = snapshot
+            .child_entries(&normalized_path)
+            .find(|entry| {
+                entry
+                    .path
+                    .file_name()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(component))
+            })
+            .map(|entry| entry.path.to_rel_path_buf());
+        let Some(matched_path) = case_insensitive_match else {
+            if let Ok(canonical_path) = fs.canonicalize(abs_path).await
+                && let Ok(canonical_root) = fs.canonicalize(&worktree_root).await
+                && let Ok(canonical_relative_path) = canonical_path.strip_prefix(&canonical_root)
+                && let Ok(canonical_relative_path) =
+                    RelPath::new(canonical_relative_path, PathStyle::local())
+            {
+                return Ok(canonical_relative_path.into_arc());
+            }
+            exact_path.push(components.rest());
+            return Ok(Arc::from(exact_path));
+        };
+        normalized_path = matched_path;
+    }
+    Ok(Arc::from(normalized_path))
 }
 
 fn subscribe_to_binary_statuses(

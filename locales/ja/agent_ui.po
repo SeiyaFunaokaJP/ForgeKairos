@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Failed to Install"
+msgstr "インストールに失敗しました"
+
+msgid "Failed to Launch"
+msgstr "起動に失敗しました"
+
+msgid "Request Failed"
+msgstr "リクエストに失敗しました"
+
+msgid "Try to restart the agent"
+msgstr "エージェントの再起動を試みます"

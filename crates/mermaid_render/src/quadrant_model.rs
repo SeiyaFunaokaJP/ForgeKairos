@@ -199,7 +199,7 @@ pub fn parse_quadrant(source: &str) -> Result<QuadrantDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::QuadrantChart(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::QuadrantChart(_)) {
             bail!("この図は 4 象限チャートではありません。");
         }
     }
@@ -778,9 +778,21 @@ fn preserved_at(
         .map(|line| line.text.as_str())
 }
 
-/// The ways a label can be written: as it is, and in double quotes.
+/// The ways a label can be written, in the order they are tried: as it is
+/// and in double quotes, or the other way round for a text that is not only
+/// letters, digits and spaces. `merman` reads far more without quotes than
+/// Mermaid does, whose lexer stops at most punctuation and symbols.
 fn text_tokens(text: &str) -> Vec<String> {
-    vec![text.to_string(), format!("\"{text}\"")]
+    let bare = text.to_string();
+    let quoted = format!("\"{text}\"");
+    if text
+        .chars()
+        .all(|character| character.is_alphanumeric() || character == ' ')
+    {
+        vec![bare, quoted]
+    } else {
+        vec![quoted, bare]
+    }
 }
 
 fn plain_axis_line(keyword: &str, axis: &QuadrantAxis) -> String {
@@ -1075,7 +1087,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap_or_else(|error| panic!("merman should read {source}: {error}"))
             .unwrap_or_else(|| panic!("merman should find a diagram in {source}"));
-        let RenderSemanticModel::QuadrantChart(mut model) = parsed.model else {
+        let RenderSemanticModel::QuadrantChart(mut model) = parsed.into_parts().1 else {
             panic!("merman should read {source} as a quadrant chart");
         };
         model.points.reverse();
@@ -1094,7 +1106,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .ok()
             .flatten()?;
-        match parsed.model {
+        match parsed.into_parts().1 {
             RenderSemanticModel::QuadrantChart(model) => model.title,
             _ => None,
         }
@@ -1177,7 +1189,7 @@ mod tests {
         let emitted = assert_stable(source);
         assert_eq!(
             emitted,
-            "quadrantChart\n    title \"引用付きの題\"\n    x-axis Urgent(* +=[? -->\n    y-axis Low\n    quadrant-1 : [0.5, 0.5]\n    quadrant-2 Do: now\n    Point A:::hot: [0.9, 0.0]\n    \"Title B\": [1, 0.25] radius: 10, color: #ff3300\n  classDef hot color: #ff3300, radius: 12"
+            "quadrantChart\n    title \"引用付きの題\"\n    x-axis \"Urgent(* +=[?\" -->\n    y-axis Low\n    quadrant-1 \": [0.5, 0.5]\"\n    quadrant-2 \"Do: now\"\n    Point A:::hot: [0.9, 0.0]\n    \"Title B\": [1, 0.25] radius: 10, color: #ff3300\n  classDef hot color: #ff3300, radius: 12"
         );
         assert_eq!(merman_reading(&emitted), merman_reading(source));
         assert_renders(&emitted);
@@ -1266,7 +1278,7 @@ mod tests {
         let emitted = assert_stable(source);
         assert_eq!(
             emitted,
-            "quadrantChart\n    title 題 #9829;\n    A#35;: [0.1, 0.2]"
+            "quadrantChart\n    title 題 #9829;\n    \"A#35;\": [0.1, 0.2]"
         );
         assert_renders(&emitted);
     }

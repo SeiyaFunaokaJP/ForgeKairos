@@ -38,7 +38,7 @@ pub(super) fn task_times(source: &str) -> Result<Vec<TaskTime>> {
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .map_err(|error| anyhow!("{error}"))?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした"))?;
-    let RenderSemanticModel::Gantt(model) = parsed.model else {
+    let RenderSemanticModel::Gantt(model) = parsed.into_parts().1 else {
         bail!("ガントチャートではありません");
     };
     let mut tasks = model

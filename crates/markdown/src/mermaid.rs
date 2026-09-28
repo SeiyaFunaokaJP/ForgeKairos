@@ -2513,13 +2513,18 @@ mod tests {
         );
     }
 
+    /// A C4 boundary whose arguments are still being typed made merman 0.7
+    /// panic; 0.8 refuses it with a parse error. Either way the preview has to
+    /// show an error instead of crashing. (Turning a panic on merman's thread
+    /// into an error is tested in `mermaid_render`, since no input is known to
+    /// make merman 0.8 panic.)
     #[gpui::test]
-    fn test_mermaid_render_panic_becomes_a_render_error(cx: &mut TestAppContext) {
+    fn test_mermaid_render_failure_on_half_typed_input_becomes_a_render_error(
+        cx: &mut TestAppContext,
+    ) {
         ensure_theme_initialized(cx);
 
         let markdown = cx.new(|cx| Markdown::new("".into(), None, None, cx));
-        // A C4 boundary whose arguments are still being typed makes merman
-        // panic; the preview has to show an error instead of crashing.
         let cached = markdown.update(cx, |_, cx| {
             CachedMermaidDiagram::new(
                 mermaid_contents(
@@ -2542,9 +2547,8 @@ System_Boundary(b) {
             .as_ref()
             .expect_err("render should have failed");
         assert!(
-            error
-                .to_string()
-                .contains("merman panicked while rendering"),
+            format!("{error:#}")
+                .contains("C4 boundary must contain at least one diagram statement"),
             "got: {error:#}"
         );
     }

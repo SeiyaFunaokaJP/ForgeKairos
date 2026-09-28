@@ -34,7 +34,7 @@ use std::fmt::Write as _;
 
 use anyhow::{Result, anyhow, bail};
 use merman::diagram::RenderSemanticModel;
-use merman::diagrams::flowchart::FlowchartV2Model;
+use merman::diagrams::flowchart::FlowchartModel;
 
 /// The diagram keyword the source opened with. `flowchart` and `graph` select
 /// the same renderer, but rewriting one as the other would be a gratuitous
@@ -490,7 +490,7 @@ pub fn parse_flowchart(source: &str) -> Result<FlowchartDocument> {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| anyhow!("{error}"))?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        match parsed.model {
+        match parsed.into_parts().1 {
             RenderSemanticModel::Flowchart(model) => Some(model),
             _ => bail!("この図種は構造化編集に対応していません (フローチャートのみ)。"),
         }
@@ -528,7 +528,7 @@ pub fn parse_flowchart(source: &str) -> Result<FlowchartDocument> {
 }
 
 fn document_from_model(
-    model: FlowchartV2Model,
+    model: FlowchartModel,
     keyword: FlowchartKeyword,
     preserved: Vec<PreservedLine>,
     edge_ids: &[String],
@@ -1041,6 +1041,11 @@ fn label_text(label: &str, markdown: bool) -> String {
     if markdown {
         return format!("\"`{}`\"", escape_quoted(label));
     }
+    // Mermaid refuses `A[""]`; a quoted space is read as the same empty label
+    // by both it and `merman`, which trim it.
+    if label.is_empty() {
+        return "\" \"".to_string();
+    }
     if needs_quoting(label) {
         format!("\"{}\"", escape_quoted(label))
     } else {
@@ -1489,6 +1494,14 @@ fn scan_source(source: &str) -> Result<SourceScan> {
                 if index < lines.len() {
                     index += 1;
                 }
+            } else {
+                // A quoted string (a `click` tooltip) may run onto the lines
+                // after it, which `merman` reads as part of the statement.
+                let mut quotes = trimmed.matches('"').count();
+                while quotes % 2 == 1 && index < lines.len() {
+                    quotes += lines[index].matches('"').count();
+                    index += 1;
+                }
             }
             preserved.push(PreservedLine {
                 position,
@@ -1581,6 +1594,25 @@ fn unsupported_construct(
             // verbatim, and the line scanner has already taken it out of the
             // statements, so reaching one here means the id names neither.
             if after.trim_start().starts_with('{') && document.node_index(target).is_some() {
+                // The model carries a node's shape and label; an icon, an
+                // image and their placement would be dropped on the way back.
+                let body = after
+                    .trim_start()
+                    .get(1..)
+                    .unwrap_or_default()
+                    .split('}')
+                    .next()
+                    .unwrap_or_default();
+                if let Some(key) = body
+                    .split(',')
+                    .filter_map(|pair| pair.split(':').next())
+                    .map(str::trim)
+                    .find(|key| !key.is_empty() && !matches!(*key, "shape" | "label"))
+                {
+                    return Some(format!(
+                        "要素 `{target}` の `{key}:` は構造化編集で失われます ({statement})。テキストのまま編集してください。"
+                    ));
+                }
                 continue;
             }
             // `A e1@--> B` names the link that follows it, which is carried.
@@ -1962,7 +1994,7 @@ fn edge_blocks(statements: &[String], document: &FlowchartDocument) -> Option<Ve
         }
         let parsed =
             crate::parse_for_render_model(&format!("flowchart TD\n{statement}")).ok()??;
-        let RenderSemanticModel::Flowchart(model) = parsed.model else {
+        let RenderSemanticModel::Flowchart(model) = parsed.into_parts().1 else {
             return None;
         };
         for edge in model.edges {
@@ -2121,6 +2153,31 @@ mod tests {
         }
     }
 
+    /// Found by writing `merman`'s examples back and asking Mermaid 11.16.1
+    /// to read them: an empty label written as `""`, which Mermaid refuses,
+    /// an icon dropped from a node's shape data, and the continuation lines of
+    /// a quoted `click` tooltip dropped from the statement.
+    #[test]
+    fn what_mermaid_refuses_or_the_model_would_lose_is_not_written() {
+        let emitted = assert_stable("graph LR\n  A(( )) -->|step 1| B(( ))");
+        assert!(emitted.contains("A((\" \"))"), "{emitted}");
+        assert!(!emitted.contains("\"\""), "{emitted}");
+
+        let error = parse_flowchart(
+            "flowchart TD\n    A@{ icon: \"fa:user\", form: \"square\", label: \"User Icon\" }",
+        )
+        .expect_err("the icon would be dropped");
+        assert!(error.to_string().contains("`icon:`"), "{error}");
+        assert_stable("flowchart TD\n    A@{ shape: rounded, label: \"Kept\" }");
+
+        let source = "flowchart LR\n  A --> B\nclick A \"/x\" \"AAA\n6000\"";
+        let emitted = assert_stable(source);
+        assert!(
+            emitted.contains("click A \"/x\" \"AAA\n6000\""),
+            "{emitted}"
+        );
+    }
+
     #[test]
     fn every_bracket_shape_round_trips() {
         let shapes = [
@@ -2160,7 +2217,17 @@ mod tests {
                 document.nodes.first().map(|node| node.label.clone()),
                 Some("ラベル".to_string())
             );
-            assert_renders(&source);
+            if shape == NodeShape::Ellipse {
+                // Mermaid parses `(-…-)` but has no ellipse to draw it with
+                // ("No such shape: ellipse"); `merman` 0.7 drew one anyway, 0.8
+                // fails the way Mermaid does. The shape menu does not offer it.
+                assert!(!NodeShape::PRESETS.contains(&shape));
+                let error = render_to_svg(&source, &MermaidTheme::default())
+                    .expect_err("merman 0.8 has no ellipse to draw");
+                assert!(format!("{error:#}").contains("No such shape"), "{error:#}");
+            } else {
+                assert_renders(&source);
+            }
         }
     }
 

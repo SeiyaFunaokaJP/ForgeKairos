@@ -1,0 +1,77 @@
+[package]
+name = "merman-render"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Headless layout + SVG renderer for Mermaid (parity-focused; upstream SVG goldens)."
+documentation = "https://docs.rs/merman-render"
+readme = "README.md"
+keywords = ["mermaid", "diagrams", "svg", "layout", "headless"]
+categories = ["visualization"]
+exclude = [
+  "examples/*_debug_svg.rs",
+  "examples/ratex_math_audit.rs",
+  "tests/**",
+]
+
+[package.metadata.merman]
+artifact-profile-required = true
+fixed-capabilities = ["svg"]
+wasm-inputs = ["assets/zenuml"]
+
+[features]
+default = []
+system-clock = ["merman-core/system-clock"]
+system-timezone = ["merman-core/system-timezone"]
+system-random = ["merman-core/system-random"]
+system-timing = ["merman-core/system-timing"]
+layout-cytoscape = ["dep:manatee"]
+layout-elk = ["dep:merman-layout-elk"]
+math = [
+  "dep:ratex-layout",
+  "dep:ratex-parser",
+  "dep:ratex-svg",
+  "dep:ratex-types",
+  "ratex-svg/embed-fonts",
+]
+
+[dependencies]
+base64.workspace = true
+cssparser.workspace = true
+data-url.workspace = true
+dugong.workspace = true
+indexmap = { workspace = true, features = ["serde"] }
+icu_collator.workspace = true
+icu_locale_core.workspace = true
+kurbo.workspace = true
+libm.workspace = true
+manatee = { workspace = true, optional = true }
+merman-layout-elk = { workspace = true, optional = true }
+merman-core.workspace = true
+pulldown-cmark.workspace = true
+ratex-layout = { workspace = true, optional = true }
+ratex-parser = { workspace = true, optional = true }
+ratex-svg = { workspace = true, optional = true }
+ratex-types = { workspace = true, optional = true }
+rustc-hash.workspace = true
+roxmltree.workspace = true
+quick-xml.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+svgtypes.workspace = true
+thiserror.workspace = true
+roughr = { workspace = true, default-features = false }
+ryu-js.workspace = true
+unicode-width.workspace = true
+unicode-linebreak.workspace = true
+unicode-segmentation.workspace = true
+
+[dev-dependencies]
+futures = { workspace = true, features = ["executor"] }
+merman-fixture-render-context = { path = "../merman-fixture-render-context" }
+regex.workspace = true
+sha2.workspace = true

@@ -75,10 +75,10 @@ const TEMPLATE_FENCE: &str = indoc! {"
     ```mermaid
     architecture-betaˇ
         %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める
-        group app(cloud)[アプリ]
-        service web(server)[Web サーバー] in app
-        service db(database)[データベース] in app
-        service disk(disk)[ストレージ] in app
+        group app(cloud)[\"アプリ\"]
+        service web(server)[\"Web サーバー\"] in app
+        service db(database)[\"データベース\"] in app
+        service disk(disk)[\"ストレージ\"] in app
         web:R -- L:db
         web:B -- T:disk
     ```
@@ -141,8 +141,10 @@ async fn renames_removals_and_menu_choices_are_written_back(cx: &mut TestAppCont
             modal.set_architecture_icon(ItemList::Nodes, 1, "database", window, cx);
 
             modal.add_architecture_edge(window, cx);
+            // `junction` is a keyword merman 0.8 refuses as an id, so the new
+            // junction is offered as `junction2`.
             modal.update_architecture_edge(1, cx, |edge| {
-                edge.to.id = "junction".to_string();
+                edge.to.id = "junction2".to_string();
                 edge.from.side = ArchitectureSide::Bottom;
             });
             let title = modal
@@ -162,12 +164,12 @@ async fn renames_removals_and_menu_choices_are_written_back(cx: &mut TestAppCont
             ```mermaid
             architecture-beta
                 %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める
-                group system(cloud)[アプリ]
-                service frontend(server)[Web サーバー] in system
-                service disk(database)[ストレージ] in system
-                junction junction in system
-                frontend:B -[保存]- T:disk
-                frontend:B --> L:junction
+                group system(cloud)[\"アプリ\"]
+                service frontend(server)[\"Web サーバー\"] in system
+                service disk(database)[\"ストレージ\"] in system
+                junction junction2 in system
+                frontend:B -[\"保存\"]- T:disk
+                frontend:B --> L:junction2
             ```
         "},
     );
@@ -190,9 +192,9 @@ async fn removing_a_group_keeps_its_members(cx: &mut TestAppContext) {
             ```mermaid
             architecture-beta
                 %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める
-                service web(server)[Web サーバー]
-                service db(database)[データベース]
-                service disk(disk)[ストレージ]
+                service web(server)[\"Web サーバー\"]
+                service db(database)[\"データベース\"]
+                service disk(disk)[\"ストレージ\"]
                 web:R -- L:db
                 web:B -- T:disk
             ```

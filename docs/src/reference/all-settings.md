@@ -685,6 +685,29 @@ For the case of "open", regular selection behavior can be achieved by holding `a
 
 List of `string` values.
 
+### Prediction Debounce
+
+- Description: How long Zed waits after you stop typing before automatically requesting an edit prediction.
+- Setting: `edit_predictions.<provider>.prediction_debounce`
+- Default: `75` for GitHub Copilot, `150` for Codestral, and `0` for Zed, Mercury, Ollama, and OpenAI-compatible APIs.
+
+**Options**
+
+Non-negative integer values representing milliseconds. Set this to `0` to disable the additional delay. Configure the value under the settings object for the selected provider:
+
+```json [settings]
+{
+  "edit_predictions": {
+    "provider": "open_ai_compatible_api",
+    "open_ai_compatible_api": {
+      "prediction_debounce": 500
+    }
+  }
+}
+```
+
+See [Configuring the Prediction Debounce](../ai/edit-prediction.md#configuring-the-prediction-debounce) for more information.
+
 ## Edit Predictions Disabled in
 
 - Description: A list of language scopes in which edit predictions should be disabled.
@@ -1980,6 +2003,41 @@ While other options may be changed at a runtime and should be placed under `sett
   }
 }
 ```
+
+## Focus Follows Mouse
+
+- Description: Whether the focused panel follows the mouse location.
+- Setting: `focus_follows_mouse`
+- Default:
+
+```json [settings]
+{
+  "focus_follows_mouse": {
+    "enabled": false,
+    "debounce_ms": 250
+  }
+}
+```
+
+### Enabled
+
+- Description: Whether hovering over a dock or pane moves focus to it.
+- Setting: `enabled`
+- Default: `false`
+
+**Options**
+
+`boolean` values
+
+### Debounce
+
+- Description: How long the mouse must hover over a panel before it is focused, in milliseconds.
+- Setting: `debounce_ms`
+- Default: `250`
+
+**Options**
+
+Non-negative `integer` values
 
 ## Format On Save {#format-on-save}
 

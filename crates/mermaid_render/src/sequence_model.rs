@@ -1055,7 +1055,7 @@ pub fn parse_sequence(source: &str) -> Result<SequenceDocument> {
     let parsed = crate::parse_for_render_model(source)
         .map_err(|error| anyhow!("{error}"))?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-    let RenderSemanticModel::Sequence(model) = parsed.model else {
+    let RenderSemanticModel::Sequence(model) = parsed.into_parts().1 else {
         bail!("この図はシーケンス図ではありません。");
     };
 

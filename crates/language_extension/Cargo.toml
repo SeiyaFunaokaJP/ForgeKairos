@@ -17,7 +17,6 @@ async-trait.workspace = true
 collections.workspace = true
 extension.workspace = true
 futures.workspace = true
-fs.workspace = true
 gpui.workspace = true
 language.workspace = true
 log.workspace = true
@@ -38,5 +37,5 @@ semver.workspace = true
 task.workspace = true
 util = { workspace = true, features = ["test-support"] }
 
-[package.metadata.cargo-machete]
+[package.metadata.cargo-shear]
 ignored = ["tracing"]

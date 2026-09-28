@@ -43,6 +43,12 @@
 //! wrapper whose own offset is exactly `-width/2`) and nudges the rect (and,
 //! following it, the text) back by `+width/2` to cancel it out.
 //!
+//! `merman` 0.8 draws edge labels as `merman-foreignobject-fallback` groups
+//! instead: a `<rect>` and a `<text>` centered on the same absolute `x`,
+//! appended after the nodes. Neither carries the classes this pass looks for,
+//! so it leaves them alone; the tests below check that they come out centered
+//! and clear of the nodes all the same.
+//!
 //! Both fixes are idempotent: a rect or text this pass has already shifted
 //! carries its own `transform`, which is checked before shifting it again,
 //! and the ER fix additionally checks the *wrapper's* offset before acting,
@@ -425,14 +431,22 @@ mod tests {
 
     /// Walks a rendered diagram and returns every node shape and every edge
     /// label, in absolute user-space coordinates.
+    ///
+    /// `merman` 0.8 draws an edge label as a `merman-foreignobject-fallback`
+    /// group at the end of the document — a `<rect>` and a `<text>` at an
+    /// absolute `x` — and leaves an empty `<g class="edgeLabel">` where 0.7
+    /// drew it, which still carries the point on the edge. Those anchors are
+    /// matched to the fallback labels in document order.
     fn collect(svg: &str) -> (Vec<Rect>, Vec<EdgeLabel>) {
         let mut reader = Reader::from_str(svg);
         reader.config_mut().check_end_names = false;
         let mut offsets = vec![(0.0, 0.0)];
         let mut node_depth: Option<usize> = None;
         let mut edge_label_depth: Option<usize> = None;
+        let mut in_fallback = false;
         let mut nodes = Vec::new();
         let mut labels: Vec<EdgeLabel> = Vec::new();
+        let mut fallback_labels: Vec<EdgeLabel> = Vec::new();
         let mut text_depth: Option<usize> = None;
 
         loop {
@@ -444,7 +458,12 @@ mod tests {
                 Event::Start(e) => (e, true),
                 Event::Empty(e) => (e, false),
                 Event::Text(bytes) if text_depth.is_some() => {
-                    if let (Some(label), Ok(text)) = (labels.last_mut(), bytes.xml_content()) {
+                    let list = if in_fallback {
+                        &mut fallback_labels
+                    } else {
+                        &mut labels
+                    };
+                    if let (Some(label), Ok(text)) = (list.last_mut(), bytes.xml_content()) {
                         label.text.push_str(&text);
                     }
                     continue;
@@ -456,6 +475,7 @@ mod tests {
                     }
                     if edge_label_depth == Some(depth) {
                         edge_label_depth = None;
+                        in_fallback = false;
                     }
                     if text_depth == Some(depth) {
                         text_depth = None;
@@ -478,26 +498,38 @@ mod tests {
             if node_depth.is_none() && has_class(e, "node").unwrap_or(false) {
                 node_depth = Some(depth);
             }
+            let is_fallback = has_class(e, "merman-foreignobject-fallback").unwrap_or(false);
             if edge_label_depth.is_none() && has_class(e, "edgeLabel").unwrap_or(false) {
                 edge_label_depth = Some(depth);
-                labels.push(EdgeLabel {
-                    anchor_x: Some(x),
-                    ..EdgeLabel::default()
-                });
+                in_fallback = is_fallback;
+                if is_fallback {
+                    fallback_labels.push(EdgeLabel::default());
+                } else {
+                    labels.push(EdgeLabel {
+                        anchor_x: Some(x),
+                        ..EdgeLabel::default()
+                    });
+                }
             }
 
-            if node_depth.is_some() && !is_background {
+            if node_depth.is_some() && !is_background && !is_fallback {
                 if let Some(rect) = shape_rect(e, x, y) {
                     nodes.push(rect);
                 }
             }
             if edge_label_depth.is_some() {
-                if let Some(label) = labels.last_mut() {
-                    if is_background {
+                let list = if in_fallback {
+                    &mut fallback_labels
+                } else {
+                    &mut labels
+                };
+                if let Some(label) = list.last_mut() {
+                    if is_background || (in_fallback && e.name().as_ref() == b"rect") {
                         label.background = shape_rect(e, x, y);
                     }
                     if e.name().as_ref() == b"text" {
-                        label.text_anchor_x = Some(x);
+                        label.text_anchor_x =
+                            Some(x + attr_f64(e, "x").ok().flatten().unwrap_or(0.0));
                         if is_start {
                             text_depth = Some(depth);
                         }
@@ -506,6 +538,23 @@ mod tests {
             }
         }
 
+        if !fallback_labels.is_empty() {
+            let anchors = labels
+                .iter()
+                .filter(|label| label.background.is_none())
+                .map(|label| label.anchor_x)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                anchors.len(),
+                fallback_labels.len(),
+                "every fallback edge label should have an edge label anchor"
+            );
+            for (label, anchor_x) in fallback_labels.iter_mut().zip(anchors) {
+                label.anchor_x = anchor_x;
+            }
+            labels.retain(|label| label.background.is_some());
+            labels.extend(fallback_labels);
+        }
         (nodes, labels)
     }
 

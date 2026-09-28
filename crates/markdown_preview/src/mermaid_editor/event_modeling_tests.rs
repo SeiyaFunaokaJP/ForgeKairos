@@ -63,11 +63,11 @@ fn frame_row(modal: &MermaidEditor, index: usize) -> &FrameRow {
 const TEMPLATE_FENCE: &str = indoc! {"
     ```mermaid
     eventmodelingˇ
-        %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル
-        tf 01 ui かご画面
-        tf 02 cmd 商品を追加
-        tf 03 evt 商品が追加された
-        tf 04 rmo かごの中身 ->> 03
+        %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+        tf 01 ui CartScreen
+        tf 02 cmd AddItem
+        tf 03 evt ItemAdded
+        tf 04 rmo CartItems ->> 03
     ```
 "};
 
@@ -117,20 +117,20 @@ async fn renames_carry_into_arrows_and_references(cx: &mut TestAppContext) {
             let name = frame_row(modal, 2).name.clone();
             name.update(cx, |name, cx| name.set_text("30", window, cx));
             let namespace = frame_row(modal, 2).namespace.clone();
-            namespace.update(cx, |namespace, cx| namespace.set_text("かご", window, cx));
+            namespace.update(cx, |namespace, cx| namespace.set_text("Cart", window, cx));
             let inline = frame_row(modal, 1).inline_data.clone();
             inline.update(cx, |inline, cx| inline.set_text("{ 商品: 1 }", window, cx));
 
             modal.add_event_modeling_data(window, cx);
             modal.update_event_modeling_frame(3, cx, |frame| {
-                frame.data_reference = Some("データ".to_string());
+                frame.data_reference = Some("Data".to_string());
             });
             let data_name = modal
                 .event_modeling()
                 .and_then(|form| form.data_blocks.first())
                 .map(|row| row.name.clone());
             if let Some(data_name) = data_name {
-                data_name.update(cx, |data_name, cx| data_name.set_text("中身", window, cx));
+                data_name.update(cx, |data_name, cx| data_name.set_text("Items", window, cx));
             }
             modal.update_event_modeling_frame(0, cx, |frame| frame.reset = true);
             modal.update_event_modeling_frame(3, cx, |frame| {
@@ -147,13 +147,14 @@ async fn renames_carry_into_arrows_and_references(cx: &mut TestAppContext) {
         indoc! {"
             ```mermaid
             eventmodeling
-                %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル
-                rf 01 ui かご画面
-                tf 02 cmd 商品を追加 { 商品: 1 }
-                tf 30 evt かご.商品が追加された
-                tf 04 pcr かごの中身 ->> 30 ->> 02 [[中身]]
-                data 中身
-                { 項目: 値 }
+                %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+                rf 01 ui CartScreen
+                tf 02 cmd AddItem { 商品: 1 }
+                tf 30 evt Cart.ItemAdded
+                tf 04 pcr CartItems ->> 30 ->> 02 [[Items]]
+                data Items {
+              item: value
+            }
             ```
         "},
     );
@@ -179,10 +180,10 @@ async fn removing_a_frame_takes_its_arrows_with_it(cx: &mut TestAppContext) {
         indoc! {"
             ```mermaid
             eventmodeling
-                %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル
-                tf 02 cmd 商品を追加
-                tf 04 rmo かごの中身
-                tf 05 evt 新しい要素
+                %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+                tf 02 cmd AddItem
+                tf 04 rmo CartItems
+                tf 05 evt NewElement
             ```
         "},
     );
@@ -219,7 +220,7 @@ async fn what_would_be_drawn_differently_is_refused(cx: &mut TestAppContext) {
         modal.update(cx, |modal, cx| {
             modal.move_event_modeling_frame(2, true, cx);
             let label = frame_row(modal, 0).label.clone();
-            label.update(cx, |label, cx| label.set_text("かご 画面", window, cx));
+            label.update(cx, |label, cx| label.set_text("Cart Screen", window, cx));
             modal.confirm(&menu::SecondaryConfirm, window, cx);
         })
     });
@@ -231,7 +232,7 @@ async fn what_would_be_drawn_differently_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("かご 画面")),
+            .is_some_and(|message| message.contains("Cart Screen")),
         "the modal should name the label it refused, got {message:?}"
     );
 }
@@ -244,14 +245,16 @@ async fn removing_a_data_block_clears_the_references_to_it(cx: &mut TestAppConte
         indoc! {"
             ```mermaid
             eventmodelingˇ
-                tf 01 cmd 追加 [[詳細]]
-                tf 02 evt 追加された [[詳細]]
-                tf 03 rmo 一覧 [[残す]]
-                %% 詳細の前
-                data 詳細
-                { 商品: 1 }
-                data 残す
-                { 数: 2 }
+                tf 01 cmd Add [[Detail]]
+                tf 02 evt Added [[Detail]]
+                tf 03 rmo List [[Keep]]
+                %% Detail の前
+                data Detail {
+              商品: 1
+            }
+                data Keep {
+              数: 2
+            }
             ```
         "},
         cx,
@@ -270,12 +273,13 @@ async fn removing_a_data_block_clears_the_references_to_it(cx: &mut TestAppConte
         indoc! {"
             ```mermaid
             eventmodeling
-                tf 01 cmd 追加
-                tf 02 evt 追加された
-                tf 03 rmo 一覧 [[残す]]
-                %% 詳細の前
-                data 残す
-                { 数: 2 }
+                tf 01 cmd Add
+                tf 02 evt Added
+                tf 03 rmo List [[Keep]]
+                %% Detail の前
+                data Keep {
+              数: 2
+            }
             ```
         "},
     );
@@ -289,12 +293,12 @@ async fn a_multi_line_data_block_is_kept_as_written(cx: &mut TestAppContext) {
         indoc! {"
             ```mermaid
             eventmodelingˇ
-                tf 01 cmd 追加
-                tf 02 evt 追加された [[詳細]]
-                data 詳細 {
-                  商品: 1,
-                  数: 2
-                }
+                tf 01 cmd Add
+                tf 02 evt Added [[Detail]]
+                data Detail {
+              商品: 1,
+              数: 2
+            }
             ```
         "},
         cx,
@@ -311,7 +315,7 @@ async fn a_multi_line_data_block_is_kept_as_written(cx: &mut TestAppContext) {
             );
             let name = form.data_blocks.first().map(|row| row.name.clone());
             if let Some(name) = name {
-                name.update(cx, |name, cx| name.set_text("明細", window, cx));
+                name.update(cx, |name, cx| name.set_text("Items", window, cx));
             }
             modal.confirm(&menu::SecondaryConfirm, window, cx);
         })
@@ -322,12 +326,12 @@ async fn a_multi_line_data_block_is_kept_as_written(cx: &mut TestAppContext) {
         indoc! {"
             ```mermaid
             eventmodeling
-                tf 01 cmd 追加
-                tf 02 evt 追加された [[明細]]
-                data 明細 {
-                  商品: 1,
-                  数: 2
-                }
+                tf 01 cmd Add
+                tf 02 evt Added [[Items]]
+                data Items {
+              商品: 1,
+              数: 2
+            }
             ```
         "},
     );

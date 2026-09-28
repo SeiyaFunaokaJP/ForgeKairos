@@ -72,11 +72,11 @@ fn value_field(modal: &MermaidEditor, index: usize) -> Entity<Editor> {
 const TEMPLATE_FENCE: &str = indoc! {"
     ```mermaid
     sankey-betaˇ
-        %% 1 行が 流れ元,流れ先,量
-        電力,家庭,30
-        電力,工場,50
-        ガス,家庭,20
-        ガス,工場,10
+        %% 1 行が 流れ元,流れ先,量。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+        Power,Home,30
+        Power,Factory,50
+        Gas,Home,20
+        Gas,Factory,10
     ```
 "};
 
@@ -121,9 +121,9 @@ async fn renames_values_ends_and_deletions_are_written_back(cx: &mut TestAppCont
 
     cx.update(|window, cx| {
         modal.update(cx, |modal, cx| {
-            node_field(modal, 0).update(cx, |field, cx| field.set_text("電気", window, cx));
+            node_field(modal, 0).update(cx, |field, cx| field.set_text("Electric", window, cx));
             value_field(modal, 1).update(cx, |field, cx| field.set_text("55", window, cx));
-            modal.set_sankey_end(3, false, "家庭".to_string(), cx);
+            modal.set_sankey_end(3, false, "Home".to_string(), cx);
             modal.add_sankey_flow(window, cx);
             modal.add_sankey_node(window, cx);
             let new_node = modal
@@ -143,12 +143,12 @@ async fn renames_values_ends_and_deletions_are_written_back(cx: &mut TestAppCont
         indoc! {"
             ```mermaid
             sankey-beta
-                %% 1 行が 流れ元,流れ先,量
-                電気,家庭,30
-                電気,工場,55
-                ガス,家庭,20
-                ガス,家庭,10
-                電気,蓄電池,10
+                %% 1 行が 流れ元,流れ先,量。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+                Electric,Home,30
+                Electric,Factory,55
+                Gas,Home,20
+                Gas,Home,10
+                Electric,蓄電池,10
             ```
         "},
     );
@@ -168,9 +168,9 @@ async fn deleting_a_node_deletes_its_flows(cx: &mut TestAppContext) {
         indoc! {"
             ```mermaid
             sankey-beta
-                %% 1 行が 流れ元,流れ先,量
-                電力,家庭,30
-                電力,工場,50
+                %% 1 行が 流れ元,流れ先,量。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+                Power,Home,30
+                Power,Factory,50
             ```
         "},
     );
@@ -194,7 +194,7 @@ async fn what_mermaid_cannot_draw_is_refused(cx: &mut TestAppContext) {
 
     cx.update(|_window, cx| {
         modal.update(cx, |modal, cx| {
-            modal.set_sankey_end(1, true, "工場".to_string(), cx);
+            modal.set_sankey_end(1, true, "Factory".to_string(), cx);
         })
     });
     let message = confirm_and_read_message(&mut cx);
@@ -202,7 +202,7 @@ async fn what_mermaid_cannot_draw_is_refused(cx: &mut TestAppContext) {
         message
             .as_deref()
             .is_some_and(|message| message.contains("循環")),
-        "a flow from 工場 to itself should be refused, got {message:?}"
+        "a flow from Factory to itself should be refused, got {message:?}"
     );
     assert_eq!(
         cx.update_editor(|editor, _window, cx| editor.text(cx)),
@@ -211,7 +211,7 @@ async fn what_mermaid_cannot_draw_is_refused(cx: &mut TestAppContext) {
 
     cx.update(|window, cx| {
         modal.update(cx, |modal, cx| {
-            modal.set_sankey_end(1, true, "電力".to_string(), cx);
+            modal.set_sankey_end(1, true, "Power".to_string(), cx);
             value_field(modal, 0).update(cx, |field, cx| field.set_text("-3", window, cx));
         })
     });
@@ -258,16 +258,16 @@ async fn a_passing_duplicate_name_merges_no_node(cx: &mut TestAppContext) {
     cx.update(|window, cx| {
         modal.update(cx, |modal, cx| {
             let name = node_field(modal, 0);
-            name.update(cx, |name, cx| name.set_text("ガス", window, cx));
+            name.update(cx, |name, cx| name.set_text("Gas", window, cx));
             modal.add_sankey_node(window, cx);
             modal.remove_sankey_node(4, cx);
-            name.update(cx, |name, cx| name.set_text("電気", window, cx));
+            name.update(cx, |name, cx| name.set_text("Electric", window, cx));
             modal.confirm(&menu::SecondaryConfirm, window, cx);
         })
     });
 
     assert_eq!(
         cx.update_editor(|editor, _window, cx| editor.text(cx)),
-        before.replace("電力", "電気")
+        before.replace("Power", "Electric")
     );
 }

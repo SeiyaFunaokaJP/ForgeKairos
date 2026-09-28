@@ -373,7 +373,7 @@ pub fn parse_er(source: &str) -> Result<ErDocument> {
     let parsed = crate::parse_for_render_model(source)
         .map_err(|error| anyhow!("{error}"))?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-    let RenderSemanticModel::Er(model) = parsed.model else {
+    let RenderSemanticModel::Er(model) = parsed.into_parts().1 else {
         bail!("この図は ER 図ではありません。");
     };
 
@@ -1023,8 +1023,13 @@ fn scan_source(source: &str) -> Result<SourceScan> {
             }
             if preserved_keyword(trimmed) {
                 let start = index - 1;
-                if trimmed.ends_with('{') {
-                    while lines.get(index).is_some_and(|line| line.trim() != "}") {
+                // An `accDescr {` block runs to the first `}`, which may follow
+                // text on its opening line or on the lines after it.
+                let opens_block = trimmed
+                    .find('{')
+                    .is_some_and(|brace| !trimmed.get(brace..).unwrap_or_default().contains('}'));
+                if opens_block {
+                    while lines.get(index).is_some_and(|line| !line.contains('}')) {
                         index += 1;
                     }
                     if index < lines.len() {
@@ -1406,7 +1411,7 @@ fn attach_trailing_comments(document: &mut ErDocument, found: TrailingComments) 
 fn statement_holds_only(statement: &str, site: &CommentSite, document: &ErDocument) -> bool {
     let read = |source: String| -> Option<ErDocument> {
         let parsed = crate::parse_for_render_model(&source).ok()??;
-        let RenderSemanticModel::Er(model) = parsed.model else {
+        let RenderSemanticModel::Er(model) = parsed.into_parts().1 else {
             return None;
         };
         document_from_model(&model, false, Vec::new()).ok()
@@ -2162,6 +2167,21 @@ mod tests {
         assert!(emitted.contains("%% 後のメモ"), "{emitted}");
     }
 
+    /// An `accDescr {` block whose text starts on its opening line runs to the
+    /// first `}`. The lines inside it used to be taken for statements and
+    /// dropped, which wrote back a block Mermaid could not read.
+    #[test]
+    fn an_accessibility_block_with_text_on_its_first_line_is_kept_whole() {
+        let source = "erDiagram\naccTitle: graph title\naccDescr { this graph is\n  about\n  stuff\n  }\nTEACHER }o--o{ STUDENT : \"is teacher of\"";
+        let emitted = assert_stable(source);
+        assert!(
+            emitted.contains("accDescr { this graph is\n  about\n  stuff\n  }"),
+            "{emitted}"
+        );
+        render_to_svg(&emitted, &MermaidTheme::default())
+            .unwrap_or_else(|error| panic!("`{emitted}` should render: {error}"));
+    }
+
     /// `#34;` in a relationship label reads as a quotation mark, is written
     /// back as `#quot;`, which reads the same, and both spellings are drawn
     /// with the quotation mark.
@@ -2181,17 +2201,17 @@ mod tests {
             assert!(label.contains('"'), "`{source}` read as {label:?}");
             let emitted = assert_stable(source);
             assert!(emitted.contains("#quot;"), "{emitted}");
-            // The renderer puts each word in a `<tspan>` of its own.
-            let quoted_word = label
-                .split_whitespace()
-                .find(|word| word.contains('"'))
-                .map(|word| word.replace('"', "&quot;"))
-                .expect("a word holds the quote");
+            // `merman` 0.7 put each word in a `<tspan>` of its own; 0.8 writes
+            // the label as one text, with the quote escaped or not.
+            let drawn_forms = [
+                format!(">{label}<"),
+                format!(">{}<", label.replace('"', "&quot;")),
+            ];
             for drawn in [source, emitted.as_str()] {
                 let svg = render_to_svg(drawn, &MermaidTheme::default())
                     .unwrap_or_else(|error| panic!("`{drawn}` should render: {error}"));
                 assert!(
-                    svg.contains(&format!("{quoted_word}</tspan>")),
+                    drawn_forms.iter().any(|form| svg.contains(form.as_str())),
                     "`{drawn}` should draw {label:?}"
                 );
             }

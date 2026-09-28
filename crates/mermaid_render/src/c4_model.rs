@@ -563,9 +563,8 @@ pub enum C4Item {
     Relation(C4Statement),
     /// `UpdateElementStyle`, `UpdateRelStyle` or `UpdateLayoutConfig`.
     Style(C4Statement),
-    /// A comment, an accessibility statement, `direction`, or a relationship
-    /// without a label (which `merman` reads and then ignores), written back
-    /// as it came.
+    /// A comment, an accessibility statement, or a relationship without a
+    /// label (which `merman` reads and then ignores), written back as it came.
     Preserved(String),
 }
 
@@ -1181,6 +1180,9 @@ impl C4Document {
         if depth != 0 {
             return Some("閉じていない境界があります。".to_string());
         }
+        if let Some(error) = self.boundary_content_error() {
+            return Some(error);
+        }
         if titles > 1 {
             return Some("`title` が 2 つあります。後のものだけが使われます。".to_string());
         }
@@ -1305,6 +1307,54 @@ impl C4Document {
     }
 }
 
+impl C4Document {
+    /// `merman` 0.8 refuses a boundary with no macro inside it, and one whose
+    /// first statement is a `title` or an accessibility statement, which it
+    /// only takes inside a boundary after a macro. A comment counts as
+    /// neither.
+    fn boundary_content_error(&self) -> Option<String> {
+        // For each boundary still open: its alias and whether a macro has
+        // been written in it yet.
+        let mut open: Vec<(&str, bool)> = Vec::new();
+        for item in &self.items {
+            let is_macro = match item {
+                C4Item::BoundaryStart(statement) => {
+                    if let Some((_, has_macro)) = open.last_mut() {
+                        *has_macro = true;
+                    }
+                    open.push((statement.alias().unwrap_or_default(), false));
+                    continue;
+                }
+                C4Item::BoundaryEnd => {
+                    if let Some((alias, false)) = open.pop() {
+                        return Some(format!(
+                            "境界 `{alias}` の中が空です。Mermaid は空の境界を描けないので、要素を 1 つ以上入れるか、境界を削除してください。"
+                        ));
+                    }
+                    continue;
+                }
+                C4Item::Element(_) | C4Item::Relation(_) | C4Item::Style(_) => true,
+                C4Item::Title(_) => false,
+                C4Item::Preserved(text) if text.starts_with("%%") => continue,
+                // A relationship without a label is a macro `merman` reads and
+                // leaves out of the picture.
+                C4Item::Preserved(text) => !text.starts_with("acc"),
+            };
+            let Some((alias, has_macro)) = open.last_mut() else {
+                continue;
+            };
+            if is_macro {
+                *has_macro = true;
+            } else if !*has_macro {
+                return Some(format!(
+                    "境界 `{alias}` の中では、`title` や `accTitle` などを最初の要素より後ろに書いてください (Mermaid が受け付けません)。"
+                ));
+            }
+        }
+        None
+    }
+}
+
 /// How many arguments a macro needs for `merman` to read it as that macro.
 fn minimum_arguments(name: &str) -> usize {
     if C4_RELATION_MACROS.contains(&name) {
@@ -1347,15 +1397,24 @@ pub fn is_c4_source(source: &str) -> bool {
 pub fn parse_c4(source: &str) -> Result<C4Document> {
     let document = scan_c4(source)?;
 
+    // `merman` 0.8 refuses a C4 diagram with no statement at all, which is
+    // what the form starts from, so a fence holding only the header and
+    // comments opens as a blank diagram without asking it, the way an empty
+    // fence does.
+    let has_statements = document
+        .items
+        .iter()
+        .any(|item| !matches!(item, C4Item::Preserved(text) if text.starts_with("%%")));
+
     // `merman` is asked last, so that a construct this module knows about is
     // reported with the reason that says what to do.
-    if !source.trim().is_empty() {
+    if has_statements {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        let RenderSemanticModel::C4(model) = &parsed.model else {
+        let RenderSemanticModel::C4(model) = parsed.model() else {
             bail!("この図は C4 図ではありません。");
         };
         // Mermaid cuts `%%{…}%%` out of the middle of a line, and across lines,
@@ -1504,8 +1563,10 @@ fn scan_c4(source: &str) -> Result<C4Document> {
             }
         }
         if is_direction_statement(statement) {
-            document.items.push(C4Item::Preserved(trimmed.to_string()));
-            continue;
+            bail!(
+                "`{statement}` は C4 図では使えません ({} 行目。Mermaid が受け付けません)。行を消すか、テキストのまま編集してください。",
+                start + 1
+            );
         }
 
         let Some((name, arguments_text, has_brace)) = split_macro(statement)? else {
@@ -1590,9 +1651,10 @@ fn scan_c4(source: &str) -> Result<C4Document> {
             "`title` の後の `accTitle` が図のタイトルになっています。`accTitle` を `title` より前へ移すか、テキストのまま編集してください。"
         );
     }
-    // `merman` closes what is still open at the end of the fence.
-    for _ in 0..open_boundaries {
-        document.items.push(C4Item::BoundaryEnd);
+    // `merman` 0.7 closed what was still open at the end of the fence; 0.8
+    // refuses it.
+    if open_boundaries > 0 {
+        bail!("閉じていない境界があります (`}}` がありません)。テキストのまま編集してください。");
     }
     Ok(document)
 }
@@ -1987,17 +2049,25 @@ mod tests {
         assert_eq!(parse("C4Context"), C4Document::empty());
         assert_eq!(emit_c4(&C4Document::empty()), "C4Context");
         assert_eq!(C4Document::empty().structure_error(), None);
-        assert_renders("C4Context");
+        // `merman` 0.8 no longer draws a C4 diagram with no statement in it,
+        // so the blank diagram opens without asking it (the editor asks for
+        // an element before it writes the fence), comments and all.
+        assert!(render_to_svg("C4Context", &MermaidTheme::default()).is_err());
+        let commented = parse("C4Container\n    %% メモ");
+        assert_eq!(commented.diagram_type, C4DiagramType::Container);
+        assert_eq!(emit_c4(&commented), "C4Container\n    %% メモ");
+        // A title is a statement, so a diagram with one is read by `merman`.
+        assert_eq!(parse("C4Context\n    title 題").title(), Some("題"));
     }
 
     /// Everything the parser rewrites, and everything it keeps where it was.
     #[test]
     fn boundaries_comments_and_style_updates_keep_their_place() {
-        let source = "---\ntitle: 図\n---\n%%{wrap}%%\nC4Deployment\n  %% 先頭のメモ\n  accTitle: 配置\n  accDescr {\n    説明の 1 行目\n      2 行目\n  }\n  direction LR\n  Deployment_Node(dc, \"データセンター\", \"Ubuntu\")\n  %% 括弧の前のメモ\n  {\n    Node_L(app, \"アプリ\") {\n      Container(api, \"API\",\"Rust\" , \"注文を受ける\") %% 行末のメモ\n      ContainerDb(db, \"DB\", \"Postgres\", \"50%% の容量\", $tags=\"primary\")\n    } %% 閉じのメモ\n  }\n  Person(user, , \"利用者\")\n  Rel(user, api, \"使う\", \"HTTPS\")\n  RelIndex(1, api, db, \"読み書き\")\n  Rel(api, user)\n  UpdateRelStyle(user, api, $offsetY=\"-40\")\n  UpdateElementStyle(api, $bgColor=\"red\")\n  UpdateLayoutConfig($c4ShapeInRow=\"2\")";
+        let source = "---\ntitle: 図\n---\n%%{wrap}%%\nC4Deployment\n  %% 先頭のメモ\n  accTitle: 配置\n  accDescr {\n    説明の 1 行目\n      2 行目\n  }\n  Deployment_Node(dc, \"データセンター\", \"Ubuntu\")\n  %% 括弧の前のメモ\n  {\n    Node_L(app, \"アプリ\") {\n      Container(api, \"API\",\"Rust\" , \"注文を受ける\") %% 行末のメモ\n      ContainerDb(db, \"DB\", \"Postgres\", \"50%% の容量\", $tags=\"primary\")\n    } %% 閉じのメモ\n  }\n  Person(user, , \"利用者\")\n  Rel(user, api, \"使う\", \"HTTPS\")\n  RelIndex(1, api, db, \"読み書き\")\n  Rel(api, user)\n  UpdateRelStyle(user, api, $offsetY=\"-40\")\n  UpdateElementStyle(api, $bgColor=\"red\")\n  UpdateLayoutConfig($c4ShapeInRow=\"2\")";
         let emitted = assert_stable(source);
         assert_eq!(
             emitted,
-            "---\ntitle: 図\n---\n%%{wrap}%%\nC4Deployment\n    %% 先頭のメモ\n    accTitle: 配置\n    accDescr {\n    説明の 1 行目\n      2 行目\n  }\n    direction LR\n    Deployment_Node(dc, \"データセンター\", \"Ubuntu\") {\n        %% 括弧の前のメモ\n        Node_L(app, \"アプリ\") {\n            Container(api, \"API\", \"Rust\", \"注文を受ける\")\n            %% 行末のメモ\n            ContainerDb(db, \"DB\", \"Postgres\", \"50%% の容量\", $tags=\"primary\")\n        }\n        %% 閉じのメモ\n    }\n    Person(user, \"\", \"利用者\")\n    Rel(user, api, \"使う\", \"HTTPS\")\n    RelIndex(1, api, db, \"読み書き\")\n    Rel(api, user)\n    UpdateRelStyle(user, api, $offsetY=\"-40\")\n    UpdateElementStyle(api, $bgColor=\"red\")\n    UpdateLayoutConfig($c4ShapeInRow=\"2\")"
+            "---\ntitle: 図\n---\n%%{wrap}%%\nC4Deployment\n    %% 先頭のメモ\n    accTitle: 配置\n    accDescr {\n    説明の 1 行目\n      2 行目\n  }\n    Deployment_Node(dc, \"データセンター\", \"Ubuntu\") {\n        %% 括弧の前のメモ\n        Node_L(app, \"アプリ\") {\n            Container(api, \"API\", \"Rust\", \"注文を受ける\")\n            %% 行末のメモ\n            ContainerDb(db, \"DB\", \"Postgres\", \"50%% の容量\", $tags=\"primary\")\n        }\n        %% 閉じのメモ\n    }\n    Person(user, \"\", \"利用者\")\n    Rel(user, api, \"使う\", \"HTTPS\")\n    RelIndex(1, api, db, \"読み書き\")\n    Rel(api, user)\n    UpdateRelStyle(user, api, $offsetY=\"-40\")\n    UpdateElementStyle(api, $bgColor=\"red\")\n    UpdateLayoutConfig($c4ShapeInRow=\"2\")"
         );
         assert_same_meaning(source, &emitted);
         assert_renders(&emitted);
@@ -2028,15 +2098,15 @@ mod tests {
         assert_eq!(document.depth(start + 1), 2);
     }
 
+    /// `merman` 0.7 closed a boundary left open at the end of the fence, and
+    /// the model closed it the same way; 0.8 refuses the diagram, so the
+    /// model does not open it either.
     #[test]
-    fn a_boundary_left_open_is_closed_the_way_merman_closes_it() {
+    fn a_boundary_left_open_is_refused() {
         let source = "C4Context\n    Boundary(b, \"B\") {\n    Person(p, \"P\")";
-        let emitted = assert_stable(source);
-        assert_eq!(
-            emitted,
-            "C4Context\n    Boundary(b, \"B\") {\n        Person(p, \"P\")\n    }"
-        );
-        assert_same_meaning(source, &emitted);
+        assert!(render_to_svg(source, &MermaidTheme::default()).is_err());
+        let error = parse_c4(source).expect_err("an open boundary should be refused");
+        assert!(error.to_string().contains("閉じていない境界"), "{error}");
     }
 
     #[test]
@@ -2066,6 +2136,11 @@ mod tests {
             ("C4Context\n    Person(a, \"A\" x)", "読めません"),
             ("C4Context\n    Person(a, $x)", "$名前"),
             ("C4Context title x", "見出し"),
+            // `merman` 0.8 refuses `direction` in a C4 diagram.
+            (
+                "C4Context\n    direction LR\n    Person(a, \"A\")",
+                "C4 図では使えません",
+            ),
         ] {
             let error = parse_c4(source)
                 .err()
@@ -2086,16 +2161,19 @@ mod tests {
                 "2 回宣言",
             ),
             (
-                "C4Context\n    Person(a, \"A\")\n    Boundary(a, \"B\") {\n    }",
+                "C4Context\n    Person(a, \"A\")\n    Boundary(a, \"B\") {\n        Person(c, \"C\")\n    }",
                 "2 回宣言",
             ),
-            ("C4Context\n    Boundary(global, \"B\") {\n    }", "global"),
+            (
+                "C4Context\n    Boundary(global, \"B\") {\n        Person(c, \"C\")\n    }",
+                "global",
+            ),
             (
                 "C4Context\n    Person(a, \"A\")\n    Rel(a, b, \"x\")",
                 "要素がありません",
             ),
             (
-                "C4Context\n    Person(a, \"A\")\n    Boundary(b, \"B\") {\n    }\n    Rel(a, b, \"x\")",
+                "C4Context\n    Person(a, \"A\")\n    Boundary(b, \"B\") {\n        Person(c, \"C\")\n    }\n    Rel(a, b, \"x\")",
                 "境界です",
             ),
             (
@@ -2117,6 +2195,52 @@ mod tests {
                 "the reason for `{source}` should mention {expected}: {error}"
             );
         }
+
+        // `merman` 0.8 refuses an empty boundary, and a boundary whose first
+        // statement is a title or an accessibility statement.
+        let mut document = parse(TEMPLATE);
+        document.insert_boundary(
+            document.insertion_point(None),
+            C4Statement::declaration("Boundary", "b1", "境界"),
+        );
+        let error = document.structure_error().expect("an empty boundary");
+        assert!(error.contains("`b1` の中が空"), "{error}");
+        assert!(render_to_svg(&emit_c4(&document), &MermaidTheme::default()).is_err());
+        let start = document.insertion_point(None) - 2;
+        document
+            .items
+            .insert(start + 1, C4Item::Title("題".to_string()));
+        document.items.insert(
+            start + 2,
+            C4Item::Element(C4Statement::declaration("Person", "p", "P")),
+        );
+        let error = document
+            .structure_error()
+            .expect("a title before the element");
+        assert!(error.contains("最初の要素より後ろ"), "{error}");
+        assert!(render_to_svg(&emit_c4(&document), &MermaidTheme::default()).is_err());
+        document.items.swap(start + 1, start + 2);
+        assert!(
+            document
+                .structure_error()
+                .is_some_and(|error| error.contains("2 つ"))
+        );
+        document.items.remove(start + 2);
+        assert_eq!(document.structure_error(), None);
+        assert_renders(&emit_c4(&document));
+        for comment in ["%% メモ", "Rel(customer, shop)"] {
+            let mut commented = document.clone();
+            commented
+                .items
+                .insert(start + 1, C4Item::Preserved(comment.to_string()));
+            assert_eq!(commented.structure_error(), None, "{comment}");
+            assert_renders(&emit_c4(&commented));
+        }
+        let mut accessible = document.clone();
+        accessible
+            .items
+            .insert(start + 1, C4Item::Preserved("accTitle: t".to_string()));
+        assert!(accessible.structure_error().is_some());
 
         let mut document = parse(TEMPLATE);
         document.set_title(Some("a %% b"));
@@ -2330,19 +2454,28 @@ mod tests {
 
     #[test]
     fn an_element_moves_into_a_boundary_and_back_out() {
-        let source = "C4Context\n    Person(a, \"A\")\n    Boundary(b, \"B\") {\n        Person(c, \"C\")\n    }\n    Boundary(d, \"D\") {\n    }\n    Rel(a, c, \"x\")";
+        let source = "C4Context\n    Person(a, \"A\")\n    Boundary(b, \"B\") {\n        Person(c, \"C\")\n    }\n    Boundary(d, \"D\") {\n        Person(e, \"E\")\n    }\n    Rel(a, c, \"x\")";
         let mut document = parse(source);
         let order = document.move_element_to(0, Some(4));
-        assert_eq!(order, vec![1, 2, 3, 4, 0, 5, 6]);
-        assert_eq!(document.parent(4), Some(3));
-        let order = document.move_element_to(4, None);
-        assert_eq!(order, vec![0, 1, 2, 3, 5, 4, 6]);
+        assert_eq!(order, vec![1, 2, 3, 4, 5, 0, 6, 7]);
+        assert_eq!(document.parent(5), Some(3));
+        let order = document.move_element_to(5, None);
+        assert_eq!(order, vec![0, 1, 2, 3, 4, 6, 5, 7]);
         let emitted = emit_c4(&document);
         assert_eq!(
             emitted,
-            "C4Context\n    Boundary(b, \"B\") {\n        Person(c, \"C\")\n    }\n    Boundary(d, \"D\") {\n    }\n    Person(a, \"A\")\n    Rel(a, c, \"x\")"
+            "C4Context\n    Boundary(b, \"B\") {\n        Person(c, \"C\")\n    }\n    Boundary(d, \"D\") {\n        Person(e, \"E\")\n    }\n    Person(a, \"A\")\n    Rel(a, c, \"x\")"
         );
         assert_renders(&emitted);
+        // Moving the last element out of a boundary leaves it empty, which
+        // `merman` 0.8 refuses, so it is reported until something goes back.
+        let order = document.move_element_to(4, None);
+        assert_eq!(order, vec![0, 1, 2, 3, 5, 6, 4, 7]);
+        assert!(
+            document
+                .structure_error()
+                .is_some_and(|error| error.contains("`d` の中が空"))
+        );
 
         let mut document = parse("C4Context\n    Rel(a, b, \"x\")");
         assert_eq!(document.insertion_point(None), 0);
@@ -2373,8 +2506,10 @@ mod tests {
     Person(p, \"P\")
     Container(c, \"C\", $descr=\"named\")
     Node(n, \"N\") {
+        Container(nc, \"NC\")
     }
     Boundary(b, \"B\") {
+        Container(bc, \"BC\")
     }
     Rel(p, c, \"x\")",
         );
@@ -2399,7 +2534,7 @@ mod tests {
         );
         node.set_field(C4Field::Type, "node");
         node.set_field(C4Field::Description, "サーバー");
-        let boundary = statement_at_mut(&mut document, 4);
+        let boundary = statement_at_mut(&mut document, 5);
         assert_eq!(
             boundary.field(C4Field::Type),
             C4FieldValue::Value("system".to_string())
@@ -2408,7 +2543,7 @@ mod tests {
             boundary.field(C4Field::Description),
             C4FieldValue::Unavailable
         );
-        let relation = statement_at_mut(&mut document, 6);
+        let relation = statement_at_mut(&mut document, 8);
         relation.set_field(C4Field::Description, "説明");
         let emitted = emit_c4(&document);
         assert_eq!(
@@ -2417,8 +2552,10 @@ mod tests {
     Person(p, \"P\", \"説明\")
     Container(c, \"C\", $descr=\"named\")
     Node(n, \"N\", \"node\", \"サーバー\") {
+        Container(nc, \"NC\")
     }
     Boundary(b, \"B\") {
+        Container(bc, \"BC\")
     }
     Rel(p, c, \"x\", \"\", \"説明\")"
         );
@@ -2443,7 +2580,7 @@ mod tests {
 
     #[test]
     fn a_macro_change_moves_the_arguments_to_where_the_new_macro_reads_them() {
-        let source = "C4Container\n    Person(p, \"P\", \"説明\", \"users\")\n    Container(c, \"C\", \"Rust\", \"説明\")\n    Container(d, \"D\", \"\", \"説明\", $tags=\"x\")\n    Deployment_Node(n, \"N\") {\n    }\n    RelIndex(1, p, c, \"x\")";
+        let source = "C4Container\n    Person(p, \"P\", \"説明\", \"users\")\n    Container(c, \"C\", \"Rust\", \"説明\")\n    Container(d, \"D\", \"\", \"説明\", $tags=\"x\")\n    Deployment_Node(n, \"N\") {\n        Container(e, \"E\")\n    }\n    RelIndex(1, p, c, \"x\")";
         let mut document = parse(source);
         let person = statement_at_mut(&mut document, 0);
         assert!(person.can_become("Container"));
@@ -2460,13 +2597,13 @@ mod tests {
         assert!(!node.can_become("Boundary"));
         assert!(node.can_become("Node_R"));
         node.set_macro("Node_R");
-        let relation = statement_at_mut(&mut document, 5);
+        let relation = statement_at_mut(&mut document, 6);
         assert!(!relation.can_become("RelIndex"));
         relation.set_macro("Rel_Back");
         let emitted = emit_c4(&document);
         assert_eq!(
             emitted,
-            "C4Container\n    Container(p, \"P\", \"\", \"説明\", \"users\")\n    ComponentDb_Ext(c, \"C\", \"Rust\", \"説明\")\n    Person_Ext(d, \"D\", \"説明\", $tags=\"x\")\n    Node_R(n, \"N\") {\n    }\n    Rel_Back(p, c, \"x\")"
+            "C4Container\n    Container(p, \"P\", \"\", \"説明\", \"users\")\n    ComponentDb_Ext(c, \"C\", \"Rust\", \"説明\")\n    Person_Ext(d, \"D\", \"説明\", $tags=\"x\")\n    Node_R(n, \"N\") {\n        Container(e, \"E\")\n    }\n    Rel_Back(p, c, \"x\")"
         );
         let model = merman_model(&emitted);
         assert_eq!(model["shapes"][0]["sprite"], serde_json::json!("users"));
@@ -2478,7 +2615,11 @@ mod tests {
             model["shapes"][2]["descr"]["text"],
             serde_json::json!("説明")
         );
-        assert_eq!(model["shapes"][2]["tags"], serde_json::json!("x"));
+        // `merman` 0.8, like Mermaid's own C4 database, assigns every position
+        // in turn, so the unwritten tags position after `$tags` clears it:
+        // the tags are drawn neither before nor after the change.
+        assert_eq!(model["shapes"][2].get("tags"), None);
+        assert_eq!(merman_model(source)["shapes"][2].get("tags"), None);
         assert_renders(&emitted);
     }
 

@@ -455,7 +455,7 @@ pub fn parse_mindmap(source: &str) -> Result<MindmapDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::Mindmap(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::Mindmap(_)) {
             bail!("この図はマインドマップではありません。");
         }
     }
@@ -1463,7 +1463,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap_or_else(|error| panic!("merman should read {source:?}: {error}"))
             .unwrap_or_else(|| panic!("merman should find a diagram in {source:?}"));
-        let RenderSemanticModel::Mindmap(model) = parsed.model else {
+        let RenderSemanticModel::Mindmap(model) = parsed.into_parts().1 else {
             panic!("{source:?} should be a mindmap");
         };
         let label_of = |id: &str| {

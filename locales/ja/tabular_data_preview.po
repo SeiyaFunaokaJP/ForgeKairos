@@ -1,0 +1,75 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A-Z, then Count"
+msgstr "名前順"
+
+msgid "Center"
+msgstr "中央寄せ"
+
+msgid "Choose how filter values are sorted in the filter menu"
+msgstr "絞り込みのメニューに並べる値の順序を選びます"
+
+msgid "Choose vertical text alignment within cells"
+msgstr "セルの中で文字を縦のどこに寄せるかを選びます"
+
+msgid "Count, then A-Z"
+msgstr "件数順"
+
+msgid ""
+"Dev-only section used for debugging purposes.\n"
+"Will be removed on public release of the tabular data preview feature"
+msgstr ""
+"デバッグ用の開発者向けの項目です。\n"
+"表のプレビューの一般公開時に削除されます"
+
+msgid "Dev-only: Rendering Mode"
+msgstr "開発用: 描画方式"
+
+msgid "Display multiline rows"
+msgstr "複数行のセルをすべて表示"
+
+msgid "Filter Sort"
+msgstr "絞り込みの並び"
+
+msgid "Show cell positions"
+msgstr "セルの位置を表示"
+
+msgid "Show perf metrics"
+msgstr "性能指標を表示"
+
+msgid ""
+"Showing file line numbers.\n"
+"Click to show sequential row numbers."
+msgstr ""
+"元の行番号を表示しています。\n"
+"クリックすると通し番号を表示します。"
+
+msgid ""
+"Showing sequential row numbers.\n"
+"Click to show file line numbers."
+msgstr ""
+"通し番号を表示しています。\n"
+"クリックすると元の行番号を表示します。"
+
+msgid "Table Settings"
+msgstr "表の設定"
+
+msgid "Text Alignment"
+msgstr "セル内の配置"
+
+msgid "Top"
+msgstr "上寄せ"
+
+msgid "Uniform Height"
+msgstr "均一行高で描画"
+
+msgid "Variable Height"
+msgstr "可変行高で描画"
+
+msgid "When enabled, row height grows to show all content. When disabled, only the first line is visible — hover a cell to see the rest."
+msgstr "オンにすると、行の高さが広がって内容をすべて表示します。オフにすると 1 行目だけを表示し、残りはセルにポインターを重ねると表示されます。"

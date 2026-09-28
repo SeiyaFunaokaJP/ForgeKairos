@@ -189,7 +189,7 @@ pub fn parse_journey(source: &str) -> Result<JourneyDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::Journey(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::Journey(_)) {
             bail!("この図はユーザージャーニーではありません。");
         }
     }
@@ -715,7 +715,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap_or_else(|error| panic!("merman should read {source}: {error}"))
             .unwrap_or_else(|| panic!("merman should find a diagram in {source}"));
-        let RenderSemanticModel::Journey(model) = parsed.model else {
+        let RenderSemanticModel::Journey(model) = parsed.into_parts().1 else {
             panic!("merman should read {source} as a journey");
         };
         (

@@ -280,7 +280,7 @@ fn merman_flows(source: &str) -> Result<MermanFlows> {
             )
         })?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-    let RenderSemanticModel::Sankey(model) = parsed.model else {
+    let RenderSemanticModel::Sankey(model) = parsed.into_parts().1 else {
         bail!("この図はサンキー図ではありません。");
     };
     let node_index = |id: &str| {
@@ -495,7 +495,7 @@ mod tests {
     use super::*;
     use crate::{MermaidTheme, render_to_svg};
 
-    const TEMPLATE: &str = "sankey-beta\n    %% 1 行が 流れ元,流れ先,量\n    電力,家庭,30\n    電力,工場,50\n    ガス,家庭,20\n    ガス,工場,10";
+    const TEMPLATE: &str = "sankey-beta\n    %% 1 行が 流れ元,流れ先,量。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)\n    Power,Home,30\n    Power,Factory,50\n    Gas,Home,20\n    Gas,Factory,10";
 
     fn assert_stable(source: &str) -> String {
         let first =
@@ -541,7 +541,10 @@ mod tests {
     #[test]
     fn the_insert_template_round_trips_byte_for_byte() {
         let document = parse_sankey(TEMPLATE).expect("the template should parse");
-        assert_eq!(document.node_names(), vec!["電力", "家庭", "工場", "ガス"]);
+        assert_eq!(
+            document.node_names(),
+            vec!["Power", "Home", "Factory", "Gas"]
+        );
         assert_eq!(
             document
                 .flows
@@ -654,29 +657,32 @@ mod tests {
     fn renaming_a_node_follows_into_every_flow() {
         let mut document = parse_sankey(TEMPLATE).expect("the template should parse");
         document.rename_nodes(&[
-            ("電力".to_string(), "電気".to_string()),
-            ("家庭".to_string(), "工場".to_string()),
-            ("工場".to_string(), "家庭".to_string()),
+            ("Power".to_string(), "Electric".to_string()),
+            ("Home".to_string(), "Factory".to_string()),
+            ("Factory".to_string(), "Home".to_string()),
         ]);
         assert_eq!(
             emit_sankey(&document),
-            "sankey-beta\n    %% 1 行が 流れ元,流れ先,量\n    電気,工場,30\n    電気,家庭,50\n    ガス,工場,20\n    ガス,家庭,10"
+            "sankey-beta\n    %% 1 行が 流れ元,流れ先,量。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)\n    Electric,Factory,30\n    Electric,Home,50\n    Gas,Factory,20\n    Gas,Home,10"
         );
-        assert_eq!(document.node_names(), vec!["電気", "工場", "家庭", "ガス"]);
+        assert_eq!(
+            document.node_names(),
+            vec!["Electric", "Factory", "Home", "Gas"]
+        );
     }
 
     #[test]
     fn a_loop_and_bad_values_are_refused() {
         let mut document = parse_sankey(TEMPLATE).expect("the template should parse");
         document.flows.push(SankeyFlow {
-            source: "工場".to_string(),
-            target: "電力".to_string(),
+            source: "Factory".to_string(),
+            target: "Power".to_string(),
             value: "1".to_string(),
         });
         let error = document
             .structure_error()
             .expect("a loop should be refused");
-        assert!(error.contains("電力 → 工場 → 電力"), "{error}");
+        assert!(error.contains("Power → Factory → Power"), "{error}");
         // The reason still holds: `merman` gives up on the loop.
         let looped = render_to_svg(&emit_sankey(&document), &MermaidTheme::default());
         assert!(
@@ -686,8 +692,8 @@ mod tests {
 
         let mut document = parse_sankey(TEMPLATE).expect("the template should parse");
         document.flows.push(SankeyFlow {
-            source: "家庭".to_string(),
-            target: "家庭".to_string(),
+            source: "Home".to_string(),
+            target: "Home".to_string(),
             value: "1".to_string(),
         });
         assert!(document.structure_error().is_some(), "a self loop");

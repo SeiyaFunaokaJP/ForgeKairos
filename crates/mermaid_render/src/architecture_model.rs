@@ -19,8 +19,12 @@
 //!   children), then the services and junctions, then the edges.
 //! - An arrow head is written `<` or `>` on either end; the model writes `<` on
 //!   the left and `>` on the right, which read the same.
+//! - `merman` 0.8 reads a `[title]` bare only when it is ASCII letters, digits,
+//!   `_` and spaces; anything else (Japanese included) has to be quoted, and the
+//!   model writes it in double quotes.
 //!
 //! What the parser rewrites, all of it stable from the first emit: the
+//! quoting of a title (bare where it can be, otherwise `"…"`), the
 //! indentation and the whitespace between the parts of a statement, the order
 //! described above, a statement written on the `architecture-beta` line (moved
 //! to a line of its own) and comment lines in the middle of the body, which
@@ -195,12 +199,17 @@ impl ArchitectureDocument {
     }
 
     /// `prefix`, or `prefix` with the first number after it that no group,
-    /// service or junction has taken.
+    /// service or junction has taken and that `merman` reads as an id:
+    /// `service` and `group` themselves are keywords it refuses.
     pub fn unused_id(&self, prefix: &str) -> String {
         let taken = self.ids().collect::<Vec<_>>();
         std::iter::once(prefix.to_string())
             .chain((2..).map(|number| format!("{prefix}{number}")))
-            .find(|candidate| !taken.contains(&candidate.as_str()))
+            // A prefix no number turns into an id would otherwise search forever.
+            .take(10_000)
+            .find(|candidate| {
+                is_valid_architecture_id(candidate) && !taken.contains(&candidate.as_str())
+            })
             .unwrap_or_else(|| prefix.to_string())
     }
 
@@ -425,7 +434,7 @@ impl ArchitectureDocument {
                 && !is_valid_architecture_label(title)
             {
                 return Some(format!(
-                    "辺 `{}` → `{}` のラベル `{title}` は書けません (`]` `%%` と改行は不可、前後の空白も不可)。",
+                    "辺 `{}` → `{}` のラベル `{title}` は書けません ({LABEL_RULE})。",
                     edge.from.id, edge.to.id
                 ));
             }
@@ -479,18 +488,21 @@ impl ArchitectureDocument {
 
 fn invalid_id_message(id: &str) -> String {
     format!(
-        "ID `{id}` は使えません (英数字と `_` `-`、先頭と末尾は英数字か `_`。`accTitle` `accDescr` は不可)。"
+        "ID `{id}` は使えません (英数字と `_` `-`、先頭と末尾は英数字か `_`。大文字の L R T B で始まる ID、`title` で始まる ID、`group` `service` `junction` `in` `align` `row` `column` `accTitle` `accDescr` は不可)。"
     )
 }
 
 fn invalid_icon_message(id: &str) -> String {
     format!(
-        "`{id}` のアイコンは書けません (名前に `)` `%%` と改行は不可、引用符で始めることも不可。文字を出すなら引用符で囲みます)。"
+        "`{id}` のアイコンは書けません (名前は英数字と `_` `-` `:` だけ。文字を出すなら引用符で囲みます)。"
     )
 }
 
+const LABEL_RULE: &str =
+    "`%%` と改行は不可、前後の空白も不可、`\\` を引用符の前や末尾に置くことも不可";
+
 fn invalid_label_message(id: &str) -> String {
-    format!("`{id}` のタイトルは書けません (`]` `%%` と改行は不可、前後の空白も不可)。")
+    format!("`{id}` のタイトルは書けません ({LABEL_RULE})。")
 }
 
 /// Whether a statement followed by `comment` is still cut at the comment,
@@ -509,6 +521,10 @@ fn comment_survives(statement: &str, comment: &str) -> bool {
 /// and ending with a word character, the way `merman` cuts an id. `accTitle`
 /// and `accDescr` at the start of an edge would be read as accessibility
 /// statements, so neither can be an id.
+///
+/// `merman` 0.8 also refuses the ids Mermaid's lexer would split into a
+/// keyword and the rest: the statement keywords, anything starting with
+/// `title`, and anything starting with a capital `L` `R` `T` or `B` (a side).
 pub fn is_valid_architecture_id(id: &str) -> bool {
     let is_word = |character: char| character.is_ascii_alphanumeric() || character == '_';
     id.chars().next().is_some_and(is_word)
@@ -518,6 +534,19 @@ pub fn is_valid_architecture_id(id: &str) -> bool {
             .all(|character| is_word(character) || character == '-')
         && id != "accTitle"
         && id != "accDescr"
+        && !matches!(
+            id,
+            "architecture-beta"
+                | "group"
+                | "service"
+                | "junction"
+                | "in"
+                | "align"
+                | "row"
+                | "column"
+        )
+        && !id.starts_with("title")
+        && !id.starts_with(['L', 'R', 'T', 'B'])
 }
 
 /// Whether `title` can follow the `title` keyword: one line, trimmed, and no
@@ -530,19 +559,45 @@ pub fn is_valid_architecture_diagram_title(title: &str) -> bool {
 }
 
 /// Whether `label` can be written between `[` and `]` — as a group's or a
-/// service's title, or on an edge — and read back as itself. `merman` trims
-/// it and ends it at the first `]`.
+/// service's title, or on an edge — and read back as itself. See
+/// [`label_text`] for how it is written: `merman` trims it, and in quotes turns
+/// `\"` and `\'` into the quote alone, so a backslash in front of a quote or
+/// at the end would not come back.
 pub fn is_valid_architecture_label(label: &str) -> bool {
-    label.trim() == label && !label.contains([']', '\n', '\r']) && !label.contains("%%")
+    label.trim() == label
+        && !label.contains(['\n', '\r', '\u{2028}', '\u{2029}'])
+        && !label.contains("%%")
+        && !label.contains("\\\"")
+        && !label.contains("\\'")
+        && !label.ends_with('\\')
 }
 
-/// Whether `name` can be written between `(` and `)`. A name that opens with a
-/// quote would read in the form as icon text.
+/// Whether `label` can be written between the brackets without quotes, which
+/// `merman` 0.8 allows only for ASCII letters, digits, `_` and spaces.
+fn is_plain_architecture_label(label: &str) -> bool {
+    !label.trim().is_empty()
+        && label
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | ' '))
+}
+
+/// `label` in the brackets it is written in: bare when `merman` reads it bare,
+/// otherwise in double quotes with the quotes inside escaped.
+fn label_text(label: &str) -> String {
+    if is_plain_architecture_label(label) {
+        format!("[{label}]")
+    } else {
+        format!("[\"{}\"]", label.replace('"', "\\\""))
+    }
+}
+
+/// Whether `name` can be written between `(` and `)`: `merman` 0.8 reads only
+/// ASCII letters, digits, `_`, `-` and `:` there, and at least one of them.
 pub fn is_valid_architecture_icon_name(name: &str) -> bool {
-    name.trim() == name
-        && !name.contains([')', '\n', '\r'])
-        && !name.contains("%%")
-        && !name.starts_with(['"', '\''])
+    !name.is_empty()
+        && name.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | ':')
+        })
 }
 
 /// Whether `icon` is written back as itself.
@@ -625,7 +680,7 @@ pub fn parse_architecture(source: &str) -> Result<ArchitectureDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::Architecture(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::Architecture(_)) {
             bail!("この図はアーキテクチャ図ではありません。");
         }
     }
@@ -940,6 +995,20 @@ fn take_bracketed(input: &str, open: char, close: char) -> Option<(&str, &str)> 
     Some((rest.get(..end)?, rest.get(end + close.len_utf8()..)?))
 }
 
+/// A `[title]` at the start of `input` as `merman` 0.8 reads it: bare up to the
+/// `]`, or in quotes straight after the `[` with `\"` and `\'` unescaped, and
+/// trimmed either way. What `merman` refuses inside is left to it.
+fn take_label(input: &str) -> Option<(String, &str)> {
+    let rest = input.strip_prefix('[')?;
+    if let Some((inner, tail)) = take_quoted(rest) {
+        let tail = tail.strip_prefix(']')?;
+        let text = inner.replace("\\\"", "\"").replace("\\'", "'");
+        return Some((text.trim().to_string(), tail));
+    }
+    let (text, tail) = take_bracketed(input, '[', ']')?;
+    Some((text.trim().to_string(), tail))
+}
+
 fn take_quoted(input: &str) -> Option<(&str, &str)> {
     let quote = input
         .chars()
@@ -992,8 +1061,8 @@ fn parse_group(rest: &str, statement: &str) -> Result<ArchitectureGroup> {
         rest = tail.trim_start();
     }
     let mut title = None;
-    if let Some((text, tail)) = take_bracketed(rest, '[', ']') {
-        title = Some(text.trim().to_string());
+    if let Some((text, tail)) = take_label(rest) {
+        title = Some(text);
         rest = tail;
     }
     Ok(ArchitectureGroup {
@@ -1023,8 +1092,8 @@ fn parse_node(kind: ArchitectureNodeKind, rest: &str, statement: &str) -> Result
             });
             rest = tail.trim_start();
         }
-        if let Some((text, tail)) = take_bracketed(rest, '[', ']') {
-            title = Some(text.trim().to_string());
+        if let Some((text, tail)) = take_label(rest) {
+            title = Some(text);
             rest = tail;
         }
     }
@@ -1081,8 +1150,8 @@ fn parse_edge(statement: &str) -> Result<ArchitectureEdge> {
     if let Some(after) = rest.strip_prefix("--") {
         rest = after;
     } else if let Some(after) = rest.strip_prefix('-') {
-        let (text, tail) = take_bracketed(after.trim_start(), '[', ']').ok_or_else(unreadable)?;
-        title = Some(text.trim().to_string());
+        let (text, tail) = take_label(after.trim_start()).ok_or_else(unreadable)?;
+        title = Some(text);
         rest = tail.trim_start().strip_prefix('-').ok_or_else(unreadable)?;
     } else {
         return Err(unreadable());
@@ -1094,15 +1163,11 @@ fn parse_edge(statement: &str) -> Result<ArchitectureEdge> {
         rest = rest.get(1..).unwrap_or_default().trim_start();
     }
     let (to_side, rest) = take_side(rest, statement)?;
-    let mut rest = rest
+    let rest = rest
         .trim_start()
         .strip_prefix(':')
         .ok_or_else(unreadable)?
         .trim_start();
-    // `merman` lets a second `:` through here.
-    if let Some(after) = rest.strip_prefix(':') {
-        rest = after.trim_start();
-    }
     let (to_id, to_group, rest) = take_endpoint(rest, statement)?;
     if !rest.trim().is_empty() {
         return Err(unreadable());
@@ -1132,7 +1197,7 @@ fn group_statement(group: &ArchitectureGroup) -> String {
         out.push_str(&format!("({icon})"));
     }
     if let Some(title) = &group.title {
-        out.push_str(&format!("[{title}]"));
+        out.push_str(&label_text(title));
     }
     if let Some(parent) = &group.parent {
         out.push_str(&format!(" in {parent}"));
@@ -1153,7 +1218,7 @@ fn node_statement(node: &ArchitectureNode) -> String {
         None => {}
     }
     if let Some(title) = &node.title {
-        out.push_str(&format!("[{title}]"));
+        out.push_str(&label_text(title));
     }
     if let Some(parent) = &node.parent {
         out.push_str(&format!(" in {parent}"));
@@ -1171,7 +1236,7 @@ fn endpoint_text(end: &ArchitectureEndpoint) -> String {
 
 fn edge_statement(edge: &ArchitectureEdge) -> String {
     let link = match &edge.title {
-        Some(title) => format!("-[{title}]-"),
+        Some(title) => format!("-{}-", label_text(title)),
         None => "--".to_string(),
     };
     format!(
@@ -1249,7 +1314,7 @@ mod tests {
     use merman::{Engine, ParseOptions};
     use serde_json::Value;
 
-    const TEMPLATE: &str = "architecture-beta\n    %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める\n    group app(cloud)[アプリ]\n    service web(server)[Web サーバー] in app\n    service db(database)[データベース] in app\n    service disk(disk)[ストレージ] in app\n    web:R -- L:db\n    web:B -- T:disk";
+    const TEMPLATE: &str = "architecture-beta\n    %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める\n    group app(cloud)[\"アプリ\"]\n    service web(server)[\"Web サーバー\"] in app\n    service db(database)[\"データベース\"] in app\n    service disk(disk)[\"ストレージ\"] in app\n    web:R -- L:db\n    web:B -- T:disk";
 
     fn parse(source: &str) -> ArchitectureDocument {
         parse_architecture(source).unwrap_or_else(|error| panic!("{source} should parse: {error}"))
@@ -1419,14 +1484,14 @@ mod tests {
 
     #[test]
     fn every_statement_form_survives() {
-        let source = "architecture-beta\n    title システム構成\n    group cloud_env(logos:aws)[クラウド]\n    group private-net(cloud)[内部 [VPC] in cloud_env %% 内側\n    service api(server)[API] in private-net\n    service fn \"<b>λ</b>\" [関数] in cloud_env\n    service quoted 'a \\' b'\n    service bare\n    service empty()[]\n    junction hub in cloud_env\n    api{group}:R <-[呼び出し]-> L:fn %% 双方向\n    fn:B -- T:hub\n    hub:L >-- R:bare\n    bare:T --> B:quoted\n    quoted:R -[]- L::empty";
+        let source = "architecture-beta\n    title システム構成\n    group cloud_env(logos:aws)[\"クラウド\"]\n    group private-net(cloud)[\"内部 [VPC] \\\"本番\\\"\"] in cloud_env %% 内側\n    service api(server)[API] in private-net\n    service fn \"<b>λ</b>\" [\"関数\"] in cloud_env\n    service quoted 'a \\' b'\n    service bare\n    service plain(disk)[ Plain label_1 ]\n    junction hub in cloud_env\n    api{group}:R <-[\"呼び出し\"]-> L:fn %% 双方向\n    fn:B -- T:hub\n    hub:L >-- R:bare\n    bare:T --> B:quoted\n    quoted:R -['it\\'s']- L:plain";
         let document = parse(source);
         assert_eq!(document.title.as_deref(), Some("システム構成"));
         assert_eq!(
             document.groups.get(1),
             Some(&ArchitectureGroup {
                 icon: Some("cloud".to_string()),
-                title: Some("内部 [VPC".to_string()),
+                title: Some("内部 [VPC] \"本番\"".to_string()),
                 comment: Some("%% 内側".to_string()),
                 ..group("private-net", Some("cloud_env"))
             })
@@ -1452,8 +1517,8 @@ mod tests {
                 .get(4)
                 .map(|node| (node.icon.clone(), node.title.clone())),
             Some((
-                Some(ArchitectureIcon::Named(String::new())),
-                Some(String::new())
+                Some(ArchitectureIcon::Named("disk".to_string())),
+                Some("Plain label_1".to_string())
             ))
         );
         assert_eq!(
@@ -1480,7 +1545,7 @@ mod tests {
         let emitted = assert_stable(source);
         assert_eq!(
             emitted,
-            "architecture-beta\n    title システム構成\n    group cloud_env(logos:aws)[クラウド]\n    group private-net(cloud)[内部 [VPC] in cloud_env %% 内側\n    service api(server)[API] in private-net\n    service fn \"<b>λ</b>\" [関数] in cloud_env\n    service quoted 'a \\' b'\n    service bare\n    service empty()[]\n    junction hub in cloud_env\n    api{group}:R <-[呼び出し]-> L:fn %% 双方向\n    fn:B -- T:hub\n    hub:L <-- R:bare\n    bare:T --> B:quoted\n    quoted:R -[]- L:empty"
+            "architecture-beta\n    title システム構成\n    group cloud_env(logos:aws)[\"クラウド\"]\n    group private-net(cloud)[\"内部 [VPC] \\\"本番\\\"\"] in cloud_env %% 内側\n    service api(server)[API] in private-net\n    service fn \"<b>λ</b>\" [\"関数\"] in cloud_env\n    service quoted 'a \\' b'\n    service bare\n    service plain(disk)[Plain label_1]\n    junction hub in cloud_env\n    api{group}:R <-[\"呼び出し\"]-> L:fn %% 双方向\n    fn:B -- T:hub\n    hub:L <-- R:bare\n    bare:T --> B:quoted\n    quoted:R -[\"it's\"]- L:plain"
         );
         assert_same_diagram(source, &emitted);
         assert_renders(&emitted);
@@ -1540,9 +1605,15 @@ mod tests {
 
     #[test]
     fn interleaved_statements_are_written_in_merman_order() {
+        // `merman` 0.7 refused an edge above one of its ends; 0.8 connects the
+        // two once every statement is read, so the edge moves below its ends.
         let source = "architecture-beta\n    group a\n    service x in a\n    group b in a\n    x:R -- L:y\n    service y in b";
-        // `merman` refuses an edge above one of its ends.
-        assert!(parse_architecture(source).is_err());
+        let emitted = assert_stable(source);
+        assert_eq!(
+            emitted,
+            "architecture-beta\n    group a\n    group b in a\n    service x in a\n    service y in b\n    x:R -- L:y"
+        );
+        assert_same_diagram(source, &emitted);
         let source = "architecture-beta\n    group a\n    service x in a\n    group b in a\n    service y in b\n    x:R -- L:y\n    junction j\n    y:B -- T:j";
         let emitted = assert_stable(source);
         assert_eq!(
@@ -1603,15 +1674,33 @@ mod tests {
                 "the reason for `{source}` should mention {expected}: {message}"
             );
         }
-        // What `merman` itself refuses is refused with its reason.
+        // What `merman` itself refuses is refused with its reason: since 0.8
+        // that includes a bare title that is not ASCII, an empty title or
+        // icon, and an id that starts like a keyword or a side.
         for source in [
-            "architecture-beta\n    service a in g\n    group g",
+            "architecture-beta\n    group g[クラウド]",
+            "architecture-beta\n    service a[]",
+            "architecture-beta\n    service a()",
+            "architecture-beta\n    service a(my icon)",
+            "architecture-beta\n    service Backend",
+            "architecture-beta\n    service service",
+            "architecture-beta\n    service title2",
+            "architecture-beta\n    service a\n    service b\n    a:R -- L::b",
             "architecture-beta\n    service a\n    service a",
             "architecture-beta\n    service a\n    a:R -- L:b",
             "architecture-beta\n    group g\n    service a in g\n    service b in g\n    a{group}:R -- L:b",
         ] {
             assert!(parse_architecture(source).is_err(), "{source}");
         }
+        // `merman` 0.7 dropped a service above the group it is in; 0.8 reads
+        // it, and the model writes the group first.
+        let source = "architecture-beta\n    service a in g\n    group g";
+        let emitted = assert_stable(source);
+        assert_eq!(
+            emitted,
+            "architecture-beta\n    group g\n    service a in g"
+        );
+        assert_same_diagram(source, &emitted);
     }
 
     #[test]
@@ -1654,7 +1743,7 @@ mod tests {
                 "ありません",
             ),
             (
-                Box::new(|document| document.edges[0].title = Some("a]b".into())),
+                Box::new(|document| document.edges[0].title = Some("a%%b".into())),
                 "ラベル",
             ),
             (
@@ -1687,11 +1776,14 @@ mod tests {
                 "ジャンクション",
             ),
             (
+                Box::new(|document| document.nodes[0].id = "Backend".into()),
+                "使えません",
+            ),
+            (
                 Box::new(|document| {
-                    document.nodes[0].title = Some("it's".into());
-                    document.nodes[0].comment = Some("%% メモ".into());
+                    document.groups[0].icon = Some("日本".into());
                 }),
-                "コメント",
+                "アイコン",
             ),
         ];
         for (index, (edit, expected)) in cases.iter().enumerate() {
@@ -1702,6 +1794,15 @@ mod tests {
                 .unwrap_or_else(|| panic!("case {index} should be reported"));
             assert!(error.contains(expected), "case {index}: {error}");
         }
+
+        // A title with an unbalanced quote used to swallow the comment after it
+        // when written bare; quoted, the comment stays a comment.
+        let mut document = base();
+        document.nodes[0].title = Some("it's".into());
+        document.nodes[0].comment = Some("%% メモ".into());
+        assert_eq!(document.structure_error(), None);
+        let emitted = emit_architecture(&document);
+        assert_eq!(parse(&emitted), document, "{emitted}");
 
         // An edge between two groups' members may leave through the boundary.
         let mut document = base();
@@ -1823,36 +1924,66 @@ mod tests {
         };
         assert!(is_valid_architecture_icon(&escaped));
 
+        // A title was written bare under `merman` 0.7, where `="` in it moved
+        // where the comment starts. Since 0.8 it is written in double quotes
+        // with every `"` escaped, so there is no `="` left to rewrite.
         let mut document = ArchitectureDocument::empty();
         document.nodes = vec![ArchitectureNode {
             comment: Some("%% memo".into()),
             ..service("a", None, Some("<i t=\"it's\">"), None)
         }];
-        let error = document
-            .structure_error()
-            .expect("the comment would be read as part of the statement");
-        assert!(error.contains("コメント"), "{error}");
-        assert!(parse_architecture(&emit_architecture(&document)).is_err());
+        assert_eq!(document.structure_error(), None);
+        let emitted = emit_architecture(&document);
+        assert_eq!(
+            emitted,
+            "architecture-beta\n    service a[\"<i t=\\\"it's\\\">\"] %% memo"
+        );
+        assert_eq!(parse(&emitted), document);
     }
 
     #[test]
     fn values_are_validated() {
-        for id in ["a", "a-b", "a_", "_", "9", "web-server_1", "in", "group"] {
+        for id in [
+            "a",
+            "a-b",
+            "a_",
+            "_",
+            "9",
+            "web-server_1",
+            "input",
+            "groups",
+            "backend",
+            "l",
+            "subtitle",
+        ] {
             assert!(is_valid_architecture_id(id), "{id}");
         }
-        for id in ["", "a-", "-a", "a b", "日本", "a.b", "accTitle", "accDescr"] {
+        for id in [
+            "", "a-", "-a", "a b", "日本", "a.b", "accTitle", "accDescr", "in", "group", "service",
+            "junction", "align", "row", "column", "title", "title2", "Backend", "L", "Rb", "T_1",
+            "B-2",
+        ] {
             assert!(!is_valid_architecture_id(id), "{id}");
         }
-        for label in ["", "API [v2", "日本語", "it's", "100%"] {
+        for label in [
+            "",
+            "API [v2",
+            "日本語",
+            "it's",
+            "100%",
+            "a]b",
+            "\"quoted\"",
+            "back\\slash",
+        ] {
             assert!(is_valid_architecture_label(label), "{label}");
         }
-        for label in [" a", "a ", "a]b", "a%%b", "改行\nあり"] {
+        for label in [" a", "a ", "a%%b", "改行\nあり", "a\\\"b", "a\\'b", "a\\"] {
             assert!(!is_valid_architecture_label(label), "{label}");
         }
-        for name in ["", "cloud", "logos:aws-lambda", "a(b"] {
+        for name in ["cloud", "logos:aws-lambda", "a_b-c:d"] {
             assert!(is_valid_architecture_icon_name(name), "{name}");
         }
-        for name in ["a)", "\"x", "'x", " a", "a%%"] {
+        for name in ["", "a(b", "a)", "\"x", "'x", " a", "a%%", "日本", "a b"] {
             assert!(!is_valid_architecture_icon_name(name), "{name}");
         }
         assert!(is_valid_architecture_icon(&ArchitectureIcon::Text {
@@ -1872,9 +2003,9 @@ mod tests {
         let mut document = ArchitectureDocument::empty();
         document.title = Some("構成 100%".into());
         document.groups = vec![ArchitectureGroup {
-            icon: Some("a(b".into()),
+            icon: Some("logos:a_b-c".into()),
             title: Some("API [v2".into()),
-            ..group("in", None)
+            ..group("input", None)
         }];
         document.nodes = vec![
             ArchitectureNode {
@@ -1882,15 +2013,16 @@ mod tests {
                     text: "it's %% \\\"".into(),
                     quote: '"',
                 }),
-                title: Some("it's".into()),
-                ..service("group", None, None, Some("in"))
+                title: Some("it's \"a]b\" back\\slash".into()),
+                ..service("groups", None, None, Some("input"))
             },
-            service("web-server_1", Some(""), Some(""), None),
+            service("web-server_1", Some("x_1"), Some(""), None),
+            service("plain", None, Some("Plain 1_x"), None),
         ];
         document.edges = vec![ArchitectureEdge {
-            title: Some("100%".into()),
+            title: Some("100% \"a]b\"".into()),
             comment: Some("%% メモ".into()),
-            ..edge("group", "web-server_1")
+            ..edge("groups", "web-server_1")
         }];
         assert_eq!(document.structure_error(), None);
         let emitted = emit_architecture(&document);
@@ -1937,12 +2069,17 @@ mod tests {
             emit_architecture(&ArchitectureDocument::empty()),
             "architecture-beta"
         );
-        assert_eq!(
-            ArchitectureDocument::empty().unused_id("service"),
-            "service"
-        );
-        let document = parse("architecture-beta\n    service service\n    group service2");
-        assert_eq!(document.unused_id("service"), "service3");
+        // `service`, `group` and `junction` are keywords `merman` 0.8 refuses
+        // as ids, so the first id offered for each carries a number.
+        for (prefix, expected) in [
+            ("service", "service2"),
+            ("group", "group2"),
+            ("junction", "junction2"),
+        ] {
+            assert_eq!(ArchitectureDocument::empty().unused_id(prefix), expected);
+        }
+        let document = parse("architecture-beta\n    service service2\n    group service3");
+        assert_eq!(document.unused_id("service"), "service4");
     }
 
     #[test]

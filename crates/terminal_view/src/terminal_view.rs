@@ -677,6 +677,14 @@ impl TerminalView {
         }
     }
 
+    // Upstream's per-panel cleanup was the only caller; the fork cleans up behind the
+    // workspace's item-restore barrier (ADR-F37) instead. Kept to ease later merges.
+    #[allow(dead_code)]
+    pub(crate) fn mark_needs_serialize(&mut self, cx: &mut Context<Self>) {
+        self.needs_serialize = true;
+        cx.emit(ItemEvent::UpdateTab);
+    }
+
     pub fn is_renaming(&self) -> bool {
         self.rename_editor.is_some()
     }
@@ -2345,6 +2353,13 @@ impl TerminalView {
         self.clear_bell(cx);
         self.pause_cursor_blinking(window, cx);
 
+        if event.prefer_character_input
+            && event.keystroke.key_char.is_some()
+            && !self.terminal.read(cx).vi_mode_enabled()
+        {
+            return;
+        }
+
         if self.process_keystroke(&event.keystroke, cx) {
             cx.stop_propagation();
         }
@@ -2633,6 +2648,7 @@ impl Item for TerminalView {
                     .relative()
                     .child(
                         Label::new(title)
+                            .single_line()
                             .color(params.text_color())
                             .when(self.is_renaming(), |this| this.alpha(0.)),
                     )
@@ -3279,7 +3295,7 @@ fn first_project_directory(workspace: &Workspace, cx: &App) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{TestAppContext, VisualTestContext};
+    use gpui::{TestAppContext, UpdateGlobal, VisualTestContext};
     use project::{Entry, Project, ProjectPath, Worktree};
     use remote::RemoteClient;
     use std::path::{Path, PathBuf};
@@ -3540,6 +3556,70 @@ mod tests {
             terminal.update(&mut cx, |terminal, _| terminal.take_input_log()),
             vec![vec![0x11]],
             "ctrl-q in a focused terminal should send 0x11 to the PTY, not trigger zed::Quit",
+        );
+    }
+
+    #[gpui::test]
+    async fn altgr_character_input_is_not_swallowed_as_meta_sequence(cx: &mut TestAppContext) {
+        let (project, _workspace, window_handle) = init_test_with_window(cx).await;
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.terminal.get_or_insert_default().option_as_meta = Some(true);
+                });
+            });
+        });
+        let (_pane, terminal, _terminal_view) =
+            add_display_only_terminal(&project, window_handle, true, cx);
+
+        let mut cx = VisualTestContext::from_window(window_handle.into(), cx);
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.run_until_parked();
+
+        let mut altgr_a = Keystroke::parse("ctrl-alt-a").unwrap();
+        altgr_a.key_char = Some("ą".to_string());
+
+        let propagate = cx.update(|window, cx| {
+            window
+                .dispatch_event(
+                    gpui::PlatformInput::KeyDown(KeyDownEvent {
+                        keystroke: altgr_a.clone(),
+                        is_held: false,
+                        prefer_character_input: true,
+                    }),
+                    cx,
+                )
+                .propagate
+        });
+        assert!(
+            propagate,
+            "a keystroke that produced a character must propagate so the platform can commit the text",
+        );
+        assert_eq!(
+            terminal.update(&mut cx, |terminal, _| terminal.take_input_log()),
+            Vec::<Vec<u8>>::new(),
+            "AltGr-produced characters must not be sent as meta escape sequences",
+        );
+
+        let propagate = cx.update(|window, cx| {
+            window
+                .dispatch_event(
+                    gpui::PlatformInput::KeyDown(KeyDownEvent {
+                        keystroke: altgr_a,
+                        is_held: false,
+                        prefer_character_input: false,
+                    }),
+                    cx,
+                )
+                .propagate
+        });
+        assert!(!propagate);
+        assert_eq!(
+            terminal.update(&mut cx, |terminal, _| terminal.take_input_log()),
+            vec![b"\x1b\x01".to_vec()],
+            "ctrl-alt-a without character input preference is still sent as meta ctrl-a",
         );
     }
 

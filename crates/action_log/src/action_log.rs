@@ -178,11 +178,22 @@ impl ActionLog {
                 let diff_base;
                 let unreviewed_edits;
                 if is_created {
-                    diff_base = Rope::default();
-                    unreviewed_edits = Patch::new(vec![Edit {
-                        old: 0..1,
-                        new: 0..text_snapshot.max_point().row + 1,
-                    }])
+                    if let TrackedBufferStatus::Created {
+                        existing_file_content: Some(existing_content),
+                    } = &status
+                    {
+                        diff_base = existing_content.clone();
+                        unreviewed_edits = Patch::new(vec![Edit {
+                            old: 0..existing_content.max_point().row + 1,
+                            new: 0..text_snapshot.max_point().row + 1,
+                        }]);
+                    } else {
+                        diff_base = Rope::default();
+                        unreviewed_edits = Patch::new(vec![Edit {
+                            old: 0..1,
+                            new: 0..text_snapshot.max_point().row + 1,
+                        }]);
+                    }
                 } else {
                     diff_base = buffer.read(cx).as_rope().clone();
                     unreviewed_edits = Patch::default();
@@ -1053,7 +1064,7 @@ impl ActionLog {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DiffStats {
     pub lines_added: u32,
     pub lines_removed: u32,
@@ -1693,8 +1704,8 @@ mod tests {
                 buffer.clone(),
                 vec![HunkStatus {
                     range: Point::new(0, 0)..Point::new(0, 19),
-                    diff_status: DiffHunkStatusKind::Added,
-                    old_text: "".into(),
+                    diff_status: DiffHunkStatusKind::Modified,
+                    old_text: "Lorem ipsum dolor".into(),
                 }],
             )]
         );
@@ -1711,6 +1722,50 @@ mod tests {
         assert_eq!(
             buffer.read_with(cx, |buffer, _cx| buffer.text()),
             "Lorem ipsum dolor"
+        );
+    }
+
+    #[gpui::test(iterations = 10)]
+    async fn test_overwriting_file_counts_removed_lines(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/dir"),
+            json!({
+                "file1": "line1\nline2\nline3\n"
+            }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/dir").as_ref()], cx).await;
+        let action_log = cx.new(|_| ActionLog::new(project.clone()));
+        let file_path = project
+            .read_with(cx, |project, cx| project.find_project_path("dir/file1", cx))
+            .unwrap();
+
+        let buffer = project
+            .update(cx, |project, cx| project.open_buffer(file_path, cx))
+            .await
+            .unwrap();
+        cx.update(|cx| {
+            action_log.update(cx, |log, cx| log.buffer_created(buffer.clone(), cx));
+            buffer.update(cx, |buffer, cx| buffer.set_text("new1\nnew2\n", cx));
+            action_log.update(cx, |log, cx| log.buffer_edited(buffer.clone(), cx));
+        });
+        project
+            .update(cx, |project, cx| project.save_buffer(buffer.clone(), cx))
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        // Overwriting an existing file must count the replaced lines as removed,
+        // not treat the whole file as added (+2 -0 would be the bug).
+        assert_eq!(
+            action_log.read_with(cx, |log, cx| log.diff_stats(cx)),
+            DiffStats {
+                lines_added: 2,
+                lines_removed: 3,
+            }
         );
     }
 
@@ -1774,8 +1829,8 @@ mod tests {
                 buffer.clone(),
                 vec![HunkStatus {
                     range: Point::new(0, 0)..Point::new(0, 9),
-                    diff_status: DiffHunkStatusKind::Added,
-                    old_text: "".into(),
+                    diff_status: DiffHunkStatusKind::Modified,
+                    old_text: "Lorem ipsum dolor".into(),
                 }],
             )]
         );
@@ -1891,8 +1946,8 @@ mod tests {
                 buffer2.clone(),
                 vec![HunkStatus {
                     range: Point::new(0, 0)..Point::new(0, 5),
-                    diff_status: DiffHunkStatusKind::Added,
-                    old_text: "".into(),
+                    diff_status: DiffHunkStatusKind::Modified,
+                    old_text: "ipsum\n".into(),
                 }],
             )]
         );

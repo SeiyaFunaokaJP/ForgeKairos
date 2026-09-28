@@ -550,7 +550,7 @@ fn check_against_merman(source: &str, document: &TreemapDocument) -> Result<()> 
             )
         })?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-    let RenderSemanticModel::Treemap(model) = parsed.model else {
+    let RenderSemanticModel::Treemap(model) = parsed.into_parts().1 else {
         bail!("この図はツリーマップではありません。");
     };
 
@@ -1121,7 +1121,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap_or_else(|error| panic!("merman should read {source}: {error}"))
             .expect("a diagram");
-        format!("{:?}", parsed.model)
+        format!("{:?}", parsed.model())
     }
 
     /// Every example `merman`'s own tests draw either opens and survives a

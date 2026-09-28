@@ -267,6 +267,44 @@ impl AgentConnectionStore {
         self.request_connection(key, server, cx)
     }
 
+    /// [`Self::restart_connection`] for the connection at `place`. ADR-F49
+    /// decision 19 (8c): a view outside the sandbox, or in it while the
+    /// settings start the agent outside, is not on the shared connection, so
+    /// restarting that one would start a process nobody asked for and leave
+    /// the view on the connection it wanted to replace. The view's next start
+    /// ([`ConversationView`]'s reset) makes the new one, outside the sandbox
+    /// only where its thread was confirmed for that.
+    pub fn restart_connection_at(
+        &mut self,
+        key: Agent,
+        place: ConnectionPlace,
+        server: Rc<dyn AgentServer>,
+        cx: &mut Context<Self>,
+    ) {
+        let slot = match place {
+            ConnectionPlace::AsTheSettingsSay => {
+                self.restart_connection(key, server, cx);
+                return;
+            }
+            ConnectionPlace::InSandbox => ConnectionSlot::InSandbox(key),
+            ConnectionPlace::OutsideSandbox(id) => ConnectionSlot::OutsideSandbox { id, agent: key },
+        };
+        if let Some(entry) = self.slot_entry(&slot)
+            && matches!(entry.read(cx), AgentConnectionEntry::Connecting { .. })
+        {
+            return;
+        }
+        match slot {
+            // Kept where the idle disconnect still finds it, as an update does
+            // with a connection outside the sandbox.
+            ConnectionSlot::OutsideSandbox { id, .. } => {
+                self.superseded_outside_sandbox.insert(id);
+            }
+            slot => self.remove_slot_entry(&slot),
+        }
+        cx.notify();
+    }
+
     pub fn request_connection(
         &mut self,
         key: Agent,
@@ -1439,6 +1477,79 @@ mod tests {
                     .any(|(_, entry)| *entry == shared),
                 "nothing used it, so it went"
             );
+        });
+    }
+
+    /// ADR-F49 decision 19 (8c): upstream's "Reload Agent" restarted the shared
+    /// connection whichever connection the view was on. A view outside the
+    /// sandbox, or in it while the settings start the agent outside, restarts
+    /// its own, and the other views keep the shared one.
+    #[gpui::test]
+    async fn test_reloading_restarts_the_connection_the_view_is_on(cx: &mut TestAppContext) {
+        let (store, _project) = setup(cx).await;
+        let shared = store.update(cx, |store, cx| {
+            store.request_connection(sandboxed_stub(), Rc::new(FollowsTheSettingsServer), cx)
+        });
+        let outside = store.update(cx, |store, cx| {
+            store.connect_outside_sandbox(sandboxed_stub(), Rc::new(FollowsTheSettingsServer), cx)
+        });
+        let in_sandbox = store.update(cx, |store, cx| {
+            store.request_connection_in_sandbox(
+                sandboxed_stub(),
+                Rc::new(FollowsTheSettingsServer),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        store.update(cx, |store, cx| {
+            store.restart_connection_at(
+                sandboxed_stub(),
+                ConnectionPlace::OutsideSandbox(outside),
+                Rc::new(FollowsTheSettingsServer),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        store.read_with(cx, |store, _cx| {
+            assert!(
+                store.outside_sandbox_connection(outside).is_none(),
+                "the next start of that view makes a new one"
+            );
+            assert!(
+                store.outside_sandbox.contains_key(&outside),
+                "the idle disconnect can still find the old one"
+            );
+            assert_eq!(store.entry(&sandboxed_stub()), Some(&shared));
+            assert_eq!(store.in_sandbox.get(&sandboxed_stub()), Some(&in_sandbox));
+        });
+
+        store.update(cx, |store, cx| {
+            store.restart_connection_at(
+                sandboxed_stub(),
+                ConnectionPlace::InSandbox,
+                Rc::new(FollowsTheSettingsServer),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        store.read_with(cx, |store, _cx| {
+            assert!(!store.in_sandbox.contains_key(&sandboxed_stub()));
+            assert_eq!(store.entry(&sandboxed_stub()), Some(&shared));
+        });
+
+        store.update(cx, |store, cx| {
+            store.restart_connection_at(
+                sandboxed_stub(),
+                ConnectionPlace::AsTheSettingsSay,
+                Rc::new(FollowsTheSettingsServer),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        store.read_with(cx, |store, _cx| {
+            let restarted = store.entry(&sandboxed_stub()).expect("started again");
+            assert_ne!(restarted, &shared);
         });
     }
 

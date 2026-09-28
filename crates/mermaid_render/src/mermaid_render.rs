@@ -523,28 +523,49 @@ mod tests {
             .unwrap_or_else(|_| panic!("opening did not finish (or panicked)"))
     }
 
+    /// merman 0.7 panicked on a half-typed C4 boundary, which this test fed
+    /// it; 0.8 refuses that input with a parse error instead, and no input
+    /// found so far makes it panic. The isolation is what keeps a future panic
+    /// from taking Zed down, so it is exercised directly.
     #[test]
-    fn a_merman_parser_panic_becomes_an_error() {
-        let source = "C4Context\nSystem_Boundary(b) {\n}";
+    fn a_merman_panic_becomes_an_error() {
         let message = format!(
             "{:#}",
-            parse_for_render_model(source).expect_err("merman panics on this boundary")
+            run_merman_isolated::<()>("parsing", || panic!("a merman bug"))
+                .expect_err("a panic on the merman thread")
+        );
+        assert_eq!(message, "merman panicked while parsing: a merman bug");
+        let message = format!(
+            "{:#}",
+            run_merman_isolated::<()>("rendering", || panic!("{}", "formatted".to_string()))
+                .expect_err("a panic on the merman thread")
+        );
+        assert_eq!(message, "merman panicked while rendering: formatted");
+        // The input 0.7 panicked on is a parse error now, and merman is
+        // called again after a panic.
+        let message = format!(
+            "{:#}",
+            parse_for_render_model("C4Context\nSystem_Boundary(b) {\n}")
+                .expect_err("an empty boundary")
         );
         assert!(
-            message.contains("merman panicked while parsing"),
+            message.contains("C4 boundary must contain"),
             "got: {message}"
         );
-        // The same thread is used again after a panic.
-        assert!(parse_for_render_model("C4Context\nSystem_Boundary(b, \"x\") {\n}").is_ok());
+        assert!(
+            parse_for_render_model("C4Context\nSystem_Boundary(b, \"x\") {\n  Person(p, \"P\")\n}")
+                .is_ok()
+        );
     }
 
     #[test]
     fn opening_input_that_breaks_merman_is_refused_without_crashing() {
+        // merman 0.8 draws the two xychart ranges 0.7 never finished with, and
+        // the model refuses the one written with a comment on the axis line.
         for source in [
             "C4Context\nSystem_Boundary(b) {\n}",
             "C4Container\nEnterprise_Boundary() {\n  Container(c1, \"C1\")\n}",
             "xychart-beta\nx-axis 5 --> 5 %% c\n\nbar [1, 2]",
-            "xychart-beta\nbar [1]\nline [1, 2]",
             "block-beta\na space:999999999 b",
         ] {
             assert!(
@@ -565,7 +586,10 @@ mod tests {
             }
         }
         assert!(
-            open_in_editor_within_time_limit("C4Context\nSystem_Boundary(b, \"x\") {\n}").is_ok()
+            open_in_editor_within_time_limit(
+                "C4Context\nSystem_Boundary(b, \"x\") {\n  Person(p, \"P\")\n}"
+            )
+            .is_ok()
         );
     }
 }
@@ -937,6 +961,25 @@ mod geometry_tests {
             );
             assert_eq!((&edge.from[..], &edge.to[..]), ("", ""));
         }
+    }
+
+    /// A wrapped label is drawn as one fallback `<text>` per line around the
+    /// point it was laid out at; its lines are read in order, one per line,
+    /// and an edge label still finds its edge.
+    #[test]
+    fn a_wrapped_label_is_read_line_by_line() {
+        let label = "長い日本語のラベルがノードの箱からはみ出さないかを確かめる";
+        let geometry = geometry_of(&format!("flowchart TD\n  A -->|{label}| B[{label}]"));
+        let node_label = node(&geometry, "B").label.clone();
+        assert!(node_label.lines().count() > 1, "{node_label:?}");
+        assert_eq!(node_label.replace('\n', ""), label);
+        let edge_label = geometry
+            .edges
+            .first()
+            .and_then(|edge| edge.label.clone())
+            .expect("the edge label should be found");
+        assert!(edge_label.lines().count() > 1, "{edge_label:?}");
+        assert_eq!(edge_label.replace('\n', ""), label);
     }
 
     /// A described state is drawn with its description, while its id keeps

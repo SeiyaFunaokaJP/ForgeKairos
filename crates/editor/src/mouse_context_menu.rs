@@ -274,11 +274,26 @@ pub fn deploy_context_menu(
                     run_to_cursor || (evaluate_selection && has_selections),
                     |builder| builder.separator(),
                 )
-                .action("定義へ移動", Box::new(GoToDefinition::default()))
-                .action("宣言へ移動", Box::new(GoToDeclaration))
-                .action("型定義へ移動", Box::new(GoToTypeDefinition))
-                .action("実装へ移動", Box::new(GoToImplementation::default()))
-                .action("すべての参照を検索", Box::new(FindAllReferences::default()))
+                .action(
+                    i18n::t!("Go to Definition"),
+                    Box::new(GoToDefinition::default()),
+                )
+                .action(
+                    i18n::t!("Go to Declaration"),
+                    Box::new(GoToDeclaration::default()),
+                )
+                .action(
+                    i18n::t!("Go to Type Definition"),
+                    Box::new(GoToTypeDefinition::default()),
+                )
+                .action(
+                    i18n::t!("Go to Implementation"),
+                    Box::new(GoToImplementation::default()),
+                )
+                .action(
+                    i18n::t!("Find All References"),
+                    Box::new(FindAllReferences::default()),
+                )
                 .separator()
                 .action("シンボルの名前変更", Box::new(Rename))
                 .action("バッファーをフォーマット", Box::new(Format))

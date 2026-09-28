@@ -12,7 +12,7 @@ pub(super) fn render_mermaid(source: &str, theme: &MermaidTheme) -> Result<Strin
     let diagram_id = format!("merman-{id}");
 
     let config = to_merman_config(theme);
-    let renderer = merman::render::HeadlessRenderer::new()
+    let renderer = merman::svg::HeadlessRenderer::new()
         .with_site_config(config)
         .with_vendored_text_measurer()
         .with_diagram_id(&diagram_id);
@@ -21,8 +21,8 @@ pub(super) fn render_mermaid(source: &str, theme: &MermaidTheme) -> Result<Strin
     // fallback text, unsupported CSS removal, and invalid SVG attribute cleanup.
     // Zed also strips merman's existing `!important` declarations before
     // injecting its own theme CSS so host styling wins consistently in usvg/resvg.
-    let pipeline = merman::render::SvgPipeline::resvg_safe()
-        .with_postprocessor(merman::render::CssOverridePostprocessor::strip_existing_important());
+    let pipeline = merman::svg::SvgPipeline::resvg_safe()
+        .with_postprocessor(merman::svg::CssOverridePostprocessor::strip_existing_important());
 
     let svg = renderer
         .render_svg_with_pipeline_sync(source, &pipeline)
@@ -118,6 +118,12 @@ fn to_merman_config(theme: &MermaidTheme) -> merman::MermaidConfig {
             map.insert(format!("cScaleLabel{i}"), label.clone().into());
             map.insert(format!("pie{pie_number}"), color.clone().into());
             map.insert(format!("venn{pie_number}"), color.clone().into());
+            // merman 0.8 strokes a treemap section in `cScalePeer{i}`, which
+            // the base theme darkens from `cScale{i}` and which would then be
+            // darker than a dark background.
+            if theme.dark_mode {
+                map.insert(format!("cScalePeer{i}"), color.clone().into());
+            }
         }
         insert_newer_diagram_theme_variables(map, theme);
     }
@@ -126,12 +132,11 @@ fn to_merman_config(theme: &MermaidTheme) -> merman::MermaidConfig {
         "theme": "base",
         "darkMode": theme.dark_mode,
         "fontFamily": theme.font_family,
-        // resvg can't rasterize HTML `<foreignObject>` labels, and the
-        // fallback that replaces them loses soft wrapping, so emit native SVG
-        // text labels. Nodes read the top-level key; edges read `flowchart`.
-        "htmlLabels": false,
+        // resvg can't rasterize HTML `<foreignObject>` labels, so merman's
+        // raster-safe pipeline replaces them with wrapped native SVG text.
+        "htmlLabels": true,
         "flowchart": {
-            "htmlLabels": false,
+            "htmlLabels": true,
             "padding": 16,
         },
         "themeVariables": theme_vars,
@@ -248,27 +253,257 @@ mod tests {
         assert!(!css_svg.contains("!important"), "got: {css_svg}");
     }
 
-    /// Soft-wrapped labels must render as native SVG `<tspan>` lines rather
-    /// than the resvg-safe pipeline's single-line `<foreignObject>` fallback,
-    /// which overflows the node box (see the `htmlLabels` comment in
-    /// [`to_merman_config`]). If the fallback marker reappears after a merman
-    /// upgrade, the config has stopped disabling HTML labels.
     #[test]
-    fn long_labels_render_as_wrapped_svg_text() {
+    fn long_flowchart_labels_render_as_wrapped_svg_text() {
         let source = "flowchart TD\n    \
             A[\"Pass 2: search transcript with annotation blocks excised, \
             map offsets back to buffer space\"] --> \
             |ambiguous or zero| B[\"Error describing where matches were found\"]";
         let svg = render_mermaid(source, &MermaidTheme::default()).expect("render failed");
 
-        assert!(
-            !svg.contains(r#"data-merman-foreignobject="fallback""#),
-            "labels went through the foreignObject fallback, which loses soft wrapping: {svg}"
-        );
-        let wrapped_line_count = svg.matches("text-outer-tspan").count();
+        assert!(!svg.contains("<foreignObject"), "got: {svg}");
+        assert!(!svg.contains(
+            "Pass 2: search transcript with annotation blocks excised, map offsets back to buffer space</text>"
+        ));
+        let wrapped_line_count = svg.matches("merman-foreignobject-fallback-text").count();
         assert!(
             wrapped_line_count > 3,
-            "expected long labels to wrap onto multiple tspan lines, got {wrapped_line_count}: {svg}"
+            "expected long labels to wrap onto multiple SVG text lines, got {wrapped_line_count}: {svg}"
         );
+    }
+
+    /// The wrapped lines survive the fork's postprocessing: each keeps the
+    /// theme's text color and size, and stays inside its node.
+    #[test]
+    fn wrapped_labels_keep_the_theme_after_postprocessing() {
+        let source = "flowchart TD\n    \
+            A[\"Pass 2: search transcript with annotation blocks excised, \
+            map offsets back to buffer space\"]";
+        let theme = MermaidTheme::default();
+        let svg = crate::render_to_svg(source, &theme).expect("render failed");
+        let text = css_color(theme.text_color);
+        let lines = svg
+            .split("<text ")
+            .skip(1)
+            .filter(|tag| tag.contains("merman-foreignobject-fallback-text"))
+            .collect::<Vec<_>>();
+        assert!(lines.len() > 3, "expected the label to wrap: {svg}");
+        for line in &lines {
+            assert!(line.contains(&format!("fill=\"{text}\"")), "{line}");
+            assert!(line.contains("font-size:16px"), "{line}");
+        }
+        let (_, geometry) =
+            crate::render_to_svg_with_geometry(source, &theme).expect("render failed");
+        let node = geometry.nodes.first().expect("the node");
+        let widest = lines
+            .iter()
+            .filter_map(|line| line.split('>').nth(1)?.split('<').next())
+            .map(|content| content.chars().count())
+            .max()
+            .unwrap_or_default();
+        // 16px text is well under 16px per character on average.
+        assert!(
+            (widest as f32) * 16.0 * 0.6 < node.rect[2],
+            "{widest} {:?}",
+            node.rect
+        );
+    }
+
+    /// The drawn lines of every foreignObject fallback label: where each is
+    /// anchored (its center) and how wide it is at most. A CJK character is
+    /// taken as a full em and anything else as half of one, which is wider
+    /// than the fonts draw it, so the check does not depend on the fonts
+    /// installed.
+    fn fallback_lines(svg: &str) -> Vec<(String, f32, f32, f32)> {
+        svg.split("<text ")
+            .skip(1)
+            .filter(|tag| tag.contains("merman-foreignobject-fallback-text"))
+            .filter_map(|tag| {
+                let attribute = |name: &str| -> Option<f32> {
+                    let tag = format!(" {tag}");
+                    let start = tag.find(&format!(" {name}=\""))? + name.len() + 3;
+                    tag.get(start..)?.split('"').next()?.parse().ok()
+                };
+                let font_size = tag
+                    .split("font-size:")
+                    .nth(1)
+                    .and_then(|rest| rest.split("px").next())
+                    .and_then(|size| size.trim().parse::<f32>().ok())
+                    .unwrap_or(16.0);
+                let content = tag.split_once('>')?.1.split('<').next()?.to_string();
+                let width = content
+                    .chars()
+                    .map(|character| {
+                        if character.is_ascii() {
+                            font_size * 0.5
+                        } else {
+                            font_size
+                        }
+                    })
+                    .sum();
+                Some((content, attribute("x")?, attribute("y")?, width))
+            })
+            .collect()
+    }
+
+    const LONG_JAPANESE: &str = "長い日本語のラベルがノードの箱からはみ出さないかを確かめる";
+
+    /// Mermaid wraps a long Japanese label inside its node: the browser breaks
+    /// between CJK characters, and merman sizes the node the same way. Its
+    /// foreignObject fallback text used to break only at spaces, so the label
+    /// ran out of the node on one line; the vendored merman-render breaks it
+    /// where the layout did (see `third_party/merman-render/FORK_CHANGES.md`).
+    #[test]
+    fn long_japanese_labels_wrap_inside_their_node() {
+        let theme = MermaidTheme::default();
+        for source in [
+            format!("flowchart TD\n    B{{{LONG_JAPANESE}}}"),
+            format!("flowchart TD\n    B[{LONG_JAPANESE}]"),
+            format!("flowchart TD\n    B({LONG_JAPANESE})"),
+            format!("flowchart TD\n    B(({LONG_JAPANESE}))"),
+            format!("flowchart TD\n    B[\"日本語と English が混在した{LONG_JAPANESE}\"]"),
+            format!("flowchart TD\n    B[\"一行目<br>{LONG_JAPANESE}\"]"),
+            format!("flowchart TD\n    B[\"`**太字**の{LONG_JAPANESE}`\"]"),
+            format!("flowchart LR\n    A -->|{LONG_JAPANESE}| B"),
+            format!(
+                "stateDiagram-v2\n    state \"{LONG_JAPANESE}\" as s1\n    s1 --> s2 : {LONG_JAPANESE}"
+            ),
+            format!("classDiagram\n    class A[\"{LONG_JAPANESE}\"]"),
+            format!("erDiagram\n    顧客 ||--o{{ 注文 : \"{LONG_JAPANESE}\""),
+        ] {
+            let (svg, geometry) =
+                crate::render_to_svg_with_geometry(&source, &theme).expect("render failed");
+            let lines = fallback_lines(&svg);
+            let drawn = lines
+                .iter()
+                .map(|(content, ..)| content.as_str())
+                .collect::<String>();
+            assert!(
+                drawn.contains("はみ出さないかを確かめる"),
+                "the label should be drawn as fallback text: {source}
+{lines:?}"
+            );
+            let boxes = geometry
+                .nodes
+                .iter()
+                .map(|node| node.rect)
+                .chain(geometry.edges.iter().filter_map(|edge| edge.label_rect))
+                .collect::<Vec<_>>();
+            for (content, x, y, width) in &lines {
+                let Some(rect) = boxes
+                    .iter()
+                    .filter(|rect| {
+                        rect[0] <= *x
+                            && *x <= rect[0] + rect[2]
+                            && rect[1] <= *y
+                            && *y <= rect[1] + rect[3]
+                    })
+                    .min_by(|a, b| (a[2] * a[3]).total_cmp(&(b[2] * b[3])))
+                else {
+                    continue;
+                };
+                assert!(
+                    *width <= rect[2],
+                    "{source}\nthe line {content:?} (about {width}px) is wider than its box {rect:?}"
+                );
+            }
+            // Mermaid wraps neither a class name nor an ER relationship's
+            // label; their box grows to the whole line instead.
+            if !source.starts_with("classDiagram") && !source.starts_with("erDiagram") {
+                let long_lines = lines
+                    .iter()
+                    .filter(|(content, ..)| content.chars().count() > 20)
+                    .count();
+                assert_eq!(long_lines, 0, "{source}: {lines:?}");
+            }
+        }
+
+        // A mind map is not mapped for clicking, so its lines are held to the
+        // 200px Mermaid wraps its labels at.
+        let source = format!("mindmap\n  root(({LONG_JAPANESE}))\n    {LONG_JAPANESE}");
+        let svg = crate::render_to_svg(&source, &theme).expect("render failed");
+        let lines = fallback_lines(&svg);
+        assert!(lines.len() > 2, "{lines:?}");
+        for (content, _, _, width) in &lines {
+            assert!(*width <= 200.0, "{content:?} is about {width}px wide");
+        }
+    }
+
+    #[test]
+    fn class_diagram_labels_keep_sixteen_pixel_font_size() {
+        let source = r#"classDiagram
+            class User {
+                +String id
+                +String name
+                +signIn()
+            }
+        "#;
+        let theme = MermaidTheme::default();
+        let svg = render_mermaid(source, &theme).expect("render failed");
+        let (svg, _geometry) =
+            crate::postprocess::postprocess(&svg, &theme).expect("postprocess failed");
+        let mut options = usvg::Options::default();
+        options.fontdb_mut().load_system_fonts();
+        let tree = usvg::Tree::from_str(&svg, &options).expect("SVG parsing failed");
+
+        assert_eq!(text_font_size(tree.root(), "User"), Some(16.0));
+        assert_eq!(text_font_size(tree.root(), "+String name"), Some(16.0));
+    }
+
+    #[test]
+    fn mindmap_renders_drawable_svg() {
+        let source = r#"mindmap
+            root((Application))
+                Frontend
+                    Components
+                    State
+                    Routing
+                Backend
+                    API
+                    Authentication
+                    Jobs
+                Data
+                    Database
+                    Cache
+                    Backups
+                Operations
+                    Monitoring
+                    Deployment
+        "#;
+        let theme = MermaidTheme::default();
+        let svg = render_mermaid(source, &theme).expect("render failed");
+        let (svg, _geometry) =
+            crate::postprocess::postprocess(&svg, &theme).expect("postprocess failed");
+        let mut options = usvg::Options::default();
+        options.fontdb_mut().load_system_fonts();
+        let tree = usvg::Tree::from_str(&svg, &options).expect("SVG parsing failed");
+
+        assert!(tree.root().has_children(), "got: {svg}");
+        assert!(
+            text_font_size(tree.root(), "Application").is_some(),
+            "got: {svg}"
+        );
+    }
+
+    fn text_font_size(group: &usvg::Group, expected_text: &str) -> Option<f32> {
+        for node in group.children() {
+            match node {
+                usvg::Node::Group(group) => {
+                    if let Some(font_size) = text_font_size(group, expected_text) {
+                        return Some(font_size);
+                    }
+                }
+                usvg::Node::Text(text) => {
+                    for chunk in text.chunks() {
+                        if chunk.text() == expected_text {
+                            return chunk.spans().first().map(|span| span.font_size().get());
+                        }
+                    }
+                }
+                usvg::Node::Path(_) | usvg::Node::Image(_) => {}
+            }
+        }
+
+        None
     }
 }

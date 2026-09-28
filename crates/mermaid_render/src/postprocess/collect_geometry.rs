@@ -14,7 +14,8 @@
 //!   (one with attributes), and
 //!   `<path data-id="id_{from element id}_{to element id}_{n}">` per
 //!   relationship, whose label is spelled like a flowchart's.
-//! * state: `<g class="node statediagram-state" id="state-{state id}-{n}">`,
+//! * state: `<g class="node statediagram-state" id="{diagram_id}-state-{state id}-{n}">`
+//!   (`merman` 0.7 left the diagram id out),
 //!   and `<path data-id="edge{n}">` per transition, where `{n}` numbers the
 //!   diagram's transitions in the order they were written. A composite state
 //!   nests a whole `<g class="root">` — its own sections, under one more
@@ -209,8 +210,13 @@ enum FallbackRole {
 struct PendingFallback {
     role: FallbackRole,
     start_depth: usize,
+    /// The label's lines, one per `<text>`, joined with line breaks.
     text: String,
+    /// Where the label is centered: midway between its first line's anchor
+    /// and its last's, since a wrapped label is drawn as one `<text>` per line
+    /// around the point merman laid the label out at.
     anchor: Option<(f64, f64)>,
+    first_anchor: Option<(f64, f64)>,
     bounds: Option<BoundingBox>,
     font_size: Option<f64>,
 }
@@ -553,13 +559,19 @@ impl<I> CollectGeometry<I> {
     }
 
     /// Strips the prefix and the `-{n}` suffix merman wraps around a node's own
-    /// id. The prefix is the diagram's own id followed by the kind's word, and
-    /// a state diagram leaves the diagram id out.
+    /// id. The prefix is the diagram's own id followed by the kind's word; a
+    /// state diagram under `merman` 0.7 left the diagram id out.
     fn plain_node_id(&self, element_id: &str, kind: DiagramKind) -> Option<String> {
         let infix = match kind {
             DiagramKind::Flowchart => "-flowchart-",
             DiagramKind::Er => "-entity-",
-            DiagramKind::State => return strip_index(element_id.strip_prefix("state-")?),
+            DiagramKind::State => {
+                let prefixed = format!("{}-state-", self.svg_id);
+                let rest = element_id
+                    .strip_prefix(prefixed.as_str())
+                    .or_else(|| element_id.strip_prefix("state-"))?;
+                return strip_index(rest);
+            }
             DiagramKind::Pie | DiagramKind::Gantt => return None,
             DiagramKind::Class => "-classId-",
             DiagramKind::Sequence => return None,
@@ -614,6 +626,7 @@ impl<I> CollectGeometry<I> {
                     start_depth: depth,
                     text: String::new(),
                     anchor: None,
+                    first_anchor: None,
                     bounds: None,
                     font_size: None,
                 });
@@ -738,8 +751,12 @@ impl<I> CollectGeometry<I> {
             return;
         };
         if is_text {
+            if !fallback.text.is_empty() {
+                fallback.text.push('\n');
+            }
             if let (Some(x), Some(y)) = anchor {
-                fallback.anchor = Some((x, y));
+                let (first_x, first_y) = *fallback.first_anchor.get_or_insert((x, y));
+                fallback.anchor = Some(((first_x + x) / 2.0, (first_y + y) / 2.0));
             }
             if font_size.is_some() {
                 fallback.font_size = font_size;
@@ -1151,7 +1168,9 @@ fn transition_index(edge_id: &str) -> Option<usize> {
 ///
 /// An ER entity's attribute name is claimed by its attribute row. Its other
 /// cells and a cluster's title are labels too, but none belongs to a box this
-/// pass reports, so they are left unclaimed.
+/// pass reports, so they are left unclaimed. So are a class's annotation,
+/// members and methods, which `merman` 0.8 lifts out as well: only its
+/// `label-group` holds the name.
 fn fallback_role(element: &BytesStart<'_>) -> Option<FallbackRole> {
     let class = attribute(element, "class")?;
     if class
@@ -1168,7 +1187,8 @@ fn fallback_role(element: &BytesStart<'_>) -> Option<FallbackRole> {
             "edgeLabel" => is_edge = true,
             "nodeLabel" => is_node = true,
             "cluster-label" | "attribute-type" | "attribute-name" | "attribute-keys"
-            | "attribute-comment" | "edgeTerminals" => return None,
+            | "attribute-comment" | "edgeTerminals" | "annotation-group" | "members-group"
+            | "methods-group" => return None,
             _ => {}
         }
     }

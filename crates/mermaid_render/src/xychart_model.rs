@@ -380,7 +380,7 @@ pub fn parse_xychart(source: &str) -> Result<XyChartDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::XyChart(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::XyChart(_)) {
             bail!("この図は XY チャートではありません。");
         }
     }
@@ -752,7 +752,19 @@ fn read_whole_text(input: &str, statement: &str) -> Result<XyText> {
             "引用符の無い `{text}` は Mermaid が空白を詰めて描きます ({statement})。`\"{text}\"` のように `\"` で囲んでからもう一度開いてください。"
         );
     }
-    Ok(XyText::new(text, XyTextStyle::Bare))
+    Ok(unquoted_text(text))
+}
+
+/// A text read without quotes, held as quoted when Mermaid would not read it
+/// bare (see [`is_bare_xychart_text`]), so that the first write already
+/// quotes it and the round trip stays stable.
+fn unquoted_text(text: &str) -> XyText {
+    let style = if is_bare_xychart_text(text) {
+        XyTextStyle::Bare
+    } else {
+        XyTextStyle::Quoted
+    };
+    XyText::new(text, style)
 }
 
 /// Reads a text at the start of `input` and returns it with what follows, the
@@ -783,10 +795,7 @@ fn read_text_prefix<'a>(input: &'a str, statement: &str) -> Result<(XyText, &'a 
     if value.is_empty() {
         bail!("名前が空です ({statement})。");
     }
-    Ok((
-        XyText::new(value, XyTextStyle::Bare),
-        text.get(end..).unwrap_or_default(),
-    ))
+    Ok((unquoted_text(value), text.get(end..).unwrap_or_default()))
 }
 
 /// Reads `min --> max`, or `None` when `input` does not start with a number
@@ -1064,21 +1073,16 @@ pub fn emit_text(text: &XyText) -> String {
     }
 }
 
-/// Whether `text` reads back as itself when it is written without quotes: no
-/// whitespace, which Mermaid squeezes out, and none of the characters that
-/// end a word, a list or a statement. A leading digit or sign is left to the
-/// quotes as well, because `x-axis 10 --> 20` is a range and not a name.
+/// Whether `text` reads back as itself when it is written without quotes, in
+/// Mermaid as well as in `merman`: ASCII letters and `_` only. `merman` reads
+/// far more bare (Japanese included), but Mermaid's lexer refuses anything
+/// outside ASCII, splits a digit off an axis title (`y-axis Rev1 0 --> 10`)
+/// and stops at most punctuation, so everything else is written quoted.
 pub fn is_bare_xychart_text(text: &str) -> bool {
-    !text.is_empty()
-        && !text.contains("-->")
-        && !text.contains("%%")
-        && !text.starts_with(|character: char| {
-            character.is_ascii_digit() || matches!(character, '+' | '-' | '.')
-        })
-        && !text.chars().any(|character| {
-            character.is_whitespace()
-                || matches!(character, '"' | '[' | ']' | '{' | '}' | ',' | ';' | '`')
-        })
+    text.starts_with(|character: char| character.is_ascii_alphabetic())
+        && text
+            .chars()
+            .all(|character| character.is_ascii_alphabetic() || character == '_')
 }
 
 /// Whether `text` can be written as a title, an axis name, a category or a
@@ -1116,7 +1120,7 @@ mod tests {
 
     /// The template `markdown::InsertMermaidDiagram` writes, which has to come
     /// back byte for byte. The editor's tests read it from the action itself.
-    const TEMPLATE: &str = "xychart-beta\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title 月別の売上\n    x-axis [\"1月\", \"2月\", \"3月\", \"4月\"]\n    y-axis \"売上 (万円)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]";
+    const TEMPLATE: &str = "xychart-beta\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title \"月別の売上\"\n    x-axis [\"1月\", \"2月\", \"3月\", \"4月\"]\n    y-axis \"売上 (万円)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]";
 
     fn parse(source: &str) -> XyChartDocument {
         parse_xychart(source).unwrap_or_else(|error| panic!("{source} should parse: {error}"))
@@ -1148,7 +1152,7 @@ mod tests {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .ok()??;
-        match parsed.model {
+        match parsed.into_parts().1 {
             RenderSemanticModel::XyChart(model) => Some(model),
             _ => None,
         }
@@ -1315,7 +1319,7 @@ mod tests {
         assert_eq!(emit_xychart(&document), TEMPLATE);
         assert_eq!(
             document.title,
-            Some(XyText::new("月別の売上", XyTextStyle::Bare))
+            Some(XyText::new("月別の売上", XyTextStyle::Quoted))
         );
         assert_eq!(
             document
@@ -1393,7 +1397,7 @@ mod tests {
         );
         assert_eq!(
             assert_stable(source),
-            "%%{init: {\"theme\": \"dark\"}}%%\nxychart-beta\n  %% 先頭のメモ\n    title 図\n    x-axis [a, b]\n  %% 棒のメモ\n    bar [1, 2]\n  accDescr {\n    説明の 1 行目\n    2 行目\n  }\n    line [2, 1]\n  %% 途中のメモ\n  %% 末尾のメモ"
+            "%%{init: {\"theme\": \"dark\"}}%%\nxychart-beta\n  %% 先頭のメモ\n    title \"図\"\n    x-axis [a, b]\n  %% 棒のメモ\n    bar [1, 2]\n  accDescr {\n    説明の 1 行目\n    2 行目\n  }\n    line [2, 1]\n  %% 途中のメモ\n  %% 末尾のメモ"
         );
     }
 
@@ -1445,11 +1449,16 @@ mod tests {
         }
     }
 
-    /// `;` separates statements the way a line break does, and a list may run
-    /// over lines; both are written back one statement per line.
+    /// `;` separates statements the way a line break does, and is written
+    /// back as one statement per line. `merman` 0.7 also let a list run over
+    /// lines; 0.8 refuses that, as Mermaid does.
     #[test]
-    fn separators_and_continued_lists_are_normalized() {
-        let source = "xychart\n  title \"a; b\"; x-axis [p, q]\n  bar [1,\n    2]";
+    fn separators_are_normalized_and_continued_lists_refused() {
+        let continued = "xychart\n  bar [1,\n    2]";
+        assert!(render_to_svg(continued, &MermaidTheme::default()).is_err());
+        assert!(parse_xychart(continued).is_err());
+
+        let source = "xychart\n  title \"a; b\"; x-axis [p, q]\n  bar [1, 2]";
         let document = parse(source);
         assert_eq!(
             document.title,
@@ -1474,7 +1483,7 @@ mod tests {
         assert_eq!(document.structure_error(), None);
         assert_eq!(
             assert_stable(source),
-            "xychart\n    x-axis [cat1, cat2, cat3]\n    bar [10, 20]\n    line [1, 2, 3, 4]"
+            "xychart\n    x-axis [\"cat1\", \"cat2\", \"cat3\"]\n    bar [10, 20]\n    line [1, 2, 3, 4]"
         );
     }
 

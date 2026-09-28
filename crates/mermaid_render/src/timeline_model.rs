@@ -161,7 +161,7 @@ pub fn parse_timeline(source: &str) -> Result<TimelineDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::Timeline(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::Timeline(_)) {
             bail!("この図はタイムラインではありません。");
         }
     }

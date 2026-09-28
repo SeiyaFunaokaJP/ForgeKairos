@@ -292,7 +292,7 @@ pub fn parse_state(source: &str) -> Result<StateDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::State(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::State(_)) {
             bail!("この図は状態遷移図ではありません。");
         }
     }

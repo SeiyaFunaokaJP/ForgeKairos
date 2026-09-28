@@ -157,11 +157,11 @@ async fn renames_follow_into_the_rows_that_name_them(cx: &mut TestAppContext) {
             ```mermaid
             gitGraph
                 commit id: "最初"
-                branch 開発
-                checkout 開発
+                branch "開発"
+                checkout "開発"
                 commit id: "追加2"
                 checkout main
-                merge 開発
+                merge "開発"
                 commit
                 cherry-pick id: "追加2"
             ```
@@ -310,11 +310,11 @@ async fn a_rename_passing_through_a_taken_name_keeps_the_rows_apart(cx: &mut Tes
             ```mermaid
             gitGraph
                 commit id: "初期化"
-                branch 開発
-                checkout 開発
+                branch "開発"
+                checkout "開発"
                 commit id: "機能を追加"
                 checkout main
-                merge 開発
+                merge "開発"
             ```
         "#},
     );

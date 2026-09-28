@@ -54,6 +54,7 @@ paths.workspace = true
 project.workspace = true
 prompt_store.workspace = true
 quick-xml.workspace = true
+rand.workspace = true
 regex.workspace = true
 rust-embed.workspace = true
 sandbox.workspace = true
@@ -82,7 +83,6 @@ zed_env_vars.workspace = true
 zstd.workspace = true
 
 [dev-dependencies]
-assets.workspace = true
 async-io.workspace = true
 agent_servers = { workspace = true, "features" = ["test-support"] }
 client = { workspace = true, "features" = ["test-support"] }
@@ -104,7 +104,6 @@ lsp = { workspace = true, "features" = ["test-support"] }
 pretty_assertions.workspace = true
 project = { workspace = true, "features" = ["test-support"] }
 proptest.workspace = true
-rand.workspace = true
 reqwest_client.workspace = true
 settings = { workspace = true, "features" = ["test-support"] }
 
@@ -114,3 +113,6 @@ theme_settings.workspace = true
 unindent = { workspace = true }
 
 zlog.workspace = true
+
+[package.metadata.cargo-shear]
+ignored = ["editor"]

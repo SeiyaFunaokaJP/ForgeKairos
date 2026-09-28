@@ -228,7 +228,7 @@ fn merman_packet(source: &str) -> Result<serde_json::Value> {
             )
         })?
         .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-    let RenderSemanticModel::Packet(model) = parsed.model else {
+    let RenderSemanticModel::Packet(model) = parsed.into_parts().1 else {
         bail!("この図はパケット図ではありません。");
     };
     serde_json::to_value(&model).map_err(|error| anyhow!("{error}"))

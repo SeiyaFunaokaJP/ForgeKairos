@@ -26,9 +26,11 @@ use super::{
     row_controls_labelled, section_title,
 };
 
-const NEW_FRAME_LABEL: &str = "新しい要素";
-const NEW_DATA_NAME: &str = "データ";
-const NEW_DATA_VALUE: &str = "{ 項目: 値 }";
+// Mermaid reads names as ASCII identifiers and a data block only over
+// several lines, closed by a `}` at the start of its own line.
+const NEW_FRAME_LABEL: &str = "NewElement";
+const NEW_DATA_NAME: &str = "Data";
+const NEW_DATA_VALUE: &str = "{\n  item: value\n}";
 
 pub(super) struct EventModelingForm {
     /// The diagram as it was opened, plus the structural edits made since.
@@ -478,7 +480,8 @@ impl MermaidEditor {
         let name = unused_name(&taken, NEW_DATA_NAME);
         let row = DataBlockRow {
             name: self.new_field(&name, window, cx),
-            value: Some(self.new_field(NEW_DATA_VALUE, window, cx)),
+            // A block over several lines has no field; it is edited as text.
+            value: None,
         };
         let Some(form) = self.event_modeling_mut() else {
             return;

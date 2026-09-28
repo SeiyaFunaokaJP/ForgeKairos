@@ -157,7 +157,7 @@ pub fn parse_ishikawa(source: &str) -> Result<IshikawaDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::Ishikawa(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::Ishikawa(_)) {
             bail!("この図は特性要因図ではありません。");
         }
     }
@@ -403,7 +403,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .unwrap_or_else(|error| panic!("merman should read {source:?}: {error}"))
             .unwrap_or_else(|| panic!("merman should find a diagram in {source:?}"));
-        let RenderSemanticModel::Ishikawa(model) = parsed.model else {
+        let RenderSemanticModel::Ishikawa(model) = parsed.into_parts().1 else {
             panic!("{source:?} should be an Ishikawa diagram");
         };
         let Some(root) = model.root else {

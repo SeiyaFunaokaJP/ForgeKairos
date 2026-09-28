@@ -43,6 +43,7 @@ futures.workspace = true
 git.workspace = true
 gpui.workspace = true
 http_client.workspace = true
+i18n.workspace = true
 itertools.workspace = true
 language.workspace = true
 log.workspace = true
@@ -71,9 +72,6 @@ url.workspace = true
 util.workspace = true
 uuid.workspace = true
 zed_actions.workspace = true
-
-[target.'cfg(target_os = "windows")'.dependencies]
-windows.workspace = true
 
 [dev-dependencies]
 client = { workspace = true, features = ["test-support"] }

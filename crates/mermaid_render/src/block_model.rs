@@ -24,8 +24,7 @@
 //! - Statements between blocks move below the blocks, in their order. A
 //!   comment goes with them once one of them has been read at the top level.
 //! - `columns` is written after the comments that open its container.
-//! - A `block` line followed by blocks on the same line is split, and a group
-//!   left open at the end of the fence gets its `end`.
+//! - A `block` line followed by blocks on the same line is split.
 //! - Indentation, the spacing inside a statement, a group's brackets (only its
 //!   label is drawn) and the marker before an edge label (`==`, `-.`), which
 //!   `merman` reads but does not keep.
@@ -620,7 +619,7 @@ impl BlockDocument {
                 BlockStatement::ClassDef { name, css } => {
                     if !is_valid_block_class_name(name) {
                         return Some(format!(
-                            "classDef の名前 `{name}` は使えません (空白・`,`・`\"` は不可、空にもできません)。"
+                            "classDef の名前 `{name}` は使えません (半角英数字と `_` だけ、空にもできません)。"
                         ));
                     }
                     if !is_valid_block_css(css) {
@@ -645,7 +644,7 @@ impl BlockDocument {
                     }
                     if !is_valid_block_class_name(class_name) {
                         return Some(format!(
-                            "クラス名 `{class_name}` は使えません (空白・`,`・`\"` は不可、空にもできません)。"
+                            "クラス名 `{class_name}` は使えません (半角英数字と `_` だけ、空にもできません)。"
                         ));
                     }
                 }
@@ -968,13 +967,14 @@ pub fn is_valid_edge_label(label: &str) -> bool {
     !label.contains(['"', '\n', '\r']) && !opens_directive(label)
 }
 
+/// Whether `name` can be a `classDef` name, and so the class a `class`
+/// statement gives: Mermaid reads it as a word, ASCII letters, digits and `_`
+/// (`merman` 0.8 refuses anything else).
 pub fn is_valid_block_class_name(name: &str) -> bool {
     !name.is_empty()
-        && !name.starts_with("%%")
-        && !opens_directive(name)
-        && !name
+        && name
             .chars()
-            .any(|character| character.is_whitespace() || matches!(character, ',' | '"'))
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 /// Whether `css` can follow a `style` target or a `classDef` name. Mermaid takes
@@ -1128,7 +1128,7 @@ pub fn parse_block(source: &str) -> Result<BlockDocument> {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::Block(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::Block(_)) {
             bail!("この図はブロック図ではありません。");
         }
     }
@@ -1406,6 +1406,11 @@ fn scan_block(source: &str) -> Result<BlockDocument> {
             continue;
         }
         scan_statement(&mut scanner, trimmed)?;
+    }
+    // `merman` 0.7 closed a group left open at the end of the fence; 0.8
+    // refuses it.
+    if !scanner.open_groups.is_empty() {
+        bail!("`block` のグループが `end` で閉じられていません。テキストのまま編集してください。");
     }
 
     Ok(scanner.document)

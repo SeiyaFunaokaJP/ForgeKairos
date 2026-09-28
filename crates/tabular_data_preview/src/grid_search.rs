@@ -334,10 +334,9 @@ impl TabularDataPreviewPane {
                 if range.end > rewritten_from {
                     continue;
                 }
-                let replacement = match replaced
-                    .get(range.clone())
-                    .and_then(|text| query.replacement_for(text))
-                {
+                // The hit is expanded against the cell as found, so lookaround
+                // assertions see the same context the search did.
+                let replacement = match query.replacement_for(&value, range.clone()) {
                     Some(replacement) => replacement.into_owned(),
                     None => continue,
                 };

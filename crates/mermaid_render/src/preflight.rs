@@ -38,9 +38,6 @@ const UNBOUNDED_CONFIG_KEYS: &[&str] = &[
     "seed",
 ];
 
-/// merman draws one ring per radar tick; `ticks 999999999` never finishes.
-const MAX_RADAR_TICKS: i64 = 1_000;
-
 /// merman lays block diagrams out on a grid of `columns` cells and expands
 /// `space:N` into `N` cells; `columns 999999999` requests about 7 GB.
 const MAX_BLOCK_COLUMNS: i64 = 1_000;
@@ -67,23 +64,24 @@ fn check(source: &str, before_layout: bool) -> Result<()> {
         check_config_numbers(preprocessed.config.as_value(), "")?;
     }
 
-    let Ok(Some(metadata)) = engine.parse_metadata_sync(source, ParseOptions::default()) else {
+    let Ok(metadata) = engine.parse_metadata_sync(source) else {
         return Ok(());
     };
+    // merman 0.7 also looped forever on an xychart x-axis range it could not
+    // step through and drew one ring per radar tick; 0.8 steps by the number
+    // of values and clamps the ticks to 32 as Mermaid does, so neither needs
+    // a check here any more.
     match metadata.diagram_type.as_str() {
-        // The endless loop is in merman's parser, so this check cannot use
-        // the parsed model.
-        "xychart" => check_xychart(&preprocessed.code),
         // merman's block parser expands `space:N` into `N` blocks, so that
         // count has to be checked before parsing too.
         "block" => {
-            check_block_widths(&preprocessed.code)?;
+            check_block_widths(preprocessed.code())?;
             if before_layout {
                 check_parsed_model(&engine, source)?;
             }
             Ok(())
         }
-        "radar" | "c4" if before_layout => check_parsed_model(&engine, source),
+        "c4" if before_layout => check_parsed_model(&engine, source),
         _ => Ok(()),
     }
 }
@@ -94,7 +92,7 @@ fn check_parsed_model(engine: &Engine, source: &str) -> Result<()> {
     else {
         return Ok(());
     };
-    check_model(&parsed.model)
+    check_model(parsed.model())
 }
 
 /// Finds the `space:N` widths merman's block parser expands into `N` blocks
@@ -225,17 +223,6 @@ fn check_config_number(number: f64, key: &str) -> Result<()> {
 
 fn check_model(model: &RenderSemanticModel) -> Result<()> {
     match model {
-        RenderSemanticModel::Radar(radar) => {
-            let ticks = radar
-                .options
-                .ticks
-                .as_i64()
-                .or_else(|| radar.options.ticks.as_u64().map(|ticks| ticks as i64))
-                .unwrap_or(0);
-            if ticks > MAX_RADAR_TICKS {
-                bail!("radar ticks {ticks} is too many to render (limit {MAX_RADAR_TICKS})");
-            }
-        }
         RenderSemanticModel::Block(block) => {
             let mut pending = block.blocks_flat.iter().collect::<Vec<_>>();
             while let Some(node) = pending.pop() {
@@ -291,279 +278,6 @@ fn check_model(model: &RenderSemanticModel) -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone, Copy)]
-enum XAxis {
-    Band,
-    Linear { min: f64, max: f64 },
-}
-
-/// Replays how merman's xychart parser (`XyChartState` in
-/// `merman-core/src/diagrams/xychart.rs`) derives x-axis categories for a
-/// plot without categories. It steps from `min` by `(max - min) / (n - 1)`
-/// until it passes `max`; when that step does not move the value (an
-/// `x-axis 5 --> 5` range, or a range narrower than the float spacing) the
-/// loop never ends and keeps allocating.
-fn check_xychart(code: &str) -> Result<()> {
-    let mut x_axis = XAxis::Band;
-    let mut x_axis_set = false;
-    let cleaned = xychart_strip_comments(code);
-    let statements = xychart_split_statements(&cleaned);
-    for statement in statements
-        .iter()
-        .map(|statement| statement.trim())
-        .filter(|statement| !statement.is_empty())
-        .skip(1)
-    {
-        if ["title", "accTitle", "accDescr", "y-axis"]
-            .iter()
-            .any(|keyword| strip_keyword(statement, keyword).is_some())
-        {
-            continue;
-        }
-        if let Some(rest) = strip_keyword(statement, "x-axis") {
-            if let Some(axis) = xychart_x_axis(rest) {
-                x_axis = axis;
-                x_axis_set = true;
-            }
-            continue;
-        }
-        let Some(rest) =
-            strip_keyword(statement, "line").or_else(|| strip_keyword(statement, "bar"))
-        else {
-            continue;
-        };
-        let Some(count) = xychart_plot_value_count(rest) else {
-            continue;
-        };
-        if !x_axis_set {
-            let (previous_min, previous_max) = match x_axis {
-                XAxis::Linear { min, max } => (min, max),
-                XAxis::Band => (f64::INFINITY, f64::NEG_INFINITY),
-            };
-            x_axis = XAxis::Linear {
-                min: previous_min.min(1.0),
-                max: previous_max.max(count as f64),
-            };
-            x_axis_set = true;
-        }
-        if let XAxis::Linear { min, max } = x_axis
-            && !x_axis_steps_finish(min, max, count)
-        {
-            bail!(
-                "xychart x-axis range {min} --> {max} cannot be divided into {count} points; \
-                 widen the range or add categories"
-            );
-        }
-    }
-    Ok(())
-}
-
-fn x_axis_steps_finish(min: f64, max: f64, count: usize) -> bool {
-    let denominator = count as f64 - 1.0;
-    let step = (max - min) / denominator;
-    let mut value = min;
-    let mut steps = 0usize;
-    while value <= max {
-        steps += 1;
-        // merman produces one category per value, plus at most one more
-        // from rounding; anything beyond that means the step is not
-        // advancing.
-        if steps > count.saturating_add(1) {
-            return false;
-        }
-        value += step;
-        if denominator == 0.0 {
-            break;
-        }
-    }
-    true
-}
-
-fn strip_keyword<'a>(statement: &'a str, keyword: &str) -> Option<&'a str> {
-    let statement = statement.trim_start();
-    let head = statement.get(..keyword.len())?;
-    head.eq_ignore_ascii_case(keyword)
-        .then(|| &statement[keyword.len()..])
-}
-
-fn xychart_x_axis(rest: &str) -> Option<XAxis> {
-    let text = rest.trim();
-    if text.starts_with('[') {
-        return Some(XAxis::Band);
-    }
-    if let Some((min, max)) = xychart_range(text) {
-        return Some(XAxis::Linear { min, max });
-    }
-    let tail = xychart_text_prefix_tail(text)?.trim_start();
-    if tail.starts_with('[') {
-        return Some(XAxis::Band);
-    }
-    let (min, max) = xychart_range(tail)?;
-    Some(XAxis::Linear { min, max })
-}
-
-fn xychart_range(input: &str) -> Option<(f64, f64)> {
-    let (first, tail) = take_number_token(input.trim_start())?;
-    let tail = tail.trim_start().strip_prefix("-->")?;
-    let (second, tail) = take_number_token(tail.trim_start())?;
-    if !tail.trim().is_empty() {
-        return None;
-    }
-    Some((parse_number(first)?, parse_number(second)?))
-}
-
-fn take_number_token(input: &str) -> Option<(&str, &str)> {
-    let mut end = 0;
-    for (index, character) in input.char_indices() {
-        let sign = index == 0 && (character == '+' || character == '-');
-        if sign || character.is_ascii_digit() || character == '.' {
-            end = index + character.len_utf8();
-            continue;
-        }
-        break;
-    }
-    (end > 0).then(|| input.split_at(end))
-}
-
-fn parse_number(text: &str) -> Option<f64> {
-    let text = text.trim();
-    if text.is_empty()
-        || !text
-            .chars()
-            .all(|character| character.is_ascii_digit() || matches!(character, '+' | '-' | '.'))
-    {
-        return None;
-    }
-    text.parse().ok()
-}
-
-fn xychart_text_prefix_tail(input: &str) -> Option<&str> {
-    let text = input.trim_start();
-    if let Some(body) = text.strip_prefix("\"`") {
-        let end = body.find("`\"")?;
-        return body.get(end + 2..);
-    }
-    if let Some(body) = text.strip_prefix('"') {
-        let end = body.find('"')?;
-        return body.get(end + 1..);
-    }
-    let end = text
-        .find(|character: char| character.is_whitespace() || character == '[')
-        .unwrap_or(text.len());
-    if end == 0 {
-        return None;
-    }
-    text.get(end..)
-}
-
-fn xychart_plot_value_count(rest: &str) -> Option<usize> {
-    let text = rest.trim();
-    let data = if text.starts_with('[') {
-        text
-    } else {
-        xychart_text_prefix_tail(text)?.trim_start()
-    };
-    let inner = data.strip_prefix('[')?;
-    let inner = &inner[..inner.find(']')?];
-    let mut count = 0;
-    for part in inner.split(',') {
-        parse_number(part)?;
-        count += 1;
-    }
-    Some(count)
-}
-
-/// The comment rules of merman's xychart parser: `%%` outside quotes ends the
-/// line, and lines that are only a comment or directive are dropped.
-fn xychart_strip_comments(input: &str) -> String {
-    let mut output = String::with_capacity(input.len());
-    for line in input.split_inclusive('\n') {
-        let mut in_quote = false;
-        let mut cut = line.len();
-        let mut characters = line.char_indices().peekable();
-        while let Some((index, character)) = characters.next() {
-            if in_quote {
-                if character == '"' {
-                    in_quote = false;
-                }
-                continue;
-            }
-            if character == '"' {
-                in_quote = true;
-                continue;
-            }
-            if character == '%' && characters.peek().is_some_and(|(_, next)| *next == '%') {
-                cut = index;
-                break;
-            }
-        }
-        let kept = &line[..cut];
-        if kept.trim_start().starts_with("%%") {
-            continue;
-        }
-        output.push_str(kept);
-    }
-    output
-}
-
-/// The statement rules of merman's xychart parser: newlines and `;` end a
-/// statement unless they are inside quotes, `[...]` or `{...}`.
-fn xychart_split_statements(input: &str) -> Vec<String> {
-    let mut statements = Vec::new();
-    let mut current = String::new();
-    let mut in_quote = false;
-    let mut in_markdown = false;
-    let mut bracket_depth = 0i64;
-    let mut brace_depth = 0i64;
-    let mut characters = input.chars().peekable();
-    while let Some(character) = characters.next() {
-        if in_markdown {
-            current.push(character);
-            if character == '`' && characters.peek() == Some(&'"') {
-                current.push('"');
-                characters.next();
-                in_markdown = false;
-            }
-            continue;
-        }
-        if in_quote {
-            current.push(character);
-            if character == '"' {
-                in_quote = false;
-            }
-            continue;
-        }
-        if character == '"' && characters.peek() == Some(&'`') {
-            current.push('"');
-            current.push('`');
-            characters.next();
-            in_markdown = true;
-            continue;
-        }
-        if character == '"' {
-            current.push(character);
-            in_quote = true;
-            continue;
-        }
-        match character {
-            '[' => bracket_depth += 1,
-            ']' => bracket_depth -= 1,
-            '{' => brace_depth += 1,
-            '}' => brace_depth -= 1,
-            _ => {}
-        }
-        if (character == '\n' || character == ';') && bracket_depth == 0 && brace_depth == 0 {
-            statements.push(std::mem::take(&mut current));
-            continue;
-        }
-        current.push(character);
-    }
-    if !current.is_empty() {
-        statements.push(current);
-    }
-    statements
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -602,88 +316,86 @@ mod tests {
         }
     }
 
+    /// merman 0.7 panicked on half-typed C4 boundaries (it inserted the
+    /// boundary type at argument index 2 without checking the length); 0.8
+    /// reads them, or refuses them with a parse error, without panicking.
+    /// The panic path itself is covered by `tests::a_merman_panic_becomes_an_error`.
     #[test]
-    fn a_merman_panic_becomes_an_error() {
-        // Half-typed C4 boundaries: merman inserts the boundary type at
-        // argument index 2 without checking the length.
+    fn half_typed_c4_boundaries_are_refused_or_drawn() {
         assert_rejected(
             "C4Context\nSystem_Boundary(b) {\n}",
-            "merman panicked while rendering",
+            "C4 boundary must contain at least one diagram statement",
         );
         assert_rejected(
             "C4Container\nEnterprise_Boundary() {\n  Container(c1, \"C1\")\n}",
-            "merman panicked while rendering",
+            "missing boundary alias",
         );
-        // The render thread is reusable after a panic.
-        assert_renders("C4Context\nSystem_Boundary(b, \"x\") {\n}");
+        assert_renders("C4Context\nSystem_Boundary(b) {\n  Person(p, \"P\")\n}");
+        assert_renders("C4Context\nSystem_Boundary(b, \"x\") {\n  Person(p, \"P\")\n}");
     }
 
     #[test]
     fn c4_boundaries_merman_cannot_lay_out_are_rejected() {
-        assert_rejected("C4Context\nBoundary() {\n}", "needs an alias");
-        assert_rejected("C4Context\nBoundary(, \"x\") {\n}", "needs an alias");
-        assert_rejected("C4Context\nBoundary(\"\", \"x\") {\n}", "needs an alias");
-        assert_rejected("C4Deployment\nDeployment_Node() {\n}", "needs an alias");
+        // merman 0.8 refuses an empty alias while parsing, before the layout
+        // that never returned on one.
+        for source in [
+            "C4Context\nBoundary() {\n  Person(p, \"P\")\n}",
+            "C4Deployment\nDeployment_Node() {\n  Person(p, \"P\")\n}",
+        ] {
+            assert_rejected(source, "missing boundary alias");
+        }
+        // An alias left out before the `,` or written as `""` gets past
+        // merman's parser; the check here keeps it from the layout.
+        for source in [
+            "C4Context\nBoundary(, \"x\") {\n  Person(p, \"P\")\n}",
+            "C4Context\nBoundary(\"\", \"x\") {\n  Person(p, \"P\")\n}",
+        ] {
+            assert_rejected(source, "needs an alias");
+        }
         assert_rejected(
-            "C4Context\nBoundary(b1, \"a\") {\n  Boundary(b1, \"b\") {\n  }\n}",
+            "C4Context\nBoundary(b1, \"a\") {\n  Boundary(b1, \"b\") {\n    Person(p, \"P\")\n  }\n}",
             "contains itself",
         );
         assert_renders("C4Context\nBoundary(b1, \"a\") {\n  Person(p, \"P\")\n}");
     }
 
+    /// merman 0.7 stepped through an xychart x-axis range that did not move
+    /// (`5 --> 5`, or a range narrower than the float spacing) forever, and
+    /// this module refused those ranges before merman saw them. 0.8 steps by
+    /// the number of values, so they draw, as they do in Mermaid.
     #[test]
-    fn xychart_ranges_merman_cannot_divide_are_rejected() {
-        assert_rejected("xychart-beta\nx-axis 5 --> 5\nbar [1, 2]", "x-axis range");
-        assert_rejected(
+    fn xychart_ranges_merman_used_to_loop_on_are_drawn() {
+        for source in [
+            "xychart-beta\nx-axis 5 --> 5\nbar [1, 2]",
             "xychart-beta\nx-axis \"時間\" 5 --> 5\nline [1, 2, 3]",
-            "x-axis range",
-        );
-        // Without an x-axis, the first plot fixes the range at 1 --> 1.
-        assert_rejected("xychart-beta\nbar [1]\nline [1, 2]", "x-axis range");
-        // A range narrower than the float spacing at its ends.
-        assert_rejected(
+            "xychart-beta\nbar [1]\nline [1, 2]",
             "xychart-beta\nx-axis 100000000000000000 --> 100000000000000032\nbar [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]",
-            "x-axis range",
-        );
-        // Statements split by `;` and plots spanning lines are read the way
-        // merman reads them.
-        assert_rejected("xychart-beta; x-axis 2 --> 2; bar [1,\n 2]", "x-axis range");
-
-        assert_renders("xychart-beta\nx-axis 5 --> 5\nbar [1]");
-        assert_renders("xychart-beta\nx-axis 0 --> 0.5\nbar [1, 2]");
-        assert_renders("xychart-beta\nx-axis 1 --> 0\nbar [1, 2]");
-        assert_renders("xychart-beta\nx-axis [a]\nbar [1, 2]");
-        assert_renders("xychart-beta\nbar [1, 2]\nline [1, 2, 3]");
-        assert_renders("xychart-beta\n%% x-axis 5 --> 5\nbar [1, 2]");
-    }
-
-    #[test]
-    fn xychart_comments_end_the_line_like_merman() {
-        // merman cuts a trailing `%%` comment together with the newline, so
-        // the axis joins the next line; after a blank line it stands alone
-        // and loops. Checked without rendering so a regression cannot hang.
-        assert!(check_before_render("xychart-beta\nx-axis 5 --> 5 %% c\n\nbar [1, 2]").is_err());
-        assert!(check_before_render("xychart-beta\nx-axis 5 --> 5 %% c\nbar [1, 2]").is_ok());
-        assert!(check_before_render("xychart-beta\nx-axis \"%%\" 5 --> 5\nbar [1, 2]").is_err());
-    }
-
-    #[test]
-    fn x_axis_steps() {
-        assert!(x_axis_steps_finish(0.0, 10.0, 11));
-        assert!(x_axis_steps_finish(0.0, 1.0, 3));
-        assert!(x_axis_steps_finish(5.0, 5.0, 1));
-        assert!(x_axis_steps_finish(1.0, 0.0, 2));
-        assert!(!x_axis_steps_finish(5.0, 5.0, 2));
-        assert!(!x_axis_steps_finish(1e17, 1e17 + 32.0, 10));
+            "xychart-beta; x-axis 2 --> 2; bar [1, 2]",
+            "xychart-beta\nx-axis 5 --> 5 %% c\n\nbar [1, 2]",
+            "xychart-beta\nx-axis 5 --> 5\nbar [1]",
+            "xychart-beta\nx-axis 1 --> 0\nbar [1, 2]",
+        ] {
+            assert!(check_before_render(source).is_ok(), "{source}");
+            assert!(check_before_parse(source).is_ok(), "{source}");
+            assert_renders(source);
+        }
     }
 
     #[test]
     fn sizes_that_exhaust_memory_are_rejected() {
-        assert_rejected(
-            "radar-beta\naxis a, b, c\ncurve x{1, 2, 3}\nticks 999999999",
-            "radar ticks",
-        );
-        assert_renders("radar-beta\naxis a, b, c\ncurve x{1, 2, 3}\nticks 1000");
+        // merman 0.8 clamps the ticks to 32, as Mermaid does, where 0.7 drew
+        // one ring per tick and never finished.
+        let radar = "radar-beta\naxis a, b, c\ncurve x{1, 2, 3}\nticks 999999999";
+        assert_renders(radar);
+        let Ok(Some(parsed)) =
+            Engine::new().parse_diagram_for_render_model_sync(radar, ParseOptions::default())
+        else {
+            panic!("merman should read {radar}");
+        };
+        let RenderSemanticModel::Radar(model) = parsed.model() else {
+            panic!("{radar} should be a radar chart");
+        };
+        assert_eq!(model.options.ticks, serde_json::json!(32));
 
         assert_rejected("block-beta\ncolumns 999999999\na b", "block columns");
         assert_rejected("block-beta\ncolumns 0\na b", "block columns");
@@ -749,7 +461,6 @@ mod tests {
 
     #[test]
     fn the_editor_parse_is_guarded_only_against_parser_hazards() {
-        assert!(check_before_parse("xychart-beta\nx-axis 5 --> 5 %% c\n\nbar [1, 2]").is_err());
         assert!(check_before_parse("block-beta\na space:999999999 b").is_err());
         // Layout hazards are left for the preview to refuse, so the editor
         // can open the diagram and fix it.

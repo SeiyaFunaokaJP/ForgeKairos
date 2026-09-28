@@ -257,3 +257,15 @@ async fn a_passing_duplicate_alias_moves_no_relationship(cx: &mut TestAppContext
         before
     );
 }
+
+/// `merman` 0.8 refuses a C4 diagram with nothing in it, so the form asks for
+/// an element or a boundary before it writes the fence.
+#[test]
+fn a_diagram_with_nothing_to_draw_is_asked_for_an_element() {
+    let blank = mermaid_render::c4_model::C4Document::empty();
+    assert!(problem(&blank).is_some_and(|problem| problem.contains("1 つ以上")));
+    let titled = parse_c4("C4Context\n    title 題").expect("a title is a statement");
+    assert!(problem(&titled).is_some());
+    let drawn = parse_c4("C4Context\n    Person(a, \"A\")").expect("an element");
+    assert_eq!(problem(&drawn), None);
+}

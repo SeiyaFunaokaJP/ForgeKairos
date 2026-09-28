@@ -1783,7 +1783,9 @@ fn file_name(buffer: &Entity<Buffer>, cx: &App) -> String {
     buffer
         .read(cx)
         .file()
-        .and_then(|file| file.path().file_name().map(ToOwned::to_owned))
+        // `File::file_name` rather than the path's last part: a file opened on its own is
+        // a worktree whose root is the file, and its path within that worktree is empty.
+        .map(|file| file.file_name(cx).to_owned())
         .unwrap_or_else(|| "無題".to_owned())
 }
 
@@ -2242,6 +2244,29 @@ mod tests {
             });
             (view, left_buffer, right_buffer)
         })
+    }
+
+    #[gpui::test]
+    async fn a_file_opened_on_its_own_is_named_after_itself(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            workspace::AppState::test(cx);
+        });
+        let fs = project::FakeFs::new(cx.executor());
+        fs.insert_tree(
+            util::path!("/elsewhere"),
+            serde_json::json!({ "alone.csv": "a,b
+" }),
+        )
+        .await;
+        let project =
+            project::Project::test(fs, [util::path!("/elsewhere/alone.csv").as_ref()], cx).await;
+        let buffer = project
+            .update(cx, |project, cx| {
+                project.open_local_buffer(util::path!("/elsewhere/alone.csv"), cx)
+            })
+            .await
+            .expect("the file should open");
+        cx.update(|cx| assert_eq!(file_name(&buffer, cx), "alone.csv"));
     }
 
     fn cell_diff(comparison: &CellComparison) -> TableDiff {

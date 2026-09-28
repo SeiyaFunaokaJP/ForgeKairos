@@ -1,9 +1,10 @@
 use editor::markdown_actions::display_width;
 use gpui::{AbsoluteLength, MouseButton, MouseDownEvent, MouseMoveEvent};
 use ui::{
-    ActiveTheme as _, AnyElement, Context, ElementId, InteractiveElement as _, IntoElement as _,
-    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
-    StyledTypography as _, Tooltip, div, px,
+    ActiveTheme as _, AnyElement, ButtonCommon as _, ButtonSize, Clickable, Context, ElementId,
+    FluentBuilder as _, IconButton, IconButtonShape, IconName, IconSize, InteractiveElement as _,
+    IntoElement as _, ParentElement as _, SharedString, StatefulInteractiveElement as _,
+    Styled as _, StyledTypography as _, Tooltip, div, h_flex, px,
 };
 
 use crate::{
@@ -17,7 +18,7 @@ pub enum RowIdentDisplayMode {
     /// E.g
     /// ```text
     /// 1
-    /// ...
+    /// -
     /// 5
     /// ```
     Vertical,
@@ -146,20 +147,66 @@ impl TabularDataPreviewPane {
         &self,
         cx: &mut Context<'_, TabularDataPreviewPane>,
     ) -> AnyElement {
-        div()
-            .id(ElementId::Name("tabular-grid-select-all".into()))
+        let has_line_numbers = !self.engine.contents.line_numbers.is_empty();
+
+        h_flex()
             .size_full()
-            .flex()
             .items_center()
-            .justify_center()
-            .cursor_pointer()
-            .text_color(cx.theme().colors().text_muted)
-            .font_buffer(cx)
-            .child("◤")
-            .tooltip(Tooltip::text("すべてのセルを選択"))
-            .on_click(cx.listener(|this, _event, _window, cx| {
-                this.select_all_cells(cx);
-            }))
+            .child(
+                div()
+                    .id(ElementId::Name("tabular-grid-select-all".into()))
+                    .flex_1()
+                    .h_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .text_color(cx.theme().colors().text_muted)
+                    .font_buffer(cx)
+                    .child("◤")
+                    .tooltip(Tooltip::text("すべてのセルを選択"))
+                    .on_click(cx.listener(|this, _event, _window, cx| {
+                        this.select_all_cells(cx);
+                    })),
+            )
+            .when(has_line_numbers, |row| {
+                // A dedicated toggle (rather than only exposing this in the settings popover) so
+                // toggling shows its effect on the row identifier column immediately, instead of
+                // being hidden behind the open popover until it's dismissed.
+                let (icon, tooltip_text) = match self.settings.numbering_type {
+                    RowIdentifiers::SrcLines => (
+                        IconName::Code,
+                        i18n::t!(
+                            "Showing file line numbers.\nClick to show sequential row numbers."
+                        ),
+                    ),
+                    RowIdentifiers::RowNum => (
+                        IconName::Hash,
+                        i18n::t!(
+                            "Showing sequential row numbers.\nClick to show file line numbers."
+                        ),
+                    ),
+                };
+
+                let view = cx.entity();
+                row.child(
+                    IconButton::new("row-identifier-toggle", icon)
+                        .shape(IconButtonShape::Square)
+                        .icon_size(IconSize::Small)
+                        .size(ButtonSize::Compact)
+                        .tooltip(Tooltip::text(tooltip_text))
+                        .on_click(move |_event, _window, cx| {
+                            view.update(cx, |this, cx| {
+                                this.settings.numbering_type = match this.settings.numbering_type {
+                                    RowIdentifiers::SrcLines => RowIdentifiers::RowNum,
+                                    RowIdentifiers::RowNum => RowIdentifiers::SrcLines,
+                                };
+                                this.sync_column_widths(cx);
+                                cx.notify();
+                            });
+                        }),
+                )
+            })
             .into_any_element()
     }
 

@@ -66,6 +66,7 @@ hex.workspace = true
 html_to_markdown.workspace = true
 http_client.workspace = true
 http_proxy.workspace = true
+i18n.workspace = true
 ide_server.workspace = true
 idna.workspace = true
 indoc.workspace = true
@@ -137,7 +138,6 @@ agent = { workspace = true, features = ["test-support"] }
 agent_servers = { workspace = true, features = ["test-support"] }
 buffer_diff = { workspace = true, features = ["test-support"] }
 client = { workspace = true, features = ["test-support"] }
-clock = { workspace = true, features = ["test-support"] }
 db = { workspace = true, features = ["test-support"] }
 editor = { workspace = true, features = ["test-support"] }
 eval_utils.workspace = true
@@ -147,12 +147,10 @@ indoc.workspace = true
 language = { workspace = true, "features" = ["test-support"] }
 languages = { workspace = true, features = ["test-support"] }
 language_model = { workspace = true, "features" = ["test-support"] }
-node_runtime = { workspace = true, features = ["test-support"] }
 pretty_assertions.workspace = true
 project = { workspace = true, features = ["test-support"] }
 remote = { workspace = true, features = ["test-support"] }
 remote_connection = { workspace = true, features = ["test-support"] }
-remote_server = { workspace = true, features = ["test-support"] }
 
 # ADR-F49 decision 18 (C): names the processes of an agent's sandbox, for the
 # tests of the idle disconnect.
@@ -164,6 +162,4 @@ shlex.workspace = true
 reqwest_client.workspace = true
 tempfile.workspace = true
 vim.workspace = true
-tree-sitter-md.workspace = true
-unindent.workspace = true
 terminal = { workspace = true, features = ["test-support"] }

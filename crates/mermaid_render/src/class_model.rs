@@ -310,19 +310,29 @@ pub fn parse_class(source: &str) -> Result<ClassDocument> {
     if let Some(problem) = crate::mermaid_model::preprocessing_problem(source) {
         bail!("{problem}");
     }
-    if !source.trim().is_empty() {
+    let lines = source.lines().collect::<Vec<_>>();
+    let preamble = scan_preamble(&lines);
+
+    // `merman` 0.8 refuses `classDiagram` with no line after it, which is
+    // what a blank diagram is written as, so a fence holding only the keyword
+    // opens as the blank diagram it is without asking it, the way an empty
+    // fence does.
+    let has_body = preamble.header.is_some_and(|header| {
+        lines
+            .iter()
+            .skip(header + 1)
+            .any(|line| !line.trim().is_empty())
+    });
+    if has_body {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
                 anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
             })?
             .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
-        if !matches!(parsed.model, RenderSemanticModel::Class(_)) {
+        if !matches!(parsed.model(), RenderSemanticModel::Class(_)) {
             bail!("この図はクラス図ではありません。");
         }
     }
-
-    let lines = source.lines().collect::<Vec<_>>();
-    let preamble = scan_preamble(&lines);
 
     // An empty fence: the editor opens on a blank diagram, and whatever
     // comments the user left keep their place.
@@ -2025,12 +2035,16 @@ mod tests {
                 "`{source}`: {error}"
             );
         }
-        // A `}` with nothing but whitespace after it — an ideographic space
-        // included — is the closing brace it looks like.
+        // A `}` with nothing but whitespace after it is the closing brace it
+        // looks like. `merman` 0.7 counted an ideographic space as whitespace
+        // there; 0.8 does not, and refuses the line.
         assert_eq!(
-            assert_stable("classDiagram\n  class A {\n    +x()\n  }\u{3000}\n  class B"),
+            assert_stable("classDiagram\n  class A {\n    +x()\n  } \t\n  class B"),
             "classDiagram\n    class A {\n        +x()\n    }\n    class B"
         );
+        let error = parse_class("classDiagram\n  class A {\n    +x()\n  }\u{3000}\n  class B")
+            .expect_err("an ideographic space after the brace");
+        assert!(format!("{error}").contains("Mermaid の構文"), "{error}");
     }
 
     /// A `%%` line inside a member block is part of the block, not a comment
@@ -2125,7 +2139,14 @@ mod tests {
         let document = parse_class("").expect("an empty fence should parse");
         assert_eq!(document, ClassDocument::empty());
         assert_eq!(emit_class(&document), CLASS_KEYWORD);
-        assert_renders(CLASS_KEYWORD);
+        // `merman` 0.8 no longer draws the keyword on its own (the editor asks
+        // for a class before it writes the fence), but the editor still opens it.
+        assert!(render_to_svg(CLASS_KEYWORD, &MermaidTheme::default()).is_err());
+        assert_eq!(
+            parse_class(CLASS_KEYWORD).expect("the keyword alone should open"),
+            ClassDocument::empty()
+        );
+        assert_renders("classDiagram\n  %% メモ");
     }
 
     #[test]
@@ -2443,10 +2464,6 @@ mod tests {
                 "classDiagram\n    namespace N {\n        class A\n    }\n    A --> B",
             ),
             (
-                "classDiagram\n  namespace N {}",
-                "classDiagram\n    namespace N {\n    }",
-            ),
-            (
                 "classDiagram\n  namespace N[\"名前\"] { note \"メモ\" } %% 説明",
                 "classDiagram\n    namespace N[\"名前\"] { %% 説明\n        note \"メモ\"\n    }",
             ),
@@ -2460,6 +2477,14 @@ mod tests {
             assert_renders(source);
             assert_renders(&emitted);
         }
+        // An empty namespace still opens and comes back, but `merman` 0.8
+        // fails to draw it (the editor asks for a class inside first).
+        let source = "classDiagram\n  namespace N {}";
+        assert_eq!(
+            assert_stable(source),
+            "classDiagram\n    namespace N {\n    }"
+        );
+        assert!(render_to_svg(source, &MermaidTheme::default()).is_err());
     }
 
     /// A member block on one line is not one Mermaid reads: its lexer takes a
