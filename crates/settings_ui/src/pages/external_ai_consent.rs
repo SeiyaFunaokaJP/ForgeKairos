@@ -132,6 +132,16 @@ const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         note: None,
     },
     BuiltinProvider {
+        // SuperGrok subscription sign-in; the API is `x_ai::XAI_API_URL` and
+        // sign-in uses the `XAI_AUTHORIZE_URL` / `XAI_TOKEN_URL` constants in
+        // `crates/x_ai_subscribed/src/x_ai_subscribed.rs`.
+        id: "x_ai_subscribed",
+        default_api_url: None,
+        extra_hosts: &["api.x.ai", "auth.x.ai"],
+        always_external: true,
+        note: None,
+    },
+    BuiltinProvider {
         id: "mistral",
         default_api_url: Some("https://api.mistral.ai/v1"),
         extra_hosts: &[],
@@ -1209,6 +1219,18 @@ mod tests {
             let zed = llm_provider_target("zed.dev", "Zed".into(), cx)
                 .expect("Zed Cloud has no configurable endpoint and is always external");
             assert!(zed.hosts.contains(&SharedString::from("cloud.zed.dev")));
+
+            let super_grok = llm_provider_target("x_ai_subscribed", "SuperGrok".into(), cx)
+                .expect("the SuperGrok subscription has no configurable endpoint");
+            assert_eq!(
+                super_grok.hosts,
+                vec![
+                    SharedString::from("api.x.ai"),
+                    SharedString::from("auth.x.ai")
+                ],
+                "the hosts to allow have to be listed, not left to the extension fallback"
+            );
+            assert_eq!(super_grok.note, None);
         });
 
         cx.update(|cx| {

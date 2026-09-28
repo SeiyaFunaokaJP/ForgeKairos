@@ -740,7 +740,7 @@ pub(crate) mod persistence {
 mod tests {
     use std::{any::TypeId, cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
 
-    use gpui::{BorrowAppContext as _, Focusable as _, TestAppContext, VisualTestContext};
+    use gpui::{Focusable as _, TestAppContext, VisualTestContext};
     use project::WorktreeId;
     use serde_json::json;
     use settings::SettingsStore;

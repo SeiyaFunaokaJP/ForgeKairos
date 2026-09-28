@@ -819,6 +819,10 @@ msgid "Default depth to expand outline items in the current file."
 msgstr "現在のファイルのアウトライン項目を既定で展開する深さです。"
 
 msgctxt "settings"
+msgid "Default fixed width when the agent panel is docked to the left or right and flexible sizing is disabled."
+msgstr "エージェントパネルを左右にドッキングし、可変サイズを無効にしているときの既定の固定幅です。"
+
+msgctxt "settings"
 msgid "Default height of the browser panel in pixels when docked to the bottom."
 msgstr "ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。"
 
@@ -835,6 +839,10 @@ msgid "Default width of the Git panel in pixels."
 msgstr "Git パネルの既定の幅 (ピクセル) です。"
 
 msgctxt "settings"
+msgid "Default width of the Threads Sidebar. Resizing it takes precedence until you double-click the divider to reset."
+msgstr "スレッドサイドバーの既定の幅です。サイズを変えるとその幅が優先され、区切り線をダブルクリックすると既定に戻ります。"
+
+msgctxt "settings"
 msgid "Default width of the browser panel in pixels when docked to the left or right."
 msgstr "ブラウザーパネルを左右にドッキングしたときの既定の幅 (ピクセル) です。"
 
@@ -849,10 +857,6 @@ msgstr "アウトラインパネルの既定の幅 (ピクセル) です。"
 msgctxt "settings"
 msgid "Default width of the project panel in pixels."
 msgstr "プロジェクトパネルの既定の幅 (ピクセル) です。"
-
-msgctxt "settings"
-msgid "Default width when the agent panel is docked to the left or right."
-msgstr "エージェントパネルを左右にドッキングしたときの既定の幅です。"
 
 msgctxt "settings"
 msgid "Default width when the terminal is docked to the left or right (in pixels)."
@@ -2263,6 +2267,10 @@ msgid "Prettier"
 msgstr "Prettier"
 
 msgctxt "settings"
+msgid "Prevent Idle Sleep"
+msgstr "アイドル時のスリープを防ぐ"
+
+msgctxt "settings"
 msgid "Preview Channel"
 msgstr "Preview チャンネル"
 
@@ -3471,6 +3479,10 @@ msgid "Threads Sidebar"
 msgstr "スレッドサイドバー"
 
 msgctxt "settings"
+msgid "Threads Sidebar Default Width"
+msgstr "スレッドサイドバーの既定の幅"
+
+msgctxt "settings"
 msgid "Threads Sidebar Side"
 msgstr "スレッドサイドバーの位置"
 
@@ -3995,8 +4007,8 @@ msgid "Whether the agent panel should open on startup."
 msgstr "起動時にエージェントパネルを開くかどうかを設定します。"
 
 msgctxt "settings"
-msgid "Whether the agent panel should use flexible (proportional) sizing when docked to the left or right."
-msgstr "左右にドッキングしたときに、エージェントパネルで可変 (比率) サイズを使うかどうかを設定します。"
+msgid "Whether the agent panel should use flexible (proportional) sizing when docked to the left or right. When enabled, the default width does not control the panel width, and resetting the panel restores the default proportion."
+msgstr "左右にドッキングしたときに、エージェントパネルで可変 (比率) サイズを使うかどうかを設定します。有効にすると既定の幅はパネルの幅に影響せず、パネルをリセットすると既定の比率に戻ります。"
 
 msgctxt "settings"
 msgid "Whether the browser panel should open on startup."
@@ -4197,6 +4209,10 @@ msgstr "複数のスペースではなくタブ文字でインデントするか
 msgctxt "settings"
 msgid "Whether to keep tabs in preview mode when code navigation is used to navigate away from them. If `enable_preview_file_from_code_navigation` or `enable_preview_multibuffer_from_code_navigation` is also true, the new tab may replace the existing one."
 msgstr "コードナビゲーションでタブから移動したときに、そのタブをプレビューモードのまま維持するかどうかを設定します。`enable_preview_file_from_code_navigation` または `enable_preview_multibuffer_from_code_navigation` も true の場合、新しいタブが既存のタブを置き換えることがあります。"
+
+msgctxt "settings"
+msgid "Whether to keep the system awake while agent threads are running."
+msgstr "エージェントのスレッドの実行中に、システムがスリープしないようにするかどうかを設定します。"
 
 msgctxt "settings"
 msgid "Whether to keep the text selection after copying it to the clipboard."

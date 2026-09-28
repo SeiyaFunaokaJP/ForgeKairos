@@ -32,6 +32,7 @@ pub struct RegistryAgentMetadata {
     pub version: SharedString,
     pub repository: Option<SharedString>,
     pub website: Option<SharedString>,
+    pub license_url: Option<SharedString>,
     pub icon_path: Option<SharedString>,
 }
 
@@ -86,6 +87,10 @@ impl RegistryAgent {
 
     pub fn website(&self) -> Option<&SharedString> {
         self.metadata().website.as_ref()
+    }
+
+    pub fn license_url(&self) -> Option<&SharedString> {
+        self.metadata().license_url.as_ref()
     }
 
     pub fn icon_path(&self) -> Option<&SharedString> {
@@ -355,6 +360,17 @@ async fn fetch_registry_index(
     })
 }
 
+/// zed-jp-enhance: these links come from the registry fetched over the
+/// network and are handed to the operating system when clicked. Only web
+/// addresses are kept, so that an entry cannot launch whatever handler the OS
+/// has registered for another scheme (the same rule as a language server's
+/// request to show a document).
+fn web_link(link: Option<String>) -> Option<SharedString> {
+    let link = link?;
+    let scheme = url::Url::parse(&link).ok()?.scheme().to_string();
+    matches!(scheme.as_str(), "http" | "https").then(|| link.into())
+}
+
 async fn build_registry_agents(
     fs: Arc<dyn Fs>,
     http_client: Arc<dyn HttpClient>,
@@ -394,8 +410,9 @@ async fn build_registry_agents(
             name: entry.name.into(),
             description: entry.description.into(),
             version: entry.version.into(),
-            repository: entry.repository.map(Into::into),
-            website: entry.website.map(Into::into),
+            repository: web_link(entry.repository),
+            website: web_link(entry.website),
+            license_url: web_link(entry.license_url),
             icon_path,
         };
 
@@ -650,6 +667,8 @@ struct RegistryEntry {
     #[serde(default)]
     website: Option<String>,
     #[serde(default)]
+    license_url: Option<String>,
+    #[serde(default)]
     icon: Option<String>,
     distribution: RegistryDistribution,
 }
@@ -681,4 +700,34 @@ struct RegistryNpxDistribution {
     args: Vec<String>,
     #[serde(default)]
     env: HashMap<String, String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_links_keep_only_web_addresses() {
+        for link in [
+            "https://github.com/example/agent",
+            "http://example.com/license",
+            "HTTPS://example.com/terms",
+        ] {
+            assert_eq!(
+                web_link(Some(link.to_string())),
+                Some(SharedString::from(link.to_string())),
+                "{link}"
+            );
+        }
+        for link in [
+            "file:///etc/passwd",
+            "ms-settings:privacy",
+            "javascript:alert(1)",
+            "vscode://extension/install",
+            "not a url",
+        ] {
+            assert_eq!(web_link(Some(link.to_string())), None, "{link}");
+        }
+        assert_eq!(web_link(None), None);
+    }
 }

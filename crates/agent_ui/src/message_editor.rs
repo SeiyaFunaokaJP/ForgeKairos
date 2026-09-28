@@ -5061,7 +5061,8 @@ mod tests {
                 acp_thread::ContextCompaction {
                     id: acp_thread::ContextCompactionId("compaction".into()),
                     status: acp_thread::ContextCompactionStatus::Completed,
-                    summary: None,
+                    error: None,
+                    summary: Vec::new(),
                 },
                 cx,
             );

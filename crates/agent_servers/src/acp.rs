@@ -789,19 +789,6 @@ pub async fn connect(
 
 const MINIMUM_SUPPORTED_VERSION: ProtocolVersion = ProtocolVersion::V1;
 
-/// Build a `Client` connection over `transport` with Zed's full
-/// agent→client handler set wired up.
-///
-/// All incoming requests and notifications are forwarded to the foreground
-/// dispatch queue via `dispatch_tx`, where they are handled by the
-/// `handle_*` functions on a GPUI context. The returned future drives the
-/// connection and completes when the transport closes; callers are expected
-/// to poll it in the background and hold the task for the lifetime of the
-/// connection. In unoptimized builds each inbound dispatch needs ~0.5 MiB
-/// of stack, so poll it on a thread with room to spare (macOS GCD workers'
-/// 512 KiB is not enough — see `AcpConnection::stdio`). The `connection_tx`
-/// oneshot receives the `ConnectionTo<Agent>` handle as soon as the builder
-/// runs its `main_fn`.
 fn connect_client_future(
     name: &'static str,
     transport: impl agent_client_protocol::ConnectTo<Client> + 'static,
@@ -891,7 +878,10 @@ fn connect_client_future(
         )
 }
 
-fn client_capabilities_for_agent(agent_id: &AgentId) -> acp::ClientCapabilities {
+fn client_capabilities_for_agent(
+    agent_id: &AgentId,
+    beta_features_enabled: bool,
+) -> acp::ClientCapabilities {
     let mut meta = acp::Meta::from_iter([
         ("terminal_output".into(), true.into()),
         ("terminal-auth".into(), true.into()),
@@ -901,18 +891,21 @@ fn client_capabilities_for_agent(agent_id: &AgentId) -> acp::ClientCapabilities 
         meta.insert(PARAMETERIZED_MODEL_PICKER_META_KEY.into(), true.into());
     }
 
+    let mut session_capabilities = acp::ClientSessionCapabilities::new().config_options(
+        acp::SessionConfigOptionsCapabilities::new()
+            .boolean(acp::BooleanConfigOptionCapabilities::new()),
+    );
+    if beta_features_enabled {
+        session_capabilities = session_capabilities.compaction(acp::CompactionCapabilities::new());
+    }
+
     acp::ClientCapabilities::new()
         .fs(acp::FileSystemCapabilities::new()
             .read_text_file(true)
             .write_text_file(true))
         .terminal(true)
         .auth(acp::AuthCapabilities::new().terminal(true))
-        .session(
-            acp::ClientSessionCapabilities::new().config_options(
-                acp::SessionConfigOptionsCapabilities::new()
-                    .boolean(acp::BooleanConfigOptionCapabilities::new()),
-            ),
-        )
+        .session(session_capabilities)
         .elicitation(
             acp::ElicitationCapabilities::new()
                 .form(acp::ElicitationFormCapabilities::new())
@@ -1163,26 +1156,14 @@ impl AcpConnection {
             }
         });
 
-        // `connect_client_future` installs the production handler set and
-        // hands us back both the connection-future and a oneshot receiver
-        // that produces the `ConnectionTo<Agent>` once the transport
-        // handshake is ready. The future must be polled on a dedicated
-        // thread rather than via `background_spawn`: in unoptimized builds
-        // its dispatch chain needs ~0.5 MiB of stack per inbound message,
-        // which overflows the fixed 512 KiB stacks of the GCD workers that
-        // poll background tasks on macOS, crashing dev builds as soon as an
-        // agent sends its first message. See `spawn_dedicated` for the
-        // stack guarantee that makes the dedicated thread sufficient.
         let (connection_tx, connection_rx) = futures::channel::oneshot::channel();
         let connection_future =
             connect_client_future("zed", transport, dispatch_tx.clone(), connection_tx);
-        let io_task = cx
-            .background_executor()
-            .spawn_dedicated(move |_executor| async move {
-                if let Err(err) = connection_future.await {
-                    log::error!("ACP connection error: {err}");
-                }
-            });
+        let io_task = cx.background_spawn(async move {
+            if let Err(err) = connection_future.await {
+                log::error!("ACP connection error: {err}");
+            }
+        });
 
         let connection_rx = async move {
             connection_rx
@@ -1226,10 +1207,14 @@ impl AcpConnection {
             }
         });
 
+        let beta_features_enabled = cx.update(|cx| cx.has_flag::<AcpBetaFeatureFlag>());
         let initialize_response = connection
             .send_request(
                 acp::InitializeRequest::new(ProtocolVersion::V1)
-                    .client_capabilities(client_capabilities_for_agent(&agent_id))
+                    .client_capabilities(client_capabilities_for_agent(
+                        &agent_id,
+                        beta_features_enabled,
+                    ))
                     .client_info(
                         acp::Implementation::new("zed", version)
                             .title(release_channel.map(ToOwned::to_owned)),
@@ -3740,12 +3725,7 @@ fn meta_terminal_auth_task(
         env: HashMap<String, String>,
     }
 
-    let meta = match method {
-        acp::AuthMethod::EnvVar(env_var) => env_var.meta.as_ref(),
-        acp::AuthMethod::Terminal(terminal) => terminal.meta.as_ref(),
-        acp::AuthMethod::Agent(agent) => agent.meta.as_ref(),
-        _ => None,
-    }?;
+    let meta = method.meta()?;
     let terminal_auth =
         serde_json::from_value::<MetaTerminalAuth>(meta.get("terminal-auth")?.clone()).ok()?;
 
@@ -4068,7 +4048,7 @@ impl AgentConnection for AcpConnection {
                 AgentSandboxRoute::Local { .. } | AgentSandboxRoute::Remote { .. } => None,
             });
         let login = match method {
-            acp::AuthMethod::Terminal(terminal) if cx.has_flag::<AcpBetaFeatureFlag>() => {
+            acp::AuthMethod::Terminal(terminal) => {
                 let agent_id = self.id.clone();
                 let terminal = terminal.clone();
                 let store = self.agent_server_store.clone();
@@ -4455,6 +4435,7 @@ pub mod test_support {
         pub connection: Rc<AcpConnection>,
         pub load_session_count: Arc<AtomicUsize>,
         pub close_session_count: Arc<AtomicUsize>,
+        pub authenticate_count: Arc<AtomicUsize>,
         pub logout_count: Arc<AtomicUsize>,
         pub keep_agent_alive: Task<anyhow::Result<()>>,
     }
@@ -4639,6 +4620,7 @@ pub mod test_support {
     ) -> Result<FakeAcpConnectionHarness> {
         let (client_transport, agent_transport) = agent_client_protocol::Channel::duplex();
 
+        let authenticate_count = Arc::new(AtomicUsize::new(0));
         let logout_count = Arc::new(AtomicUsize::new(0));
         let sessions: Rc<RefCell<HashMap<acp::SessionId, AcpSession>>> =
             Rc::new(RefCell::new(HashMap::default()));
@@ -4665,10 +4647,12 @@ pub mod test_support {
             )
             .on_receive_request(
                 {
+                    let authenticate_count = authenticate_count.clone();
                     let auth_elicitation_request = auth_elicitation_request.clone();
                     let auth_elicitation_response = auth_elicitation_response.clone();
                     let auth_elicitation_completion = auth_elicitation_completion.clone();
                     async move |_req: acp::AuthenticateRequest, responder, cx| {
+                        authenticate_count.fetch_add(1, Ordering::SeqCst);
                         let request = auth_elicitation_request
                             .lock()
                             .expect("auth elicitation request lock should not be poisoned")
@@ -4829,6 +4813,7 @@ pub mod test_support {
             connection: Rc::new(connection),
             load_session_count,
             close_session_count,
+            authenticate_count,
             logout_count,
             keep_agent_alive,
         })
@@ -4926,7 +4911,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
-    use feature_flags::FeatureFlag as _;
+    use feature_flags::{AcpBetaFeatureFlag, FeatureFlag as _};
 
     const CONFIG_DIR: &str = "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/claude-acp";
 
@@ -5858,6 +5843,7 @@ mod tests {
             version: SharedString::from("1.0.0"),
             repository: None,
             website: None,
+            license_url: None,
             icon_path: None,
         };
         cx.update(|cx| {
@@ -6043,7 +6029,7 @@ mod tests {
         cx: &mut gpui::TestAppContext,
     ) {
         init_feature_flags_test(cx);
-        let capabilities = client_capabilities_for_agent(&AgentId::new("codex-acp"));
+        let capabilities = client_capabilities_for_agent(&AgentId::new("codex-acp"), false);
         let elicitation = capabilities
             .elicitation
             .expect("elicitation should always be advertised");
@@ -6336,7 +6322,7 @@ mod tests {
 
     #[test]
     fn cursor_client_capabilities_include_parameterized_model_picker_meta() {
-        let capabilities = client_capabilities_for_agent(&AgentId::new(CURSOR_ID));
+        let capabilities = client_capabilities_for_agent(&AgentId::new(CURSOR_ID), false);
         let meta = capabilities
             .meta
             .expect("expected client capabilities meta");
@@ -6351,7 +6337,7 @@ mod tests {
 
     #[test]
     fn non_cursor_client_capabilities_do_not_include_parameterized_model_picker_meta() {
-        let capabilities = client_capabilities_for_agent(&AgentId::new("codex-acp"));
+        let capabilities = client_capabilities_for_agent(&AgentId::new("codex-acp"), false);
         let meta = capabilities
             .meta
             .expect("expected client capabilities meta");
@@ -6361,7 +6347,7 @@ mod tests {
 
     #[test]
     fn client_capabilities_include_boolean_config_options() {
-        let capabilities = client_capabilities_for_agent(&AgentId::new("codex-acp"));
+        let capabilities = client_capabilities_for_agent(&AgentId::new("codex-acp"), false);
 
         assert!(
             capabilities
@@ -6370,6 +6356,71 @@ mod tests {
                 .and_then(|config_options| config_options.boolean)
                 .is_some()
         );
+    }
+
+    #[test]
+    fn client_capabilities_only_include_compaction_with_acp_beta() {
+        for (beta_enabled, expected_compaction) in
+            [(false, None), (true, Some(serde_json::json!({})))]
+        {
+            let capabilities =
+                client_capabilities_for_agent(&AgentId::new("codex-acp"), beta_enabled);
+            let capabilities =
+                serde_json::to_value(capabilities).expect("client capabilities should serialize");
+            let session = capabilities
+                .get("session")
+                .expect("session capabilities should be advertised");
+            assert_eq!(session.get("compaction"), expected_compaction.as_ref());
+        }
+    }
+
+    #[gpui::test]
+    async fn connection_routes_terminal_auth_without_acp_beta(cx: &mut gpui::TestAppContext) {
+        init_feature_flags_test(cx);
+
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree("/", serde_json::json!({ "project": {} }))
+            .await;
+        let project = project::Project::test(fs, [std::path::Path::new("/project")], cx).await;
+        let mut harness = test_support::connect_fake_acp_connection(project, cx).await;
+        let method_id = acp::AuthMethodId::new("login");
+        let method = acp::AuthMethod::Terminal(
+            acp::AuthMethodTerminal::new(method_id.clone(), "First-class login")
+                .args(vec!["first-class-auth".into()])
+                .meta(acp::Meta::from_iter([(
+                    "terminal-auth".to_string(),
+                    serde_json::json!({
+                        "label": "Legacy login",
+                        "command": "legacy-agent",
+                        "args": ["legacy-auth"],
+                    }),
+                )])),
+        );
+        Rc::get_mut(&mut harness.connection)
+            .expect("test harness should have the only connection handle")
+            .auth_methods = vec![method];
+
+        let terminal_task = cx
+            .update(|cx| {
+                cx.update_flags(true, Vec::new());
+                feature_flags::FeatureFlagsSettings::override_global(
+                    feature_flags::FeatureFlagsSettings {
+                        overrides: HashMap::from_iter([(
+                            AcpBetaFeatureFlag::NAME.into(),
+                            "off".into(),
+                        )]),
+                    },
+                    cx,
+                );
+                assert!(!cx.has_flag::<AcpBetaFeatureFlag>());
+                harness.connection.terminal_auth_task(&method_id, cx)
+            })
+            .expect("first-class terminal auth should be routed without ACP beta");
+        terminal_task
+            .await
+            .expect_err("first-class routing should resolve the test agent's external command");
+
+        assert_eq!(harness.authenticate_count.load(Ordering::SeqCst), 0);
     }
 
     #[test]

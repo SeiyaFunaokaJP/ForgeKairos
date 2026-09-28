@@ -463,6 +463,9 @@ pub(crate) enum EditSessionResult {
     },
 }
 
+// Both sides are the tool's output, handed to the model as is; the fork's
+// diagnostics and formatting note made it cross clippy's size threshold.
+#[expect(clippy::result_large_err)]
 pub(crate) async fn run_session(
     result: EditSessionResult,
     event_stream: &ToolCallEventStream,

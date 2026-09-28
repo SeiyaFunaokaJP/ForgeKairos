@@ -176,6 +176,23 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "language.i67[markdown_preview.open_markdown_files_in_preview].description",
         "Markdown ファイルを自動的にプレビューで開くかどうかを設定します。",
     ),
+    // Added by upstream v1.21.0.
+    (
+        "p7.i77[agent.threads_sidebar_default_width].title",
+        "スレッドサイドバーの既定の幅",
+    ),
+    (
+        "p7.i77[agent.threads_sidebar_default_width].description",
+        "スレッドサイドバーの既定の幅です。サイズを変えるとその幅が優先され、区切り線をダブルクリックすると既定に戻ります。",
+    ),
+    (
+        "p12.i24[agent.prevent_idle_sleep].title",
+        "アイドル時のスリープを防ぐ",
+    ),
+    (
+        "p12.i24[agent.prevent_idle_sleep].description",
+        "エージェントのスレッドの実行中に、システムがスリープしないようにするかどうかを設定します。",
+    ),
 ];
 
 /// Strings whose Japanese changed on purpose when the table moved to the catalog.

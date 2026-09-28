@@ -26,8 +26,11 @@ use language::{
 use lsp::DiagnosticSeverity;
 use multi_buffer::{BufferOffset, MultiBufferOffset, MultiBufferRow, PathKey};
 use project::{
-    File, Project, ProjectItem as _, ProjectPath, git_store::GitStore, lsp_store::FormatTrigger,
-    project_settings::ProjectSettings, search::SearchQuery,
+    File, Project, ProjectItem as _, ProjectPath,
+    git_store::GitStore,
+    lsp_store::{FormatTrigger, LanguageServerShowDocumentRequest},
+    project_settings::ProjectSettings,
+    search::SearchQuery,
 };
 use rope::TextSummary;
 use rpc::proto::{self, update_view};
@@ -44,10 +47,15 @@ use std::{
 };
 use text::{BufferId, BufferSnapshot, OffsetRangeExt, Selection, ToPoint as _};
 use ui::{IconDecorationKind, prelude::*};
-use util::{ResultExt, TryFutureExt, debug_panic, paths::PathExt, rel_path::RelPath};
+use util::{
+    ResultExt, TryFutureExt, debug_panic,
+    paths::{PathExt, UrlExt as _},
+    rel_path::RelPath,
+};
 use workspace::item::{Dedup, ItemSettings, SerializableItem, TabContentParams};
 use workspace::{
-    CollaboratorId, ItemId, ItemNavHistory, ToolbarItemLocation, ViewId, Workspace, WorkspaceId,
+    CollaboratorId, ItemId, ItemNavHistory, OpenOptions, OpenVisible, ToolbarItemLocation, ViewId,
+    Workspace, WorkspaceId,
     invalid_item_view::InvalidItemView,
     item::{FollowableItem, Item, ItemBufferKind, ItemEvent, ProjectItem, SaveOptions},
     searchable::{
@@ -2560,6 +2568,133 @@ fn compute_modified_ranges(
         merged.push(expanded);
     }
     merged
+}
+
+pub(crate) fn handle_lsp_show_document(
+    workspace: &mut Workspace,
+    request: &LanguageServerShowDocumentRequest,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> Task<()> {
+    let request = request.clone();
+    if request.external {
+        return show_external_document(request, window, cx);
+    }
+    // A file URI with a host names a network share (`\\host\share` on
+    // Windows): reading it would reach that host over SMB, outside the egress
+    // allowlist, on the word of the language server alone.
+    let has_remote_host = !matches!(request.uri.host_str(), None | Some("" | "localhost"));
+    let abs_path = request
+        .uri
+        .to_file_path_ext(workspace.path_style(cx))
+        .ok()
+        .filter(|path| !has_remote_host && !is_network_path(path));
+    let Some(abs_path) = abs_path else {
+        log::error!(
+            "language server requested to show document with unsupported uri {}",
+            request.uri.as_str()
+        );
+        request.respond(false);
+        return Task::ready(());
+    };
+    let open_task = workspace.open_abs_path(
+        abs_path,
+        OpenOptions {
+            visible: Some(OpenVisible::None),
+            focus: Some(request.take_focus),
+            ..OpenOptions::default()
+        },
+        window,
+        cx,
+    );
+    cx.spawn_in(window, async move |_, cx| {
+        let success = match open_task.await {
+            Ok(item) => match item.downcast::<Editor>().zip(request.selection) {
+                Some((editor, selection)) => editor
+                    .update_in(cx, |editor, window, cx| {
+                        let snapshot = editor.buffer().read(cx).snapshot(cx);
+                        let range = language::range_from_lsp(selection);
+                        let start = snapshot.point_utf16_to_offset(
+                            snapshot.clip_point_utf16(range.start, Bias::Left),
+                        );
+                        let end = snapshot.point_utf16_to_offset(
+                            snapshot.clip_point_utf16(range.end, Bias::Left),
+                        );
+                        editor.change_selections(
+                            SelectionEffects::scroll(Autoscroll::center()),
+                            window,
+                            cx,
+                            |selections| selections.select_ranges([start..end]),
+                        );
+                    })
+                    .is_ok(),
+                None => true,
+            },
+            Err(error) => {
+                log::error!("failed to show document for a language server: {error:#}");
+                false
+            }
+        };
+        request.respond(success);
+    })
+}
+
+fn is_network_path(path: &Path) -> bool {
+    let path = path.to_string_lossy();
+    path.starts_with("\\\\") || path.starts_with("//")
+}
+
+/// zed-jp-enhance: a language server (or the remote host relaying one) asks
+/// Zed to hand an address to the operating system. Only web addresses are
+/// passed on, and only once the user has seen the whole address and which
+/// server asked: other schemes launch whatever handler the OS has registered
+/// for them, and the browser itself is outside the egress allowlist.
+fn show_external_document(
+    request: LanguageServerShowDocumentRequest,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> Task<()> {
+    if !matches!(request.uri.scheme(), "http" | "https") {
+        log::warn!(
+            "not opening {} for language server {}: only http and https addresses are opened",
+            request.uri.as_str(),
+            request.lsp_name
+        );
+        request.respond(false);
+        return Task::ready(());
+    }
+    // A second prompt in the window would replace the one the user may be
+    // answering (such as "save changes?"), cancelling it without their input.
+    if window.has_active_prompt() {
+        log::warn!(
+            "not opening {} for language server {}: another prompt is open",
+            request.uri.as_str(),
+            request.lsp_name
+        );
+        request.respond(false);
+        return Task::ready(());
+    }
+    let url = request.uri.as_str().to_string();
+    let server = if request.lsp_name.is_empty() {
+        i18n::t!("A language server").to_string()
+    } else {
+        request.lsp_name.clone()
+    };
+    let detail = i18n::t!("{server} asks to open this address in your browser:\n\n{url}");
+    let answer = window.prompt(
+        gpui::PromptLevel::Warning,
+        i18n::t!("Open a link from a language server?"),
+        Some(&detail),
+        &[i18n::t!("Open"), i18n::t!("Cancel")],
+        cx,
+    );
+    cx.spawn(async move |_, cx| {
+        let open = answer.await.ok() == Some(0);
+        if open {
+            cx.update(|cx| cx.open_url(&url));
+        }
+        request.respond(open);
+    })
 }
 
 #[cfg(test)]

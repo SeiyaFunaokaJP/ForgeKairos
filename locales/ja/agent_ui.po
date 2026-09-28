@@ -5,6 +5,21 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Compacting Context…"
+msgstr "コンテキストを圧縮中…"
+
+msgid "Compaction Canceled"
+msgstr "圧縮をキャンセルしました"
+
+msgid "Compaction Failed"
+msgstr "圧縮に失敗しました"
+
+msgid "Context Compacted"
+msgstr "コンテキストを圧縮しました"
+
+msgid "Context Compaction"
+msgstr "コンテキストの圧縮"
+
 msgid "Copy"
 msgstr "コピー"
 
@@ -20,11 +35,17 @@ msgstr "インストールに失敗しました"
 msgid "Failed to Launch"
 msgstr "起動に失敗しました"
 
+msgid "Interrupted Edit"
+msgstr "中断された編集"
+
 msgid "Request Failed"
 msgstr "リクエストに失敗しました"
 
 msgid "Try to restart the agent"
 msgstr "エージェントの再起動を試みます"
+
+msgid "View Agent License or Terms of Service"
+msgstr "エージェントのライセンスまたは利用規約を開く"
 
 msgid "You reached your free usage limit. Upgrade to Zed Pro for more prompts."
 msgstr "無料利用の上限に達しました。より多くのプロンプトを使うには Zed Pro にアップグレードしてください。"

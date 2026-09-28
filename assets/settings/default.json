@@ -1203,9 +1203,9 @@
     //
     // Default: false
     "collapse_untracked_diff": false,
-    /// Whether to show entries with tree or flat view in the panel
-    ///
-    /// Default: false
+    // Whether to show entries with tree or flat view in the panel
+    //
+    // Default: false
     "tree_view": false,
     // Whether the git panel should open on startup.
     //
@@ -1270,7 +1270,9 @@
     // The fork's default layout (`default_stacked_panel`) only arranges the
     // agent panel in its dock and leaves the dock closed (ADR-F48).
     "starts_open": false,
-    // Whether the agent panel should use flexible (proportional) sizing.
+    // Whether the agent panel should use flexible (proportional) sizing when docked
+    // to the left or right. When enabled, `default_width` does not control the panel
+    // width, and resetting the panel restores the default proportion.
     //
     // Default: true
     "flexible": true,
@@ -1281,7 +1283,8 @@
     // get back the multi-project listing, terminal threads, the archive and the
     // thread switcher, which the in-panel history does not provide.
     "sidebar_enabled": false,
-    // Where to position the threads sidebar. Can be 'left' or 'right'.
+    // Where to position the sidebar holding the agent panel and the list of
+    // agent threads. Can be 'left' or 'right'.
     "sidebar_side": "left",
     // Whether to split the thread history into the agent panel itself, as a
     // list to the left of the current thread. Added by this fork so the history
@@ -1296,7 +1299,10 @@
     // narrow to show it still gets the tab bar, so the open tabs stay
     // reachable.
     "panel_tab_bar": "auto",
-    // Default width when the agent panel is docked to the left or right.
+    // Default width of the Threads Sidebar.
+    "threads_sidebar_default_width": 300,
+    // Default fixed width when the agent panel is docked to the left or right and
+    // `flexible` is false.
     "default_width": 640,
     // Default height when the agent panel is docked to the bottom.
     "default_height": 320,
@@ -1569,6 +1575,10 @@
     //
     // Default: never
     "play_sound_when_agent_done": "never",
+    // Whether to keep the system awake while agent threads are running.
+    //
+    // Default: true
+    "prevent_idle_sleep": true,
     // Whether to have edit cards in the agent panel expanded, showing a preview of the full diff.
     //
     // Default: true
@@ -2049,9 +2059,9 @@
     // 2. Hide the gutter
     //      "git_gutter": "hide"
     "git_gutter": "tracked_files",
-    /// Sets the debounce threshold (in milliseconds) after which changes are reflected in the git gutter.
-    ///
-    /// Default: 0
+    // Sets the debounce threshold (in milliseconds) after which changes are reflected in the git gutter.
+    //
+    // Default: 0
     "gutter_debounce": 0,
     // Control whether the git blame information is shown for the currently
     // focused line, and where it is rendered.

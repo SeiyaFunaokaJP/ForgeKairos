@@ -98,6 +98,7 @@ version = "0.1.0"
 dependencies = [
  "action_log",
  "agent-client-protocol",
+ "agent_settings",
  "agent_skills",
  "anyhow",
  "async-channel 2.5.0",
@@ -110,7 +111,7 @@ dependencies = [
  "feature_flags",
  "file_icons",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "http_proxy",
@@ -175,7 +176,7 @@ dependencies = [
  "collections",
  "ctor",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "git",
  "gpui",
  "indoc",
@@ -203,7 +204,7 @@ dependencies = [
  "egress_policy",
  "extension_host",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "language",
@@ -282,7 +283,7 @@ dependencies = [
  "eval_utils",
  "feature_flags",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "git",
  "gpui",
  "gpui_tokio",
@@ -342,16 +343,16 @@ dependencies = [
 
 [[package]]
 name = "agent-client-protocol"
-version = "2.0.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d87bc7769eba641753ba5dc52f73ec3765d51022c6753bf040967125ddc86a8"
+checksum = "6395d81d91fd2ee93f48ea31cfc511356e75b9061ca0389cefd0308507cc11ba"
 dependencies = [
  "agent-client-protocol-derive",
  "agent-client-protocol-schema",
  "async-io",
  "async-process",
  "blocking",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-concurrency",
  "rustc-hash 2.1.1",
  "rustix",
@@ -366,9 +367,9 @@ dependencies = [
 
 [[package]]
 name = "agent-client-protocol-derive"
-version = "2.0.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3abd4080f51e4f24f5042beb7fb7a66ede29a2dc1c2582c329532e1c27264ddc"
+checksum = "7e8d5f32208cdc11238004bec4e4229d68fb937598f900e153468ca084865fa5"
 dependencies = [
  "quote",
  "syn 3.0.3",
@@ -376,9 +377,9 @@ dependencies = [
 
 [[package]]
 name = "agent-client-protocol-schema"
-version = "1.5.0"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5c231915b4ab578c722eca2d1bd7df4d300bfd6cac3b8e9f0d1e3ddc95b187c"
+checksum = "ca98360c7bb8cc97d7acd49e2a8a851c3f7bee6b2f0535036d8ab86b5fcd223d"
 dependencies = [
  "anyhow",
  "derive_more",
@@ -407,7 +408,7 @@ dependencies = [
  "env_logger 0.11.8",
  "feature_flags",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "google_ai",
  "gpui",
  "gpui_tokio",
@@ -446,7 +447,7 @@ dependencies = [
  "collections",
  "convert_case 0.11.0",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "language_model",
  "log",
@@ -469,7 +470,7 @@ dependencies = [
  "base64 0.22.1",
  "const_format",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "i18n",
  "paths",
@@ -515,7 +516,7 @@ dependencies = [
  "feature_flags",
  "file_icons",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "git",
  "git_ui_core",
@@ -544,7 +545,7 @@ dependencies = [
  "menu",
  "multi_buffer",
  "notifications",
- "ordered-float 5.5.0",
+ "ordered-float",
  "parking_lot",
  "paths",
  "picker",
@@ -808,7 +809,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "collections",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "language_model_core",
  "log",
@@ -946,7 +947,7 @@ name = "askpass"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "log",
  "net",
@@ -1133,7 +1134,7 @@ name = "async-pipe"
 version = "0.1.3"
 source = "git+https://github.com/zed-industries/async-pipe-rs?rev=82d00a04211cf4e1236029aa03e6b6ce2a74c553#82d00a04211cf4e1236029aa03e6b6ce2a74c553"
 dependencies = [
- "futures 0.3.32",
+ "futures 0.3.34",
  "log",
 ]
 
@@ -1374,7 +1375,7 @@ dependencies = [
  "db",
  "egress_policy",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "gpui",
  "http_client",
@@ -1936,7 +1937,7 @@ dependencies = [
  "anyhow",
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "schemars 1.0.4",
  "serde",
@@ -1961,7 +1962,7 @@ dependencies = [
  "assets",
  "criterion",
  "editor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "gpui_platform",
  "indoc",
@@ -2196,7 +2197,7 @@ dependencies = [
  "db",
  "editor",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "log",
@@ -2409,7 +2410,7 @@ name = "call_hierarchy"
 version = "0.1.0"
 dependencies = [
  "editor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "gpui",
  "language",
@@ -2456,9 +2457,9 @@ dependencies = [
 
 [[package]]
 name = "camino"
-version = "1.2.1"
+version = "1.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "276a59bf2b2c967788139340c9f0c5b12d7fd6630315c15c217e559de85d2609"
+checksum = "bbbad30e4b4c14a39e3cc8aed085a12a327257c316619c93581e017bc52be591"
 dependencies = [
  "serde_core",
 ]
@@ -2623,6 +2624,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfg-expr"
+version = "0.20.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe4ece8474b5f766c63426647e7b4b316b67431ade1036a8313cee24a03ae917"
+dependencies = [
+ "smallvec",
+ "target-lexicon",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2668,7 +2679,7 @@ dependencies = [
  "client",
  "clock",
  "collections",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "language",
@@ -2876,7 +2887,7 @@ dependencies = [
  "derive_more",
  "feature_flags",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "gpui_tokio",
  "http_client",
@@ -2931,7 +2942,7 @@ dependencies = [
  "anyhow",
  "async-lock",
  "cloud_api_types",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "gpui",
  "gpui_tokio",
@@ -3066,7 +3077,7 @@ dependencies = [
  "anyhow",
  "edit_prediction",
  "edit_prediction_types",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "icons",
@@ -3170,7 +3181,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "derive_more",
- "futures 0.3.32",
+ "futures 0.3.34",
  "indoc",
  "itertools 0.14.0",
  "jsonwebtoken",
@@ -3332,7 +3343,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "collections",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "gpui",
  "http_client",
@@ -3383,7 +3394,7 @@ dependencies = [
  "edit_prediction_types",
  "editor",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "icons",
  "indoc",
@@ -3415,7 +3426,7 @@ dependencies = [
  "anyhow",
  "collections",
  "credentials_provider",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "language_model",
@@ -4081,7 +4092,7 @@ dependencies = [
  "collections",
  "dap-types",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "language",
@@ -4122,7 +4133,7 @@ dependencies = [
  "dap",
  "dotenvy",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "json_dotpath",
@@ -4290,6 +4301,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "debug-ignore"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffe7ed1d93f4553003e20b629abe9085e1e81b1429520f897f8f8860bc6dfc21"
+
+[[package]]
 name = "debug_adapter_extension"
 version = "0.1.0"
 dependencies = [
@@ -4311,7 +4328,7 @@ dependencies = [
  "anyhow",
  "dap",
  "editor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "project",
  "serde_json",
@@ -4336,7 +4353,7 @@ dependencies = [
  "editor",
  "feature_flags",
  "file_icons",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "gpui",
  "hex",
@@ -4391,7 +4408,7 @@ name = "deepseek"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "schemars 1.0.4",
  "serde",
@@ -4478,7 +4495,7 @@ dependencies = [
  "async-trait",
  "env_logger 0.11.8",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http 1.3.1",
  "http_client",
@@ -4799,7 +4816,7 @@ dependencies = [
  "edit_prediction_types",
  "feature_flags",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "git",
  "gpui",
  "heapless",
@@ -4864,7 +4881,7 @@ dependencies = [
  "extension",
  "flate2",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gaoya",
  "gpui",
  "gpui_platform",
@@ -4915,7 +4932,7 @@ dependencies = [
  "clock",
  "collections",
  "env_logger 0.11.8",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "indoc",
  "language",
@@ -4976,7 +4993,7 @@ dependencies = [
  "editor",
  "feature_flags",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "i18n",
@@ -5021,7 +5038,7 @@ dependencies = [
  "feature_flags",
  "file_icons",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "fuzzy",
  "git",
@@ -5038,7 +5055,7 @@ dependencies = [
  "markdown",
  "menu",
  "multi_buffer",
- "ordered-float 5.5.0",
+ "ordered-float",
  "parking_lot",
  "pretty_assertions",
  "project",
@@ -5113,7 +5130,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "http_proxy",
@@ -5431,7 +5448,7 @@ dependencies = [
  "extension",
  "feature_flags",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "gpui_platform",
  "gpui_tokio",
@@ -5542,7 +5559,7 @@ dependencies = [
  "collections",
  "dap",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "heck 0.5.0",
  "http_client",
@@ -5579,7 +5596,7 @@ dependencies = [
  "env_logger 0.11.8",
  "extension",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui_platform",
  "http_client",
  "language",
@@ -5614,7 +5631,7 @@ dependencies = [
  "dap",
  "extension",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "gpui_tokio",
  "http_client",
@@ -5670,15 +5687,20 @@ dependencies = [
  "fuzzy",
  "git",
  "gpui",
+ "http_client",
+ "i18n",
  "language",
  "log",
+ "markdown",
  "num-format",
+ "paths",
  "picker",
  "project",
  "release_channel",
  "schemars 1.0.4",
  "semver",
  "serde",
+ "serde_json",
  "settings",
  "strum",
  "telemetry",
@@ -5814,7 +5836,7 @@ dependencies = [
  "ctor",
  "editor",
  "file_icons",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "fuzzy_nucleo",
  "gpui",
@@ -5855,7 +5877,7 @@ dependencies = [
  "chrono",
  "editor",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "log",
  "menu",
@@ -6110,7 +6132,7 @@ dependencies = [
  "collections",
  "dunce",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "git",
  "gpui",
  "ignore",
@@ -6186,9 +6208,9 @@ checksum = "3a471a38ef8ed83cd6e40aa59c1ffe17db6855c18e3604d9c4ed8c08ebc28678"
 
 [[package]]
 name = "futures"
-version = "0.3.32"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b147ee9d1f6d097cef9ce628cd2ee62288d963e16fb287bd9286455b241382d"
+checksum = "9a31d2a3fbaaeb2af2368bbdd904aa8e812d3c04a1ee10d3171f52d556e5d0a3"
 dependencies = [
  "futures-channel",
  "futures-core",
@@ -6201,9 +6223,9 @@ dependencies = [
 
 [[package]]
 name = "futures-channel"
-version = "0.3.32"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07bbe89c50d7a535e539b8c17bc0b49bdb77747034daa8087407d655f3f7cc1d"
+checksum = "b1f9e3d69d39e4862ffed03ed071a76f9a13ba1d9109d355b0f0aa6b15e393c4"
 dependencies = [
  "futures-core",
  "futures-sink",
@@ -6224,15 +6246,15 @@ dependencies = [
 
 [[package]]
 name = "futures-core"
-version = "0.3.32"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d"
+checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
 
 [[package]]
 name = "futures-executor"
-version = "0.3.32"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baf29c38818342a3b26b5b923639e7b1f4a61fc5e76102d4b1981c6dc7a7579d"
+checksum = "031b47cf1a3c6cc8bc2fc76cd437f521619387907d469316e7c0bc278f1f5432"
 dependencies = [
  "futures-core",
  "futures-task",
@@ -6241,9 +6263,9 @@ dependencies = [
 
 [[package]]
 name = "futures-io"
-version = "0.3.32"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cecba35d7ad927e23624b22ad55235f2239cfa44fd10428eecbeba6d6a717718"
+checksum = "53c0fa8157de1303bfffdaa1cc2a673bfffb60102f76b0ef4441659124373fed"
 
 [[package]]
 name = "futures-lite"
@@ -6275,32 +6297,32 @@ dependencies = [
 
 [[package]]
 name = "futures-macro"
-version = "0.3.32"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e835b70203e41293343137df5c0664546da5745f82ec9b84d40be8336958447b"
+checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 3.0.3",
 ]
 
 [[package]]
 name = "futures-sink"
-version = "0.3.32"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c39754e157331b013978ec91992bde1ac089843443c49cbc7f46150b0fad0893"
+checksum = "1944426bf7d03f1d14f708785e4b33efd750b36d48a157b836b3efc15ede8e1d"
 
 [[package]]
 name = "futures-task"
-version = "0.3.32"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "037711b3d59c33004d3856fbdc83b99d4ff37a24768fa1be9ce3538a1cde4393"
+checksum = "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd"
 
 [[package]]
 name = "futures-util"
-version = "0.3.32"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "389ca41296e6190b48053de0321d02a77f32f8a5d2461dd38762c0593805c6d6"
+checksum = "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
 dependencies = [
  "futures 0.1.31",
  "futures-channel",
@@ -6503,7 +6525,7 @@ dependencies = [
  "async-trait",
  "collections",
  "derive_more",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "itertools 0.14.0",
@@ -6536,7 +6558,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "futures 0.3.32",
+ "futures 0.3.34",
  "git",
  "gpui",
  "http_client",
@@ -6569,7 +6591,7 @@ dependencies = [
  "editor",
  "file_icons",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "fuzzy",
  "fuzzy_nucleo",
@@ -6631,7 +6653,7 @@ dependencies = [
  "db",
  "editor",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "git",
  "gpui",
@@ -6764,7 +6786,7 @@ name = "google_ai"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "language_model_core",
  "log",
@@ -6828,7 +6850,7 @@ dependencies = [
  "embed-resource",
  "env_logger 0.11.8",
  "etagere",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-concurrency",
  "getrandom 0.3.4",
  "gpui_macros",
@@ -6872,7 +6894,6 @@ dependencies = [
  "sum_tree",
  "taffy",
  "thiserror 2.0.17",
- "tracing",
  "ttf-parser",
  "unicode-segmentation",
  "url",
@@ -6886,7 +6907,6 @@ dependencies = [
  "windows 0.62.2",
  "zed-font-kit",
  "zed-scap",
- "ztracing",
 ]
 
 [[package]]
@@ -6908,6 +6928,7 @@ dependencies = [
  "log",
  "metal",
  "objc",
+ "objc2 0.6.3",
  "parking_lot",
 ]
 
@@ -6926,7 +6947,7 @@ dependencies = [
  "calloop-wayland-source",
  "collections",
  "filedescriptor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "gpui_util",
  "gpui_wgpu",
@@ -6975,7 +6996,7 @@ dependencies = [
  "ctor",
  "dispatch2",
  "foreign-types 0.5.0",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "gpui_apple",
  "gpui_util",
@@ -6991,6 +7012,7 @@ dependencies = [
  "objc2 0.6.3",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
+ "objc2-screen-capture-kit",
  "objc2-user-notifications",
  "parking_lot",
  "pathfinder_geometry",
@@ -7059,7 +7081,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "gpui_wgpu",
  "http_client",
@@ -7068,6 +7090,10 @@ dependencies = [
  "parking_lot",
  "raw-window-handle",
  "scheduler",
+ "smallvec",
+ "unicode-properties",
+ "unicode-script",
+ "unicode-segmentation",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -7113,7 +7139,7 @@ dependencies = [
  "collections",
  "dunce",
  "etagere",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "gpui_util",
  "image",
@@ -7169,6 +7195,39 @@ dependencies = [
  "arraydeque",
  "smallvec",
 ]
+
+[[package]]
+name = "guppy"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "790eaa3f2acc0210783d4af5ab8fe019ab07935d8dc0e64324120bbee9b142b7"
+dependencies = [
+ "ahash",
+ "camino",
+ "cargo_metadata 0.23.1",
+ "cfg-if",
+ "debug-ignore",
+ "fixedbitset",
+ "guppy-workspace-hack",
+ "indexmap 2.14.0",
+ "itertools 0.15.0",
+ "nested",
+ "once_cell",
+ "pathdiff",
+ "petgraph",
+ "semver",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "static_assertions",
+ "target-spec",
+]
+
+[[package]]
+name = "guppy-workspace-hack"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92620684d99f750bae383ecb3be3748142d6095760afd5cbcf2261e9a279d780"
 
 [[package]]
 name = "h2"
@@ -7580,7 +7639,7 @@ dependencies = [
  "async-tar",
  "bytes 1.11.1",
  "derive_more",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http 1.3.1",
  "http-body 1.0.1",
  "log",
@@ -7610,7 +7669,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
- "futures 0.3.32",
+ "futures 0.3.34",
  "httparse",
  "idna",
  "log",
@@ -7983,7 +8042,7 @@ dependencies = [
  "anyhow",
  "collections",
  "editor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "ide_query",
  "language",
@@ -8003,7 +8062,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "collections",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "gpui",
  "language",
@@ -8025,7 +8084,7 @@ dependencies = [
  "context_server",
  "editor",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "git_ui_core",
  "gpui",
  "httparse",
@@ -8742,7 +8801,7 @@ dependencies = [
  "async-trait",
  "bytes 1.11.1",
  "chrono",
- "futures 0.3.32",
+ "futures 0.3.34",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -8759,7 +8818,7 @@ dependencies = [
  "async-trait",
  "async-tungstenite",
  "bytes 1.11.1",
- "futures 0.3.32",
+ "futures 0.3.34",
  "jupyter-protocol",
  "serde",
  "serde_json",
@@ -8885,7 +8944,7 @@ dependencies = [
  "ec4rs",
  "encoding_rs",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "fuzzy_nucleo",
  "globset",
@@ -8949,12 +9008,14 @@ dependencies = [
  "gpui_shared_string",
  "gpui_util",
  "log",
+ "lru",
  "parking_lot",
  "path",
  "regex",
  "schemars 1.0.4",
  "serde",
  "serde_json",
+ "smallvec",
  "strum",
  "toml 0.8.23",
  "tree-sitter",
@@ -8977,7 +9038,7 @@ dependencies = [
  "async-trait",
  "collections",
  "extension",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "language",
@@ -9002,7 +9063,7 @@ dependencies = [
  "collections",
  "credentials_provider",
  "env_var",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "gpui_util",
  "http_client",
@@ -9023,7 +9084,7 @@ dependencies = [
  "async-lock",
  "cloud_llm_client",
  "collections",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui_shared_string",
  "http_client",
  "log",
@@ -9067,7 +9128,7 @@ dependencies = [
  "extension_host",
  "feature_flags",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "google_ai",
  "gpui",
  "gpui_tokio",
@@ -9099,6 +9160,7 @@ dependencies = [
  "ui_input",
  "util",
  "x_ai",
+ "x_ai_subscribed",
 ]
 
 [[package]]
@@ -9108,7 +9170,7 @@ dependencies = [
  "anthropic",
  "anyhow",
  "cloud_llm_client",
- "futures 0.3.32",
+ "futures 0.3.34",
  "google_ai",
  "gpui",
  "http_client",
@@ -9164,7 +9226,7 @@ dependencies = [
  "command_palette_hooks",
  "edit_prediction",
  "editor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "i18n",
  "itertools 0.14.0",
@@ -9203,7 +9265,7 @@ dependencies = [
  "chrono",
  "collections",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "globset",
  "gpui",
  "grammars",
@@ -9439,7 +9501,7 @@ name = "llama_cpp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "language_model_core",
  "schemars 1.0.4",
@@ -9464,7 +9526,7 @@ name = "lmstudio"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "language_model_core",
  "schemars 1.0.4",
@@ -9622,7 +9684,7 @@ dependencies = [
  "async-pipe",
  "collections",
  "ctor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "gpui",
  "gpui_util",
@@ -9648,6 +9710,29 @@ dependencies = [
  "serde",
  "serde_json",
  "url",
+]
+
+[[package]]
+name = "lsp_command_selector"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "editor",
+ "futures 0.3.34",
+ "fuzzy",
+ "gpui",
+ "language",
+ "log",
+ "lsp",
+ "menu",
+ "picker",
+ "project",
+ "serde_json",
+ "settings",
+ "ui",
+ "util",
+ "workspace",
+ "zlog",
 ]
 
 [[package]]
@@ -9839,7 +9924,7 @@ dependencies = [
  "editor",
  "extension",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "gpui",
  "http_client",
@@ -10179,7 +10264,6 @@ dependencies = [
  "streaming-iterator",
  "tree-sitter",
  "tree-sitter-json",
- "unindent",
  "util",
 ]
 
@@ -10337,7 +10421,7 @@ name = "mistral"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "schemars 1.0.4",
  "serde",
@@ -10511,6 +10595,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "nested"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca2b420f638f07fe83056b55ea190bb815f609ec5a35e7017884a10f78839c9e"
+
+[[package]]
 name = "net"
 version = "0.1.0"
 dependencies = [
@@ -10561,7 +10651,7 @@ dependencies = [
  "async-tar",
  "async-trait",
  "chrono",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "log",
  "paths",
@@ -10925,7 +11015,7 @@ version = "0.9.2"
 source = "git+https://github.com/KillTheMule/nvim-rs?rev=764dd270c642f77f10f3e19d05cc178a6cbe69f3#764dd270c642f77f10f3e19d05cc178a6cbe69f3"
 dependencies = [
  "async-trait",
- "futures 0.3.32",
+ "futures 0.3.34",
  "log",
  "rmp",
  "rmpv",
@@ -10938,7 +11028,7 @@ name = "oauth_callback_server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures 0.3.32",
+ "futures 0.3.34",
  "log",
  "tiny_http",
  "url",
@@ -11093,6 +11183,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-core-graphics"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
+dependencies = [
+ "bitflags 2.13.1",
+ "dispatch2",
+ "objc2 0.6.3",
+ "objc2-core-foundation",
+ "objc2-io-surface",
+]
+
+[[package]]
 name = "objc2-core-image"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11166,6 +11269,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-io-surface"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d"
+dependencies = [
+ "bitflags 2.13.1",
+ "objc2 0.6.3",
+ "objc2-core-foundation",
+]
+
+[[package]]
 name = "objc2-metal"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11226,6 +11340,18 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
  "objc2-metal 0.3.2",
+]
+
+[[package]]
+name = "objc2-screen-capture-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74b7c5390f477482f001bc354d6571a70db7e4f8d5288e860c45521fbce11394"
+dependencies = [
+ "block2 0.6.2",
+ "objc2 0.6.3",
+ "objc2-core-graphics",
+ "objc2-foundation 0.3.2",
 ]
 
 [[package]]
@@ -11294,7 +11420,7 @@ dependencies = [
  "cfg-if",
  "chrono",
  "either",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-core",
  "futures-util",
  "getrandom 0.2.16",
@@ -11327,7 +11453,7 @@ name = "ollama"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "schemars 1.0.4",
  "serde",
@@ -11437,7 +11563,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "collections",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "language_model_core",
  "log",
@@ -11456,7 +11582,7 @@ version = "0.1.0"
 dependencies = [
  "editor",
  "file_icons",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "gpui",
  "picker",
@@ -11476,7 +11602,7 @@ name = "open_router"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures 0.3.32",
+ "futures 0.3.34",
  "http_client",
  "language_model_core",
  "open_ai",
@@ -11494,7 +11620,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "credentials_provider",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "language_model",
@@ -11516,7 +11642,7 @@ name = "opencode"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures 0.3.32",
+ "futures 0.3.34",
  "google_ai",
  "http_client",
  "language_model_core",
@@ -11600,15 +11726,6 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "ordered-float"
-version = "4.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bb71e1b3fa6ca1c61f383464aaf2bb0e2f8e772a1f01d486832464de363b951"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
-name = "ordered-float"
 version = "5.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c7c9e0d9b23589f26070720bac724174bfec1083e82f7854cdd0267518343c0"
@@ -11631,7 +11748,7 @@ name = "outline"
 version = "0.1.0"
 dependencies = [
  "editor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy_nucleo",
  "gpui",
  "indoc",
@@ -11657,14 +11774,15 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
+ "buffer_diff",
  "collections",
  "db",
  "editor",
  "file_icons",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
+ "git",
  "gpui",
- "itertools 0.14.0",
  "language",
  "log",
  "lsp",
@@ -11797,6 +11915,9 @@ name = "pathdiff"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
+dependencies = [
+ "camino",
+]
 
 [[package]]
 name = "pathfinder_geometry"
@@ -11950,7 +12071,7 @@ dependencies = [
 [[package]]
 name = "pet"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "clap",
  "env_logger 0.10.2",
@@ -11993,7 +12114,7 @@ dependencies = [
 [[package]]
 name = "pet-conda"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "env_logger 0.10.2",
  "lazy_static",
@@ -12013,7 +12134,7 @@ dependencies = [
 [[package]]
 name = "pet-core"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "clap",
  "lazy_static",
@@ -12028,7 +12149,7 @@ dependencies = [
 [[package]]
 name = "pet-env-var-path"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "lazy_static",
  "log",
@@ -12044,7 +12165,7 @@ dependencies = [
 [[package]]
 name = "pet-fs"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "glob",
  "lazy_static",
@@ -12056,7 +12177,7 @@ dependencies = [
 [[package]]
 name = "pet-global-virtualenvs"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "log",
  "msvc_spectre_libs",
@@ -12069,7 +12190,7 @@ dependencies = [
 [[package]]
 name = "pet-hatch"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "log",
  "pet-core",
@@ -12082,7 +12203,7 @@ dependencies = [
 [[package]]
 name = "pet-homebrew"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "lazy_static",
  "log",
@@ -12101,7 +12222,7 @@ dependencies = [
 [[package]]
 name = "pet-jsonrpc"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "env_logger 0.10.2",
  "log",
@@ -12114,7 +12235,7 @@ dependencies = [
 [[package]]
 name = "pet-linux-global-python"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "log",
  "msvc_spectre_libs",
@@ -12127,7 +12248,7 @@ dependencies = [
 [[package]]
 name = "pet-mac-commandlinetools"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "log",
  "msvc_spectre_libs",
@@ -12140,7 +12261,7 @@ dependencies = [
 [[package]]
 name = "pet-mac-python-org"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "log",
  "msvc_spectre_libs",
@@ -12153,7 +12274,7 @@ dependencies = [
 [[package]]
 name = "pet-mac-xcode"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "log",
  "msvc_spectre_libs",
@@ -12166,7 +12287,7 @@ dependencies = [
 [[package]]
 name = "pet-pipenv"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "lazy_static",
  "log",
@@ -12181,7 +12302,7 @@ dependencies = [
 [[package]]
 name = "pet-pixi"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "log",
  "msvc_spectre_libs",
@@ -12193,7 +12314,7 @@ dependencies = [
 [[package]]
 name = "pet-poetry"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "base64 0.22.1",
  "lazy_static",
@@ -12214,7 +12335,7 @@ dependencies = [
 [[package]]
 name = "pet-pyenv"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "lazy_static",
  "log",
@@ -12232,7 +12353,7 @@ dependencies = [
 [[package]]
 name = "pet-python-utils"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "env_logger 0.10.2",
  "lazy_static",
@@ -12249,7 +12370,7 @@ dependencies = [
 [[package]]
 name = "pet-reporter"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "env_logger 0.10.2",
  "log",
@@ -12263,7 +12384,7 @@ dependencies = [
 [[package]]
 name = "pet-telemetry"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "env_logger 0.10.2",
  "lazy_static",
@@ -12278,7 +12399,7 @@ dependencies = [
 [[package]]
 name = "pet-uv"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "glob",
  "log",
@@ -12292,7 +12413,7 @@ dependencies = [
 [[package]]
 name = "pet-venv"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "log",
  "msvc_spectre_libs",
@@ -12304,7 +12425,7 @@ dependencies = [
 [[package]]
 name = "pet-virtualenv"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "log",
  "msvc_spectre_libs",
@@ -12316,7 +12437,7 @@ dependencies = [
 [[package]]
 name = "pet-virtualenvwrapper"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "log",
  "msvc_spectre_libs",
@@ -12329,7 +12450,7 @@ dependencies = [
 [[package]]
 name = "pet-windows-registry"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "lazy_static",
  "log",
@@ -12347,7 +12468,7 @@ dependencies = [
 [[package]]
 name = "pet-windows-store"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "lazy_static",
  "log",
@@ -12363,7 +12484,7 @@ dependencies = [
 [[package]]
 name = "pet-winpython"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/python-environment-tools.git?rev=bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0#bb8e04607b96a3865d6aa4bb2a5a5a82ce05b5f0"
+source = "git+https://github.com/zed-industries/python-environment-tools.git?rev=5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f#5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f"
 dependencies = [
  "lazy_static",
  "log",
@@ -12773,7 +12894,7 @@ checksum = "af3fb618632874fb76937c2361a7f22afd393c982a2165595407edc75b06d3c1"
 dependencies = [
  "atomic",
  "crossbeam-queue",
- "futures 0.3.32",
+ "futures 0.3.34",
  "log",
  "parking_lot",
  "pin-project",
@@ -12989,7 +13110,7 @@ dependencies = [
  "extension",
  "fancy-regex",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "fuzzy_nucleo",
  "git",
@@ -13061,7 +13182,7 @@ dependencies = [
  "askpass",
  "clap",
  "client",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "gpui_platform",
  "http_client",
@@ -13087,7 +13208,7 @@ dependencies = [
  "editor",
  "file_icons",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "git",
  "git_ui",
  "git_ui_core",
@@ -13126,12 +13247,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "editor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "gpui",
  "language",
  "lsp",
- "ordered-float 5.5.0",
+ "ordered-float",
  "picker",
  "picker_preview",
  "project",
@@ -13156,7 +13277,7 @@ dependencies = [
  "collections",
  "db",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "handlebars 4.5.0",
  "heed",
@@ -13320,7 +13441,7 @@ name = "proxy_handshake"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "futures 0.3.32",
+ "futures 0.3.34",
  "httparse",
  "percent-encoding",
  "piper",
@@ -13852,7 +13973,7 @@ dependencies = [
  "extension",
  "extension_host",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy_nucleo",
  "gpui",
  "http_client",
@@ -13862,7 +13983,7 @@ dependencies = [
  "menu",
  "node_runtime",
  "open_path_prompt",
- "ordered-float 5.5.0",
+ "ordered-float",
  "paths",
  "picker",
  "project",
@@ -14025,7 +14146,7 @@ dependencies = [
  "collections",
  "egress_policy",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "hex",
  "http_client",
@@ -14057,7 +14178,7 @@ dependencies = [
  "askpass",
  "auto_update",
  "editor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "log",
  "markdown",
@@ -14099,7 +14220,7 @@ dependencies = [
  "extension",
  "extension_host",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "git",
  "git_hosting_providers",
  "gpui",
@@ -14174,7 +14295,7 @@ dependencies = [
  "editor",
  "feature_flags",
  "file_icons",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "html_to_markdown",
  "http_client",
@@ -14220,7 +14341,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytes 1.11.1",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui_util",
  "http_client",
  "http_client_tls",
@@ -14372,7 +14493,7 @@ dependencies = [
  "async-tungstenite",
  "base64 0.22.1",
  "collections",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "parking_lot",
  "proto",
@@ -14438,7 +14559,7 @@ dependencies = [
  "chrono",
  "data-encoding",
  "dirs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "glob",
  "jupyter-protocol",
  "serde",
@@ -14701,7 +14822,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-compression",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "http_proxy",
@@ -14745,7 +14866,7 @@ dependencies = [
  "backtrace",
  "chrono",
  "flume",
- "futures 0.3.32",
+ "futures 0.3.34",
  "parking_lot",
  "rand 0.9.4",
  "wasm_thread",
@@ -14883,7 +15004,7 @@ dependencies = [
  "editor",
  "file_icons",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "i18n",
  "itertools 0.14.0",
@@ -14982,9 +15103,9 @@ checksum = "b12e76d157a900eb52e81bc6e9f3069344290341720e9178cde2407113ac8d89"
 
 [[package]]
 name = "semver"
-version = "1.0.27"
+version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 dependencies = [
  "serde",
  "serde_core",
@@ -14992,9 +15113,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.228"
+version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
+checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
  "serde_derive",
@@ -15012,22 +15133,22 @@ dependencies = [
 
 [[package]]
 name = "serde_core"
-version = "1.0.228"
+version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41d385c7d4ca58e59fc732af25c3983b67ac852c1a25000afe1175de458b67ad"
+checksum = "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.228"
+version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
+checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 3.0.3",
 ]
 
 [[package]]
@@ -15227,7 +15348,7 @@ dependencies = [
  "collections",
  "ec4rs",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "indoc",
  "inventory",
@@ -15341,7 +15462,7 @@ dependencies = [
  "extension_host",
  "feature_flags",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "gpui",
  "heck 0.5.0",
@@ -15687,9 +15808,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.15.1"
+version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
 dependencies = [
  "serde",
 ]
@@ -15769,7 +15890,7 @@ dependencies = [
  "collections",
  "extension",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "indoc",
  "parking_lot",
@@ -15871,7 +15992,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "collections",
- "futures 0.3.32",
+ "futures 0.3.34",
  "indoc",
  "libsqlite3-sys",
  "log",
@@ -15959,7 +16080,7 @@ name = "streaming_diff"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "ordered-float 5.5.0",
+ "ordered-float",
  "rand 0.9.4",
  "rope",
  "util",
@@ -16570,12 +16691,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
+name = "target-spec"
+version = "3.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e117cdea67a83bf392bc69fb07cfc37e948e95991eca900c413a2bb1b494807"
+dependencies = [
+ "cfg-expr",
+ "guppy-workspace-hack",
+ "target-lexicon",
+]
+
+[[package]]
 name = "task"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "collections",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "hex",
  "log",
@@ -16634,7 +16766,7 @@ dependencies = [
 name = "telemetry"
 version = "0.1.0"
 dependencies = [
- "futures 0.3.32",
+ "futures 0.3.34",
  "serde_json",
  "telemetry_events",
 ]
@@ -16691,7 +16823,7 @@ dependencies = [
  "collections",
  "credentials_provider",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "gpui",
  "itertools 0.14.0",
@@ -16744,7 +16876,7 @@ dependencies = [
  "db",
  "dirs",
  "editor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "gpui",
  "http_client",
@@ -17325,7 +17457,7 @@ dependencies = [
  "anyhow",
  "convert_case 0.11.0",
  "editor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "gpui",
  "i18n",
@@ -18140,7 +18272,7 @@ dependencies = [
  "command-fds",
  "dirs",
  "dunce",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "globset",
  "gpui_util",
@@ -18281,7 +18413,7 @@ dependencies = [
  "db",
  "editor",
  "env_logger 0.11.8",
- "futures 0.3.32",
+ "futures 0.3.34",
  "fuzzy",
  "git_ui",
  "gpui",
@@ -18636,7 +18768,7 @@ name = "wasm_thread"
 version = "0.3.3"
 source = "git+https://github.com/zed-industries/wasm_thread?rev=0cf96c7708dfb97ccf3da50347e25edcf75d6937#0cf96c7708dfb97ccf3da50347e25edcf75d6937"
 dependencies = [
- "futures 0.3.32",
+ "futures 0.3.34",
  "js-sys",
  "wasm-bindgen",
  "web-sys",
@@ -18713,7 +18845,7 @@ dependencies = [
  "bumpalo",
  "cc",
  "encoding_rs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "libc",
  "log",
  "mach2 0.6.0",
@@ -18938,7 +19070,7 @@ dependencies = [
  "bytes 1.11.1",
  "cap-fs-ext",
  "cap-primitives",
- "futures 0.3.32",
+ "futures 0.3.34",
  "rand 0.10.2",
  "rustix",
  "thiserror 2.0.17",
@@ -18959,7 +19091,7 @@ checksum = "6a557bc8a7232cd079f6b423a9bb385f3ff9148824f3c26c07a028b499fab2bf"
 dependencies = [
  "async-trait",
  "bytes 1.11.1",
- "futures 0.3.32",
+ "futures 0.3.34",
  "tracing",
  "wasmtime",
 ]
@@ -18977,8 +19109,9 @@ dependencies = [
 name = "watch"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
  "ctor",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "parking_lot",
  "zlog",
@@ -19150,7 +19283,7 @@ dependencies = [
  "cloud_api_client",
  "cloud_api_types",
  "cloud_llm_client",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "http_client",
  "language_model",
@@ -19349,7 +19482,7 @@ dependencies = [
  "objc2-metal 0.3.2",
  "objc2-quartz-core 0.3.2",
  "once_cell",
- "ordered-float 4.6.0",
+ "ordered-float",
  "parking_lot",
  "portable-atomic",
  "portable-atomic-util",
@@ -20368,7 +20501,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4db52a11d4dfb0a59f194c064055794ee6564eb1ced88c25da2cf76e50c5621"
 dependencies = [
  "bitflags 2.13.1",
- "futures 0.3.32",
+ "futures 0.3.34",
  "once_cell",
 ]
 
@@ -20639,7 +20772,7 @@ dependencies = [
  "db",
  "dirs",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "git",
  "gpui",
@@ -20692,7 +20825,7 @@ dependencies = [
  "collections",
  "encoding_rs",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "futures-lite 2.6.1",
  "fuzzy",
  "git",
@@ -20802,6 +20935,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "x_ai_subscribed"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "credentials_provider",
+ "futures 0.3.34",
+ "gpui",
+ "http_client",
+ "language_model",
+ "log",
+ "oauth_callback_server",
+ "open_ai",
+ "parking_lot",
+ "rand 0.9.4",
+ "serde",
+ "serde_json",
+ "sha2",
+ "smol",
+ "url",
+ "util",
+ "x_ai",
+]
+
+[[package]]
 name = "xattr"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -20903,6 +21061,7 @@ dependencies = [
  "clap",
  "compliance",
  "gh-workflow",
+ "guppy",
  "indexmap 2.14.0",
  "indoc",
  "itertools 0.14.0",
@@ -20914,6 +21073,7 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "toml_edit 0.22.27",
+ "url",
 ]
 
 [[package]]
@@ -20953,7 +21113,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes 1.11.1",
  "flate2",
- "futures 0.3.32",
+ "futures 0.3.34",
  "getrandom 0.2.16",
  "http-body-util",
  "hyper 1.7.0",
@@ -21114,7 +21274,7 @@ dependencies = [
 
 [[package]]
 name = "zed"
-version = "1.20.2"
+version = "1.21.0"
 dependencies = [
  "acp_thread",
  "acp_tools",
@@ -21173,7 +21333,7 @@ dependencies = [
  "file_finder",
  "file_transfer",
  "fs",
- "futures 0.3.32",
+ "futures 0.3.34",
  "git",
  "git_hosting_providers",
  "git_ui",
@@ -21207,6 +21367,7 @@ dependencies = [
  "languages",
  "line_ending_selector",
  "log",
+ "lsp_command_selector",
  "lsp_locations",
  "markdown",
  "markdown_preview",
@@ -21420,7 +21581,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "credentials_provider",
- "futures 0.3.32",
+ "futures 0.3.34",
  "gpui",
  "paths",
  "release_channel",
@@ -21572,7 +21733,7 @@ dependencies = [
  "asynchronous-codec",
  "bytes 1.11.1",
  "crossbeam-queue",
- "futures 0.3.32",
+ "futures 0.3.34",
  "log",
  "num-traits",
  "once_cell",

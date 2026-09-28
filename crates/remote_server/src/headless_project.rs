@@ -782,6 +782,10 @@ impl HeadlessProject {
                     .log_err();
             }
             LspStoreEvent::LanguageServerUpdate {
+                message: proto::update_language_server::Variant::MetadataUpdated(_),
+                ..
+            } => {}
+            LspStoreEvent::LanguageServerUpdate {
                 language_server_id,
                 name,
                 message,
@@ -803,6 +807,34 @@ impl HeadlessProject {
                         message: message.clone(),
                     })
                     .log_err();
+            }
+            LspStoreEvent::LanguageServerShowDocument(show_document_request) => {
+                let request = self
+                    .session
+                    .request(proto::LanguageServerShowDocumentRequest {
+                        language_server_name: show_document_request.lsp_name.clone(),
+                        project_id: REMOTE_SERVER_PROJECT_ID,
+                        uri: show_document_request.uri.as_str().to_owned(),
+                        external: show_document_request.external,
+                        take_focus: show_document_request.take_focus,
+                        selection_start: show_document_request.selection.map(|selection| {
+                            proto::PointUtf16 {
+                                row: selection.start.line,
+                                column: selection.start.character,
+                            }
+                        }),
+                        selection_end: show_document_request.selection.map(|selection| {
+                            proto::PointUtf16 {
+                                row: selection.end.line,
+                                column: selection.end.character,
+                            }
+                        }),
+                    });
+                let show_document_request = show_document_request.clone();
+                cx.background_spawn(async move {
+                    show_document_request.respond(request.await.is_ok());
+                })
+                .detach();
             }
             LspStoreEvent::LanguageServerPrompt(prompt) => {
                 let request = self.session.request(proto::LanguageServerPromptRequest {
@@ -1448,14 +1480,14 @@ impl HeadlessProject {
         command
             .args(&payload.args)
             .stdin(if payload.stdin.is_some() {
-                std::process::Stdio::piped()
+                util::command::Stdio::piped()
             } else {
                 // `scp` has nothing to read; leaving a pipe open would only
                 // give it something to block on.
-                std::process::Stdio::null()
+                util::command::Stdio::null()
             })
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            .stdout(util::command::Stdio::piped())
+            .stderr(util::command::Stdio::piped())
             .kill_on_drop(true);
         if let Some(working_directory) = payload.cwd.as_deref() {
             command.current_dir(working_directory);

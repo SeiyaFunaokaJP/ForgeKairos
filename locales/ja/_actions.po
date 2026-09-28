@@ -2686,6 +2686,16 @@ msgctxt "action"
 msgid "line_ending_selector::Toggle"
 msgstr "改行コードを選択"
 
+#. lsp command selector: toggle
+msgctxt "action"
+msgid "lsp_command_selector::Toggle"
+msgstr "言語サーバーのコマンドを選択"
+
+#. lsp command selector: toggle arguments focus
+msgctxt "action"
+msgid "lsp_command_selector::ToggleArgumentsFocus"
+msgstr "言語サーバーのコマンド: 引数の入力欄とフォーカスを切り替え"
+
 #. lsp tool: review paused worktree code
 msgctxt "action"
 msgid "lsp_tool::ReviewPausedWorktreeCode"
@@ -3225,6 +3235,11 @@ msgstr "プロジェクトパネル: 新規ファイル"
 msgctxt "action"
 msgid "project_panel::NewSearchInDirectory"
 msgstr "プロジェクトパネル: このフォルダー内を検索"
+
+#. project panel: open context menu
+msgctxt "action"
+msgid "project_panel::OpenContextMenu"
+msgstr "プロジェクトパネル: コンテキストメニューを開く"
 
 #. project panel: open markdown preview
 msgctxt "action"

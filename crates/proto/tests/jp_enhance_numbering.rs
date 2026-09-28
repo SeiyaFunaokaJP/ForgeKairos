@@ -45,6 +45,7 @@ const FORK_FIELDS_IN_UPSTREAM_MESSAGES: &[(&str, &str)] = &[
     ("SearchCommitsResponse", "filters_version"),
     ("SearchCommitsResponse", "cancellable"),
     ("StatusUpdate", "egress_blocked_hosts"),
+    ("LanguageServerShowDocumentRequest", "language_server_name"),
 ];
 
 /// Values the fork added to upstream's enums, as `(enum, value)`.

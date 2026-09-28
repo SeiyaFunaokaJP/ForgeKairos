@@ -5,8 +5,14 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "A language server"
+msgstr "言語サーバー"
+
 msgid "Bookmarks"
 msgstr "ブックマーク"
+
+msgid "Cancel"
+msgstr "キャンセル"
 
 msgid "Copy Diagnostic"
 msgstr "診断をコピー"
@@ -35,6 +41,12 @@ msgstr "実装へ移動"
 msgid "Go to Type Definition"
 msgstr "型定義へ移動"
 
+msgid "Open"
+msgstr "開く"
+
+msgid "Open a link from a language server?"
+msgstr "言語サーバーからのリンクを開きますか?"
+
 msgid "Show Incoming Calls"
 msgstr "呼び出し元を表示"
 
@@ -52,3 +64,6 @@ msgstr "アンステージ"
 
 msgid "Unstage Hunk"
 msgstr "変更箇所をアンステージ"
+
+msgid "{server} asks to open this address in your browser:\n\n{url}"
+msgstr "{server} が、このアドレスをブラウザーで開くよう求めています:\n\n{url}"

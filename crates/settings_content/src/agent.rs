@@ -271,7 +271,11 @@ pub struct AgentSettingsContent {
     ///
     /// Default: false
     pub starts_open: Option<bool>,
-    /// Whether the agent panel should use flexible (proportional) sizing.
+    /// Whether the agent panel should use flexible (proportional) sizing when docked to the
+    /// left or right.
+    ///
+    /// When enabled, `default_width` does not control the panel width, and resetting the panel
+    /// restores the default proportion.
     ///
     /// Default: true
     pub flexible: Option<bool>,
@@ -279,7 +283,7 @@ pub struct AgentSettingsContent {
     ///
     /// Default: false
     pub sidebar_enabled: Option<bool>,
-    /// Where to position the threads sidebar.
+    /// Where to position the sidebar holding the threads list and the agent panel.
     ///
     /// Default: left
     pub sidebar_side: Option<SidebarDockPosition>,
@@ -292,7 +296,16 @@ pub struct AgentSettingsContent {
     ///
     /// Default: auto
     pub panel_tab_bar: Option<PanelTabBar>,
-    /// Default width in pixels when the agent panel is docked to the left or right.
+    /// Default width in pixels for the Threads Sidebar.
+    ///
+    /// Values range from 200 to 800, matching the widths the sidebar can be
+    /// dragged to. Values outside that range are clamped into it.
+    ///
+    /// Default: 300
+    #[schemars(range(min = 200, max = 800))]
+    pub threads_sidebar_default_width: Option<crate::PixelSetting>,
+    /// Default fixed width in pixels when the agent panel is docked to the left or right and
+    /// `flexible` is false.
     ///
     /// Default: 640
     pub default_width: Option<crate::PixelSetting>,
@@ -361,6 +374,10 @@ pub struct AgentSettingsContent {
     ///
     /// Default: never
     pub play_sound_when_agent_done: Option<PlaySoundWhenAgentDone>,
+    /// Whether to keep the system awake while agent threads are running.
+    ///
+    /// Default: true
+    pub prevent_idle_sleep: Option<bool>,
     /// Whether to display agent edits in single-file editors in addition to the review multibuffer pane.
     ///
     /// Default: false
@@ -800,6 +817,7 @@ impl JsonSchema for LanguageModelProviderSetting {
                         "openrouter",
                         "vercel_ai_gateway",
                         "x_ai",
+                        "x_ai_subscribed",
                         "zed.dev"
                     ]
                 },

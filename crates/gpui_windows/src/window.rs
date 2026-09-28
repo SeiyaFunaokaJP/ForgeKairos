@@ -60,6 +60,7 @@ pub struct WindowsWindowState {
     pub last_reported_modifiers: Cell<Option<Modifiers>>,
     pub last_reported_capslock: Cell<Option<Capslock>>,
     pub hovered: Cell<bool>,
+    pub last_visibility: Cell<Option<WindowVisibility>>,
     pub direct_manipulation: DirectManipulationHandler,
 
     pub renderer: RefCell<DirectXRenderer>,
@@ -92,6 +93,7 @@ pub struct WindowsWindowState {
 
 pub(crate) struct WindowsWindowInner {
     hwnd: HWND,
+    pub(crate) dialog_owner: Rc<crate::dialog::DialogOwner>,
     drop_target_helper: IDropTargetHelper,
     pub(crate) state: WindowsWindowState,
     system_settings: WindowsSystemSettings,
@@ -172,6 +174,7 @@ impl WindowsWindowState {
             last_reported_modifiers: Cell::new(last_reported_modifiers),
             last_reported_capslock: Cell::new(last_reported_capslock),
             hovered: Cell::new(hovered),
+            last_visibility: Cell::new(None),
             renderer: RefCell::new(renderer),
             force_render_pending: Cell::new(false),
             click_state,
@@ -263,6 +266,19 @@ impl WindowsWindowState {
 }
 
 impl WindowsWindowInner {
+    /// Whether the window is being presented: shown and not minimized. Windows
+    /// has no notification for a window fully covered by other windows, so
+    /// that case reports `Visible`.
+    pub(crate) fn visibility(&self) -> WindowVisibility {
+        let is_visible =
+            unsafe { IsWindowVisible(self.hwnd).as_bool() && !IsIconic(self.hwnd).as_bool() };
+        if is_visible {
+            WindowVisibility::Visible
+        } else {
+            WindowVisibility::Hidden
+        }
+    }
+
     fn new(context: &mut WindowCreateContext, hwnd: HWND, cs: &CREATESTRUCTW) -> Result<Rc<Self>> {
         let state = WindowsWindowState::new(
             hwnd,
@@ -280,6 +296,7 @@ impl WindowsWindowInner {
 
         Ok(Rc::new(Self {
             hwnd,
+            dialog_owner: crate::dialog::DialogOwner::new(hwnd),
             drop_target_helper: context.drop_target_helper.clone(),
             state,
             handle: context.handle,
@@ -394,6 +411,7 @@ pub(crate) struct Callbacks {
     pub(crate) request_frame: Cell<Option<Box<dyn FnMut(RequestFrameOptions)>>>,
     pub(crate) input: Cell<Option<Box<dyn FnMut(PlatformInput) -> DispatchEventResult>>>,
     pub(crate) active_status_change: Cell<Option<Box<dyn FnMut(bool)>>>,
+    pub(crate) visibility_change: Cell<Option<Box<dyn FnMut(WindowVisibility)>>>,
     pub(crate) hovered_status_change: Cell<Option<Box<dyn FnMut(bool)>>>,
     pub(crate) resize: Cell<Option<Box<dyn FnMut(Size<Pixels>, f32)>>>,
     pub(crate) moved: Cell<Option<Box<dyn FnMut()>>>,
@@ -421,6 +439,7 @@ impl Callbacks {
         self.request_frame.take();
         self.input.take();
         self.active_status_change.take();
+        self.visibility_change.take();
         self.hovered_status_change.take();
         self.resize.take();
         self.moved.take();
@@ -630,19 +649,30 @@ impl rwh::HasDisplayHandle for WindowsWindow {
 
 impl Drop for WindowsWindow {
     fn drop(&mut self) {
+        self.0.dialog_owner.close();
+        // A window the user closed has already been destroyed by
+        // `DefWindowProcW` (see below); hiding it would only report
+        // `ERROR_INVALID_WINDOW_HANDLE`.
+        if unsafe { IsWindow(Some(self.0.hwnd)) }.as_bool() {
+            unsafe { ShowWindowAsync(self.0.hwnd, SW_HIDE).ok().log_err() };
+        }
         // `DestroyWindow` has to be deferred (running it here would re-enter
-        // this window's procedure while the `App` is borrowed), so this HWND
-        // keeps receiving messages for at least one turn of the foreground
-        // executor. The gpui `Window` the callbacks were bound to is gone by
-        // now - this drop is part of removing it - so detach them here as well
-        // as in `PlatformWindow::detach_callbacks`, which covers the paths that
-        // drop a window without going through `App::update_window_id`.
+        // this window's procedure while the `App` is borrowed, and it also waits
+        // for an open dialog to close), so this HWND keeps receiving messages
+        // for at least one turn of the foreground executor. The gpui `Window`
+        // the callbacks were bound to is gone by now - this drop is part of
+        // removing it - so detach them here as well as in
+        // `PlatformWindow::detach_callbacks`, which covers the paths that drop a
+        // window without going through `App::update_window_id`. That includes
+        // the visibility callback the `WM_SHOWWINDOW` from hiding and destroying
+        // the window would otherwise reach.
         self.state.detach_callbacks();
         // clone this `Rc` to prevent early release of the pointer
         let this = self.0.clone();
         self.0
             .executor
             .spawn(async move {
+                this.dialog_owner.when_idle().await;
                 let handle = this.hwnd;
                 // The window the user closed is already gone by now:
                 // `DefWindowProcW` destroys it while handling `WM_CLOSE`, and
@@ -751,18 +781,19 @@ impl PlatformWindow for WindowsWindow {
         detail: Option<&str>,
         answers: &[PromptButton],
     ) -> Option<Receiver<usize>> {
-        let (done_tx, done_rx) = oneshot::channel();
+        let (mut done_tx, done_rx) = oneshot::channel();
         let msg = msg.to_string();
         let detail_string = detail.map(|detail| detail.to_string());
-        let handle = self.0.hwnd;
         let answers = answers.to_vec();
-        self.0
-            .executor
-            .spawn(async move {
+        let dialog = crate::dialog::show_dialog(
+            Some(self.0.dialog_owner.clone()),
+            &self.0.executor,
+            move |handle| {
                 unsafe {
                     let mut config = TASKDIALOGCONFIG::default();
                     config.cbSize = std::mem::size_of::<TASKDIALOGCONFIG>() as _;
                     config.hwndParent = handle;
+                    config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION;
                     let title;
                     let main_icon;
                     // Callers word the message and the buttons, but the title
@@ -815,19 +846,26 @@ impl PlatformWindow for WindowsWindow {
                     config.cButtons = buttons.len() as _;
                     config.pButtons = buttons.as_ptr();
 
-                    config.pfCallback = None;
+                    config.pfCallback = Some(crate::dialog::task_dialog_callback);
+                    config.lpCallbackData = button_id_map.contains(&IDCANCEL.0) as isize;
                     let mut res = std::mem::zeroed();
-                    let native_modal = NativeModal::open();
-                    let _ = TaskDialogIndirect(&config, Some(&mut res), None, None)
-                        .context("unable to create task dialog")
-                        .log_err();
-                    drop(native_modal);
-
-                    if let Some(clicked) =
-                        button_id_map.iter().position(|&button_id| button_id == res)
-                    {
-                        let _ = done_tx.send(clicked);
-                    }
+                    TaskDialogIndirect(&config, Some(&mut res), None, None)
+                        .context("unable to create task dialog")?;
+                    Ok(button_id_map.iter().position(|&button_id| button_id == res))
+                }
+            },
+        );
+        self.0
+            .executor
+            .spawn(async move {
+                if let futures::future::Either::Left((result, _)) =
+                    futures::future::select(dialog, done_tx.cancellation()).await
+                    && let Some(Some(clicked)) = result
+                        .context("native dialog thread stopped")
+                        .and_then(|result| result)
+                        .log_err()
+                {
+                    done_tx.send(clicked).ok();
                 }
             })
             .detach();
@@ -839,22 +877,15 @@ impl PlatformWindow for WindowsWindow {
         &self,
         options: &PathPromptOptions,
     ) -> Option<Receiver<Result<Option<Vec<PathBuf>>>>> {
-        let (done_tx, done_rx) = oneshot::channel();
         let options = options.clone();
-        let owner = self.0.hwnd;
-        self.0
-            .executor
-            .spawn(async move {
-                // The window may have closed before this runs.
-                let result = if unsafe { IsWindow(Some(owner)) }.as_bool() {
-                    file_open_dialog(options, Some(owner))
-                } else {
-                    Ok(None)
-                };
-                done_tx.send(result).ok();
-            })
-            .detach();
-        Some(done_rx)
+        // Owned by this window rather than by whichever window happens to be
+        // active. A window that has closed in the meantime turns the request
+        // into an error instead of a dialog without its owner.
+        Some(crate::dialog::show_dialog(
+            Some(self.0.dialog_owner.clone()),
+            &self.0.executor,
+            move |owner| file_open_dialog(options, Some(owner)),
+        ))
     }
 
     fn prompt_for_new_path(
@@ -862,23 +893,13 @@ impl PlatformWindow for WindowsWindow {
         directory: &std::path::Path,
         suggested_name: Option<&str>,
     ) -> Option<Receiver<Result<Option<PathBuf>>>> {
-        let (done_tx, done_rx) = oneshot::channel();
         let directory = directory.to_owned();
         let suggested_name = suggested_name.map(ToOwned::to_owned);
-        let owner = self.0.hwnd;
-        self.0
-            .executor
-            .spawn(async move {
-                // The window may have closed before this runs.
-                let result = if unsafe { IsWindow(Some(owner)) }.as_bool() {
-                    file_save_dialog(directory, suggested_name, Some(owner))
-                } else {
-                    Ok(None)
-                };
-                done_tx.send(result).ok();
-            })
-            .detach();
-        Some(done_rx)
+        Some(crate::dialog::show_dialog(
+            Some(self.0.dialog_owner.clone()),
+            &self.0.executor,
+            move |owner| file_save_dialog(directory, suggested_name, Some(owner)),
+        ))
     }
 
     fn activate(&self) {
@@ -958,6 +979,10 @@ impl PlatformWindow for WindowsWindow {
 
     fn is_active(&self) -> bool {
         self.0.hwnd == unsafe { GetActiveWindow() }
+    }
+
+    fn visibility(&self) -> WindowVisibility {
+        self.0.visibility()
     }
 
     fn is_hovered(&self) -> bool {
@@ -1047,6 +1072,11 @@ impl PlatformWindow for WindowsWindow {
             .callbacks
             .active_status_change
             .set(Some(callback));
+    }
+
+    fn on_visibility_change(&self, callback: Box<dyn FnMut(WindowVisibility)>) {
+        self.0.state.last_visibility.set(Some(self.0.visibility()));
+        self.0.state.callbacks.visibility_change.set(Some(callback));
     }
 
     fn on_hover_status_change(&self, callback: Box<dyn FnMut(bool)>) {
@@ -1505,9 +1535,6 @@ unsafe extern "system" fn window_procedure(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    // A native dialog's modal loop runs this too; hang detection excuses an
-    // open dialog only while messages keep being handled.
-    gpui::profiler::note_message_handled();
     if msg == WM_NCCREATE {
         let window_params = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
         let window_creation_context = window_params.lpCreateParams as *mut WindowCreateContext;
@@ -1532,6 +1559,9 @@ unsafe extern "system" fn window_procedure(
     }
     let inner = unsafe { &*ptr };
     let result = if let Some(inner) = inner.upgrade() {
+        if msg == WM_NCDESTROY {
+            inner.dialog_owner.close();
+        }
         inner.handle_msg(hwnd, msg, wparam, lparam)
     } else {
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -1763,6 +1793,7 @@ mod tests {
             .input
             .set(Some(Box::new(|_| DispatchEventResult::default())));
         callbacks.active_status_change.set(Some(Box::new(|_| {})));
+        callbacks.visibility_change.set(Some(Box::new(|_| {})));
         callbacks.hovered_status_change.set(Some(Box::new(|_| {})));
         callbacks.resize.set(Some(Box::new(|_, _| {})));
         callbacks.moved.set(Some(Box::new(|| {})));
@@ -1781,6 +1812,7 @@ mod tests {
         );
         assert!(callbacks.input.take().is_none());
         assert!(callbacks.active_status_change.take().is_none());
+        assert!(callbacks.visibility_change.take().is_none());
         assert!(callbacks.hovered_status_change.take().is_none());
         assert!(callbacks.resize.take().is_none());
         assert!(callbacks.moved.take().is_none());

@@ -1369,7 +1369,7 @@ impl TabularDataPreviewPane {
 #[cfg(test)]
 mod tests {
     use db::kvp::KeyValueStore;
-    use gpui::{AppContext as _, Entity, TestAppContext, VisualTestContext, px};
+    use gpui::{Entity, TestAppContext, VisualTestContext, px};
 
     use super::*;
     use crate::{

@@ -1,5 +1,5 @@
 # Every numbered field and enum value in upstream's crates/proto/proto at
-# v1.20.2 (7c451e6), as `scope name number`. Written by `regenerate_upstream_numbers`
+# v1.21.0 (33c9585), as `scope name number`. Written by `regenerate_upstream_numbers`
 # in jp_enhance_numbering.rs; do not edit by hand.
 AckBufferOperation buffer_id 1
 AckBufferOperation epoch 2
@@ -724,6 +724,8 @@ Envelope download_file_by_path 415
 Envelope download_file_response 416
 Envelope end_stream 165
 Envelope error 6
+Envelope execute_lsp_command 491
+Envelope execute_lsp_command_response 492
 Envelope expand_all_for_project_entry 291
 Envelope expand_all_for_project_entry_response 292
 Envelope expand_project_entry 51
@@ -882,6 +884,7 @@ Envelope kill_kernel 428
 Envelope language_server_log 260
 Envelope language_server_prompt_request 268
 Envelope language_server_prompt_response 269
+Envelope language_server_show_document_request 490
 Envelope leave_channel_buffer 129
 Envelope leave_channel_chat 136
 Envelope leave_project 28
@@ -947,6 +950,7 @@ Envelope pull_workspace_diagnostics 352
 Envelope push 304
 Envelope refresh_code_lens 325
 Envelope refresh_document_colors 474
+Envelope refresh_document_highlights 493
 Envelope refresh_document_links 475
 Envelope refresh_document_symbols 477
 Envelope refresh_folding_ranges 476
@@ -1090,6 +1094,11 @@ ExcerptRange context_end 2
 ExcerptRange context_start 1
 ExcerptRange primary_end 4
 ExcerptRange primary_start 3
+ExecuteLspCommand arguments 4
+ExecuteLspCommand command 3
+ExecuteLspCommand language_server_id 2
+ExecuteLspCommand project_id 1
+ExecuteLspCommandResponse result 1
 ExpandAllForProjectEntry entry_id 2
 ExpandAllForProjectEntry project_id 1
 ExpandAllForProjectEntryResponse worktree_scan_id 1
@@ -1540,6 +1549,7 @@ InlayHint resolve_state 7
 InlayHint tooltip 6
 InlayHintLabel label_parts 2
 InlayHintLabel value 1
+InlayHintLabelPart command 7
 InlayHintLabelPart language_server_id 6
 InlayHintLabelPart location_range_end 5
 InlayHintLabelPart location_range_start 4
@@ -1619,6 +1629,12 @@ LanguageServerPromptRequest warning 3
 LanguageServerPromptResponse action_response 1
 LanguageServerSelector name 2
 LanguageServerSelector server_id 1
+LanguageServerShowDocumentRequest external 3
+LanguageServerShowDocumentRequest project_id 1
+LanguageServerShowDocumentRequest selection_end 6
+LanguageServerShowDocumentRequest selection_start 5
+LanguageServerShowDocumentRequest take_focus 4
+LanguageServerShowDocumentRequest uri 2
 LeaveChannelBuffer channel_id 1
 LeaveChannelChat channel_id 1
 LeaveProject project_id 1
@@ -1976,6 +1992,8 @@ RefreshCodeLens project_id 1
 RefreshCodeLens server_id 2
 RefreshDocumentColors project_id 1
 RefreshDocumentColors server_id 2
+RefreshDocumentHighlights project_id 1
+RefreshDocumentHighlights server_id 2
 RefreshDocumentLinks project_id 1
 RefreshDocumentLinks server_id 2
 RefreshDocumentSymbols project_id 1

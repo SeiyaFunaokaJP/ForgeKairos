@@ -2470,9 +2470,9 @@ pub(crate) fn run_remote_host_script(
                 command
                     .args(&template.args)
                     .envs(template.env)
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
+                    .stdin(util::command::Stdio::piped())
+                    .stdout(util::command::Stdio::piped())
+                    .stderr(util::command::Stdio::piped())
                     .kill_on_drop(true);
                 output_with_script_on_stdin(&mut command, body).await
             })
@@ -4262,9 +4262,9 @@ mod tests {
             command
         };
         command
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            .stdin(util::command::Stdio::piped())
+            .stdout(util::command::Stdio::piped())
+            .stderr(util::command::Stdio::piped())
             .kill_on_drop(true);
         // パイプのバッファーより大きいので、読まない相手には必ず書き損じる。
         let body = "printf hello\n".repeat(80 * 1024);

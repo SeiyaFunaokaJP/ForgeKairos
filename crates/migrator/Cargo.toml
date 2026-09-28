@@ -29,4 +29,3 @@ util.workspace = true
 [dev-dependencies]
 indoc.workspace = true
 pretty_assertions.workspace = true
-unindent.workspace = true
