@@ -294,6 +294,14 @@ pub fn deploy_context_menu(
                     i18n::t!("Find All References"),
                     Box::new(FindAllReferences::default()),
                 )
+                .action(
+                    i18n::t!("Show Incoming Calls"),
+                    Box::new(zed_actions::ShowIncomingCalls),
+                )
+                .action(
+                    i18n::t!("Show Outgoing Calls"),
+                    Box::new(zed_actions::ShowOutgoingCalls),
+                )
                 .separator()
                 .action("シンボルの名前変更", Box::new(Rename))
                 .action("バッファーをフォーマット", Box::new(Format))
@@ -380,7 +388,7 @@ pub fn deploy_context_menu(
                 )
                 .action_disabled_when(
                     !has_git_repo,
-                    "永続リンクをコピー",
+                    i18n::t!("Copy Permalink to Line"),
                     Box::new(CopyPermalinkToLine),
                 )
                 .action_disabled_when(

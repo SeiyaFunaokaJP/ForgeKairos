@@ -16,33 +16,33 @@ p0.i8[worktree.private_files].title	プライベートファイル
 p0.i8[worktree.private_files].description	ファイルがプライベートかどうかを判定するために、ファイルパスと照合する glob です。
 p0.i9[cli_default_open_behavior].title	CLI の既定の開き方
 p0.i9[cli_default_open_behavior].description	フラグを指定しなかったときに `zed <path>` がディレクトリをどう開くかを設定します。
-p0.i10[default_open_behavior].title	既定の開き方
-p0.i10[default_open_behavior].description	UI からプロジェクトを開くときの既定の動作です。
-p0.i11.header	セキュリティ
-p0.i12[session.trust_all_projects].title	すべてのプロジェクトを既定で信頼
-p0.i12[session.trust_all_projects].description	Zed を開くときにすべてのプロジェクトを自動的に信頼して制限モードを回避し、プロジェクトごとに許可を与えなくてもすべての機能を使えるようにします。
-p0.i13.link	起動の許可・不許可の記録
-p0.i13.link_description	プロジェクトの設定が起動しようとした MCP サーバー・言語サーバー・外部フォーマッターについて、許可・不許可の記録を確認して取り消します。
-p0.i14.header	ワークスペースの復元
-p0.i15[session.restore_unsaved_buffers].title	未保存のバッファーを復元
-p0.i15[session.restore_unsaved_buffers].description	再起動時に未保存のバッファーを復元するかどうかを設定します。
-p0.i16[restore_on_startup].title	起動時に復元する内容
-p0.i16[restore_on_startup].description	Zed を開いたときに前回のセッションから何を復元するかを設定します。
-p0.i17.header	適用範囲付きの設定
-p0.i18[preview_channel_settings].title	Preview チャンネル
-p0.i18[preview_channel_settings].description	Zed の Preview ビルドでのみ有効にする設定です。
-p0.i19[settings_profiles].title	設定プロファイル
-p0.i19[settings_profiles].description	既存のユーザー設定に一時的に上書き適用する設定プロファイルを、任意の数だけ定義できます。
-p0.i20.header	プライバシー
-p0.i21[telemetry.diagnostics].title	診断テレメトリ
-p0.i21[telemetry.diagnostics].description	クラッシュレポートなどのデバッグ情報を送信します。
-p0.i22[telemetry.metrics].title	利用状況テレメトリ
-p0.i22[telemetry.metrics].description	Zed でどの言語を使っているかなど、匿名化された利用データを送信します。
-p0.i23[telemetry.anthropic_retention].title	Anthropic のデータ保持
-p0.i23[telemetry.anthropic_retention].description	Zero Data Retention では提供できない Anthropic モデルへのリクエスト送信を許可します。
-p0.i24.header	自動更新
-p0.i25[auto_update].title	自動更新
-p0.i25[auto_update].description	更新を自動的に確認するかどうかを設定します。
+p0.i11[default_open_behavior].title	既定の開き方
+p0.i11[default_open_behavior].description	UI からプロジェクトを開くときの既定の動作です。
+p0.i12.header	セキュリティ
+p0.i13[session.trust_all_projects].title	すべてのプロジェクトを既定で信頼
+p0.i13[session.trust_all_projects].description	Zed を開くときにすべてのプロジェクトを自動的に信頼して制限モードを回避し、プロジェクトごとに許可を与えなくてもすべての機能を使えるようにします。
+p0.i14.link	起動の許可・不許可の記録
+p0.i14.link_description	プロジェクトの設定が起動しようとした MCP サーバー・言語サーバー・外部フォーマッターについて、許可・不許可の記録を確認して取り消します。
+p0.i15.header	ワークスペースの復元
+p0.i16[session.restore_unsaved_buffers].title	未保存のバッファーを復元
+p0.i16[session.restore_unsaved_buffers].description	再起動時に未保存のバッファーを復元するかどうかを設定します。
+p0.i17[restore_on_startup].title	起動時に復元する内容
+p0.i17[restore_on_startup].description	Zed を開いたときに前回のセッションから何を復元するかを設定します。
+p0.i18.header	適用範囲付きの設定
+p0.i19[preview_channel_settings].title	Preview チャンネル
+p0.i19[preview_channel_settings].description	Zed の Preview ビルドでのみ有効にする設定です。
+p0.i20[settings_profiles].title	設定プロファイル
+p0.i20[settings_profiles].description	既存のユーザー設定に一時的に上書き適用する設定プロファイルを、任意の数だけ定義できます。
+p0.i21.header	プライバシー
+p0.i22[telemetry.diagnostics].title	診断テレメトリ
+p0.i22[telemetry.diagnostics].description	クラッシュレポートなどのデバッグ情報を送信します。
+p0.i23[telemetry.metrics].title	利用状況テレメトリ
+p0.i23[telemetry.metrics].description	Zed でどの言語を使っているかなど、匿名化された利用データを送信します。
+p0.i24[telemetry.anthropic_retention].title	Anthropic のデータ保持
+p0.i24[telemetry.anthropic_retention].description	Zero Data Retention では提供できない Anthropic モデルへのリクエスト送信を許可します。
+p0.i25.header	自動更新
+p0.i26[auto_update].title	自動更新
+p0.i26[auto_update].description	更新を自動的に確認するかどうかを設定します。
 p1.title	外観
 p1.i0.header	テーマ
 p1.i1[theme$].title	テーマモード
@@ -413,32 +413,32 @@ p3.i137[languages.$(language).tasks.variables].description	特定の言語に対
 p3.i138[languages.$(language).tasks.prefer_lsp].title	LSP を優先
 p3.i138[languages.$(language).tasks.prefer_lsp].description	Zed の言語拡張のタスクより、LSP のタスクを優先します。
 p3.i139.header	その他
-p3.i140[languages.$(language).word_diff_enabled].title	単語単位の差分を有効にする
-p3.i140[languages.$(language).word_diff_enabled].description	エディターで単語単位の差分ハイライトを有効にするかどうかを設定します。有効にすると、変更された行の中で実際に変わった単語がハイライトされます。
-p3.i141[languages.$(language).debuggers].title	デバッガー
-p3.i141[languages.$(language).debuggers].description	この言語で優先的に使うデバッガーです。
-p3.i142[languages.$(language).editor.middle_click_paste].title	中クリックで貼り付け
-p3.i142[languages.$(language).editor.middle_click_paste].description	Linux で中クリックによる貼り付けを有効にします。
-p3.i143[languages.$(language).extend_comment_on_newline].title	改行時にコメントを継続
-p3.i143[languages.$(language).extend_comment_on_newline].description	直前の行がコメントの場合に、新しい行もコメントで始めるかどうかを設定します。
-p3.i144[languages.$(language).colorize_brackets].title	括弧の色分け
-p3.i144[languages.$(language).colorize_brackets].description	エディターで括弧を色分けするかどうかを設定します。
-p3.i145[modeline_lines].title	Vim/Emacs の modeline のサポート
-p3.i145[modeline_lines].description	modeline を探す行数です (0 で無効)。
-p3.i146[image_viewer.unit].title	画像ビューアー
-p3.i146[image_viewer.unit].description	画像ファイルのサイズの単位です。
-p3.i147[markdown_preview.limit_content_width].title	Markdown プレビューの幅を制限
-p3.i147[markdown_preview.limit_content_width].description	読みやすさのために、Markdown プレビューの内容を最大幅に制限し、ペインがそれより広いときは中央に寄せるかどうかを設定します。
-p3.i147.v1.f0[markdown_preview.max_width].title	最大幅
-p3.i147.v1.f0[markdown_preview.max_width].description	内容の最大幅 (ピクセル) です。ペインがこの値より広いときは内容を中央に寄せます。
-p3.i148[markdown_preview.soft_break_as_hard_break].title	改行をそのまま改行として表示
-p3.i148[markdown_preview.soft_break_as_hard_break].description	オフにすると CommonMark 準拠になり、行末の半角スペース 2 つ / `\\` / `<br>` だけが改行になります。PDF の書き出しにも同じ設定が効きます。
-p3.i149[tabular_data.open_as_grid].title	CSV / TSV を表として開く
-p3.i149[tabular_data.open_as_grid].description	オフにするとテキストエディターで開きます。どちらからでも横に切り替えられます。
-p3.i150[tabular_data.multiline_cells].title	複数行のセルをすべて表示
-p3.i150[tabular_data.multiline_cells].description	表 (グリッド) で、改行を含むセルの行の高さを広げてすべて表示します。オフにすると 1 行に切り詰めます。
-p3.i151[drop_target_size].title	ドロップ領域のサイズ
-p3.i151[drop_target_size].description	ドロップしたファイルを分割ペインで開くための、エディター内のドロップ領域の相対サイズです。
+p3.i141[languages.$(language).word_diff_enabled].title	単語単位の差分を有効にする
+p3.i141[languages.$(language).word_diff_enabled].description	エディターで単語単位の差分ハイライトを有効にするかどうかを設定します。有効にすると、変更された行の中で実際に変わった単語がハイライトされます。
+p3.i142[languages.$(language).debuggers].title	デバッガー
+p3.i142[languages.$(language).debuggers].description	この言語で優先的に使うデバッガーです。
+p3.i143[languages.$(language).editor.middle_click_paste].title	中クリックで貼り付け
+p3.i143[languages.$(language).editor.middle_click_paste].description	Linux で中クリックによる貼り付けを有効にします。
+p3.i144[languages.$(language).extend_comment_on_newline].title	改行時にコメントを継続
+p3.i144[languages.$(language).extend_comment_on_newline].description	直前の行がコメントの場合に、新しい行もコメントで始めるかどうかを設定します。
+p3.i145[languages.$(language).colorize_brackets].title	括弧の色分け
+p3.i145[languages.$(language).colorize_brackets].description	エディターで括弧を色分けするかどうかを設定します。
+p3.i146[modeline_lines].title	Vim/Emacs の modeline のサポート
+p3.i146[modeline_lines].description	modeline を探す行数です (0 で無効)。
+p3.i147[image_viewer.unit].title	画像ビューアー
+p3.i147[image_viewer.unit].description	画像ファイルのサイズの単位です。
+p3.i148[markdown_preview.limit_content_width].title	Markdown プレビューの幅を制限
+p3.i148[markdown_preview.limit_content_width].description	読みやすさのために、Markdown プレビューの内容を最大幅に制限し、ペインがそれより広いときは中央に寄せるかどうかを設定します。
+p3.i148.v1.f0[markdown_preview.max_width].title	最大幅
+p3.i148.v1.f0[markdown_preview.max_width].description	内容の最大幅 (ピクセル) です。ペインがこの値より広いときは内容を中央に寄せます。
+p3.i149[markdown_preview.soft_break_as_hard_break].title	改行をそのまま改行として表示
+p3.i149[markdown_preview.soft_break_as_hard_break].description	オフにすると CommonMark 準拠になり、行末の半角スペース 2 つ / `\\` / `<br>` だけが改行になります。PDF の書き出しにも同じ設定が効きます。
+p3.i150[tabular_data.open_as_grid].title	CSV / TSV を表として開く
+p3.i150[tabular_data.open_as_grid].description	オフにするとテキストエディターで開きます。どちらからでも横に切り替えられます。
+p3.i151[tabular_data.multiline_cells].title	複数行のセルをすべて表示
+p3.i151[tabular_data.multiline_cells].description	表 (グリッド) で、改行を含むセルの行の高さを広げてすべて表示します。オフにすると 1 行に切り詰めます。
+p3.i152[drop_target_size].title	ドロップ領域のサイズ
+p3.i152[drop_target_size].description	ドロップしたファイルを分割ペインで開くための、エディター内のドロップ領域の相対サイズです。
 p4.title	言語とツール
 p4.i0.header	LSP
 p4.i1[languages.$(language).enable_language_server].title	言語サーバーを有効にする
@@ -520,28 +520,28 @@ p5.i6[search_wrap].title	検索の折り返し
 p5.i6[search_wrap].description	エディターの検索結果を末尾から先頭へ循環させるかどうかを設定します。
 p5.i7[editor.search.center_on_match].title	一致箇所を中央に表示
 p5.i7[editor.search.center_on_match].description	現在の一致箇所をエディターの中央に表示するかどうかを設定します
-p5.i8[seed_search_query_from_cursor].title	カーソル位置から検索クエリを初期化
-p5.i8[seed_search_query_from_cursor].description	新しい検索のクエリをカーソル位置のテキストで埋めるタイミングを設定します。
-p5.i9.header	ファイル検索
-p5.i10[file_finder.include_ignored].title	検索に無視されたファイルを含める
-p5.i10[file_finder.include_ignored].description	検索時に gitignore されたファイルも対象にします。
-p5.i11[file_finder.file_icons].title	ファイルアイコン
-p5.i11[file_finder.file_icons].description	ファイル検索にファイルアイコンを表示します。
-p5.i12[file_finder.skip_focus_for_active_in_search].title	検索結果でアクティブなファイルを飛ばす
-p5.i12[file_finder.skip_focus_for_active_in_search].description	ファイル検索の結果で、アクティブなファイルにはフォーカスを合わせないようにするかどうかを設定します。
-p5.i13.header	ファイルスキャン
-p5.i14[file_scan_exclusions].title	ファイルスキャンの除外
-p5.i14[file_scan_exclusions].description	Zed が完全に除外するファイルまたは glob です。ファイルスキャンとファイル検索から除外され、プロジェクトのファイルツリーにも表示されません。「ファイルスキャンの対象」より優先されます
-p5.i15[file_scan_inclusions].title	ファイルスキャンの対象
-p5.i15[file_scan_inclusions].description	git に無視されていても Zed が対象に含めるファイルまたは glob です。git の管理外でもプロジェクトにとって重要なファイルに便利です。範囲が広すぎる glob は Zed のファイルスキャンを遅くする点に注意してください。「ファイルスキャンの除外」がこの設定より優先されます
-p5.i16[file_scan_depth].title	ファイルスキャンの深さ
-p5.i16[file_scan_depth].description	git リポジトリの外側で先読みインデックスを作成するディレクトリの最大の深さです。この深さ以上のディレクトリの内容は、必要になった時点でインデックスされます。この深さより浅い位置にあるリポジトリは常に完全にインデックスされます。git リポジトリを起点としないプロジェクトでは、ルートフォルダーの直下にあるリポジトリは即座に git 機能が有効になり、それより深いものは最初に使われた時点で有効になります。0 は無制限を意味し、すべての git リポジトリを即座に有効にします
-p5.i17[scan_symlinks].title	シンボリックリンクをスキャン
-p5.i17[scan_symlinks].description	リンク先のディレクトリの内容をスキャンするタイミングです
-p5.i18[restore_on_file_reopen].title	ファイルの状態を復元
-p5.i18[restore_on_file_reopen].description	ファイルを再度開いたときに前回の状態を復元します。
-p5.i19[close_on_file_delete].title	ファイル削除時に閉じる
-p5.i19[close_on_file_delete].description	削除されたファイルを自動的に閉じます。
+p5.i9[seed_search_query_from_cursor].title	カーソル位置から検索クエリを初期化
+p5.i9[seed_search_query_from_cursor].description	新しい検索のクエリをカーソル位置のテキストで埋めるタイミングを設定します。
+p5.i10.header	ファイル検索
+p5.i11[file_finder.include_ignored].title	検索に無視されたファイルを含める
+p5.i11[file_finder.include_ignored].description	検索時に gitignore されたファイルも対象にします。
+p5.i12[file_finder.file_icons].title	ファイルアイコン
+p5.i12[file_finder.file_icons].description	ファイル検索にファイルアイコンを表示します。
+p5.i13[file_finder.skip_focus_for_active_in_search].title	検索結果でアクティブなファイルを飛ばす
+p5.i13[file_finder.skip_focus_for_active_in_search].description	ファイル検索の結果で、アクティブなファイルにはフォーカスを合わせないようにするかどうかを設定します。
+p5.i14.header	ファイルスキャン
+p5.i15[file_scan_exclusions].title	ファイルスキャンの除外
+p5.i15[file_scan_exclusions].description	Zed が完全に除外するファイルまたは glob です。ファイルスキャンとファイル検索から除外され、プロジェクトのファイルツリーにも表示されません。「ファイルスキャンの対象」より優先されます
+p5.i16[file_scan_inclusions].title	ファイルスキャンの対象
+p5.i16[file_scan_inclusions].description	git に無視されていても Zed が対象に含めるファイルまたは glob です。git の管理外でもプロジェクトにとって重要なファイルに便利です。範囲が広すぎる glob は Zed のファイルスキャンを遅くする点に注意してください。「ファイルスキャンの除外」がこの設定より優先されます
+p5.i17[file_scan_depth].title	ファイルスキャンの深さ
+p5.i17[file_scan_depth].description	git リポジトリの外側で先読みインデックスを作成するディレクトリの最大の深さです。この深さ以上のディレクトリの内容は、必要になった時点でインデックスされます。この深さより浅い位置にあるリポジトリは常に完全にインデックスされます。git リポジトリを起点としないプロジェクトでは、ルートフォルダーの直下にあるリポジトリは即座に git 機能が有効になり、それより深いものは最初に使われた時点で有効になります。0 は無制限を意味し、すべての git リポジトリを即座に有効にします
+p5.i18[scan_symlinks].title	シンボリックリンクをスキャン
+p5.i18[scan_symlinks].description	リンク先のディレクトリの内容をスキャンするタイミングです
+p5.i19[restore_on_file_reopen].title	ファイルの状態を復元
+p5.i19[restore_on_file_reopen].description	ファイルを再度開いたときに前回の状態を復元します。
+p5.i20[close_on_file_delete].title	ファイル削除時に閉じる
+p5.i20[close_on_file_delete].description	削除されたファイルを自動的に閉じます。
 p6.title	ウィンドウとレイアウト
 p6.i0.header	ステータスバー
 p6.i1[project_panel.button].title	プロジェクトパネルのボタン
@@ -660,11 +660,11 @@ p6.i59[active_pane_modifiers.border_size].title	境界線の太さ
 p6.i59[active_pane_modifiers.border_size].description	アクティブなペインを囲む境界線の太さです。
 p6.i60[zoomed_padding].title	ズーム時の余白
 p6.i60[zoomed_padding].description	ズームしたペインに余白を表示します。
-p6.i61.header	ペインの分割方向
-p6.i62[pane_split_direction_vertical].title	垂直分割の方向
-p6.i62[pane_split_direction_vertical].description	垂直に分割するときの方向です。
-p6.i63[pane_split_direction_horizontal].title	水平分割の方向
-p6.i63[pane_split_direction_horizontal].description	水平に分割するときの方向です。
+p6.i62.header	ペインの分割方向
+p6.i63[pane_split_direction_vertical].title	垂直分割の方向
+p6.i63[pane_split_direction_vertical].description	垂直に分割するときの方向です。
+p6.i64[pane_split_direction_horizontal].title	水平分割の方向
+p6.i64[pane_split_direction_horizontal].description	水平に分割するときの方向です。
 p7.title	パネル
 p7.i0.header	プロジェクトパネル
 p7.i1[project_panel.dock].title	プロジェクトパネルのドック位置
@@ -677,8 +677,6 @@ p7.i4[project_panel.entry_spacing].title	項目の間隔
 p7.i4[project_panel.entry_spacing].description	プロジェクトパネルのワークツリー項目の間隔です。
 p7.i5[project_panel.file_icons].title	ファイルアイコン
 p7.i5[project_panel.file_icons].description	プロジェクトパネルにファイルアイコンを表示します。
-p7.i6[project_panel.folder_icons].title	フォルダーアイコン
-p7.i6[project_panel.folder_icons].description	プロジェクトパネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。
 p7.i7[project_panel.git_status].title	Git の状態
 p7.i7[project_panel.git_status].description	プロジェクトパネルに Git の状態を表示します。
 p7.i8[project_panel.indent_size].title	インデント幅
@@ -741,8 +739,6 @@ p7.i37[outline_panel.default_width].title	アウトラインパネルの既定�
 p7.i37[outline_panel.default_width].description	アウトラインパネルの既定の幅 (ピクセル) です。
 p7.i38[outline_panel.file_icons].title	ファイルアイコン
 p7.i38[outline_panel.file_icons].description	アウトラインパネルにファイルアイコンを表示します。
-p7.i39[outline_panel.folder_icons].title	フォルダーアイコン
-p7.i39[outline_panel.folder_icons].description	アウトラインパネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。
 p7.i40[outline_panel.git_status].title	Git の状態
 p7.i40[outline_panel.git_status].description	アウトラインパネルに Git の状態を表示します。
 p7.i41[outline_panel.indent_size].title	インデント幅
@@ -753,68 +749,66 @@ p7.i43[outline_panel.auto_fold_dirs].title	ディレクトリを自動的にま�
 p7.i43[outline_panel.auto_fold_dirs].description	ディレクトリの中にサブディレクトリが 1 つだけあるときに、自動的にまとめるかどうかを設定します。
 p7.i44[outline_panel.indent_guides.show].title	インデントガイドを表示
 p7.i44[outline_panel.indent_guides.show].description	アウトラインパネルにインデントガイドを表示するタイミングです。
-p7.i45.header	Git パネル
-p7.i46[git_panel.button].title	Git パネルのボタン
-p7.i46[git_panel.button].description	ステータスバーに Git パネルのボタンを表示します。
-p7.i47[git_panel.dock].title	Git パネルのドック位置
-p7.i47[git_panel.dock].description	Git パネルをドッキングする位置です。
-p7.i48[git_panel.starts_open].title	起動時に開く
-p7.i48[git_panel.starts_open].description	起動時に git パネルを開くかどうかを設定します。
-p7.i49[git_panel.default_width].title	Git パネルの既定の幅
-p7.i49[git_panel.default_width].description	Git パネルの既定の幅 (ピクセル) です。
-p7.i50[git_panel.status_style].title	Git パネルの状態の表示スタイル
-p7.i50[git_panel.status_style].description	項目の状態をどのように表示するかを設定します。
-p7.i51[git_panel.fallback_branch_name].title	既定のブランチ名
-p7.i51[git_panel.fallback_branch_name].description	Git で init.defaultbranch が設定されていないときに使うブランチ名です。
-p7.i52[git_panel.sort_by].title	並べ替え
-p7.i52[git_panel.sort_by].description	git パネルの項目の並び順です。
-p7.i53[git_panel.group_by].title	グループ化
-p7.i53[git_panel.group_by].description	git パネルの項目のグループ化の方法です。
-p7.i54[git_panel.collapse_untracked_diff].title	未追跡ファイルの差分を折りたたむ
-p7.i54[git_panel.collapse_untracked_diff].description	差分パネルで未追跡のファイルを折りたたむかどうかを設定します。
-p7.i55[git_panel.tree_view].title	ツリー表示
-p7.i55[git_panel.tree_view].description	有効にすると項目をツリー表示で、無効にするとフラットな一覧で表示します。
-p7.i56[git_panel.file_icons].title	ファイルアイコン
-p7.i56[git_panel.file_icons].description	Git の状態アイコンの横にファイルアイコンを表示します。
-p7.i57[git_panel.folder_icons].title	フォルダーアイコン
-p7.i57[git_panel.folder_icons].description	git パネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。
-p7.i58[git_panel.diff_stats].title	差分の統計
-p7.i58[git_panel.diff_stats].description	Git パネルの各ファイルの横に、追加・削除の行数を表示するかどうかを設定します。
-p7.i59[git_panel.entry_primary_click_action].title	クリック時の動作
-p7.i59[git_panel.entry_primary_click_action].description	Git パネルで変更されたファイルをクリックしたときの既定の動作です。
-p7.i60[git_panel.show_count_badge].title	件数バッジを表示
-p7.i60[git_panel.show_count_badge].description	git パネルのアイコンに、未コミットの変更数のバッジを表示するかどうかを設定します。
-p7.i61[git_panel.commit_title_max_length].title	コミットタイトルの最大長
-p7.i61[git_panel.commit_title_max_length].description	警告を表示するまでのコミットメッセージのタイトルの最大長です。0 で無効になります。
-p7.i62[git_panel.scrollbar.show].title	スクロールバー
-p7.i62[git_panel.scrollbar.show].description	スクロールバーをどのように、いつ表示するかを設定します。
-p7.i63.header	デバッガーパネル
-p7.i64[debugger.dock].title	デバッガーパネルのドック位置
-p7.i64[debugger.dock].description	デバッグパネルをドッキングする位置です。
-p7.i65.header	コラボレーションパネル
-p7.i66[collaboration_panel.button].title	コラボレーションパネルのボタン
-p7.i66[collaboration_panel.button].description	ステータスバーにコラボレーションパネルのボタンを表示します。
-p7.i67[collaboration_panel.dock].title	コラボレーションパネルのドック位置
-p7.i67[collaboration_panel.dock].description	コラボレーションパネルをドッキングする位置です。
-p7.i68[collaboration_panel.dock].title	コラボレーションパネルの既定の幅
-p7.i68[collaboration_panel.dock].description	コラボレーションパネルの既定の幅 (ピクセル) です。
-p7.i69.header	エージェントパネル
-p7.i70[agent.button].title	エージェントパネルのボタン
-p7.i70[agent.button].description	ステータスバーにエージェントパネルのボタンを表示するかどうかを設定します。
-p7.i71[agent.dock].title	エージェントパネルのドック位置
-p7.i71[agent.dock].description	エージェントパネルをドッキングする位置です。
-p7.i72[agent.starts_open].title	起動時に開く
-p7.i72[agent.starts_open].description	起動時にエージェントパネルを開くかどうかを設定します。
-p7.i73[agent.flexible].title	エージェントパネルの可変サイズ
-p7.i73[agent.flexible].description	左右にドッキングしたときに、エージェントパネルで可変 (比率) サイズを使うかどうかを設定します。
-p7.i74[agent.default_width].title	エージェントパネルの既定の幅
-p7.i74[agent.default_width].description	エージェントパネルを左右にドッキングしたときの既定の幅です。
-p7.i75[agent.default_height].title	エージェントパネルの既定の高さ
-p7.i75[agent.default_height].description	エージェントパネルを下にドッキングしたときの既定の高さです。
-p7.i76[agent.limit_content_width].title	内容の幅を制限
-p7.i76[agent.limit_content_width].description	読みやすさのために、エージェントパネルの内容を最大幅に制限し、パネルがそれより広いときは中央に寄せるかどうかを設定します。
-p7.i76.v1.f0[agent.max_content_width].title	内容の最大幅
-p7.i76.v1.f0[agent.max_content_width].description	内容の最大幅 (ピクセル) です。パネルがこの値より広いときは内容を中央に寄せます。
+p7.i46.header	Git パネル
+p7.i47[git_panel.button].title	Git パネルのボタン
+p7.i47[git_panel.button].description	ステータスバーに Git パネルのボタンを表示します。
+p7.i48[git_panel.dock].title	Git パネルのドック位置
+p7.i48[git_panel.dock].description	Git パネルをドッキングする位置です。
+p7.i49[git_panel.starts_open].title	起動時に開く
+p7.i49[git_panel.starts_open].description	起動時に git パネルを開くかどうかを設定します。
+p7.i50[git_panel.default_width].title	Git パネルの既定の幅
+p7.i50[git_panel.default_width].description	Git パネルの既定の幅 (ピクセル) です。
+p7.i51[git_panel.status_style].title	Git パネルの状態の表示スタイル
+p7.i51[git_panel.status_style].description	項目の状態をどのように表示するかを設定します。
+p7.i52[git_panel.fallback_branch_name].title	既定のブランチ名
+p7.i52[git_panel.fallback_branch_name].description	Git で init.defaultbranch が設定されていないときに使うブランチ名です。
+p7.i53[git_panel.sort_by].title	並べ替え
+p7.i53[git_panel.sort_by].description	git パネルの項目の並び順です。
+p7.i54[git_panel.group_by].title	グループ化
+p7.i54[git_panel.group_by].description	git パネルの項目のグループ化の方法です。
+p7.i55[git_panel.collapse_untracked_diff].title	未追跡ファイルの差分を折りたたむ
+p7.i55[git_panel.collapse_untracked_diff].description	差分パネルで未追跡のファイルを折りたたむかどうかを設定します。
+p7.i56[git_panel.tree_view].title	ツリー表示
+p7.i56[git_panel.tree_view].description	有効にすると項目をツリー表示で、無効にするとフラットな一覧で表示します。
+p7.i57[git_panel.file_icons].title	ファイルアイコン
+p7.i57[git_panel.file_icons].description	Git の状態アイコンの横にファイルアイコンを表示します。
+p7.i59[git_panel.diff_stats].title	差分の統計
+p7.i59[git_panel.diff_stats].description	Git パネルの各ファイルの横に、追加・削除の行数を表示するかどうかを設定します。
+p7.i60[git_panel.entry_primary_click_action].title	クリック時の動作
+p7.i60[git_panel.entry_primary_click_action].description	Git パネルで変更されたファイルをクリックしたときの既定の動作です。
+p7.i61[git_panel.show_count_badge].title	件数バッジを表示
+p7.i61[git_panel.show_count_badge].description	git パネルのアイコンに、未コミットの変更数のバッジを表示するかどうかを設定します。
+p7.i62[git_panel.commit_title_max_length].title	コミットタイトルの最大長
+p7.i62[git_panel.commit_title_max_length].description	警告を表示するまでのコミットメッセージのタイトルの最大長です。0 で無効になります。
+p7.i63[git_panel.scrollbar.show].title	スクロールバー
+p7.i63[git_panel.scrollbar.show].description	スクロールバーをどのように、いつ表示するかを設定します。
+p7.i64.header	デバッガーパネル
+p7.i65[debugger.dock].title	デバッガーパネルのドック位置
+p7.i65[debugger.dock].description	デバッグパネルをドッキングする位置です。
+p7.i66.header	コラボレーションパネル
+p7.i67[collaboration_panel.button].title	コラボレーションパネルのボタン
+p7.i67[collaboration_panel.button].description	ステータスバーにコラボレーションパネルのボタンを表示します。
+p7.i68[collaboration_panel.dock].title	コラボレーションパネルのドック位置
+p7.i68[collaboration_panel.dock].description	コラボレーションパネルをドッキングする位置です。
+p7.i69[collaboration_panel.dock].title	コラボレーションパネルの既定の幅
+p7.i69[collaboration_panel.dock].description	コラボレーションパネルの既定の幅 (ピクセル) です。
+p7.i70.header	エージェントパネル
+p7.i71[agent.button].title	エージェントパネルのボタン
+p7.i71[agent.button].description	ステータスバーにエージェントパネルのボタンを表示するかどうかを設定します。
+p7.i72[agent.dock].title	エージェントパネルのドック位置
+p7.i72[agent.dock].description	エージェントパネルをドッキングする位置です。
+p7.i73[agent.starts_open].title	起動時に開く
+p7.i73[agent.starts_open].description	起動時にエージェントパネルを開くかどうかを設定します。
+p7.i74[agent.flexible].title	エージェントパネルの可変サイズ
+p7.i74[agent.flexible].description	左右にドッキングしたときに、エージェントパネルで可変 (比率) サイズを使うかどうかを設定します。
+p7.i75[agent.default_width].title	エージェントパネルの既定の幅
+p7.i75[agent.default_width].description	エージェントパネルを左右にドッキングしたときの既定の幅です。
+p7.i76[agent.default_height].title	エージェントパネルの既定の高さ
+p7.i76[agent.default_height].description	エージェントパネルを下にドッキングしたときの既定の高さです。
+p7.i77[agent.limit_content_width].title	内容の幅を制限
+p7.i77[agent.limit_content_width].description	読みやすさのために、エージェントパネルの内容を最大幅に制限し、パネルがそれより広いときは中央に寄せるかどうかを設定します。
+p7.i77.v1.f0[agent.max_content_width].title	内容の最大幅
+p7.i77.v1.f0[agent.max_content_width].description	内容の最大幅 (ピクセル) です。パネルがこの値より広いときは内容を中央に寄せます。
 p8.title	デバッガー
 p8.i0.header	全般
 p8.i1[debugger.stepping_granularity].title	ステップ実行の粒度
@@ -1236,76 +1230,76 @@ language.i56[languages.$(language).tasks.variables].description	特定の言語�
 language.i57[languages.$(language).tasks.prefer_lsp].title	LSP を優先
 language.i57[languages.$(language).tasks.prefer_lsp].description	Zed の言語拡張のタスクより、LSP のタスクを優先します。
 language.i58.header	その他
-language.i59[languages.$(language).word_diff_enabled].title	単語単位の差分を有効にする
-language.i59[languages.$(language).word_diff_enabled].description	エディターで単語単位の差分ハイライトを有効にするかどうかを設定します。有効にすると、変更された行の中で実際に変わった単語がハイライトされます。
-language.i60[languages.$(language).debuggers].title	デバッガー
-language.i60[languages.$(language).debuggers].description	この言語で優先的に使うデバッガーです。
-language.i61[languages.$(language).editor.middle_click_paste].title	中クリックで貼り付け
-language.i61[languages.$(language).editor.middle_click_paste].description	Linux で中クリックによる貼り付けを有効にします。
-language.i62[languages.$(language).extend_comment_on_newline].title	改行時にコメントを継続
-language.i62[languages.$(language).extend_comment_on_newline].description	直前の行がコメントの場合に、新しい行もコメントで始めるかどうかを設定します。
-language.i63[languages.$(language).colorize_brackets].title	括弧の色分け
-language.i63[languages.$(language).colorize_brackets].description	エディターで括弧を色分けするかどうかを設定します。
-language.i64[modeline_lines].title	Vim/Emacs の modeline のサポート
-language.i64[modeline_lines].description	modeline を探す行数です (0 で無効)。
-language.i65[image_viewer.unit].title	画像ビューアー
-language.i65[image_viewer.unit].description	画像ファイルのサイズの単位です。
-language.i66[markdown_preview.limit_content_width].title	Markdown プレビューの幅を制限
-language.i66[markdown_preview.limit_content_width].description	読みやすさのために、Markdown プレビューの内容を最大幅に制限し、ペインがそれより広いときは中央に寄せるかどうかを設定します。
-language.i66.v1.f0[markdown_preview.max_width].title	最大幅
-language.i66.v1.f0[markdown_preview.max_width].description	内容の最大幅 (ピクセル) です。ペインがこの値より広いときは内容を中央に寄せます。
-language.i67[markdown_preview.soft_break_as_hard_break].title	改行をそのまま改行として表示
-language.i67[markdown_preview.soft_break_as_hard_break].description	オフにすると CommonMark 準拠になり、行末の半角スペース 2 つ / `\\` / `<br>` だけが改行になります。PDF の書き出しにも同じ設定が効きます。
-language.i68[tabular_data.open_as_grid].title	CSV / TSV を表として開く
-language.i68[tabular_data.open_as_grid].description	オフにするとテキストエディターで開きます。どちらからでも横に切り替えられます。
-language.i69[tabular_data.multiline_cells].title	複数行のセルをすべて表示
-language.i69[tabular_data.multiline_cells].description	表 (グリッド) で、改行を含むセルの行の高さを広げてすべて表示します。オフにすると 1 行に切り詰めます。
-language.i70[drop_target_size].title	ドロップ領域のサイズ
-language.i70[drop_target_size].description	ドロップしたファイルを分割ペインで開くための、エディター内のドロップ領域の相対サイズです。
-language.i71.header	LSP
-language.i72[languages.$(language).enable_language_server].title	言語サーバーを有効にする
-language.i72[languages.$(language).enable_language_server].description	コードインテリジェンスに言語サーバーを使うかどうかを設定します。
-language.i73[languages.$(language).language_servers].title	言語サーバー
-language.i73[languages.$(language).language_servers].description	この言語で使用する (または無効にする) 言語サーバーの一覧です。
-language.i74[languages.$(language).linked_edits].title	連動編集
-language.i74[languages.$(language).linked_edits].description	言語サーバーが対応している場合に、関連する範囲を連動して編集するかどうかを設定します。たとえば開始タグ <html> を編集すると、対応する終了タグ </html> の内容も一緒に編集されます。
-language.i75[go_to_definition_fallback].title	定義へ移動のフォールバック
-language.i75[go_to_definition_fallback].description	言語サーバーからの「定義へ移動」の結果が空だったときに、追加の問い合わせを行うかどうかを設定します。
-language.i76[go_to_definition_scroll_strategy].title	定義へ移動したときのスクロール方法
-language.i76[go_to_definition_scroll_strategy].description	定義や参照へ移動したときに、移動先をどのようにスクロールして表示するかを設定します。
-language.i77[lsp_results_location].title	LSP の結果の表示先
-language.i77[lsp_results_location].description	複数の位置を含みうる LSP の結果 (定義へ移動・実装へ移動・すべての参照を検索) をどこに表示するかを設定します。
-language.i78[languages.$(language).semantic_tokens].title	セマンティックトークン
-language.i78[languages.$(language).semantic_tokens].description	Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting.
-language.i79[languages.$(language).document_folding_ranges].title	LSP の折りたたみ範囲
-language.i79[languages.$(language).document_folding_ranges].description	有効にすると、インデントに基づく折りたたみの代わりに、言語サーバーの折りたたみ範囲を使用します。
-language.i80[languages.$(language).document_symbols].title	LSP のドキュメントシンボル
-language.i80[languages.$(language).document_symbols].description	有効にすると、アウトラインとパンくずリストに tree-sitter ではなく、言語サーバーのドキュメントシンボルを使用します。
-language.i81.header	LSP の補完
-language.i82[languages.$(language).completions.lsp].title	有効
-language.i82[languages.$(language).completions.lsp].description	LSP の補完候補を取得するかどうかを設定します。
-language.i83[languages.$(language).completions.lsp_fetch_timeout_ms].title	取得のタイムアウト (ミリ秒)
-language.i83[languages.$(language).completions.lsp_fetch_timeout_ms].description	LSP の補完候補を取得するときに、個々のサーバーの応答をどれだけ待つかを設定します (0 で無期限に待機)。
-language.i84[languages.$(language).completions.lsp_insert_mode].title	挿入方法
-language.i84[languages.$(language).completions.lsp_insert_mode].description	LSP の補完候補をどのように挿入するかを設定します。
-language.i85.header	デバッガー
-language.i86[languages.$(language).debuggers].title	デバッガー
-language.i86[languages.$(language).debuggers].description	この言語で優先的に使うデバッガーです。
-language.i87.header	Prettier
-language.i88[languages.$(language).prettier.allowed].title	使用を許可
-language.i88[languages.$(language).prettier.allowed].description	指定した言語で、Prettier によるフォーマットを有効または無効にします。
-language.i89[languages.$(language).prettier.parser].title	パーサー
-language.i89[languages.$(language).prettier.parser].description	この言語のファイルをフォーマットするときに、Prettier 連携が使用するパーサー名を強制します。
-language.i90[languages.$(language).prettier.plugins].title	プラグイン
-language.i90[languages.$(language).prettier.plugins].description	この言語のファイルをフォーマットするときに、Prettier 連携が使用するプラグインを強制します。
-language.i91[languages.$(language).prettier.options].title	オプション
-language.i91[languages.$(language).prettier.options].description	Prettier の既定のオプションです。package.json の Prettier セクションと同じ形式で指定します。
-language.i92.header	編集予測
-language.i93[edit_predictions.providers].link	プロバイダーの設定
-language.i93[edit_predictions.providers].link_description	編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。
-language.i94[edit_predictions.allow_data_collection].title	データの収集
-language.i94[edit_predictions.allow_data_collection].description	Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。
-language.i95[languages.$(language).show_edit_predictions].title	編集予測を表示
-language.i95[languages.$(language).show_edit_predictions].description	編集予測をすぐに表示するか、手動で表示するかを設定します。
-language.i96[languages.$(language).edit_predictions_disabled_in].title	無効にする言語スコープ
-language.i96[languages.$(language).edit_predictions_disabled_in].description	指定した言語スコープで編集予測を表示するかどうかを設定します。
+language.i60[languages.$(language).word_diff_enabled].title	単語単位の差分を有効にする
+language.i60[languages.$(language).word_diff_enabled].description	エディターで単語単位の差分ハイライトを有効にするかどうかを設定します。有効にすると、変更された行の中で実際に変わった単語がハイライトされます。
+language.i61[languages.$(language).debuggers].title	デバッガー
+language.i61[languages.$(language).debuggers].description	この言語で優先的に使うデバッガーです。
+language.i62[languages.$(language).editor.middle_click_paste].title	中クリックで貼り付け
+language.i62[languages.$(language).editor.middle_click_paste].description	Linux で中クリックによる貼り付けを有効にします。
+language.i63[languages.$(language).extend_comment_on_newline].title	改行時にコメントを継続
+language.i63[languages.$(language).extend_comment_on_newline].description	直前の行がコメントの場合に、新しい行もコメントで始めるかどうかを設定します。
+language.i64[languages.$(language).colorize_brackets].title	括弧の色分け
+language.i64[languages.$(language).colorize_brackets].description	エディターで括弧を色分けするかどうかを設定します。
+language.i65[modeline_lines].title	Vim/Emacs の modeline のサポート
+language.i65[modeline_lines].description	modeline を探す行数です (0 で無効)。
+language.i66[image_viewer.unit].title	画像ビューアー
+language.i66[image_viewer.unit].description	画像ファイルのサイズの単位です。
+language.i67[markdown_preview.limit_content_width].title	Markdown プレビューの幅を制限
+language.i67[markdown_preview.limit_content_width].description	読みやすさのために、Markdown プレビューの内容を最大幅に制限し、ペインがそれより広いときは中央に寄せるかどうかを設定します。
+language.i67.v1.f0[markdown_preview.max_width].title	最大幅
+language.i67.v1.f0[markdown_preview.max_width].description	内容の最大幅 (ピクセル) です。ペインがこの値より広いときは内容を中央に寄せます。
+language.i68[markdown_preview.soft_break_as_hard_break].title	改行をそのまま改行として表示
+language.i68[markdown_preview.soft_break_as_hard_break].description	オフにすると CommonMark 準拠になり、行末の半角スペース 2 つ / `\\` / `<br>` だけが改行になります。PDF の書き出しにも同じ設定が効きます。
+language.i69[tabular_data.open_as_grid].title	CSV / TSV を表として開く
+language.i69[tabular_data.open_as_grid].description	オフにするとテキストエディターで開きます。どちらからでも横に切り替えられます。
+language.i70[tabular_data.multiline_cells].title	複数行のセルをすべて表示
+language.i70[tabular_data.multiline_cells].description	表 (グリッド) で、改行を含むセルの行の高さを広げてすべて表示します。オフにすると 1 行に切り詰めます。
+language.i71[drop_target_size].title	ドロップ領域のサイズ
+language.i71[drop_target_size].description	ドロップしたファイルを分割ペインで開くための、エディター内のドロップ領域の相対サイズです。
+language.i72.header	LSP
+language.i73[languages.$(language).enable_language_server].title	言語サーバーを有効にする
+language.i73[languages.$(language).enable_language_server].description	コードインテリジェンスに言語サーバーを使うかどうかを設定します。
+language.i74[languages.$(language).language_servers].title	言語サーバー
+language.i74[languages.$(language).language_servers].description	この言語で使用する (または無効にする) 言語サーバーの一覧です。
+language.i75[languages.$(language).linked_edits].title	連動編集
+language.i75[languages.$(language).linked_edits].description	言語サーバーが対応している場合に、関連する範囲を連動して編集するかどうかを設定します。たとえば開始タグ <html> を編集すると、対応する終了タグ </html> の内容も一緒に編集されます。
+language.i76[go_to_definition_fallback].title	定義へ移動のフォールバック
+language.i76[go_to_definition_fallback].description	言語サーバーからの「定義へ移動」の結果が空だったときに、追加の問い合わせを行うかどうかを設定します。
+language.i77[go_to_definition_scroll_strategy].title	定義へ移動したときのスクロール方法
+language.i77[go_to_definition_scroll_strategy].description	定義や参照へ移動したときに、移動先をどのようにスクロールして表示するかを設定します。
+language.i78[lsp_results_location].title	LSP の結果の表示先
+language.i78[lsp_results_location].description	複数の位置を含みうる LSP の結果 (定義へ移動・実装へ移動・すべての参照を検索) をどこに表示するかを設定します。
+language.i79[languages.$(language).semantic_tokens].title	セマンティックトークン
+language.i79[languages.$(language).semantic_tokens].description	Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting.
+language.i80[languages.$(language).document_folding_ranges].title	LSP の折りたたみ範囲
+language.i80[languages.$(language).document_folding_ranges].description	有効にすると、インデントに基づく折りたたみの代わりに、言語サーバーの折りたたみ範囲を使用します。
+language.i81[languages.$(language).document_symbols].title	LSP のドキュメントシンボル
+language.i81[languages.$(language).document_symbols].description	有効にすると、アウトラインとパンくずリストに tree-sitter ではなく、言語サーバーのドキュメントシンボルを使用します。
+language.i82.header	LSP の補完
+language.i83[languages.$(language).completions.lsp].title	有効
+language.i83[languages.$(language).completions.lsp].description	LSP の補完候補を取得するかどうかを設定します。
+language.i84[languages.$(language).completions.lsp_fetch_timeout_ms].title	取得のタイムアウト (ミリ秒)
+language.i84[languages.$(language).completions.lsp_fetch_timeout_ms].description	LSP の補完候補を取得するときに、個々のサーバーの応答をどれだけ待つかを設定します (0 で無期限に待機)。
+language.i85[languages.$(language).completions.lsp_insert_mode].title	挿入方法
+language.i85[languages.$(language).completions.lsp_insert_mode].description	LSP の補完候補をどのように挿入するかを設定します。
+language.i86.header	デバッガー
+language.i87[languages.$(language).debuggers].title	デバッガー
+language.i87[languages.$(language).debuggers].description	この言語で優先的に使うデバッガーです。
+language.i88.header	Prettier
+language.i89[languages.$(language).prettier.allowed].title	使用を許可
+language.i89[languages.$(language).prettier.allowed].description	指定した言語で、Prettier によるフォーマットを有効または無効にします。
+language.i90[languages.$(language).prettier.parser].title	パーサー
+language.i90[languages.$(language).prettier.parser].description	この言語のファイルをフォーマットするときに、Prettier 連携が使用するパーサー名を強制します。
+language.i91[languages.$(language).prettier.plugins].title	プラグイン
+language.i91[languages.$(language).prettier.plugins].description	この言語のファイルをフォーマットするときに、Prettier 連携が使用するプラグインを強制します。
+language.i92[languages.$(language).prettier.options].title	オプション
+language.i92[languages.$(language).prettier.options].description	Prettier の既定のオプションです。package.json の Prettier セクションと同じ形式で指定します。
+language.i93.header	編集予測
+language.i94[edit_predictions.providers].link	プロバイダーの設定
+language.i94[edit_predictions.providers].link_description	編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。
+language.i95[edit_predictions.allow_data_collection].title	データの収集
+language.i95[edit_predictions.allow_data_collection].description	Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。
+language.i96[languages.$(language).show_edit_predictions].title	編集予測を表示
+language.i96[languages.$(language).show_edit_predictions].description	編集予測をすぐに表示するか、手動で表示するかを設定します。
+language.i97[languages.$(language).edit_predictions_disabled_in].title	無効にする言語スコープ
+language.i97[languages.$(language).edit_predictions_disabled_in].description	指定した言語スコープで編集予測を表示するかどうかを設定します。

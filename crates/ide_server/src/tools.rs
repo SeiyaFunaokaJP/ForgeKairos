@@ -1797,7 +1797,7 @@ fn buffer_diagnostics(buffer: &Entity<Buffer>, cx: &mut AsyncApp) -> Vec<Value> 
             .diagnostics_in_range::<_, PointUtf16>(text::Point::zero()..snapshot.max_point(), false)
             .map(|entry| {
                 json!({
-                    "message": entry.diagnostic.message,
+                    "message": entry.diagnostic.message.as_str(),
                     "severity": severity_name(entry.diagnostic.severity),
                     "range": {
                         "start": { "line": entry.range.start.row, "character": entry.range.start.column },

@@ -259,7 +259,6 @@ pub struct MarkdownStyle {
     pub code_block: StyleRefinement,
     pub code_block_overflow_x_scroll: bool,
     pub inline_code: TextStyleRefinement,
-    pub inline_code_corner_radius: Pixels,
     pub block_quote: TextStyleRefinement,
     pub link: TextStyleRefinement,
     pub link_callback: Option<LinkStyleCallback>,
@@ -297,7 +296,6 @@ impl Default for MarkdownStyle {
             code_block: Default::default(),
             code_block_overflow_x_scroll: false,
             inline_code: Default::default(),
-            inline_code_corner_radius: px(0.),
             block_quote: Default::default(),
             link: Default::default(),
             link_callback: None,
@@ -516,7 +514,6 @@ impl MarkdownStyle {
 
         self.inline_code.color = Some(colors.text);
         self.inline_code.font_size = Some(rems(0.875).into());
-        self.inline_code_corner_radius = px(4.);
 
         self.link.background_color = None;
 
@@ -2013,11 +2010,7 @@ impl MarkdownElement {
         };
 
         let mut code_style = self.style.inline_code.clone();
-        let chip_background = if self.style.inline_code_corner_radius > px(0.) {
-            code_style.background_color.take()
-        } else {
-            None
-        };
+        let chip_background = code_style.background_color.take();
 
         if let Some(url) = link_url {
             builder.push_link(url.clone(), range.clone());
@@ -2798,7 +2791,6 @@ impl Element for MarkdownElement {
             self.style.base_text_style.clone(),
             self.style.syntax.clone(),
             highlights,
-            self.style.inline_code_corner_radius,
         );
         let (parsed_markdown, images, active_root_block, render_mermaid_diagrams, mermaid_state) = {
             let markdown = self.markdown.read(cx);
@@ -4238,7 +4230,6 @@ struct MarkdownElementBuilder {
     paragraph_scale_stack: Vec<f32>,
     /// How many HTML headings the elements being rendered are in.
     html_heading_depth: usize,
-    code_chip_corner_radius: Pixels,
 }
 
 struct MarkdownHighlights {
@@ -4337,7 +4328,6 @@ impl MarkdownElementBuilder {
         base_text_style: TextStyle,
         syntax_theme: Arc<SyntaxTheme>,
         highlights: MarkdownHighlights,
-        code_chip_corner_radius: Pixels,
     ) -> Self {
         Self {
             div_stack: vec![{
@@ -4367,7 +4357,6 @@ impl MarkdownElementBuilder {
             font_scale_stack: Vec::new(),
             paragraph_scale_stack: Vec::new(),
             html_heading_depth: 0,
-            code_chip_corner_radius,
         }
     }
 
@@ -4784,7 +4773,6 @@ impl MarkdownElementBuilder {
             #[cfg(test)]
             runs: Vec::new(),
             code_chips: SmallVec::new(),
-            code_chip_corner_radius: px(0.),
         }));
         div()
             .absolute()
@@ -4834,7 +4822,6 @@ impl MarkdownElementBuilder {
             #[cfg(test)]
             runs,
             code_chips: line.code_chips.into_iter().collect(),
-            code_chip_corner_radius: self.code_chip_corner_radius,
         });
         if rendered_line.highlights.is_empty() && rendered_line.code_chips.is_empty() {
             self.rendered_lines.push(rendered_line);
@@ -4946,12 +4933,13 @@ struct RenderedLine {
     runs: Vec<TextRun>,
     /// Inline code chip ranges intersecting this line, in rendered indices
     code_chips: SmallVec<[(Range<usize>, Hsla); 1]>,
-    code_chip_corner_radius: Pixels,
 }
 
 impl RenderedLine {
     /// Painted before the glyphs so the text renders on top of the chips
     fn paint_code_chips(&self, window: &mut Window) {
+        const CHIP_CORNER_RADIUS: Pixels = px(4.);
+
         if self.code_chips.is_empty() {
             return;
         }
@@ -4983,7 +4971,7 @@ impl RenderedLine {
                     };
                     window.paint_quad(quad(
                         chip_bounds,
-                        self.code_chip_corner_radius,
+                        CHIP_CORNER_RADIUS,
                         *color,
                         Edges::default(),
                         Hsla::transparent_black(),
@@ -6110,7 +6098,6 @@ mod tests {
                 background_color: Some(chip_background),
                 ..Default::default()
             },
-            inline_code_corner_radius: px(4.),
             ..Default::default()
         };
 
@@ -6123,14 +6110,6 @@ mod tests {
                 ("four".to_string(), chip_background)
             ]
         );
-
-        // Without a corner radius, backgrounds stay on the text runs and no
-        // chips are recorded.
-        let sharp_style = MarkdownStyle {
-            inline_code_corner_radius: px(0.),
-            ..style_with_chips()
-        };
-        assert_eq!(rendered_code_chips("one `two`", sharp_style, cx), vec![]);
     }
 
     fn render_markdown_with_image_resolver(

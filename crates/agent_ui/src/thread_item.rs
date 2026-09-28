@@ -1111,7 +1111,6 @@ impl workspace::SerializableItem for ThreadItem {
         workspace: &mut Workspace,
         item_id: workspace::ItemId,
         _closing: bool,
-        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Task<Result<()>>> {
         Some(self.write_record(workspace.database_id()?, item_id, cx))

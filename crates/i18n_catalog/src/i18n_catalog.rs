@@ -914,12 +914,16 @@ mod tests {
         for index in 0..MAX_USER_FILES_PER_LANGUAGE + 3 {
             write(
                 &root.join(format!("many/{index:04}.po")),
-                &format!("msgid \"Message {index}\"
+                &format!(
+                    "msgid \"Message {index}\"
 msgstr \"Translated {index}\"
-"),
+"
+                ),
             );
         }
-        let catalog = load("many", Some(root)).expect("load").expect("many exists");
+        let catalog = load("many", Some(root))
+            .expect("load")
+            .expect("many exists");
         assert_eq!(catalog.len(), MAX_USER_FILES_PER_LANGUAGE);
         assert_eq!(catalog.problems().len(), 1, "{:?}", catalog.problems());
         assert!(

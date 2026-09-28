@@ -1397,7 +1397,7 @@ fn set_diagnostic(project: &Entity<Project>, path: &str, message: &str, cx: &mut
                         Unclipped(PointUtf16::new(0, 0))..Unclipped(PointUtf16::new(0, 2)),
                         Diagnostic {
                             severity: DiagnosticSeverity::ERROR,
-                            message: message.to_string(),
+                            message: message.to_string().into(),
                             source_kind: DiagnosticSourceKind::Pushed,
                             ..Diagnostic::default()
                         },
@@ -5985,7 +5985,7 @@ async fn workspace_diagnostics_list_a_file_once_for_several_language_servers(
                             Unclipped(PointUtf16::new(0, 0))..Unclipped(PointUtf16::new(0, 2)),
                             Diagnostic {
                                 severity: DiagnosticSeverity::ERROR,
-                                message: format!("from server {server_id}"),
+                                message: format!("from server {server_id}").into(),
                                 source_kind: DiagnosticSourceKind::Pushed,
                                 ..Diagnostic::default()
                             },

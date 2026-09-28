@@ -5,5 +5,11 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Copy File Permalink"
+msgstr "ファイルの永続リンクをコピー"
+
 msgid "Failed to save"
 msgstr "保存できませんでした"
+
+msgid "Open File Permalink"
+msgstr "ファイルの永続リンクを開く"

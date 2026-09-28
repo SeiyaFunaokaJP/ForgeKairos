@@ -8,38 +8,56 @@ use ui::{
 };
 
 #[derive(IntoElement)]
-pub struct EnumVariantDropdown<T>
-where
-    T: strum::VariantArray + strum::VariantNames + Copy + PartialEq + Send + Sync + 'static,
-{
+pub struct EnumVariantDropdown {
     id: ElementId,
-    current_value: T,
-    variants: &'static [T],
+    selected_index: usize,
     labels: &'static [&'static str],
+    /// The msgctxt of the labels (`enum_context`). `new_indexed` has no enum
+    /// to name, so its labels stay in English rather than borrow a
+    /// translation made for another enum.
+    enum_name: Option<&'static str>,
     should_do_title_case: bool,
     tab_index: Option<isize>,
     disabled: bool,
     aria_label: Option<SharedString>,
     aria_description: Option<SharedString>,
-    on_change: Rc<dyn Fn(T, &mut ui::Window, &mut App) + 'static>,
+    on_change: Rc<dyn Fn(usize, &mut ui::Window, &mut App) + 'static>,
 }
 
-impl<T> EnumVariantDropdown<T>
-where
-    T: strum::VariantArray + strum::VariantNames + Copy + PartialEq + Send + Sync + 'static,
-{
-    pub fn new(
+impl EnumVariantDropdown {
+    pub fn new<T>(
         id: impl Into<ElementId>,
         current_value: T,
         variants: &'static [T],
         labels: &'static [&'static str],
         on_change: impl Fn(T, &mut ui::Window, &mut App) + 'static,
+    ) -> Self
+    where
+        T: strum::VariantArray + strum::VariantNames + Copy + PartialEq + Send + Sync + 'static,
+    {
+        let selected_index = variants
+            .iter()
+            .position(|v| *v == current_value)
+            .unwrap_or(0);
+        let mut dropdown =
+            Self::new_indexed(id, selected_index, labels, move |index, window, cx| {
+                on_change(variants[index], window, cx)
+            });
+        dropdown.enum_name = Some(enum_context::<T>());
+        dropdown
+    }
+
+    pub fn new_indexed(
+        id: impl Into<ElementId>,
+        selected_index: usize,
+        labels: &'static [&'static str],
+        on_change: impl Fn(usize, &mut ui::Window, &mut App) + 'static,
     ) -> Self {
         Self {
             id: id.into(),
-            current_value,
-            variants,
+            selected_index,
             labels,
+            enum_name: None,
             should_do_title_case: true,
             tab_index: None,
             disabled: false,
@@ -79,17 +97,16 @@ where
     }
 }
 
-impl<T> RenderOnce for EnumVariantDropdown<T>
-where
-    T: strum::VariantArray + strum::VariantNames + Copy + PartialEq + Send + Sync + 'static,
-{
+impl RenderOnce for EnumVariantDropdown {
     fn render(self, window: &mut ui::Window, cx: &mut ui::App) -> impl gpui::IntoElement {
-        let current_value_label = self.labels[self
-            .variants
-            .iter()
-            .position(|v| *v == self.current_value)
-            .unwrap()];
-        let enum_name = enum_context::<T>();
+        let current_value_label = self.labels[self.selected_index];
+        let enum_name = self.enum_name;
+        let title_case = self.should_do_title_case;
+        let label_text = move |label: &str| match enum_name {
+            Some(enum_name) => display_label(enum_name, label, title_case),
+            None if title_case => label.to_title_case(),
+            None => label.to_string(),
+        };
 
         // The menu is built once per key, so the key has to change with the
         // language for the entries to be rebuilt in it.
@@ -97,16 +114,15 @@ where
             SharedString::from(format!("{current_value_label}-{}", i18n::current_locale()));
         let context_menu = window.use_keyed_state(context_menu_key, cx, |window, cx| {
             ContextMenu::new(window, cx, move |mut menu, _, _| {
-                for (&value, &label) in std::iter::zip(self.variants, self.labels) {
+                for (index, &label) in self.labels.iter().enumerate() {
                     let on_change = self.on_change.clone();
-                    let current_value = self.current_value;
                     menu = menu.toggleable_entry(
-                        display_label(enum_name, label, self.should_do_title_case),
-                        value == current_value,
+                        label_text(label),
+                        index == self.selected_index,
                         IconPosition::End,
                         None,
                         move |window, cx| {
-                            on_change(value, window, cx);
+                            on_change(index, window, cx);
                         },
                     );
                 }
@@ -114,24 +130,20 @@ where
             })
         });
 
-        DropdownMenu::new(
-            self.id,
-            display_label(enum_name, current_value_label, self.should_do_title_case),
-            context_menu,
-        )
-        .when_some(self.aria_label, |this, label| this.aria_label(label))
-        .when_some(self.aria_description, |this, description| {
-            this.aria_description(description)
-        })
-        .disabled(self.disabled)
-        .when_some(self.tab_index, |elem, tab_index| elem.tab_index(tab_index))
-        .trigger_size(ButtonSize::Medium)
-        .style(DropdownStyle::Outlined)
-        .offset(gpui::Point {
-            x: px(0.0),
-            y: px(2.0),
-        })
-        .into_any_element()
+        DropdownMenu::new(self.id, label_text(current_value_label), context_menu)
+            .when_some(self.aria_label, |this, label| this.aria_label(label))
+            .when_some(self.aria_description, |this, description| {
+                this.aria_description(description)
+            })
+            .disabled(self.disabled)
+            .when_some(self.tab_index, |elem, tab_index| elem.tab_index(tab_index))
+            .trigger_size(ButtonSize::Medium)
+            .style(DropdownStyle::Outlined)
+            .offset(gpui::Point {
+                x: px(0.0),
+                y: px(2.0),
+            })
+            .into_any_element()
     }
 }
 

@@ -125,7 +125,7 @@ mod tests {
         let request = CheckWireRevision {
             revision: JP_ENHANCE_WIRE_REVISION,
         };
-        let envelope = request.clone().into_envelope(3, None, None);
+        let envelope = request.into_envelope(3, None, None);
         assert_eq!(CheckWireRevision::from_envelope(envelope), Some(request));
         let response = CheckWireRevisionResponse {
             revision: JP_ENHANCE_WIRE_REVISION,
@@ -147,11 +147,11 @@ mod tests {
         let empty = RequestProjectLaunchApprovalResponse::decode([].as_slice())
             .expect("an empty message decodes");
         assert_eq!(
-            ProjectLaunchApprovalState::from_i32(empty.state),
+            ProjectLaunchApprovalState::try_from(empty.state).ok(),
             Some(ProjectLaunchApprovalState::LaunchApprovalUnavailable)
         );
         assert_eq!(
-            ProjectLaunchKind::from_i32(RequestProjectLaunchApproval::default().kind),
+            ProjectLaunchKind::try_from(RequestProjectLaunchApproval::default().kind).ok(),
             Some(ProjectLaunchKind::LaunchKindUnknown)
         );
 

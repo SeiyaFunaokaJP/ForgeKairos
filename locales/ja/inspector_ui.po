@@ -7,3 +7,6 @@ msgstr ""
 
 msgid "dev::ToggleInspector is only available in debug builds and Nightly"
 msgstr "dev::ToggleInspector はデバッグビルドと Nightly でのみ使用できます。"
+
+msgid "unrecognized"
+msgstr "認識できません"

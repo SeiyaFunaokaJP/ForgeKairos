@@ -671,7 +671,6 @@ impl SerializableItem for BrowserItem {
         workspace: &mut Workspace,
         item_id: ItemId,
         _closing: bool,
-        _: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Task<anyhow::Result<()>>> {
         let workspace_id = workspace.database_id()?;

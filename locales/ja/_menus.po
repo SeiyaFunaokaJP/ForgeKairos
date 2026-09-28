@@ -430,6 +430,14 @@ msgid "Show All"
 msgstr "すべて表示"
 
 msgctxt "menu"
+msgid "Show Incoming Calls"
+msgstr "呼び出し元を表示"
+
+msgctxt "menu"
+msgid "Show Outgoing Calls"
+msgstr "呼び出し先を表示"
+
+msgctxt "menu"
 msgid "Show Welcome"
 msgstr "ようこそページを表示"
 

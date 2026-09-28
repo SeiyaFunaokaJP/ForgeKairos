@@ -445,7 +445,7 @@ impl DivInspector {
                 DiagnosticEntry::new(
                     range,
                     Diagnostic {
-                        message: "認識できません".to_string(),
+                        message: i18n::t!("unrecognized").into(),
                         severity: DiagnosticSeverity::WARNING,
                         is_primary: true,
                         group_id: ix,

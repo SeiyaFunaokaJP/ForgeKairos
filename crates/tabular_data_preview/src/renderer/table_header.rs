@@ -1197,7 +1197,7 @@ impl TabularDataPreviewPane {
                 // The funnel is Excel's "this column is filtered"; an unfiltered
                 // column shows the bare arrow that opens the menu.
                 if has_active_filters {
-                    IconName::Filter
+                    IconName::FilterFunnel
                 } else {
                     IconName::ChevronDown
                 },

@@ -16,23 +16,19 @@ impl PlanDefinitions {
 
     pub fn sign_in_upsell(&self) -> impl IntoElement {
         List::new()
-            .child(ListBulletItem::new("無制限の編集予測"))
-            .child(ListBulletItem::new(
-                "Zed エージェントで使えるトークン $20 分",
-            ))
-            .child(ListBulletItem::new("クレジットカード不要"))
+            .child(ListBulletItem::new(i18n::t!("Unlimited edit predictions")))
+            .child(ListBulletItem::new(i18n::t!("$5 of GPT Luna")))
+            .child(ListBulletItem::new(i18n::t!("No credit card required")))
     }
 
     pub fn pro_trial(&self, period: bool) -> impl IntoElement {
         List::new()
-            .child(ListBulletItem::new(
-                "Zed エージェントで使えるトークン $20 分",
-            ))
-            .child(ListBulletItem::new("無制限の編集予測"))
+            .child(ListBulletItem::new(i18n::t!("$5 of GPT Luna")))
+            .child(ListBulletItem::new(i18n::t!("Unlimited edit predictions")))
             .when(period, |this| {
-                this.child(ListBulletItem::new(
-                    "14 日間お試し可能、クレジットカード不要",
-                ))
+                this.child(ListBulletItem::new(i18n::t!(
+                    "14 days from trial start, no credit card required"
+                )))
             })
     }
 

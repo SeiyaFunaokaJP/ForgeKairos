@@ -3132,7 +3132,7 @@ mod tests {
                     .map(|index| lsp::Diagnostic {
                         range: lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 1)),
                         severity: Some(lsp::DiagnosticSeverity::ERROR),
-                        message: format!("problem {index}"),
+                        message: format!("problem {index}").into(),
                         ..Default::default()
                     })
                     .collect(),

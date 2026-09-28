@@ -287,7 +287,9 @@ impl AgentConnectionStore {
                 return;
             }
             ConnectionPlace::InSandbox => ConnectionSlot::InSandbox(key),
-            ConnectionPlace::OutsideSandbox(id) => ConnectionSlot::OutsideSandbox { id, agent: key },
+            ConnectionPlace::OutsideSandbox(id) => {
+                ConnectionSlot::OutsideSandbox { id, agent: key }
+            }
         };
         if let Some(entry) = self.slot_entry(&slot)
             && matches!(entry.read(cx), AgentConnectionEntry::Connecting { .. })

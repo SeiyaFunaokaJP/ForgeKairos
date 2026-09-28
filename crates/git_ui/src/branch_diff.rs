@@ -10,7 +10,7 @@ use agent_settings::AgentSettings;
 use anyhow::{Context as _, Result, anyhow};
 use collections::{HashMap, HashSet};
 use editor::{
-    Addon, Editor, EditorEvent, RestoreOnlyDiffHunkDelegate, SplittableEditor,
+    Addon, Editor, EditorEvent, HiddenDiffHunkRenderer, SplittableEditor,
     actions::SendReviewToAgent,
 };
 use futures::{FutureExt as _, future::Shared};
@@ -348,7 +348,7 @@ impl BranchDiff {
                 Capability::ReadWrite,
                 "変更はありません",
                 move |editor, cx| {
-                    editor.set_diff_hunk_delegate(Some(Arc::new(RestoreOnlyDiffHunkDelegate)), cx);
+                    editor.set_diff_hunk_renderer(Some(Arc::new(HiddenDiffHunkRenderer)), cx);
                     editor.rhs_editor().update(cx, move |rhs_editor, _cx| {
                         rhs_editor.set_read_only(false);
                         rhs_editor.register_addon(BranchDiffAddon {
@@ -692,7 +692,6 @@ impl SerializableItem for BranchDiff {
         workspace: &mut Workspace,
         item_id: workspace::ItemId,
         _closing: bool,
-        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Task<Result<()>>> {
         let workspace_id = workspace.database_id()?;
@@ -4706,7 +4705,6 @@ impl RefComparison {
                     buffer_diff::BufferDiff::new_with_base_text_buffer(
                         &head_snapshot.text,
                         base_buffer,
-                        buffer_diff::DiffBaseKind::Custom,
                         cx,
                     )
                 });
@@ -5541,7 +5539,6 @@ impl SerializableItem for RefComparison {
         workspace: &mut Workspace,
         item_id: workspace::ItemId,
         _closing: bool,
-        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Task<Result<()>>> {
         Some(self.write_to_db(item_id, workspace.database_id()?, cx))

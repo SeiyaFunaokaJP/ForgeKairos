@@ -467,6 +467,10 @@ msgid "Choose whether to use the selected light or dark theme or to follow your 
 msgstr "選択したライト/ダークテーマのどちらを使うか、または OS の外観設定に従うかを選択します。"
 
 msgctxt "settings"
+msgid "Close Panel on Toggle"
+msgstr "切り替え時にパネルを閉じる"
+
+msgctxt "settings"
 msgid "Close on File Delete"
 msgstr "ファイル削除時に閉じる"
 
@@ -1243,8 +1247,8 @@ msgid "Focus Follows Mouse Debounce ms"
 msgstr "フォーカス移動のデバウンス (ミリ秒)"
 
 msgctxt "settings"
-msgid "Folder Icons"
-msgstr "フォルダーアイコン"
+msgid "Folder Indicator"
+msgstr "フォルダーの表示"
 
 msgctxt "settings"
 msgid "Follow the System Language"
@@ -1521,6 +1525,10 @@ msgstr "マウスカーソルを隠す"
 msgctxt "settings"
 msgid "Hide Root"
 msgstr "ルート項目を隠す"
+
+msgctxt "settings"
+msgid "Hide Symbols in Multi-Buffers"
+msgstr "マルチバッファーではシンボルを隠す"
 
 msgctxt "settings"
 msgid "Hide the values of variables in private files."
@@ -1813,6 +1821,10 @@ msgstr "LSP のプル型診断"
 msgctxt "settings"
 msgid "LSP Results Location"
 msgstr "LSP の結果の表示先"
+
+msgctxt "settings"
+msgid "Language Detection"
+msgstr "言語の自動検出"
 
 msgctxt "settings"
 msgid "Language Servers"
@@ -2343,6 +2355,10 @@ msgid "Restore previous file state when reopening."
 msgstr "ファイルを再度開いたときに前回の状態を復元します。"
 
 msgctxt "settings"
+msgid "Reveal If Open"
+msgstr "開いているファイルはそのペインで表示"
+
+msgctxt "settings"
 msgid "Review and change the elevated terminal sandbox permissions that are always allowed without prompting."
 msgstr "エージェントのターミナルコマンドを OS のサンドボックスで実行するかどうかを切り替え、サンドボックス内の許可 (書き込み先・ネットワーク) を設定します。自動承認はサンドボックス内で実行するときだけ効きます。"
 
@@ -2441,6 +2457,10 @@ msgstr "既定で大文字と小文字を区別して検索します。"
 msgctxt "settings"
 msgid "Search for whole words by default."
 msgstr "既定で単語単位で検索します。"
+
+msgctxt "settings"
+msgid "Search on Type"
+msgstr "入力中に検索"
 
 msgctxt "settings"
 msgid "Security"
@@ -3071,6 +3091,10 @@ msgid "Spacing between worktree entries in the project panel."
 msgstr "プロジェクトパネルのワークツリー項目の間隔です。"
 
 msgctxt "settings"
+msgid "Start searching as you type in project search, without pressing Enter."
+msgstr "プロジェクト内検索で、Enter を押さなくても入力に合わせて検索を始めます。"
+
+msgctxt "settings"
 msgid "Starts Open"
 msgstr "起動時に開く"
 
@@ -3647,6 +3671,18 @@ msgid "What to restore from the previous session when opening Zed."
 msgstr "Zed を開いたときに前回のセッションから何を復元するかを設定します。"
 
 msgctxt "settings"
+msgid "What to show for directories in the git panel."
+msgstr "Git パネルのディレクトリに何を表示するかを設定します。"
+
+msgctxt "settings"
+msgid "What to show for directories in the outline panel."
+msgstr "アウトラインパネルのディレクトリに何を表示するかを設定します。"
+
+msgctxt "settings"
+msgid "What to show for directories in the project panel."
+msgstr "プロジェクトパネルのディレクトリに何を表示するかを設定します。"
+
+msgctxt "settings"
 msgid "What working directory to use when launching the terminal."
 msgstr "ターミナルを起動するときに使う作業ディレクトリです。"
 
@@ -3843,6 +3879,10 @@ msgid "Whether indentation of pasted content should be adjusted based on the con
 msgstr "貼り付けた内容のインデントを、文脈に応じて調整するかどうかを設定します。"
 
 msgctxt "settings"
+msgid "Whether invoking a panel's ToggleFocus action while it's already focused closes the panel, instead of just moving focus back to the editor."
+msgstr "フォーカスのあるパネルで ToggleFocus アクションを実行したときに、フォーカスをエディターに戻す代わりに、パネルを閉じるかどうかを設定します。"
+
+msgctxt "settings"
 msgid "Whether newly opened file diffs show the full file instead of changes only."
 msgstr "新しく開いたファイルの差分で、変更箇所だけでなくファイル全体を表示するかどうかを設定します。"
 
@@ -4027,6 +4067,10 @@ msgid "Whether to enable agent features such as the agent panel, the inline assi
 msgstr "エージェントパネル・インラインアシスタント・コミットメッセージ生成などのエージェント機能を有効にするかどうかを設定します。既定では無効です。"
 
 msgctxt "settings"
+msgid "Whether to enable automatic language detection in unsaved buffers."
+msgstr "保存されていないバッファーの言語を自動で検出するかどうかを設定します。"
+
+msgctxt "settings"
 msgid "Whether to enable drag-and-drop operations in the project panel."
 msgstr "プロジェクトパネルでドラッグ&ドロップ操作を有効にするかどうかを設定します。"
 
@@ -4061,6 +4105,10 @@ msgstr "エージェントパネルの編集カードを展開し、差分のプ
 msgctxt "settings"
 msgid "Whether to have terminal cards in the agent panel expanded, showing the whole command output."
 msgstr "エージェントパネルのターミナルカードを展開し、コマンドの出力全体を表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to hide symbols, excerpts and search matches in the outline panel when a multi-buffer view is active."
+msgstr "マルチバッファーを表示しているときに、アウトラインパネルのシンボル・抜粋・検索結果を隠すかどうかを設定します。"
 
 msgctxt "settings"
 msgid "Whether to hide the gitignore entries in the project panel."
@@ -4149,18 +4197,6 @@ msgstr "git パネルのアイコンに、未コミットの変更数のバッ�
 msgctxt "settings"
 msgid "Whether to show diagnostics inline or not."
 msgstr "診断をインラインで表示するかどうかを設定します。"
-
-msgctxt "settings"
-msgid "Whether to show folder icons or chevrons for directories in the git panel."
-msgstr "git パネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。"
-
-msgctxt "settings"
-msgid "Whether to show folder icons or chevrons for directories in the outline panel."
-msgstr "アウトラインパネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。"
-
-msgctxt "settings"
-msgid "Whether to show folder icons or chevrons for directories in the project panel."
-msgstr "プロジェクトパネルのディレクトリに、フォルダーアイコンと山形記号のどちらを表示するかを設定します。"
 
 msgctxt "settings"
 msgid "Whether to show folder names with bold text in the project panel."
@@ -4321,3 +4357,7 @@ msgstr "ズーム時の余白"
 msgctxt "settings"
 msgid "e.g. claude"
 msgstr "例: claude"
+
+msgctxt "settings"
+msgid "when enabled, zed will prefer already-open buffers."
+msgstr "有効にすると、既に開いているバッファーを優先して表示します。"

@@ -56,7 +56,6 @@ prompt_store.workspace = true
 quick-xml.workspace = true
 rand.workspace = true
 regex.workspace = true
-rust-embed.workspace = true
 sandbox.workspace = true
 schemars.workspace = true
 serde.workspace = true
@@ -83,6 +82,7 @@ zed_env_vars.workspace = true
 zstd.workspace = true
 
 [dev-dependencies]
+acp_thread = { workspace = true, features = ["test-support"] }
 async-io.workspace = true
 agent_servers = { workspace = true, "features" = ["test-support"] }
 client = { workspace = true, "features" = ["test-support"] }

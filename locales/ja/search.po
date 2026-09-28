@@ -1,0 +1,27 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Hit enter to search. For more options:"
+msgstr "Enter キーで検索します。その他のオプション:"
+
+msgid "Loading project…"
+msgstr "プロジェクトを読み込み中…"
+
+msgid "No Results"
+msgstr "該当なし"
+
+msgid "No results found in this project for the provided query"
+msgstr "このプロジェクトで一致する結果は見つかりませんでした"
+
+msgid "Search All Files"
+msgstr "すべてのファイルを検索"
+
+msgid "Searching…"
+msgstr "検索中…"
+
+msgid "Start typing to search. For more options:"
+msgstr "入力すると検索します。その他のオプション:"

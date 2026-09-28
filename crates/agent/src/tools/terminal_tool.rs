@@ -3119,10 +3119,7 @@ mod tests {
 
     #[test]
     fn test_terminal_tool_input_schema_mentions_forbidden_substitutions() {
-        let schema = <TerminalTool as crate::AgentTool>::input_schema(
-            language_model::LanguageModelToolSchemaFormat::JsonSchema,
-        );
-        let schema_json = serde_json::to_value(schema).expect("schema should serialize");
+        let schema_json = <TerminalTool as crate::AgentTool>::input_schema().to_value();
         let schema_text = schema_json.to_string();
 
         assert!(
@@ -3164,10 +3161,7 @@ mod tests {
 
     #[test]
     fn test_terminal_tool_input_schema_mentions_head_and_tail_parameters() {
-        let schema = <TerminalTool as crate::AgentTool>::input_schema(
-            language_model::LanguageModelToolSchemaFormat::JsonSchema,
-        );
-        let schema_json = serde_json::to_value(schema).expect("schema should serialize");
+        let schema_json = <TerminalTool as crate::AgentTool>::input_schema().to_value();
         let schema_text = schema_json.to_string();
 
         assert!(schema_text.contains("head_lines"));
@@ -3727,18 +3721,13 @@ mod tests {
     #[test]
     fn test_input_schema_does_not_offer_unsandboxed() {
         // ADR-F41: the model must not be offered a way to run a command outside
-        // the sandbox, in either schema flavor a provider may receive.
-        for format in [
-            language_model::LanguageModelToolSchemaFormat::JsonSchema,
-            language_model::LanguageModelToolSchemaFormat::JsonSchemaSubset,
-        ] {
-            let schema = serde_json::to_string(&SandboxedTerminalTool::input_schema(format))
-                .expect("input schema should serialize");
-            assert!(
-                !schema.contains("unsandboxed"),
-                "schema must not advertise unsandboxed: {schema}"
-            );
-        }
+        // the sandbox. Every provider receives this same schema.
+        let schema = serde_json::to_string(&SandboxedTerminalTool::input_schema())
+            .expect("input schema should serialize");
+        assert!(
+            !schema.contains("unsandboxed"),
+            "schema must not advertise unsandboxed: {schema}"
+        );
     }
 
     /// On Linux only a missing or unusable Bubblewrap may open the "fix it and

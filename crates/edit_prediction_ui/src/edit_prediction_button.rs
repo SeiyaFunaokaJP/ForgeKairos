@@ -549,7 +549,6 @@ impl EditPredictionButton {
         cx.observe_global::<EditPredictionStore>(move |_, cx| cx.notify())
             .detach();
 
-        edit_prediction::ollama::ensure_authenticated(cx);
         let mercury_api_token_task = edit_prediction::mercury::load_mercury_api_token(cx);
         let open_ai_compatible_api_token_task =
             edit_prediction::open_ai_compatible::load_open_ai_compatible_api_token(cx);
@@ -1537,19 +1536,7 @@ pub fn set_completion_provider(fs: Arc<dyn Fs>, cx: &mut App, provider: EditPred
 /// is granted on the "Zed" card of the "プロバイダーの設定" sub-page. So a
 /// picker can apply any provider it lists without a further prompt.
 pub fn get_available_providers(cx: &mut App) -> Vec<EditPredictionProvider> {
-    let mut providers = Vec::new();
-
-    if all_language_settings(None, cx)
-        .edit_predictions
-        .open_ai_compatible_api
-        .is_some()
-    {
-        providers.push(EditPredictionProvider::OpenAiCompatibleApi);
-    }
-
-    if edit_prediction::ollama::is_available(cx) {
-        providers.push(EditPredictionProvider::Ollama);
-    }
+    let mut providers = self_hosted_providers(cx);
 
     let app_state = workspace::AppState::global(cx);
     if copilot::GlobalCopilotAuth::try_get_or_init(app_state, cx)
@@ -1574,6 +1561,50 @@ pub fn get_available_providers(cx: &mut App) -> Vec<EditPredictionProvider> {
     }
 
     providers
+}
+
+/// The self-hosted providers, which have no credentials to gate them.
+fn self_hosted_providers(cx: &App) -> Vec<EditPredictionProvider> {
+    let mut providers = Vec::new();
+
+    if all_language_settings(None, cx)
+        .edit_predictions
+        .open_ai_compatible_api
+        .as_ref()
+        .is_some_and(|settings| {
+            endpoint_is_local_or_acknowledged("open_ai_compatible_api", &settings.api_url, cx)
+        })
+    {
+        providers.push(EditPredictionProvider::OpenAiCompatibleApi);
+    }
+
+    // The fork's default settings name an Ollama model, so these settings are always present;
+    // only the endpoint decides whether the provider has passed its gate.
+    if all_language_settings(None, cx)
+        .edit_predictions
+        .ollama
+        .as_ref()
+        .is_some_and(|settings| endpoint_is_local_or_acknowledged("ollama", &settings.api_url, cx))
+    {
+        providers.push(EditPredictionProvider::Ollama);
+    }
+
+    providers
+}
+
+/// A self-hosted provider needs no consent while its endpoint is on this machine; pointed anywhere
+/// else it needs the consent its card on the "プロバイダーの設定" sub-page asks for (ADR-F10),
+/// under the same key.
+fn endpoint_is_local_or_acknowledged(provider: &str, api_url: &str, cx: &App) -> bool {
+    let is_loopback = http_client::Url::parse(api_url.trim())
+        .ok()
+        .and_then(|url| url.host_str().and_then(http_client::RequestHost::parse))
+        .is_some_and(|host| host.is_loopback());
+    is_loopback
+        || settings::external_ai_provider_is_acknowledged(
+            &format!("edit_prediction:{provider}"),
+            cx,
+        )
 }
 
 fn toggle_show_edit_predictions_for_language(
@@ -1816,5 +1847,68 @@ mod tests {
         });
 
         assert_eq!(url.as_ref(), "https://github.com/settings/copilot");
+    }
+
+    #[gpui::test]
+    async fn test_a_remote_self_hosted_endpoint_is_listed_only_after_consent(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+        });
+        let set_user_settings = |json: &str, cx: &mut TestAppContext| {
+            cx.update_global(|settings_store: &mut SettingsStore, cx| {
+                settings_store.set_user_settings(json, cx).unwrap();
+            });
+        };
+
+        set_user_settings(
+            r#"{"edit_predictions":{"ollama":{"model":"m","api_url":"http://localhost:11434"}}}"#,
+            cx,
+        );
+        assert_eq!(
+            cx.update(|cx| self_hosted_providers(cx)),
+            vec![EditPredictionProvider::Ollama]
+        );
+
+        set_user_settings(
+            r#"{
+                "edit_predictions": {
+                    "ollama": { "model": "m", "api_url": "https://llm.example.com" },
+                    "open_ai_compatible_api": { "model": "m", "api_url": "https://llm.example.com/v1" }
+                }
+            }"#,
+            cx,
+        );
+        assert_eq!(cx.update(|cx| self_hosted_providers(cx)), vec![]);
+
+        set_user_settings(
+            r#"{
+                "acknowledged_external_ai_providers": ["edit_prediction:ollama", "edit_prediction:open_ai_compatible_api"],
+                "edit_predictions": {
+                    "ollama": { "model": "m", "api_url": "https://llm.example.com" },
+                    "open_ai_compatible_api": { "model": "m", "api_url": "https://llm.example.com/v1" }
+                }
+            }"#,
+            cx,
+        );
+        assert_eq!(
+            cx.update(|cx| self_hosted_providers(cx)),
+            vec![
+                EditPredictionProvider::OpenAiCompatibleApi,
+                EditPredictionProvider::Ollama
+            ]
+        );
+
+        // Consent to the chat provider of the same name is not consent to edit prediction.
+        set_user_settings(
+            r#"{
+                "acknowledged_external_ai_providers": ["ollama"],
+                "edit_predictions": { "ollama": { "model": "m", "api_url": "https://llm.example.com" } }
+            }"#,
+            cx,
+        );
+        assert_eq!(cx.update(|cx| self_hosted_providers(cx)), vec![]);
     }
 }

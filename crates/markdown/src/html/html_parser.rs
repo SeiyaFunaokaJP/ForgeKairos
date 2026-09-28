@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap},
     hash::{Hash, Hasher},
     ops::Range,
@@ -7,11 +7,11 @@ use std::{
 
 use gpui::{DefiniteLength, FontWeight, Hsla, SharedString, TextAlign, px, relative};
 use html5ever::{
-    Attribute, LocalName, ParseOpts, QualName, local_name, parse_document,
+    Attribute, LocalName, ParseOpts, QualName, TokenizerResult, local_name, parse_document,
     tendril::{StrTendril, TendrilSink},
     tokenizer::{
         BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
-        TokenizerResult, states::RawKind,
+        states::RawKind,
     },
 };
 use markup5ever_rcdom::{Handle, Node, NodeData, RcDom};
@@ -533,14 +533,14 @@ pub(crate) fn parse_html_block(
 fn container_tags(source: &str) -> Vec<HtmlContainerTag> {
     #[derive(Default)]
     struct ContainerTagSink {
-        tags: Vec<HtmlContainerTag>,
-        pre_depth: usize,
+        tags: RefCell<Vec<HtmlContainerTag>>,
+        pre_depth: Cell<usize>,
     }
 
     impl TokenSink for ContainerTagSink {
         type Handle = ();
 
-        fn process_token(&mut self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
+        fn process_token(&self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
             let Token::TagToken(tag) = token else {
                 return TokenSinkResult::Continue;
             };
@@ -552,12 +552,12 @@ fn container_tags(source: &str) -> Vec<HtmlContainerTag> {
             }
             if tag_name == "pre" {
                 match tag.kind {
-                    TagKind::StartTag => self.pre_depth += 1,
-                    TagKind::EndTag => self.pre_depth = self.pre_depth.saturating_sub(1),
+                    TagKind::StartTag => self.pre_depth.set(self.pre_depth.get() + 1),
+                    TagKind::EndTag => self.pre_depth.set(self.pre_depth.get().saturating_sub(1)),
                 }
                 return TokenSinkResult::Continue;
             }
-            if self.pre_depth > 0 {
+            if self.pre_depth.get() > 0 {
                 return TokenSinkResult::Continue;
             }
 
@@ -567,7 +567,7 @@ fn container_tags(source: &str) -> Vec<HtmlContainerTag> {
                 "details" => HtmlContainerName::Details,
                 _ => return TokenSinkResult::Continue,
             };
-            self.tags.push(match tag.kind {
+            self.tags.borrow_mut().push(match tag.kind {
                 TagKind::StartTag => {
                     let attrs = RefCell::new(tag.attrs);
                     let styles = extract_styles_from_attributes(&attrs);
@@ -581,14 +581,14 @@ fn container_tags(source: &str) -> Vec<HtmlContainerTag> {
         }
     }
 
-    let mut tokenizer = Tokenizer::new(ContainerTagSink::default(), TokenizerOpts::default());
-    let mut input = BufferQueue::default();
+    let tokenizer = Tokenizer::new(ContainerTagSink::default(), TokenizerOpts::default());
+    let input = BufferQueue::default();
     input.push_back(StrTendril::from(source));
     // The sink never asks to run a script, so this finishes in one pass; the
     // loop is how the tokenizer expects to be resumed if it ever pauses.
-    while let TokenizerResult::Script(()) = tokenizer.feed(&mut input) {}
+    while let TokenizerResult::Script(()) = tokenizer.feed(&input) {}
     tokenizer.end();
-    tokenizer.sink.tags
+    tokenizer.sink.tags.take()
 }
 
 /// What the tree builder would tell the tokenizer after the start tag of an
@@ -878,25 +878,26 @@ fn html_tag_end(source: &str, from: usize) -> Option<usize> {
 
 /// The attributes of the one tag `tag_source` holds.
 fn tag_attributes(tag_source: &str) -> RefCell<Vec<Attribute>> {
-    struct FirstTagSink(Option<Vec<Attribute>>);
+    struct FirstTagSink(RefCell<Option<Vec<Attribute>>>);
 
     impl TokenSink for FirstTagSink {
         type Handle = ();
 
-        fn process_token(&mut self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
-            if let Token::TagToken(tag) = token
-                && self.0.is_none()
-            {
-                self.0 = Some(tag.attrs);
+        fn process_token(&self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
+            if let Token::TagToken(tag) = token {
+                let mut first_attributes = self.0.borrow_mut();
+                if first_attributes.is_none() {
+                    *first_attributes = Some(tag.attrs);
+                }
             }
             TokenSinkResult::Continue
         }
     }
 
-    let mut tokenizer = Tokenizer::new(FirstTagSink(None), TokenizerOpts::default());
-    let mut input = BufferQueue::default();
+    let tokenizer = Tokenizer::new(FirstTagSink(RefCell::new(None)), TokenizerOpts::default());
+    let input = BufferQueue::default();
     input.push_back(StrTendril::from(tag_source));
-    while let TokenizerResult::Script(()) = tokenizer.feed(&mut input) {}
+    while let TokenizerResult::Script(()) = tokenizer.feed(&input) {}
     tokenizer.end();
     RefCell::new(tokenizer.sink.0.take().unwrap_or_default())
 }

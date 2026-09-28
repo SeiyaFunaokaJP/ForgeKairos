@@ -203,13 +203,15 @@ impl ZedAiOnboarding {
             .gap_1()
             .child(Headline::new("Zed AI へようこそ"))
             .child(
-                Label::new("サインインすると Zed Pro を 14 日間無料でお試しいただけます。")
-                    .color(Color::Muted)
-                    .mb_2(),
+                Label::new(i18n::t!(
+                    "Sign in to try GPT Luna. Your 14 days begin when you start the trial."
+                ))
+                .color(Color::Muted)
+                .mb_2(),
             )
             .child(PlanDefinitions.sign_in_upsell())
             .child(
-                Button::new("sign_in", "Zed Pro を無料で試す")
+                Button::new("sign_in", i18n::t!("Sign In to Try GPT Luna"))
                     .disabled(signing_in)
                     .full_width()
                     .style(ButtonStyle::Tinted(ui::TintColor::Accent))
@@ -336,9 +338,11 @@ impl ZedAiOnboarding {
             .child(Self::pro_trial_stamp(cx))
             .child(Headline::new("Zed Pro トライアルへようこそ"))
             .child(
-                Label::new("今後 14 日間で利用できる内容は次のとおりです。")
-                    .color(Color::Muted)
-                    .mb_2(),
+                Label::new(i18n::t!(
+                    "Included for 14 days from when your trial started:"
+                ))
+                .color(Color::Muted)
+                .mb_2(),
             )
             .child(PlanDefinitions.pro_trial(false))
             .children(self.render_dismiss_button())

@@ -128,7 +128,9 @@ pub(crate) fn render_ui_language_dropdown(
     DropdownMenu::new("ui-language-dropdown", label, menu)
         .style(DropdownStyle::Outlined)
         .aria_label(title)
-        .when(!description.is_empty(), |this| this.aria_description(description))
+        .when(!description.is_empty(), |this| {
+            this.aria_description(description)
+        })
         .tab_index(0)
         .trigger_size(ButtonSize::Medium)
         .offset(gpui::Point {

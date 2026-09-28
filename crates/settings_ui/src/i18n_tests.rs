@@ -30,6 +30,71 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p0.i1[ui_language].description",
         "Zed のメニュー、設定、メッセージを表示する言語です。タブ名など一部の表示は再起動後に切り替わります。",
     ),
+    // Added by upstream v1.19.2. The folder indicators replace the folder icon
+    // switches, whose rows left the table.
+    (
+        "p0.i10[reveal_if_open].title",
+        "開いているファイルはそのペインで表示",
+    ),
+    (
+        "p0.i10[reveal_if_open].description",
+        "有効にすると、既に開いているバッファーを優先して表示します。",
+    ),
+    ("p3.i140[language_detection].title", "言語の自動検出"),
+    (
+        "p3.i140[language_detection].description",
+        "保存されていないバッファーの言語を自動で検出するかどうかを設定します。",
+    ),
+    ("language.i59[language_detection].title", "言語の自動検出"),
+    (
+        "language.i59[language_detection].description",
+        "保存されていないバッファーの言語を自動で検出するかどうかを設定します。",
+    ),
+    ("p5.i8[editor.search.search_on_type].title", "入力中に検索"),
+    (
+        "p5.i8[editor.search.search_on_type].description",
+        "プロジェクト内検索で、Enter を押さなくても入力に合わせて検索を始めます。",
+    ),
+    (
+        "p6.i61[close_panel_on_toggle].title",
+        "切り替え時にパネルを閉じる",
+    ),
+    (
+        "p6.i61[close_panel_on_toggle].description",
+        "フォーカスのあるパネルで ToggleFocus アクションを実行したときに、フォーカスをエディターに戻す代わりに、パネルを閉じるかどうかを設定します。",
+    ),
+    (
+        "p7.i6[project_panel.folder_indicator].title",
+        "フォルダーの表示",
+    ),
+    (
+        "p7.i6[project_panel.folder_indicator].description",
+        "プロジェクトパネルのディレクトリに何を表示するかを設定します。",
+    ),
+    (
+        "p7.i39[outline_panel.folder_indicator].title",
+        "フォルダーの表示",
+    ),
+    (
+        "p7.i39[outline_panel.folder_indicator].description",
+        "アウトラインパネルのディレクトリに何を表示するかを設定します。",
+    ),
+    (
+        "p7.i45[outline_panel.multi_buffer_hide_symbols].title",
+        "マルチバッファーではシンボルを隠す",
+    ),
+    (
+        "p7.i45[outline_panel.multi_buffer_hide_symbols].description",
+        "マルチバッファーを表示しているときに、アウトラインパネルのシンボル・抜粋・検索結果を隠すかどうかを設定します。",
+    ),
+    (
+        "p7.i58[git_panel.folder_indicator].title",
+        "フォルダーの表示",
+    ),
+    (
+        "p7.i58[git_panel.folder_indicator].description",
+        "Git パネルのディレクトリに何を表示するかを設定します。",
+    ),
 ];
 
 /// Strings whose Japanese changed on purpose when the table moved to the catalog.
@@ -488,6 +553,7 @@ fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
         EditPredictionPromptFormatContent,
         EditPredictionsMode,
         EncodingDisplayOptions,
+        FolderIndicator,
         FormatOnSave,
         FullscreenMode,
         GitDiffBaseSetting,

@@ -17,14 +17,14 @@ where
     });
 
     let mut deserializer = serde_json_lenient::Deserializer::from_str(json);
-    let value = T::deserialize(&mut deserializer);
+    let value = serde_path_to_error::deserialize::<_, T>(&mut deserializer);
     let value = match value {
         Ok(value) => value,
         Err(error) => {
             return (
                 None,
                 ParseStatus::Failed {
-                    error: error.to_string(),
+                    error: error.into_inner().to_string(),
                 },
             );
         }
@@ -63,6 +63,103 @@ where
 
 pub trait FallibleOption: Default {}
 impl<T> FallibleOption for Option<T> {}
+
+macro_rules! flattened_deserialize {
+    ($type_name:ty {
+        sections: { $($section:ident),* $(,)? },
+        options: { $($option_field:ident $(as $option_key:literal)?),* $(,)? },
+        defaults: { $($default_field:ident),* $(,)? } $(,)?
+    }) => {
+        impl $type_name {
+            #[doc(hidden)]
+            pub const NAMED_DESERIALIZE_KEYS: &'static [&'static str] = &[
+                $($crate::fallible_options::flattened_deserialize_key!($option_field $(, $option_key)?),)*
+                $(stringify!($default_field),)*
+            ];
+        }
+
+        impl<'de> serde::Deserialize<'de> for $type_name {
+            fn deserialize<D: serde::Deserializer<'de>>(
+                deserializer: D,
+            ) -> Result<Self, D::Error> {
+                let mut object =
+                    serde_json::Map::<String, serde_json::Value>::deserialize(deserializer)?;
+                (|| -> Result<Self, serde_json::Error> {
+                    $(
+                        let $option_field =
+                            $crate::fallible_options::take_option_field(
+                                &mut object,
+                                $crate::fallible_options::flattened_deserialize_key!(
+                                    $option_field $(, $option_key)?
+                                ),
+                            )?;
+                    )*
+                    $(
+                        let $default_field =
+                            $crate::fallible_options::take_default_field(
+                                &mut object,
+                                stringify!($default_field),
+                            )?;
+                    )*
+                    let rest = serde_json::Value::Object(object);
+                    Ok(Self {
+                        $($section: $crate::fallible_options::section(&rest)?,)*
+                        $($option_field,)*
+                        $($default_field,)*
+                    })
+                })()
+                .map_err(serde::de::Error::custom)
+            }
+        }
+    };
+}
+pub(crate) use flattened_deserialize;
+
+// The fork has a field whose JSON key differs from its Rust name (`remote_host` is `"remote"`
+// because the flattened `remote` section already owns that field name), which the derived
+// `Deserialize` used to express with `#[serde(rename)]`.
+macro_rules! flattened_deserialize_key {
+    ($field:ident) => {
+        stringify!($field)
+    };
+    ($field:ident, $key:literal) => {
+        $key
+    };
+}
+pub(crate) use flattened_deserialize_key;
+
+pub(crate) fn take_option_field<T>(
+    object: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<T, serde_json::Error>
+where
+    T: serde::de::DeserializeOwned + FallibleOption,
+{
+    match object.remove(key) {
+        None => Ok(T::default()),
+        Some(value) => deserialize(&value),
+    }
+}
+
+pub(crate) fn take_default_field<T>(
+    object: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<T, serde_json::Error>
+where
+    T: serde::de::DeserializeOwned + Default,
+{
+    match object.remove(key) {
+        None => Ok(T::default()),
+        Some(value) => T::deserialize(&value),
+    }
+}
+
+pub(crate) fn section<T>(rest: &serde_json::Value) -> Result<T, serde_json::Error>
+where
+    T: serde::de::DeserializeOwned,
+{
+    T::deserialize(rest)
+}
 
 #[cfg(test)]
 mod tests {

@@ -28,8 +28,8 @@ use language_model::{
     CompletionIntent, LanguageModel, LanguageModelCompletionError, LanguageModelCompletionEvent,
     LanguageModelId, LanguageModelImageExt, LanguageModelProviderId, LanguageModelProviderName,
     LanguageModelRegistry, LanguageModelRequest, LanguageModelRequestMessage,
-    LanguageModelToolResult, LanguageModelToolSchemaFormat, LanguageModelToolUse, MessageContent,
-    ProviderErrorCategory, Role, StopReason, TokenUsage,
+    LanguageModelToolResult, LanguageModelToolUse, MessageContent, ProviderErrorCategory, Role,
+    StopReason, TokenUsage,
     fake_provider::{FakeLanguageModel, FakeLanguageModelProvider},
 };
 use pretty_assertions::assert_eq;
@@ -1829,10 +1829,7 @@ async fn test_mcp_tools(cx: &mut TestAppContext) {
             name: "echo".into(),
             title: None,
             description: None,
-            input_schema: serde_json::to_value(EchoTool::input_schema(
-                LanguageModelToolSchemaFormat::JsonSchema,
-            ))
-            .unwrap(),
+            input_schema: EchoTool::input_schema().to_value(),
             output_schema: None,
             annotations: None,
         }],
@@ -2537,10 +2534,7 @@ async fn test_mcp_tool_truncation(cx: &mut TestAppContext) {
                 name: "echo".into(), // Conflicts with native EchoTool
                 title: None,
                 description: None,
-                input_schema: serde_json::to_value(EchoTool::input_schema(
-                    LanguageModelToolSchemaFormat::JsonSchema,
-                ))
-                .unwrap(),
+                input_schema: EchoTool::input_schema().to_value(),
                 output_schema: None,
                 annotations: None,
             },
@@ -2564,10 +2558,7 @@ async fn test_mcp_tool_truncation(cx: &mut TestAppContext) {
                 name: "echo".into(), // Also conflicts with native EchoTool
                 title: None,
                 description: None,
-                input_schema: serde_json::to_value(EchoTool::input_schema(
-                    LanguageModelToolSchemaFormat::JsonSchema,
-                ))
-                .unwrap(),
+                input_schema: EchoTool::input_schema().to_value(),
                 output_schema: None,
                 annotations: None,
             },
@@ -2638,10 +2629,7 @@ async fn test_mcp_tool_truncation(cx: &mut TestAppContext) {
             name: "echo".into(), // Also conflicts - will be disambiguated as azure_dev_ops_echo
             title: None,
             description: None,
-            input_schema: serde_json::to_value(EchoTool::input_schema(
-                LanguageModelToolSchemaFormat::JsonSchema,
-            ))
-            .unwrap(),
+            input_schema: EchoTool::input_schema().to_value(),
             output_schema: None,
             annotations: None,
         }],

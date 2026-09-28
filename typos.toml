@@ -122,6 +122,8 @@ extend-ignore-re = [
     # The escape body never holds prose.
     '\\u\{[0-9a-fA-F]{1,6}\}',
     "GHIzJ",
+    # Intentionally non-matching query in project search tests
+    "NOTHINGmATCHEStHIS",
 ]
 check-filename = true
 

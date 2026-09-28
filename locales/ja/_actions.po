@@ -341,6 +341,21 @@ msgctxt "action"
 msgid "buffer_search::UseSelectionForFind"
 msgstr "検索: 選択範囲を検索語にする"
 
+#. call hierarchy: show incoming calls
+msgctxt "action"
+msgid "call_hierarchy::ShowIncomingCalls"
+msgstr "呼び出し階層: 呼び出し元を表示"
+
+#. call hierarchy: show outgoing calls
+msgctxt "action"
+msgid "call_hierarchy::ShowOutgoingCalls"
+msgstr "呼び出し階層: 呼び出し先を表示"
+
+#. call hierarchy: toggle direction
+msgctxt "action"
+msgid "call_hierarchy::ToggleDirection"
+msgstr "呼び出し階層: 呼び出し元と呼び出し先の切り替え"
+
 #. command palette: toggle
 msgctxt "action"
 msgid "command_palette::Toggle"
@@ -370,6 +385,11 @@ msgstr "デバッグ: すべてのブレークポイントを削除"
 msgctxt "action"
 msgid "debugger::Continue"
 msgstr "デバッグ: 続行"
+
+#. debugger: continue thread
+msgctxt "action"
+msgid "debugger::ContinueThread"
+msgstr "デバッグ: 選択中のスレッドを続行"
 
 #. debugger: detach
 msgctxt "action"
@@ -2086,6 +2106,11 @@ msgctxt "action"
 msgid "git::CopyBranchName"
 msgstr "Git: ブランチ名をコピー"
 
+#. git: copy file permalink
+msgctxt "action"
+msgid "git::CopyFilePermalink"
+msgstr "Git: ファイルの永続リンクをコピー"
+
 #. git: copy tag distance
 msgctxt "action"
 msgid "git::CopyTagDistance"
@@ -2200,6 +2225,11 @@ msgstr "Git: HEAD のファイルを開く"
 msgctxt "action"
 msgid "git::OpenFileDiff"
 msgstr "Git: ファイルの差分を開く"
+
+#. git: open file permalink
+msgctxt "action"
+msgid "git::OpenFilePermalink"
+msgstr "Git: ファイルの永続リンクを開く"
 
 #. git: open merge request box
 msgctxt "action"
@@ -2375,6 +2405,11 @@ msgstr "Git: ブランチを切り替え"
 msgctxt "action"
 msgid "git::SwitchWorktree"
 msgstr "Git: ワークツリーを切り替え"
+
+#. git: toggle diff base
+msgctxt "action"
+msgid "git::ToggleDiffBase"
+msgstr "Git: 差分の基準を切り替え (HEAD / 既定のブランチ)"
 
 #. git: toggle merge request box
 msgctxt "action"
@@ -2950,6 +2985,11 @@ msgstr "アウトラインパネル: エディターの固定切り替え"
 msgctxt "action"
 msgid "outline_panel::ToggleFocus"
 msgstr "アウトラインパネル: フォーカス切り替え"
+
+#. outline panel: toggle symbols
+msgctxt "action"
+msgid "outline_panel::ToggleSymbols"
+msgstr "アウトラインパネル: シンボルの表示切り替え"
 
 #. pane: activate last item
 msgctxt "action"

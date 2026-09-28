@@ -599,6 +599,9 @@ mod tests {
         ("Services", "サービス"),
         ("Settings", "設定"),
         ("Show All", "すべて表示"),
+        // Added by upstream v1.19.2.
+        ("Show Incoming Calls", "呼び出し元を表示"),
+        ("Show Outgoing Calls", "呼び出し先を表示"),
         ("Show Welcome", "ようこそページを表示"),
         ("Shrink Selection", "選択範囲を縮小"),
         ("Spawn Task", "タスクを実行"),
@@ -743,6 +746,8 @@ mod tests {
         "宣言へ移動",
         "型定義へ移動",
         "すべての参照を検索",
+        "呼び出し元を表示",
+        "呼び出し先を表示",
         "次の問題へ",
         "前の問題へ",
         "実行",

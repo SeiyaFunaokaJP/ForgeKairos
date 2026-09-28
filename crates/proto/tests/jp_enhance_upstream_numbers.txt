@@ -1,5 +1,5 @@
 # Every numbered field and enum value in upstream's crates/proto/proto at
-# v1.18.1 (bebe92f), as `scope name number`. Written by `regenerate_upstream_numbers`
+# v1.19.2 (df181c6), as `scope name number`. Written by `regenerate_upstream_numbers`
 # in jp_enhance_numbering.rs; do not edit by hand.
 AckBufferOperation buffer_id 1
 AckBufferOperation epoch 2
@@ -79,6 +79,7 @@ BlameEntry author 5
 BlameEntry author_mail 6
 BlameEntry author_time 7
 BlameEntry author_tz 8
+BlameEntry boundary 16
 BlameEntry committer 9
 BlameEntry committer_mail 10
 BlameEntry committer_time 11
@@ -134,6 +135,20 @@ Call called_user_id 2
 Call initial_project_id 3
 Call room_id 1
 CallCanceled room_id 1
+CallHierarchyIncomingCall from 1
+CallHierarchyIncomingCall from_ranges 2
+CallHierarchyItem buffer_id 4
+CallHierarchyItem data 10
+CallHierarchyItem detail 3
+CallHierarchyItem kind 2
+CallHierarchyItem name 1
+CallHierarchyItem range_end 7
+CallHierarchyItem range_start 6
+CallHierarchyItem selection_range_end 9
+CallHierarchyItem selection_range_start 8
+CallHierarchyItem server_id 5
+CallHierarchyOutgoingCall from_ranges 2
+CallHierarchyOutgoingCall to 1
 CancelCall called_user_id 2
 CancelCall room_id 1
 CancelLanguageServerWork buffers 2
@@ -583,6 +598,7 @@ Diagnostic is_disk_based 10
 Diagnostic is_primary 8
 Diagnostic is_unnecessary 11
 Diagnostic markdown 14
+Diagnostic markup_message_kind 18
 Diagnostic message 5
 Diagnostic registration_id 17
 Diagnostic severity 4
@@ -590,6 +606,7 @@ Diagnostic source 3
 Diagnostic source_kind 16
 Diagnostic start 1
 Diagnostic underline 15
+Diagnostic untrimmed_markup_message 19
 Diagnostic.Severity Error 1
 Diagnostic.Severity Hint 4
 Diagnostic.Severity Information 3
@@ -767,16 +784,22 @@ Envelope get_edit_prediction_definition 462
 Envelope get_edit_prediction_definition_response 463
 Envelope get_edit_prediction_type_definition 464
 Envelope get_edit_prediction_type_definition_response 465
+Envelope get_file_permalink 480
+Envelope get_file_permalink_response 481
 Envelope get_folding_ranges 421
 Envelope get_folding_ranges_response 422
 Envelope get_hover 79
 Envelope get_hover_response 80
 Envelope get_implementation 162
 Envelope get_implementation_response 163
+Envelope get_incoming_calls 484
+Envelope get_incoming_calls_response 485
 Envelope get_initial_graph_data 451
 Envelope get_initial_graph_data_response 452
 Envelope get_notifications 150
 Envelope get_notifications_response 151
+Envelope get_outgoing_calls 486
+Envelope get_outgoing_calls_response 487
 Envelope get_path_metadata 278
 Envelope get_path_metadata_response 279
 Envelope get_permalink_to_line 264
@@ -912,6 +935,8 @@ Envelope original_sender_id 3
 Envelope perform_rename 85
 Envelope perform_rename_response 86
 Envelope ping 7
+Envelope prepare_call_hierarchy 482
+Envelope prepare_call_hierarchy_response 483
 Envelope prepare_rename 83
 Envelope prepare_rename_response 84
 Envelope project_entry_response 50
@@ -1069,6 +1094,7 @@ ExpandAllForProjectEntryResponse worktree_scan_id 1
 ExpandProjectEntry entry_id 2
 ExpandProjectEntry project_id 1
 ExpandProjectEntryResponse worktree_scan_id 1
+Extension content_fingerprint 4
 Extension dev 3
 Extension id 1
 Extension version 2
@@ -1094,6 +1120,7 @@ Fetch askpass_id 4
 Fetch project_id 1
 Fetch remote 5
 Fetch repository_id 3
+Fetch unshallow 6
 File entry_id 2
 File is_deleted 5
 File is_historic 6
@@ -1237,6 +1264,9 @@ GetEditPredictionTypeDefinition position 3
 GetEditPredictionTypeDefinition project_id 1
 GetEditPredictionTypeDefinition version 4
 GetEditPredictionTypeDefinitionResponse definitions 1
+GetFilePermalink path 2
+GetFilePermalink project_id 1
+GetFilePermalinkResponse permalink 1
 GetFoldingRanges buffer_id 2
 GetFoldingRanges project_id 1
 GetFoldingRanges version 3
@@ -1255,6 +1285,11 @@ GetImplementation position 3
 GetImplementation project_id 1
 GetImplementation version 4
 GetImplementationResponse links 1
+GetIncomingCalls buffer_id 2
+GetIncomingCalls item 3
+GetIncomingCalls project_id 1
+GetIncomingCalls version 4
+GetIncomingCallsResponse calls 1
 GetInitialGraphData log_order 4
 GetInitialGraphData log_source 3
 GetInitialGraphData project_id 1
@@ -1267,6 +1302,11 @@ GetInitialGraphDataResponse commits 1
 GetNotifications before_id 1
 GetNotificationsResponse done 2
 GetNotificationsResponse notifications 1
+GetOutgoingCalls buffer_id 2
+GetOutgoingCalls item 3
+GetOutgoingCalls project_id 1
+GetOutgoingCalls version 4
+GetOutgoingCallsResponse calls 1
 GetPathMetadata path 2
 GetPathMetadata project_id 1
 GetPathMetadataResponse exists 1
@@ -1606,9 +1646,11 @@ LiveKitConnectionInfo can_publish 3
 LiveKitConnectionInfo server_url 1
 LiveKitConnectionInfo token 2
 LoadCommitDiff commit 4
+LoadCommitDiff ignore_shallow_boundary 5
 LoadCommitDiff project_id 1
 LoadCommitDiff repository_id 3
 LoadCommitDiffResponse files 1
+LoadCommitDiffResponse is_shallow_boundary 2
 LoadCommitTemplate project_id 1
 LoadCommitTemplate repository_id 2
 LoadCommitTemplateResponse template 1
@@ -1633,6 +1675,7 @@ LspDiagnostic code 4
 LspDiagnostic code_description 5
 LspDiagnostic data 10
 LspDiagnostic end 2
+LspDiagnostic markup_message_kind 11
 LspDiagnostic message 7
 LspDiagnostic related_information 8
 LspDiagnostic severity 3
@@ -1694,11 +1737,14 @@ LspQuery get_edit_prediction_type_definition 21
 LspQuery get_folding_ranges 17
 LspQuery get_hover 5
 LspQuery get_implementation 13
+LspQuery get_incoming_calls 23
+LspQuery get_outgoing_calls 24
 LspQuery get_references 3
 LspQuery get_signature_help 7
 LspQuery get_type_definition 12
 LspQuery inlay_hints 14
 LspQuery lsp_request_id 2
+LspQuery prepare_call_hierarchy 22
 LspQuery project_id 1
 LspQuery semantic_tokens 16
 LspQuery server_id 15
@@ -1718,10 +1764,13 @@ LspResponse get_edit_prediction_type_definition_response 19
 LspResponse get_folding_ranges_response 15
 LspResponse get_hover_response 1
 LspResponse get_implementation_response 11
+LspResponse get_incoming_calls_response 21
+LspResponse get_outgoing_calls_response 22
 LspResponse get_references_response 12
 LspResponse get_signature_help_response 3
 LspResponse get_type_definition_response 10
 LspResponse inlay_hints_response 13
+LspResponse prepare_call_hierarchy_response 20
 LspResponse semantic_tokens_response 14
 LspResponse server_id 7
 LspRunnable location 2
@@ -1852,6 +1901,11 @@ PerformRename version 5
 PerformRenameResponse transaction 2
 PointUtf16 column 2
 PointUtf16 row 1
+PrepareCallHierarchy buffer_id 2
+PrepareCallHierarchy position 3
+PrepareCallHierarchy project_id 1
+PrepareCallHierarchy version 4
+PrepareCallHierarchyResponse items 1
 PrepareRename buffer_id 2
 PrepareRename position 3
 PrepareRename project_id 1

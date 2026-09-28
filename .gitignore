@@ -60,6 +60,7 @@ crates/docs_preprocessor/actions.json
 .nixos-test-history
 
 .local*
+.cache
 
 # Fork-internal working docs (dev notes; may contain environment details)
 /docs/jp-enhance/

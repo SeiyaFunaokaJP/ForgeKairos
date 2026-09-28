@@ -272,7 +272,7 @@ fn collect_diagnostic(
             write!(text, " {}: ", ty).unwrap();
             let padding = text.len() - marker_start;
 
-            let message = util::truncate(&entry.diagnostic.message, MAX_MESSAGE_LENGTH)
+            let message = util::truncate(entry.diagnostic.message.as_str(), MAX_MESSAGE_LENGTH)
                 .replace('\n', format!("\n//{:padding$}", "").as_str());
 
             writeln!(text, "{message}").unwrap();
@@ -321,7 +321,7 @@ mod tests {
                                 Unclipped(PointUtf16::new(0, 0))..Unclipped(PointUtf16::new(0, 2)),
                                 Diagnostic {
                                     severity: DiagnosticSeverity::ERROR,
-                                    message: format!("error {index}"),
+                                    message: format!("error {index}").into(),
                                     source_kind: DiagnosticSourceKind::Pushed,
                                     is_primary: true,
                                     group_id: index,

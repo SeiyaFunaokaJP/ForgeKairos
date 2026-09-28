@@ -378,7 +378,7 @@ fn unbound_from_proto(
     let path = SharedString::from(content.path);
     let program = content.program.map(SharedString::from);
     let missing_program = "接続先から届いた警告にプログラム名がありません";
-    Ok(match Kind::from_i32(content.kind) {
+    Ok(match Kind::try_from(content.kind).ok() {
         Some(Kind::UnboundWorkingDirectory) => UnboundWorktreeContent::WorkingDirectory {
             program: program.context(missing_program)?,
             working_directory: path,
@@ -407,7 +407,7 @@ pub(crate) fn details_from_proto(
 ) -> Result<LaunchApprovalDetails> {
     check_request_limits(&request)?;
     let remote_key = parse_remote_key(&request.remote_key)?;
-    let kind = match proto::ProjectLaunchKind::from_i32(request.kind) {
+    let kind = match proto::ProjectLaunchKind::try_from(request.kind).ok() {
         Some(proto::ProjectLaunchKind::LaunchKindLanguageServerBinary) => {
             LaunchKind::LanguageServerBinary
         }
@@ -547,7 +547,7 @@ impl RemoteAnswer {
 
 fn answer_from_response(response: proto::RequestProjectLaunchApprovalResponse) -> RemoteAnswer {
     use proto::ProjectLaunchApprovalState as State;
-    match State::from_i32(response.state) {
+    match State::try_from(response.state).ok() {
         Some(State::LaunchApprovalApproved) => RemoteAnswer::Approved,
         Some(State::LaunchApprovalDenied) => RemoteAnswer::Denied,
         Some(State::LaunchApprovalPending) => {

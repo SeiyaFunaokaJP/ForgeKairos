@@ -657,7 +657,6 @@ impl SerializableItem for TabularDataPreviewPane {
         workspace: &mut Workspace,
         item_id: ItemId,
         _closing: bool,
-        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Task<Result<()>>> {
         let workspace_id = workspace.database_id()?;
@@ -1157,11 +1156,9 @@ mod tests {
         let workspace_id = register_workspace_row(&workspace, cx).await;
 
         workspace
-            .update_in(cx, |workspace, window, cx| {
-                grid.update(cx, |grid, cx| {
-                    grid.serialize(workspace, item_id, false, window, cx)
-                })
-                .unwrap()
+            .update_in(cx, |workspace, _window, cx| {
+                grid.update(cx, |grid, cx| grid.serialize(workspace, item_id, false, cx))
+                    .unwrap()
             })
             .await
             .unwrap();

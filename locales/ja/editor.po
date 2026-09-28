@@ -5,6 +5,21 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Bookmarks"
+msgstr "ブックマーク"
+
+msgid "Copy Diagnostic"
+msgstr "診断をコピー"
+
+msgid "Copy Permalink to Line"
+msgstr "この行への永続リンクをコピー"
+
+msgid "Failed to copy permalink to line: {err}"
+msgstr "この行への永続リンクをコピーできませんでした: {err}"
+
+msgid "Failed to open permalink to line: {err}"
+msgstr "この行への永続リンクを開けませんでした: {err}"
+
 msgid "Find All References"
 msgstr "すべての参照を検索"
 
@@ -19,3 +34,21 @@ msgstr "実装へ移動"
 
 msgid "Go to Type Definition"
 msgstr "型定義へ移動"
+
+msgid "Show Incoming Calls"
+msgstr "呼び出し元を表示"
+
+msgid "Show Outgoing Calls"
+msgstr "呼び出し先を表示"
+
+msgid "Stage"
+msgstr "ステージ"
+
+msgid "Stage Hunk"
+msgstr "変更箇所をステージ"
+
+msgid "Unstage"
+msgstr "アンステージ"
+
+msgid "Unstage Hunk"
+msgstr "変更箇所をアンステージ"

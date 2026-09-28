@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Discard Changes to {count} Files"
+msgstr "{count} 個のファイルの変更を破棄"
+
+msgid "Not available while several files are selected"
+msgstr "複数のファイルを選んでいるときは使えません"
+
+msgid "Open Commit Permalink"
+msgstr "コミットの永続リンクを開く"
+
+msgid "Stage {count} Files"
+msgstr "{count} 個のファイルをステージ"
+
+msgid "Trash {count} Files"
+msgstr "{count} 個のファイルをゴミ箱へ移動"
+
+msgid "Unstage {count} Files"
+msgstr "{count} 個のファイルをアンステージ"

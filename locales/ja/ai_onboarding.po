@@ -1,0 +1,27 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "$5 of GPT Luna"
+msgstr "GPT Luna の利用 $5 分"
+
+msgid "14 days from trial start, no credit card required"
+msgstr "トライアル開始から 14 日間、クレジットカード不要"
+
+msgid "Included for 14 days from when your trial started:"
+msgstr "トライアル開始から 14 日間、次の内容を利用できます。"
+
+msgid "No credit card required"
+msgstr "クレジットカード不要"
+
+msgid "Sign In to Try GPT Luna"
+msgstr "サインインして GPT Luna を試す"
+
+msgid "Sign in to try GPT Luna. Your 14 days begin when you start the trial."
+msgstr "サインインすると GPT Luna をお試しいただけます。14 日間の期間はトライアルを開始した時点から始まります。"
+
+msgid "Unlimited edit predictions"
+msgstr "無制限の編集予測"
